@@ -90,7 +90,7 @@ export function LoginScreen() {
             />
           </div>
           <h1 style={{ margin: '0 0 6px', color: NAVY, fontSize: '20px', fontWeight: 700, letterSpacing: '-0.3px' }}>
-            Bảng điều hành hoạt động AI - FLIC
+            Hệ thống phân tích hỗ trợ CSKH Web ChatBot FLIC
           </h1>
           <p style={{ margin: 0, color: '#64748b', fontSize: '12px', lineHeight: 1.6 }}>
             Bảng điều khiển trực quan hóa dữ liệu WebChat CSKH kết hợp Phân tích AI
