@@ -39,7 +39,6 @@ export function Sidebar({ activeScreen, onNavigate, collapsed, onToggleCollapse 
   const managerMenuItems = [
     { id: "overview", label: "Tổng quan", icon: LayoutDashboard },
     { id: "channel", label: "Kênh", icon: Globe },
-    { id: "conversation", label: "Hội thoại", icon: MessageCircle },
     { id: "aiinsights", label: "Phân tích AI", icon: Bot },
     { id: "keyword", label: "Keywords", icon: Hash },
     { id: "sentiment", label: "Cảm xúc", icon: Heart },
@@ -49,7 +48,7 @@ export function Sidebar({ activeScreen, onNavigate, collapsed, onToggleCollapse 
   ];
 
   const staffMenuItems = [
-    { id: "conversation", label: "Hội thoại", icon: MessageCircle },
+    { id: "overview", label: "Tổng quan", icon: LayoutDashboard },
     { id: "faq", label: "FAQ", icon: HelpCircle },
     { id: "chatbot_sheet", label: "Sheet Chatbot", icon: FileText },
     { id: "performance", label: "Hiệu suất", icon: TrendingUp },

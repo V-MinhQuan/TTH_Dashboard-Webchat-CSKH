@@ -42,7 +42,7 @@ function formatTime(d: Date) {
 
 function MainApp() {
   const { role } = useAuth();
-  const [activeScreen, setActiveScreen] = useState(role === 'manager' ? "overview" : "conversation");
+  const [activeScreen, setActiveScreen] = useState("overview");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [filters, setFilters] = useState<FilterValues>(defaultFilters);
   const [isRefreshing, setIsRefreshing] = useState(false);

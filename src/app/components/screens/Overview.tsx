@@ -279,9 +279,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing, l
             Cần xử lý ngay
             <span style={{ fontSize: "11px", backgroundColor: "#FFF4EE", color: ORANGE, border: "1px solid #FBCBB8", borderRadius: "20px", padding: "2px 8px", fontWeight: 700 }}>{urgentAlerts.length}</span>
           </h2>
-          <button onClick={() => onNavigate("conversation")} style={{ fontSize: "12px", color: NAVY, border: `1px solid ${NAVY}25`, background: "#fff", padding: "5px 12px", borderRadius: "8px", cursor: "pointer", fontWeight: 500 }}>
-            Xem tất cả hội thoại
-          </button>
+          {/* Nút Xem tất cả hội thoại đã ẩn */}
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "12px" }}>
           {urgentAlerts.map((alert) => {
@@ -312,15 +310,13 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing, l
                   )}
                 </div>
                 <div style={{ display: "flex", gap: "5px", marginBottom: "7px", flexWrap: "wrap" }}>
-                  {alert.customer !== "���" && <span style={{ fontSize: "11px", color: NAVY, fontWeight: 500 }}>{alert.customer}</span>}
+                  {alert.customer !== "" && <span style={{ fontSize: "11px", color: NAVY, fontWeight: 500 }}>{alert.customer}</span>}
                   <span style={{ fontSize: "10px", padding: "1px 6px", borderRadius: "20px", backgroundColor: "#eff6ff", color: "#3b82f6" }}>{alert.channel}</span>
                   <span style={{ fontSize: "10px", padding: "1px 6px", borderRadius: "20px", backgroundColor: "#f1f5f9", color: "rgba(0,62,154,0.6)" }}>{alert.topic}</span>
                 </div>
                 <div style={{ fontSize: "12px", color: "rgba(0,62,154,0.6)", marginBottom: "11px", lineHeight: 1.4 }}>{alert.desc}</div>
                 <div style={{ display: "flex", gap: "6px" }}>
-                  <button onClick={() => onNavigate("conversation")} style={{ padding: "4px 10px", borderRadius: "7px", border: `1px solid ${NAVY}20`, background: "#f8fafc", color: NAVY, cursor: "pointer", fontSize: "11px", fontWeight: 500, display: "flex", alignItems: "center", gap: "3px" }}>
-                    <Eye size={10} /> Xem
-                  </button>
+                  {/* Button "Xem" removed */}
                   <button onClick={() => toast.success("Đã đánh dấu cần xử lý")} style={{ padding: "4px 10px", borderRadius: "7px", border: `1px solid ${NAVY}15`, background: "#fff", color: "rgba(0,62,154,0.65)", cursor: "pointer", fontSize: "11px", fontWeight: 500, display: "flex", alignItems: "center", gap: "3px" }}>
                     <Flag size={10} /> Đánh dấu
                   </button>
@@ -447,9 +443,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing, l
       <div style={{ backgroundColor: "#fff", borderRadius: "16px", border: "1px solid rgba(0,62,154,0.07)", boxShadow: "0 2px 10px rgba(0,62,154,0.05)", overflow: "hidden" }}>
         <div style={{ padding: "16px 22px", borderBottom: "1px solid rgba(0,62,154,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <h3 style={{ color: NAVY, fontSize: "14px", fontWeight: 700, margin: 0 }}>Hội thoại ưu tiên xử lý</h3>
-          <button onClick={() => onNavigate("conversation")} style={{ fontSize: "12px", color: NAVY, border: `1px solid ${NAVY}20`, background: "#f8fafc", padding: "5px 12px", borderRadius: "8px", cursor: "pointer", fontWeight: 500 }}>
-            Quản lý hội thoại
-          </button>
+          {/* Nút Quản lý hội thoại đã ẩn */}
         </div>
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
@@ -486,12 +480,9 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing, l
                     </td>
                     <td style={{ padding: "12px 16px" }}>
                       <div style={{ display: "flex", gap: "6px" }}>
-                        <button onClick={() => onNavigate("conversation")} style={{ padding: "4px 9px", borderRadius: "7px", border: `1px solid ${NAVY}20`, background: "#f8fafc", color: NAVY, cursor: "pointer", fontSize: "11px", display: "flex", alignItems: "center", gap: "3px" }}>
-                          <Eye size={10} /> Xem
-                        </button>
-                        <button onClick={() => toast.success("Đã đánh dấu xử lý")} style={{ padding: "4px 9px", borderRadius: "7px", border: "none", background: NAVY, color: "#fff", cursor: "pointer", fontSize: "11px", fontWeight: 600, display: "flex", alignItems: "center", gap: "3px" }}>
-                          <CheckCircle size={10} /> Xử lý
-                        </button>
+                      <button onClick={() => toast.success("Đã đánh dấu xử lý")} style={{ padding: "4px 9px", borderRadius: "7px", border: "none", background: NAVY, color: "#fff", cursor: "pointer", fontSize: "11px", fontWeight: 600, display: "flex", alignItems: "center", gap: "3px" }}>
+                        <CheckCircle size={10} /> Xử lý
+                      </button>
                       </div>
                     </td>
                   </tr>
