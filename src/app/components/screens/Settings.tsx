@@ -113,7 +113,7 @@ function Toggle({ value, onChange }: ToggleProps) {
 }
 
 export function Settings({ defaultSection = "notifications" }: { defaultSection?: string }) {
-  const { role } = useAuth();
+  const { role, user } = useAuth();
   const sections = role === "manager" ? adminSections : staffSections;
   const [activeSection, setActiveSection] = useState(defaultSection);
   const [showPasscodeModal, setShowPasscodeModal] = useState(false);
@@ -193,11 +193,11 @@ export function Settings({ defaultSection = "notifications" }: { defaultSection?
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
               <div>
                 <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "8px" }}>Họ và tên</label>
-                <input type="text" defaultValue={role === "manager" ? "Admin FLIC" : "Nhân viên CSKH"} style={{ ...fieldStyle, width: "100%", boxSizing: "border-box" }} />
+                <input type="text" defaultValue={user ? user.name : (role === "manager" ? "Admin FLIC" : "Nhân viên CSKH")} style={{ ...fieldStyle, width: "100%", boxSizing: "border-box" }} />
               </div>
               <div>
                 <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "8px" }}>Email</label>
-                <input type="text" defaultValue={role === "manager" ? "admin@flic.edu.vn" : "staff@flic.edu.vn"} style={{ ...fieldStyle, width: "100%", boxSizing: "border-box" }} />
+                <input type="text" defaultValue={user ? user.email : (role === "manager" ? "admin@flic.edu.vn" : "staff@flic.edu.vn")} style={{ ...fieldStyle, width: "100%", boxSizing: "border-box" }} />
               </div>
               <div>
                 <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "8px" }}>Số điện thoại</label>

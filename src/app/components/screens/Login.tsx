@@ -8,37 +8,49 @@ const NAVY = "#003865";
 const CTA = "#ED5206";
 const ORANGE = "#D73C01";
 
-const DEMO_ACCOUNTS = [
-  { username: "admin", password: "admin123", role: "manager" as const, label: "Quản lý CSKH" },
-  { username: "staff", password: "staff123", role: "staff" as const, label: "Nhân viên CSKH" },
-];
-
 export function LoginScreen() {
-  const { setRole } = useAuth();
+  const { login } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberLogin, setRememberLogin] = useState(true);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     if (!username.trim() || !password.trim()) {
       setError("Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu.");
       return;
     }
-    const account = DEMO_ACCOUNTS.find(
-      (a) => a.username === username.trim() && a.password === password
-    );
-    if (!account) {
-      setError("Tên đăng nhập hoặc mật khẩu không đúng.");
-      return;
-    }
     setError("");
     setLoading(true);
-    setTimeout(() => {
+    try {
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:5000";
+      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          username: username.trim(),
+          password: password,
+        }),
+      });
+
+      const resJson = await response.json();
+
+      if (!response.ok || !resJson.success) {
+        setError(resJson.message || "Tên đăng nhập hoặc mật khẩu không đúng.");
+        return;
+      }
+
+      const userData = resJson.data;
+      login(userData, rememberLogin);
+    } catch (err: any) {
+      setError("Không thể kết nối tới máy chủ. Vui lòng thử lại sau.");
+    } finally {
       setLoading(false);
-      setRole(account.role);
-    }, 800);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -153,6 +165,21 @@ export function LoginScreen() {
             </div>
           )}
 
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: NAVY, fontSize: '12px', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }}>
+            <input
+              type="checkbox"
+              checked={rememberLogin}
+              onChange={(e) => setRememberLogin(e.target.checked)}
+              style={{
+                width: '14px',
+                height: '14px',
+                accentColor: CTA,
+                cursor: 'pointer',
+              }}
+            />
+            Ghi nhớ đăng nhập
+          </label>
+
           {/* Login button */}
           <button
             onClick={handleLogin}
@@ -176,20 +203,7 @@ export function LoginScreen() {
           </button>
         </div>
 
-        {/* Demo hint */}
-        <div style={{ marginTop: '24px', padding: '14px', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid rgba(0,56,101,0.08)' }}>
-          <div style={{ fontSize: '11px', fontWeight: 700, color: 'rgba(0,56,101,0.5)', marginBottom: '8px', letterSpacing: '0.05em' }}>TÀI KHOẢN DEMO</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-            <div style={{ fontSize: '12px', color: NAVY, display: 'flex', justifyContent: 'space-between' }}>
-              <span>Quản lý</span>
-              <span style={{ fontFamily: 'monospace', color: 'rgba(0,56,101,0.6)' }}>admin / admin123</span>
-            </div>
-            <div style={{ fontSize: '12px', color: NAVY, display: 'flex', justifyContent: 'space-between' }}>
-              <span>Nhân viên CSKH</span>
-              <span style={{ fontFamily: 'monospace', color: 'rgba(0,56,101,0.6)' }}>staff / staff123</span>
-            </div>
-          </div>
-        </div>
+
 
         <p style={{ marginTop: '20px', fontSize: '11px', color: '#94a3b8', textAlign: 'center' }}>
           © 2026 FLIC Education · Bản thử nghiệm

@@ -341,7 +341,27 @@ export function AIMonitoring() {
           prefillQuestion={activeAnomaly.question}
           prefillAnswer={currentAnswer}
           onClose={() => setShowSheetModal(false)}
-
+          onSave={(data) => {
+            let currentRows = [];
+            const saved = localStorage.getItem("flic_sheet_rows");
+            if (saved) {
+              try {
+                currentRows = JSON.parse(saved);
+              } catch (e) {
+                console.error(e);
+              }
+            }
+            const newRow = {
+              id: `CS-${Date.now()}`,
+              addedAt: "Vừa thêm",
+              addedBy: "Đề xuất tự động (AI)",
+              ...data
+            };
+            currentRows.unshift(newRow);
+            localStorage.setItem("flic_sheet_rows", JSON.stringify(currentRows));
+            window.dispatchEvent(new Event("storage"));
+            toast.success("Đã thêm dữ liệu vào Sheet Chatbot");
+          }}
         />
       )}
 

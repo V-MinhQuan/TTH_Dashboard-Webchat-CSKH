@@ -42,7 +42,43 @@ interface Faq {
 
 export function FAQ() {
   const { role } = useAuth();
-  const [faqs, setFaqs] = useState<Faq[]>(initialFaqs);
+  const [editingFaqId, setEditingFaqId] = useState<string | null>(null);
+  
+  // Initial loading from localStorage or default
+  const [faqs, setFaqs] = useState<Faq[]>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("flic_faqs");
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch (e) {
+          console.error("Failed parsing flic_faqs", e);
+        }
+      }
+    }
+    return initialFaqs;
+  });
+
+  // Sync to localStorage
+  useEffect(() => {
+    localStorage.setItem("flic_faqs", JSON.stringify(faqs));
+  }, [faqs]);
+
+  // Sync with localStorage periodically in case another tab updates it
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === "flic_faqs" && e.newValue) {
+        try {
+          setFaqs(JSON.parse(e.newValue));
+        } catch (err) {
+          console.error(err);
+        }
+      }
+    };
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
+  }, []);
+
   const [search, setSearch] = useState("");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -82,21 +118,51 @@ export function FAQ() {
       toast.error("Vui lòng nhập câu hỏi");
       return;
     }
-    const newFaq: Faq = {
-      id: `FAQ-${String(faqs.length + 1).padStart(2, "0")}`,
-      question: faqForm.question,
-      answer: faqForm.answer,
-      topic: faqForm.topic,
-      proposer: "Admin FLIC",
-      source: faqForm.source,
-      status: faqForm.status,
-      riskLevel: faqForm.riskLevel,
-      date: new Date().toISOString().split('T')[0],
-      notes: faqForm.notes,
-    };
-    setFaqs([newFaq, ...faqs]);
-    toast.success("Đã tạo FAQ thành công");
+
+    if (editingFaqId) {
+      // Update existing FAQ
+      const updated = faqs.map((f) =>
+        f.id === editingFaqId
+          ? {
+              ...f,
+              question: faqForm.question,
+              answer: faqForm.answer,
+              topic: faqForm.topic,
+              source: faqForm.source,
+              riskLevel: faqForm.riskLevel,
+              notes: faqForm.notes,
+              status: faqForm.status,
+            }
+          : f
+      );
+      setFaqs(updated);
+      toast.success("Đã cập nhật FAQ thành công");
+      setEditingFaqId(null);
+    } else {
+      // Create new FAQ
+      const newFaq: Faq = {
+        id: `FAQ-${String(faqs.length + 1).padStart(2, "0")}`,
+        question: faqForm.question,
+        answer: faqForm.answer,
+        topic: faqForm.topic,
+        proposer: "Admin FLIC",
+        source: faqForm.source,
+        status: faqForm.status,
+        riskLevel: faqForm.riskLevel,
+        date: new Date().toISOString().split('T')[0],
+        notes: faqForm.notes,
+      };
+      setFaqs([newFaq, ...faqs]);
+      toast.success("Đã tạo FAQ thành công");
+    }
+
     setShowCreateModal(false);
+    setFaqForm({ question: "", answer: "", topic: "TOEIC", source: "Phản hồi từ khách hàng", riskLevel: "Thấp", notes: "", status: "Chờ duyệt" });
+  };
+
+  const closeCreateModal = () => {
+    setShowCreateModal(false);
+    setEditingFaqId(null);
     setFaqForm({ question: "", answer: "", topic: "TOEIC", source: "Phản hồi từ khách hàng", riskLevel: "Thấp", notes: "", status: "Chờ duyệt" });
   };
 
@@ -194,7 +260,7 @@ export function FAQ() {
           </div>
           {role === "manager" && (
             <button
-              onClick={() => { setFaqForm({ question: "", answer: "", topic: "TOEIC", source: "Phản hồi từ khách hàng", riskLevel: "Thấp", notes: "", status: "Chờ duyệt" }); setShowCreateModal(true); }}
+              onClick={() => { setFaqForm({ question: "", answer: "", topic: "TOEIC", source: "Phản hồi từ khách hàng", riskLevel: "Thấp", notes: "", status: "Chờ duyệt" }); setEditingFaqId(null); setShowCreateModal(true); }}
               style={{ padding: "9px 18px", borderRadius: "10px", background: `linear-gradient(135deg, ${CTA} 0%, ${CTA_SOFT} 100%)`, color: "#fff", border: "none", display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontWeight: 600, fontSize: "13px", boxShadow: "0 4px 12px rgba(237,82,6,0.18)" }}
             >
               <Plus size={16} /> Tạo FAQ
@@ -282,9 +348,13 @@ export function FAQ() {
             </thead>
             <tbody>
               {filtered.map((faq) => (
-                <tr key={faq.id} style={{ borderBottom: "1px solid rgba(0,56,101,0.04)" }}
+                <tr key={faq.id} style={{ borderBottom: "1px solid rgba(0,56,101,0.04)", cursor: "pointer" }}
                   onMouseEnter={(e) => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "#fafbfc"}
                   onMouseLeave={(e) => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "transparent"}
+                  onClick={() => {
+                    setSelectedFaq(faq);
+                    setShowDetailModal(true);
+                  }}
                 >
                   <td style={{ padding: "14px 18px", maxWidth: "250px" }}>
                     <div style={{ fontWeight: 600, color: NAVY, fontSize: "13px", lineHeight: 1.4 }}>{faq.question}</div>
@@ -307,18 +377,25 @@ export function FAQ() {
                       {role === "manager" ? (
                         <>
                           {faq.status !== "Đã duyệt" && (
-                            <button onClick={() => {
+                            <button onClick={(e) => {
+                              e.stopPropagation();
                               setFaqs(faqs.map((f) => f.id === faq.id ? { ...f, status: "Đã duyệt" } : f));
                               toast.success("Đã duyệt FAQ và cập nhật cơ sở tri thức");
                             }} style={{ padding: "5px 10px", borderRadius: "6px", border: "1px solid #bbf7d0", background: "#f0fdf4", color: "#228A61", cursor: "pointer", fontWeight: 600, fontSize: "11px" }}>Duyệt</button>
                           )}
-                          <button onClick={() => {
-                            setFaqForm({ question: faq.question, answer: faq.answer, topic: faq.topic, source: faq.source, riskLevel: faq.riskLevel, notes: faq.notes, status: "Chờ duyệt" });
+                          <button onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingFaqId(faq.id);
+                            setFaqForm({ question: faq.question, answer: faq.answer, topic: faq.topic, source: faq.source, riskLevel: faq.riskLevel, notes: faq.notes, status: faq.status });
                             setShowCreateModal(true);
                           }} style={{ padding: "5px 10px", borderRadius: "6px", border: "1px solid rgba(0,56,101,0.1)", background: "#fff", color: NAVY, cursor: "pointer", fontWeight: 600, fontSize: "11px" }}>Chỉnh sửa</button>
                         </>
                       ) : (
-                        <button onClick={() => { setSelectedFaq(faq); setShowDetailModal(true); }} style={{ padding: "5px 10px", borderRadius: "6px", border: "1px solid rgba(0,56,101,0.1)", background: "#fff", color: NAVY, cursor: "pointer", fontWeight: 600, fontSize: "11px" }}>Xem chi tiết</button>
+                        <button onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedFaq(faq);
+                          setShowDetailModal(true);
+                        }} style={{ padding: "5px 10px", borderRadius: "6px", border: "1px solid rgba(0,56,101,0.1)", background: "#fff", color: NAVY, cursor: "pointer", fontWeight: 600, fontSize: "11px" }}>Xem chi tiết</button>
                       )}
                     </div>
                   </td>
@@ -334,8 +411,8 @@ export function FAQ() {
         <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.5)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <div style={{ backgroundColor: "#fff", width: "520px", borderRadius: "18px", padding: "28px", boxShadow: "0 20px 60px rgba(0,0,0,0.15)", maxHeight: "90vh", overflowY: "auto" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "22px" }}>
-              <h3 style={{ fontSize: "17px", fontWeight: 700, color: NAVY, margin: 0 }}>Tạo FAQ</h3>
-              <button onClick={() => setShowCreateModal(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(0,56,101,0.4)" }}><X size={18} /></button>
+              <h3 style={{ fontSize: "17px", fontWeight: 700, color: NAVY, margin: 0 }}>{editingFaqId ? "Chỉnh sửa FAQ" : "Tạo FAQ"}</h3>
+              <button onClick={closeCreateModal} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(0,56,101,0.4)" }}><X size={18} /></button>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
               <div>
@@ -390,15 +467,15 @@ export function FAQ() {
               </div>
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px", marginTop: "24px" }}>
-              <button onClick={() => setShowCreateModal(false)} style={{ padding: "9px 20px", borderRadius: "9px", border: "1px solid rgba(0,56,101,0.12)", background: "#fff", color: NAVY, cursor: "pointer", fontWeight: 600, fontSize: "13px" }}>Hủy</button>
-              <button onClick={handleCreateFaq} style={{ padding: "9px 20px", borderRadius: "9px", border: "none", background: `linear-gradient(135deg, ${CTA} 0%, ${CTA_SOFT} 100%)`, color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: "13px", boxShadow: "0 4px 12px rgba(237,82,6,0.18)" }}>Lưu FAQ</button>
+              <button onClick={closeCreateModal} style={{ padding: "9px 20px", borderRadius: "9px", border: "1px solid rgba(0,56,101,0.12)", background: "#fff", color: NAVY, cursor: "pointer", fontWeight: 600, fontSize: "13px" }}>Hủy</button>
+              <button onClick={handleCreateFaq} style={{ padding: "9px 20px", borderRadius: "9px", border: "none", background: `linear-gradient(135deg, ${CTA} 0%, ${CTA_SOFT} 100%)`, color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: "13px", boxShadow: "0 4px 12px rgba(237,82,6,0.18)" }}>{editingFaqId ? "Cập nhật" : "Lưu FAQ"}</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Staff: Xem chi tiết FAQ Modal */}
-      {showDetailModal && selectedFaq && role === "staff" && (
+      {/* Xem chi tiết FAQ Modal */}
+      {showDetailModal && selectedFaq && (
         <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.5)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <div style={{ backgroundColor: "#fff", width: "520px", borderRadius: "18px", padding: "28px", boxShadow: "0 20px 60px rgba(0,0,0,0.15)", maxHeight: "90vh", overflowY: "auto" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "22px" }}>
@@ -411,7 +488,7 @@ export function FAQ() {
                 <div style={{ padding: "10px 12px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.1)", backgroundColor: "#f8fafc", fontSize: "13px", color: NAVY, lineHeight: 1.5 }}>{selectedFaq.question}</div>
               </div>
               <div>
-                <label style={labelStyle}>Câu trả lời AI</label>
+                <label style={labelStyle}>Câu trả lời AI / Chính thức</label>
                 <div style={{ padding: "10px 12px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.1)", backgroundColor: "#f8fafc", fontSize: "13px", color: NAVY, lineHeight: 1.5, minHeight: "80px" }}>{selectedFaq.answer || <span style={{ color: "rgba(0,56,101,0.35)", fontStyle: "italic" }}>Chưa có câu trả lời</span>}</div>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
@@ -432,15 +509,35 @@ export function FAQ() {
               </div>
               {selectedFaq.notes && (
                 <div>
-                  <label style={labelStyle}>Ghi chú của nhân viên</label>
+                  <label style={labelStyle}>Ghi chú nội bộ</label>
                   <div style={{ padding: "10px 12px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.1)", backgroundColor: "#fffbeb", fontSize: "13px", color: NAVY, lineHeight: 1.5 }}>{selectedFaq.notes}</div>
                 </div>
               )}
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "24px" }}>
               <button onClick={() => setShowDetailModal(false)} style={{ padding: "9px 18px", borderRadius: "9px", border: "1px solid rgba(0,56,101,0.12)", background: "#fff", color: NAVY, cursor: "pointer", fontWeight: 600, fontSize: "13px" }}>Đóng</button>
-              <button onClick={() => { setShowEditSuggestModal(true); }} style={{ padding: "9px 18px", borderRadius: "9px", border: `1px solid ${ORANGE}`, background: "#fff", color: ORANGE, cursor: "pointer", fontWeight: 600, fontSize: "13px" }}>Đề xuất chỉnh sửa</button>
-              <button onClick={() => { toast.success("Đã thêm vào Sheet Chatbot"); setShowDetailModal(false); }} style={{ padding: "9px 18px", borderRadius: "9px", border: "none", background: `linear-gradient(135deg, ${CTA} 0%, ${CTA_SOFT} 100%)`, color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: "13px", boxShadow: "0 4px 12px rgba(237,82,6,0.18)" }}>Thêm vào Sheet Chatbot</button>
+              {role === "staff" ? (
+                <>
+                  <button onClick={() => { setShowEditSuggestModal(true); }} style={{ padding: "9px 18px", borderRadius: "9px", border: `1px solid ${ORANGE}`, background: "#fff", color: ORANGE, cursor: "pointer", fontWeight: 600, fontSize: "13px" }}>Đề xuất chỉnh sửa</button>
+                  <button onClick={() => { toast.success("Đã thêm vào Sheet Chatbot"); setShowDetailModal(false); }} style={{ padding: "9px 18px", borderRadius: "9px", border: "none", background: `linear-gradient(135deg, ${CTA} 0%, ${CTA_SOFT} 100%)`, color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: "13px", boxShadow: "0 4px 12px rgba(237,82,6,0.18)" }}>Thêm vào Sheet Chatbot</button>
+                </>
+              ) : (
+                <>
+                  <button onClick={() => {
+                    setEditingFaqId(selectedFaq.id);
+                    setFaqForm({ question: selectedFaq.question, answer: selectedFaq.answer, topic: selectedFaq.topic, source: selectedFaq.source, riskLevel: selectedFaq.riskLevel, notes: selectedFaq.notes, status: selectedFaq.status });
+                    setShowDetailModal(false);
+                    setShowCreateModal(true);
+                  }} style={{ padding: "9px 18px", borderRadius: "9px", border: `1px solid ${NAVY}`, background: "#fff", color: NAVY, cursor: "pointer", fontWeight: 600, fontSize: "13px" }}>Chỉnh sửa</button>
+                  {selectedFaq.status !== "Đã duyệt" && (
+                    <button onClick={() => {
+                      setFaqs(faqs.map((f) => f.id === selectedFaq.id ? { ...f, status: "Đã duyệt" } : f));
+                      toast.success("Đã duyệt FAQ và cập nhật cơ sở tri thức");
+                      setShowDetailModal(false);
+                    }} style={{ padding: "9px 18px", borderRadius: "9px", border: "none", background: `linear-gradient(135deg, ${CTA} 0%, ${CTA_SOFT} 100%)`, color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: "13px", boxShadow: "0 4px 12px rgba(237,82,6,0.18)" }}>Duyệt FAQ</button>
+                  )}
+                </>
+              )}
             </div>
           </div>
         </div>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { Plus, Search, Filter, CheckCircle2, XCircle, Clock, AlertTriangle, Edit2, Check, X, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
@@ -235,11 +235,47 @@ export function AddSheetModal({ prefillQuestion = "", prefillAnswer = "", onClos
 
 export function SheetChatbot() {
   const { role } = useAuth();
-  const [rows, setRows] = useState<SheetRow[]>(initialRows);
+  
+  // Load from localStorage or initialRows
+  const [rows, setRows] = useState<SheetRow[]>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("flic_sheet_rows");
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch (e) {
+          console.error("Failed parsing flic_sheet_rows", e);
+        }
+      }
+    }
+    return initialRows;
+  });
+
+  // Save to localStorage
+  useEffect(() => {
+    localStorage.setItem("flic_sheet_rows", JSON.stringify(rows));
+  }, [rows]);
+
+  // Sync rows periodically across tabs
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === "flic_sheet_rows" && e.newValue) {
+        try {
+          setRows(JSON.parse(e.newValue));
+        } catch (err) {
+          console.error(err);
+        }
+      }
+    };
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
+  }, []);
+
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("Tất cả");
   const [filterRisk, setFilterRisk] = useState("Tất cả");
   const [showAddModal, setShowAddModal] = useState(false);
+
 
   const filtered = rows.filter(r => {
     const matchSearch = r.question.toLowerCase().includes(search.toLowerCase()) ||
@@ -262,7 +298,46 @@ export function SheetChatbot() {
   };
 
   const updateStatus = (id: string, status: SheetStatus) => {
-    setRows(prev => prev.map(r => r.id === id ? { ...r, status } : r));
+    setRows(prev => {
+      const updatedRows = prev.map(r => r.id === id ? { ...r, status } : r);
+      if (status === "Đã duyệt") {
+        const approvedRow = updatedRows.find(r => r.id === id);
+        if (approvedRow) {
+          let currentFaqs = [];
+          const saved = localStorage.getItem("flic_faqs");
+          if (saved) {
+            try {
+              currentFaqs = JSON.parse(saved);
+            } catch (e) {
+              console.error(e);
+            }
+          }
+          let faqTopic = approvedRow.topic;
+          if (faqTopic === "Chuẩn đầu ra ngoại ngữ") faqTopic = "Chuẩn đầu ra";
+          if (faqTopic === "CNTT Cơ bản" || faqTopic === "CNTT Nâng cao" || faqTopic === "MOS/IC3") faqTopic = "MOS";
+
+          const exists = currentFaqs.some((f: any) => f.question.toLowerCase() === approvedRow.question.toLowerCase());
+          if (!exists) {
+            const newFaq = {
+              id: `FAQ-${Date.now()}`,
+              question: approvedRow.question,
+              answer: approvedRow.correctAnswer,
+              topic: faqTopic,
+              proposer: approvedRow.addedBy,
+              source: approvedRow.source,
+              status: "Đã duyệt",
+              riskLevel: approvedRow.risk,
+              date: new Date().toISOString().split('T')[0],
+              notes: approvedRow.notes || "Duyệt từ Sheet Chatbot"
+            };
+            currentFaqs.unshift(newFaq);
+            localStorage.setItem("flic_faqs", JSON.stringify(currentFaqs));
+            window.dispatchEvent(new Event("storage"));
+          }
+        }
+      }
+      return updatedRows;
+    });
     toast.success("Đã cập nhật trạng thái dữ liệu chatbot");
   };
 
@@ -388,7 +463,42 @@ export function SheetChatbot() {
                               <button onClick={() => updateStatus(row.id, "Bị từ chối")} style={{ padding: "3px 9px", borderRadius: "6px", border: "1px solid rgba(0,62,154,0.12)", background: "#f8fafc", color: "#64748b", cursor: "pointer", fontSize: "10px", fontWeight: 600 }}>Từ chối</button>
                             </>
                           ) : row.status === "Đã duyệt" ? (
-                            <button onClick={() => toast.success("Đã gộp với FAQ có sẵn")} style={{ padding: "3px 9px", borderRadius: "6px", border: `1px solid ${NAVY}20`, background: "#f8fafc", color: NAVY, cursor: "pointer", fontSize: "10px", fontWeight: 600 }}>Gộp FAQ</button>
+                            <button onClick={() => {
+                              let currentFaqs = [];
+                              const saved = localStorage.getItem("flic_faqs");
+                              if (saved) {
+                                try {
+                                  currentFaqs = JSON.parse(saved);
+                                } catch (e) {
+                                  console.error(e);
+                                }
+                              }
+                              let faqTopic = row.topic;
+                              if (faqTopic === "Chuẩn đầu ra ngoại ngữ") faqTopic = "Chuẩn đầu ra";
+                              if (faqTopic === "CNTT Cơ bản" || faqTopic === "CNTT Nâng cao" || faqTopic === "MOS/IC3") faqTopic = "MOS";
+
+                              const exists = currentFaqs.some((f: any) => f.question.toLowerCase() === row.question.toLowerCase());
+                              if (exists) {
+                                toast.info("FAQ này đã tồn tại trong danh sách FAQ!");
+                              } else {
+                                const newFaq = {
+                                  id: `FAQ-${Date.now()}`,
+                                  question: row.question,
+                                  answer: row.correctAnswer,
+                                  topic: faqTopic,
+                                  proposer: row.addedBy,
+                                  source: row.source,
+                                  status: "Đã duyệt",
+                                  riskLevel: row.risk,
+                                  date: new Date().toISOString().split('T')[0],
+                                  notes: row.notes || "Gộp từ Sheet Chatbot"
+                                };
+                                currentFaqs.unshift(newFaq);
+                                localStorage.setItem("flic_faqs", JSON.stringify(currentFaqs));
+                                window.dispatchEvent(new Event("storage"));
+                                toast.success("Đã gộp vào danh sách FAQ thành công!");
+                              }
+                            }} style={{ padding: "3px 9px", borderRadius: "6px", border: `1px solid ${NAVY}20`, background: "#f8fafc", color: NAVY, cursor: "pointer", fontSize: "10px", fontWeight: 600 }}>Gộp FAQ</button>
                           ) : (
                             <span style={{ fontSize: "11px", color: "rgba(0,62,154,0.4)" }}>—</span>
                           )}

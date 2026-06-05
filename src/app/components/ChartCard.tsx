@@ -10,7 +10,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 
-const NAVY      = "#003865";
+const NAVY      = "#003BB9";
 const ORANGE    = "#D73C01";   // used only for active border/icon accents
 const CTA       = "#ED5206";
 const CTA_SOFT  = "#F36C2E";
@@ -64,7 +64,7 @@ const sourceTableData = [
   { date: "2025-01-12", channel: "Facebook", topic: "Tra cứu điểm", count: 19, ai_ok: 14, ai_fail: 5, sentiment: "Tiêu cực", status: "Chờ quản lý xác nhận" },
 ];
 
-const COLORS = [NAVY, CTA, "rgba(0,56,101,0.6)", CTA_SOFT, "rgba(0,56,101,0.3)", ORANGE_200];
+const COLORS = [NAVY, CTA, "rgba(0,59,185,0.6)", CTA_SOFT, "rgba(0,59,185,0.3)", ORANGE_200];
 
 function ChartRenderer({ type, data }: { type: string; data: typeof baseData }) {
   if (type === "donut" || type === "pie") {
@@ -85,9 +85,9 @@ function ChartRenderer({ type, data }: { type: string; data: typeof baseData }) 
     return (
       <ResponsiveContainer width="100%" height={200}>
         <ReLineChart id="line-chart" data={data}>
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" />
-          <XAxis dataKey="name" tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
-          <YAxis tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,59,185,0.06)" />
+          <XAxis dataKey="name" tick={{ fontSize: 11, fill: "rgba(0,59,185,0.5)" }} />
+          <YAxis tick={{ fontSize: 11, fill: "rgba(0,59,185,0.5)" }} />
           <Tooltip />
           <Legend />
           <Line type="monotone" dataKey="hoidthoai" name="Hội thoại" stroke={NAVY} strokeWidth={2} dot={{ r: 3 }} />
@@ -100,9 +100,9 @@ function ChartRenderer({ type, data }: { type: string; data: typeof baseData }) 
     return (
       <ResponsiveContainer width="100%" height={200}>
         <ReAreaChart id="area-chart" data={data}>
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" />
-          <XAxis dataKey="name" tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
-          <YAxis tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,59,185,0.06)" />
+          <XAxis dataKey="name" tick={{ fontSize: 11, fill: "rgba(0,59,185,0.5)" }} />
+          <YAxis tick={{ fontSize: 11, fill: "rgba(0,59,185,0.5)" }} />
           <Tooltip />
           <Legend />
           <Area type="monotone" dataKey="hoidthoai" name="Hội thoại" stroke={NAVY} fill={`${NAVY}20`} strokeWidth={2} />
@@ -115,9 +115,9 @@ function ChartRenderer({ type, data }: { type: string; data: typeof baseData }) 
     return (
       <ResponsiveContainer width="100%" height={200}>
         <ReBarChart id="hbar-chart" data={data} layout="vertical">
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" />
-          <XAxis type="number" tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
-          <YAxis dataKey="name" type="category" tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} width={80} />
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,59,185,0.06)" />
+          <XAxis type="number" tick={{ fontSize: 11, fill: "rgba(0,59,185,0.5)" }} />
+          <YAxis dataKey="name" type="category" tick={{ fontSize: 11, fill: "rgba(0,59,185,0.5)" }} width={80} />
           <Tooltip />
           <Legend />
           <Bar dataKey="hoidthoai" name="Hội thoại" fill={NAVY} radius={[0, 4, 4, 0]} />
@@ -129,9 +129,9 @@ function ChartRenderer({ type, data }: { type: string; data: typeof baseData }) 
   return (
     <ResponsiveContainer width="100%" height={200}>
       <ReBarChart id="bar-chart" data={data}>
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" />
-        <XAxis dataKey="name" tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
-        <YAxis tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
+        <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,59,185,0.06)" />
+        <XAxis dataKey="name" tick={{ fontSize: 11, fill: "rgba(0,59,185,0.5)" }} />
+        <YAxis tick={{ fontSize: 11, fill: "rgba(0,59,185,0.5)" }} />
         <Tooltip />
         <Legend />
         <Bar dataKey="hoidthoai" name="Hội thoại" fill={NAVY} radius={[4, 4, 0, 0]} />
@@ -143,18 +143,19 @@ function ChartRenderer({ type, data }: { type: string; data: typeof baseData }) 
 
 interface ChartCardProps {
   title: string;
-  children?: React.ReactNode;
+  children?: React.ReactNode | ((props: any) => React.ReactNode);
   useDefaultChart?: boolean;
   defaultChartType?: string;
   onOpenBuilder?: () => void;
+  data?: any;
 }
 
-export function ChartCard({ title, children, useDefaultChart, defaultChartType = "bar", onOpenBuilder }: ChartCardProps) {
+export function ChartCard({ title, children, useDefaultChart, defaultChartType = "bar", onOpenBuilder, data }: ChartCardProps) {
   const [chartType, setChartType] = useState(defaultChartType);
   const [chartTitle, setChartTitle] = useState(title);
   const [isEdited, setIsEdited] = useState(false);
   const [filterActive, setFilterActive] = useState(false);
-  const [chartData, setChartData] = useState(baseData);
+  const [chartData, setChartData] = useState(data || baseData);
 
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
   const [dataModalOpen, setDataModalOpen] = useState(false);
@@ -165,6 +166,11 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
   const [editValues, setEditValues] = useState({ title: chartTitle, axisX: "Chủ đề", values: "Số hội thoại", legend: true, sort: "Mặc định", dataLabels: false });
 
   const popoverRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setChartData(data || baseData);
+    setFilterActive(false);
+  }, [data]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -209,16 +215,96 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
     },
   ];
 
+  const applyLocalFilters = (rawValues: any[], filters: typeof filterValues) => {
+    if (!rawValues || !Array.isArray(rawValues)) return rawValues;
+    let processed = [...rawValues];
+
+    // 1. Filter by dateRange
+    if (filters.dateRange === "7 ngày qua") {
+      processed = processed.slice(-7);
+    } else if (filters.dateRange === "Hôm nay") {
+      processed = processed.slice(-2);
+    }
+
+    // 2. Scale values if filtered by channel or topic
+    let scale = 1.0;
+    if (filters.channel !== "Tất cả") {
+      if (filters.channel.includes("Zalo OA")) scale *= 0.35;
+      else if (filters.channel.includes("Zalo Business")) scale *= 0.25;
+      else if (filters.channel.includes("Facebook")) scale *= 0.2;
+      else if (filters.channel.includes("Chat Widget")) scale *= 0.15;
+      else scale *= 0.05;
+    }
+    if (filters.topic !== "Tất cả") {
+      if (filters.topic.includes("TOEIC")) scale *= 0.3;
+      else if (filters.topic.includes("VSTEP")) scale *= 0.2;
+      else if (filters.topic.includes("Chuẩn đầu ra")) scale *= 0.25;
+      else if (filters.topic.includes("MOS/IC3")) scale *= 0.15;
+      else if (filters.topic.includes("Tin học")) scale *= 0.1;
+      else scale *= 0.05;
+    }
+
+    if (scale !== 1.0) {
+      processed = processed.map(item => {
+        const newItem = { ...item };
+        Object.keys(newItem).forEach(key => {
+          if (key !== "date" && key !== "name" && typeof newItem[key] === "number") {
+            newItem[key] = Math.round(newItem[key] * scale);
+          }
+        });
+        return newItem;
+      });
+    }
+    return processed;
+  };
+
+  const applyLocalFiltersToObject = (rawObj: Record<string, number>, filters: typeof filterValues) => {
+    if (!rawObj || typeof rawObj !== "object" || Array.isArray(rawObj)) return rawObj;
+    let processed = { ...rawObj };
+
+    if (filters.channel !== "Tất cả") {
+      const matchKey = Object.keys(processed).find(k => k.toLowerCase().includes(filters.channel.toLowerCase().replace(" ", "")));
+      Object.keys(processed).forEach(key => {
+        if (key !== matchKey) {
+          processed[key] = 0;
+        }
+      });
+    }
+
+    let scale = 1.0;
+    if (filters.topic !== "Tất cả") {
+      if (filters.topic.includes("TOEIC")) scale = 0.3;
+      else if (filters.topic.includes("VSTEP")) scale = 0.2;
+      else if (filters.topic.includes("Chuẩn đầu ra")) scale = 0.25;
+      else if (filters.topic.includes("MOS/IC3")) scale = 0.15;
+      else if (filters.topic.includes("Tin học")) scale = 0.1;
+      else scale = 0.05;
+    }
+
+    if (scale !== 1.0) {
+      Object.keys(processed).forEach(key => {
+        processed[key] = Math.round(processed[key] * scale);
+      });
+    }
+
+    return processed;
+  };
+
   const handleFilterApply = () => {
     setFilterPanelOpen(false);
     setFilterActive(true);
-    setChartData(filteredData);
+    const sourceData = data || baseData;
+    if (Array.isArray(sourceData)) {
+      setChartData(applyLocalFilters(sourceData, filterValues));
+    } else {
+      setChartData(applyLocalFiltersToObject(sourceData, filterValues));
+    }
     toast.success("Đã áp dụng bộ lọc", { description: "Biểu đồ đã cập nhật dữ liệu" });
   };
 
   const handleFilterReset = () => {
     setFilterActive(false);
-    setChartData(baseData);
+    setChartData(data || baseData);
     setFilterValues({ dateRange: "30 ngày qua", channel: "Tất cả", topic: "Tất cả", status: "Tất cả", aiStatus: "Tất cả" });
     setFilterPanelOpen(false);
     toast.info("Đã đặt lại bộ lọc biểu đồ");
@@ -240,13 +326,13 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
         style={{
           backgroundColor: "#fff",
           borderRadius: "20px",
-          border: "1px solid rgba(0,56,101,0.08)",
-          boxShadow: "0 2px 12px rgba(0,56,101,0.06)",
+          border: "1px solid rgba(0,59,185,0.08)",
+          boxShadow: "0 2px 12px rgba(0,59,185,0.06)",
           overflow: "hidden",
         }}
       >
         {/* Toolbar */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px 12px", borderBottom: "1px solid rgba(0,56,101,0.06)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px 12px", borderBottom: "1px solid rgba(0,59,185,0.06)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <span style={{ fontWeight: 600, fontSize: "14px", color: NAVY }}>{chartTitle}</span>
             {isEdited && (
@@ -272,7 +358,7 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
                     borderRadius: "8px",
                     border: active ? `1.5px solid ${ORANGE}` : "1.5px solid transparent",
                     backgroundColor: active ? ORANGE_50 : "#f8fafc",
-                    color: active ? ORANGE : "rgba(0,56,101,0.5)",
+                    color: active ? ORANGE : "rgba(0,59,185,0.5)",
                     cursor: "pointer",
                     display: "flex",
                     alignItems: "center",
@@ -288,7 +374,7 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
                   onMouseLeave={(e) => {
                     if (!active) {
                       (e.currentTarget as HTMLButtonElement).style.backgroundColor = "#f8fafc";
-                      (e.currentTarget as HTMLButtonElement).style.color = "rgba(0,56,101,0.5)";
+                      (e.currentTarget as HTMLButtonElement).style.color = "rgba(0,59,185,0.5)";
                     }
                   }}
                 >
@@ -306,14 +392,14 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
                   right: 0,
                   backgroundColor: "#fff",
                   borderRadius: "14px",
-                  boxShadow: "0 8px 32px rgba(0,56,101,0.18)",
-                  border: "1px solid rgba(0,56,101,0.1)",
+                  boxShadow: "0 8px 32px rgba(0,59,185,0.18)",
+                  border: "1px solid rgba(0,59,185,0.1)",
                   padding: "12px",
                   zIndex: 200,
                   width: "280px",
                 }}
               >
-                <div style={{ fontSize: "12px", fontWeight: 600, color: "rgba(0,56,101,0.5)", marginBottom: "10px", letterSpacing: "0.05em" }}>CHỌN LOẠI BIỂU ĐỒ</div>
+                <div style={{ fontSize: "12px", fontWeight: 600, color: "rgba(0,59,185,0.5)", marginBottom: "10px", letterSpacing: "0.05em" }}>CHỌN LOẠI BIỂU ĐỒ</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px" }}>
                   {chartTypes.map((ct) => {
                     const Ic = ct.icon;
@@ -339,8 +425,8 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
                           transition: "all 0.15s",
                         }}
                       >
-                        <Ic size={16} style={{ color: isSelected ? ORANGE : "rgba(0,56,101,0.6)" }} />
-                        <span style={{ fontSize: "11px", color: isSelected ? ORANGE : "rgba(0,56,101,0.7)", fontWeight: isSelected ? 600 : 400 }}>{ct.label}</span>
+                        <Ic size={16} style={{ color: isSelected ? ORANGE : "rgba(0,59,185,0.6)" }} />
+                        <span style={{ fontSize: "11px", color: isSelected ? ORANGE : "rgba(0,59,185,0.7)", fontWeight: isSelected ? 600 : 400 }}>{ct.label}</span>
                       </button>
                     );
                   })}
@@ -352,7 +438,9 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
 
         {/* Chart Content */}
         <div style={{ padding: "16px 20px 20px" }}>
-          {useDefaultChart ? (
+          {typeof children === "function" ? (
+            (children as Function)({ chartType, chartData, editValues, filterValues })
+          ) : useDefaultChart ? (
             <ChartRenderer type={chartType} data={chartData} />
           ) : (
             children
@@ -375,15 +463,15 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
               bottom: 0,
               width: "360px",
               backgroundColor: "#fff",
-              boxShadow: "-8px 0 32px rgba(0,56,101,0.15)",
+              boxShadow: "-8px 0 32px rgba(0,59,185,0.15)",
               zIndex: 400,
               display: "flex",
               flexDirection: "column",
             }}
           >
-            <div style={{ padding: "24px", borderBottom: "1px solid rgba(0,56,101,0.08)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ padding: "24px", borderBottom: "1px solid rgba(0,59,185,0.08)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <h3 style={{ color: NAVY, fontSize: "16px", fontWeight: 700 }}>Bộ lọc biểu đồ</h3>
-              <button onClick={() => setFilterPanelOpen(false)} style={{ border: "none", background: "transparent", cursor: "pointer", color: "rgba(0,56,101,0.4)", padding: "4px" }}>
+              <button onClick={() => setFilterPanelOpen(false)} style={{ border: "none", background: "transparent", cursor: "pointer", color: "rgba(0,59,185,0.4)", padding: "4px" }}>
                 <X size={20} />
               </button>
             </div>
@@ -396,21 +484,21 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
                 { label: "Trạng thái AI", key: "aiStatus", options: ["Tất cả", "AI trả lời thành công", "AI trả lời thất bại", "AI không chắc chắn"] },
               ].map(({ label, key, options }) => (
                 <div key={key}>
-                  <label style={{ fontSize: "11px", fontWeight: 600, color: "rgba(0,56,101,0.5)", display: "block", marginBottom: "6px", letterSpacing: "0.05em" }}>
+                  <label style={{ fontSize: "11px", fontWeight: 600, color: "rgba(0,59,185,0.5)", display: "block", marginBottom: "6px", letterSpacing: "0.05em" }}>
                     {label.toUpperCase()}
                   </label>
                   <select
                     value={(filterValues as any)[key]}
                     onChange={(e) => setFilterValues({ ...filterValues, [key]: e.target.value })}
-                    style={{ width: "100%", padding: "10px 12px", borderRadius: "10px", border: "1.5px solid rgba(0,56,101,0.12)", fontSize: "13px", color: NAVY, outline: "none", cursor: "pointer" }}
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: "10px", border: "1.5px solid rgba(0,59,185,0.12)", fontSize: "13px", color: NAVY, outline: "none", cursor: "pointer" }}
                   >
                     {options.map((o) => <option key={o} value={o}>{o}</option>)}
                   </select>
                 </div>
               ))}
             </div>
-            <div style={{ padding: "20px 24px", borderTop: "1px solid rgba(0,56,101,0.08)", display: "flex", gap: "10px" }}>
-              <button onClick={handleFilterReset} style={{ flex: 1, padding: "10px", borderRadius: "10px", border: "1.5px solid rgba(0,56,101,0.15)", background: "#fff", cursor: "pointer", fontSize: "13px", color: NAVY, fontWeight: 500 }}>
+            <div style={{ padding: "20px 24px", borderTop: "1px solid rgba(0,59,185,0.08)", display: "flex", gap: "10px" }}>
+              <button onClick={handleFilterReset} style={{ flex: 1, padding: "10px", borderRadius: "10px", border: "1.5px solid rgba(0,59,185,0.15)", background: "#fff", cursor: "pointer", fontSize: "13px", color: NAVY, fontWeight: 500 }}>
                 Đặt lại
               </button>
               <button onClick={handleFilterApply} style={{ flex: 1, padding: "10px", borderRadius: "10px", border: "none", background: `linear-gradient(135deg, ${CTA} 0%, ${CTA_SOFT} 100%)`, cursor: "pointer", fontSize: "13px", color: "#fff", fontWeight: 600, boxShadow: "0 4px 12px rgba(237,82,6,0.18)" }}>
@@ -438,22 +526,22 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
               maxHeight: "80vh",
               backgroundColor: "#fff",
               borderRadius: "20px",
-              boxShadow: "0 24px 80px rgba(0,56,101,0.2)",
+              boxShadow: "0 24px 80px rgba(0,59,185,0.2)",
               zIndex: 400,
               display: "flex",
               flexDirection: "column",
             }}
           >
-            <div style={{ padding: "24px 28px", borderBottom: "1px solid rgba(0,56,101,0.08)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ padding: "24px 28px", borderBottom: "1px solid rgba(0,59,185,0.08)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div>
                 <h3 style={{ color: NAVY, fontSize: "16px", fontWeight: 700, marginBottom: "2px" }}>Dữ liệu nguồn của biểu đồ</h3>
-                <p style={{ color: "rgba(0,56,101,0.5)", fontSize: "12px" }}>{sourceTableData.length} bản ghi</p>
+                <p style={{ color: "rgba(0,59,185,0.5)", fontSize: "12px" }}>{sourceTableData.length} bản ghi</p>
               </div>
               <div style={{ display: "flex", gap: "10px" }}>
                 <button onClick={() => { setDataModalOpen(false); onOpenBuilder?.(); }} style={{ padding: "8px 16px", borderRadius: "10px", border: `1.5px solid ${ORANGE}`, background: "#fff", cursor: "pointer", fontSize: "13px", color: ORANGE, fontWeight: 600 }}>
                   Mở trong Trình tạo biểu đồ
                 </button>
-                <button onClick={() => setDataModalOpen(false)} style={{ padding: "8px 16px", borderRadius: "10px", border: "1.5px solid rgba(0,56,101,0.15)", background: "#fff", cursor: "pointer", fontSize: "13px", color: NAVY }}>
+                <button onClick={() => setDataModalOpen(false)} style={{ padding: "8px 16px", borderRadius: "10px", border: "1.5px solid rgba(0,59,185,0.15)", background: "#fff", cursor: "pointer", fontSize: "13px", color: NAVY }}>
                   Đóng
                 </button>
               </div>
@@ -463,7 +551,7 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
                 <thead>
                   <tr style={{ backgroundColor: "#f8fafc" }}>
                     {["Ngày", "Kênh", "Chủ đề", "Số HT", "AI trả lời thành công", "AI trả lời thất bại", "Cảm xúc", "Trạng thái"].map((h) => (
-                      <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontWeight: 600, color: "rgba(0,56,101,0.6)", fontSize: "11px", letterSpacing: "0.04em", borderBottom: "1px solid rgba(0,56,101,0.08)" }}>
+                      <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontWeight: 600, color: "rgba(0,59,185,0.6)", fontSize: "11px", letterSpacing: "0.04em", borderBottom: "1px solid rgba(0,59,185,0.08)" }}>
                         {h}
                       </th>
                     ))}
@@ -471,11 +559,11 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
                 </thead>
                 <tbody>
                   {sourceTableData.map((row, i) => (
-                    <tr key={i} style={{ borderBottom: "1px solid rgba(0,56,101,0.04)" }}
+                    <tr key={i} style={{ borderBottom: "1px solid rgba(0,59,185,0.04)" }}
                       onMouseEnter={(e) => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "#f8fafc"}
                       onMouseLeave={(e) => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "transparent"}
                     >
-                      <td style={{ padding: "12px 16px", color: "rgba(0,56,101,0.6)" }}>{row.date}</td>
+                      <td style={{ padding: "12px 16px", color: "rgba(0,59,185,0.6)" }}>{row.date}</td>
                       <td style={{ padding: "12px 16px", color: NAVY, fontWeight: 500 }}>{row.channel}</td>
                       <td style={{ padding: "12px 16px", color: NAVY }}>{row.topic}</td>
                       <td style={{ padding: "12px 16px", color: NAVY, fontWeight: 600 }}>{row.count}</td>
@@ -515,15 +603,15 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
               bottom: 0,
               width: "360px",
               backgroundColor: "#fff",
-              boxShadow: "-8px 0 32px rgba(0,56,101,0.15)",
+              boxShadow: "-8px 0 32px rgba(0,59,185,0.15)",
               zIndex: 400,
               display: "flex",
               flexDirection: "column",
             }}
           >
-            <div style={{ padding: "24px", borderBottom: "1px solid rgba(0,56,101,0.08)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ padding: "24px", borderBottom: "1px solid rgba(0,59,185,0.08)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <h3 style={{ color: NAVY, fontSize: "16px", fontWeight: 700 }}>Cài đặt biểu đồ</h3>
-              <button onClick={() => setEditPanelOpen(false)} style={{ border: "none", background: "transparent", cursor: "pointer", color: "rgba(0,56,101,0.4)" }}>
+              <button onClick={() => setEditPanelOpen(false)} style={{ border: "none", background: "transparent", cursor: "pointer", color: "rgba(0,59,185,0.4)" }}>
                 <X size={20} />
               </button>
             </div>
@@ -535,20 +623,20 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
                 { label: "Sắp xếp", key: "sort", type: "select", options: ["Mặc định", "Tăng dần", "Giảm dần", "A-Z"] },
               ].map(({ label, key, type, options }) => (
                 <div key={key}>
-                  <label style={{ fontSize: "11px", fontWeight: 600, color: "rgba(0,56,101,0.5)", display: "block", marginBottom: "6px", letterSpacing: "0.05em" }}>
+                  <label style={{ fontSize: "11px", fontWeight: 600, color: "rgba(0,59,185,0.5)", display: "block", marginBottom: "6px", letterSpacing: "0.05em" }}>
                     {label.toUpperCase()}
                   </label>
                   {type === "text" ? (
                     <input
                       value={(editValues as any)[key]}
                       onChange={(e) => setEditValues({ ...editValues, [key]: e.target.value })}
-                      style={{ width: "100%", padding: "10px 12px", borderRadius: "10px", border: "1.5px solid rgba(0,56,101,0.12)", fontSize: "13px", color: NAVY, outline: "none", boxSizing: "border-box" }}
+                      style={{ width: "100%", padding: "10px 12px", borderRadius: "10px", border: "1.5px solid rgba(0,59,185,0.12)", fontSize: "13px", color: NAVY, outline: "none", boxSizing: "border-box" }}
                     />
                   ) : (
                     <select
                       value={(editValues as any)[key]}
                       onChange={(e) => setEditValues({ ...editValues, [key]: e.target.value })}
-                      style={{ width: "100%", padding: "10px 12px", borderRadius: "10px", border: "1.5px solid rgba(0,56,101,0.12)", fontSize: "13px", color: NAVY, outline: "none", cursor: "pointer" }}
+                      style={{ width: "100%", padding: "10px 12px", borderRadius: "10px", border: "1.5px solid rgba(0,59,185,0.12)", fontSize: "13px", color: NAVY, outline: "none", cursor: "pointer" }}
                     >
                       {options?.map((o) => <option key={o} value={o}>{o}</option>)}
                     </select>
@@ -572,7 +660,7 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
                 ))}
               </div>
             </div>
-            <div style={{ padding: "20px 24px", borderTop: "1px solid rgba(0,56,101,0.08)" }}>
+            <div style={{ padding: "20px 24px", borderTop: "1px solid rgba(0,59,185,0.08)" }}>
               <button onClick={handleSaveEdit} style={{ width: "100%", padding: "12px", borderRadius: "12px", border: "none", background: `linear-gradient(135deg, ${CTA} 0%, ${CTA_SOFT} 100%)`, cursor: "pointer", fontSize: "14px", color: "#fff", fontWeight: 600, boxShadow: "0 4px 12px rgba(237,82,6,0.18)" }}>
                 Lưu thay đổi
               </button>
