@@ -1,39 +1,119 @@
 import os
 import json
 from datetime import datetime, time
-from db import execute_query
+from backend.db import execute_query
 
 # File JSON stored in data/crm_keywords.json relative to backend root
 JSON_FILE_PATH = os.path.join(os.path.dirname(__file__), "../data/crm_keywords.json")
 
 
-def _build_date_filter(start_date=None, end_date=None, channel=None):
-    """Helper to build common date/channel filter SQL fragment + params."""
+def _parse_filter_datetime(value, is_end=False):
+    if not value:
+        return None
+
+    raw_value = str(value)
+    if "T" in raw_value:
+        dt = datetime.fromisoformat(raw_value.replace("Z", "+00:00"))
+        if dt.tzinfo is not None:
+            dt = dt.astimezone().replace(tzinfo=None)
+        return dt
+
+    dt = datetime.strptime(raw_value[:10], "%Y-%m-%d")
+    if is_end:
+        return datetime.combine(dt.date(), time(23, 59, 59, 999000))
+    return dt
+
+
+def _ai_no_data_condition(alias="ai"):
+    return f"""(
+        {alias}.TextContent LIKE N'%không tìm thấy%'
+        OR {alias}.TextContent LIKE N'%chưa có%'
+        OR {alias}.TextContent LIKE N'%chưa hỗ trợ%'
+        OR {alias}.TextContent LIKE N'%không thể%'
+        OR {alias}.TextContent LIKE N'%Trợ lý AI%'
+        OR {alias}.TextContent LIKE N'%Không thể tiếp nhận thông tin%'
+        OR {alias}.TextContent LIKE N'%Không thể xác nhận trực tiếp%'
+    )"""
+
+
+def _ai_uncertain_condition(alias="ai"):
+    return f"""(
+        {alias}.TextContent LIKE N'%chưa hiểu%'
+        OR {alias}.TextContent LIKE N'%chưa rõ%'
+        OR {alias}.TextContent LIKE N'%không chắc chắn%'
+        OR {alias}.TextContent LIKE N'%chưa có thông tin cụ thể%'
+        OR {alias}.TextContent LIKE N'%độ tin cậy%'
+        OR {alias}.TextContent LIKE N'%chưa xác nhận%'
+    )"""
+
+
+def _ai_failure_condition(alias="ai"):
+    return f"({_ai_no_data_condition(alias)} OR {_ai_uncertain_condition(alias)})"
+
+
+def _build_message_filters(
+    start_date=None,
+    end_date=None,
+    channel=None,
+    conversation_status=None,
+    ai_status=None,
+):
+    """Build SQL joins, WHERE fragments and params for WebChat_MessageLogs alias m."""
+    joins = []
     clauses = []
     params = []
 
     if start_date:
-        if "T" in start_date:
-            dt_start = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
-        else:
-            dt_start = datetime.strptime(start_date[:10], "%Y-%m-%d")
-        clauses.append("SentAt >= ?")
-        params.append(dt_start)
+        clauses.append("m.SentAt >= ?")
+        params.append(_parse_filter_datetime(start_date))
 
     if end_date:
-        if "T" in end_date:
-            dt_end = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
-        else:
-            dt_end = datetime.strptime(end_date[:10], "%Y-%m-%d")
-        dt_end = datetime.combine(dt_end.date(), time(23, 59, 59, 999000))
-        clauses.append("SentAt <= ?")
-        params.append(dt_end)
+        clauses.append("m.SentAt <= ?")
+        params.append(_parse_filter_datetime(end_date, is_end=True))
 
     if channel:
-        clauses.append("Source = ?")
+        clauses.append("m.Source = ?")
         params.append(channel)
 
-    return clauses, params
+    needs_conversation = conversation_status and conversation_status != "Tất cả"
+    needs_ai_status = ai_status and ai_status != "Tất cả"
+
+    if needs_conversation:
+        joins.append("""
+            LEFT JOIN WebChat_Conversations c
+              ON c.CustomerId = CASE WHEN m.FromHost = 1 THEN m.ReceiverId ELSE m.SenderId END
+             AND c.Source = m.Source
+            LEFT JOIN WebChat_ConversationStatus s
+              ON c.CustomerId = s.CustomerId
+             AND c.Source = s.Source
+        """)
+
+        closed_sql = "(s.NoResponseNeeded = 1 AND (s.MarkedAt IS NULL OR c.LastCustomerMessageAt <= s.MarkedAt))"
+        active_sql = "(s.NoResponseNeeded IS NULL OR s.NoResponseNeeded = 0 OR c.LastCustomerMessageAt > s.MarkedAt)"
+
+        if conversation_status == "Chờ xử lý":
+            clauses.append(f"c.CustomerId IS NOT NULL AND {active_sql} AND (c.LastHostMessageAt IS NULL OR c.LastCustomerMessageAt > c.LastHostMessageAt)")
+        elif conversation_status == "Đang xử lý":
+            clauses.append(f"c.CustomerId IS NOT NULL AND {active_sql} AND c.LastHostMessageAt IS NOT NULL AND c.LastCustomerMessageAt <= c.LastHostMessageAt")
+        elif conversation_status == "Hoàn thành":
+            clauses.append(f"c.CustomerId IS NOT NULL AND {closed_sql}")
+
+    if needs_ai_status:
+        failure_sql = _ai_failure_condition("m")
+        no_data_sql = _ai_no_data_condition("m")
+        uncertain_sql = _ai_uncertain_condition("m")
+        ai_message_sql = "m.FromHost = 1 AND m.HostDisplayName = 'AI Assistant'"
+
+        if ai_status == "AI trả lời thành công":
+            clauses.append(f"{ai_message_sql} AND NOT {failure_sql}")
+        elif ai_status == "AI trả lời thất bại":
+            clauses.append(f"{ai_message_sql} AND {failure_sql}")
+        elif ai_status == "Không tìm thấy dữ liệu":
+            clauses.append(f"{ai_message_sql} AND {no_data_sql}")
+        elif ai_status in ("AI không chắc chắn", "AI trả lời không chắc chắn"):
+            clauses.append(f"{ai_message_sql} AND {uncertain_sql}")
+
+    return "\n".join(joins), clauses, params
 
 
 class KeywordRepository:
@@ -68,12 +148,20 @@ class KeywordRepository:
             start_date=filters.get("startDate"),
             end_date=filters.get("endDate"),
             channel=filters.get("channel"),
+            conversation_status=filters.get("conversationStatus"),
+            ai_status=filters.get("aiStatus"),
         )
         return result.get(word, 0)
 
     # ─── Batch count: 1 query cho nhiều từ khóa ─────────────────────────────
     def batch_count_keyword_occurrences(
-        self, words: list, start_date=None, end_date=None, channel=None
+        self,
+        words: list,
+        start_date=None,
+        end_date=None,
+        channel=None,
+        conversation_status=None,
+        ai_status=None,
     ) -> dict:
         """
         Trả về dict {word: count} cho tất cả words trong 1 SQL query duy nhất.
@@ -82,26 +170,33 @@ class KeywordRepository:
         if not words:
             return {}
 
-        date_clauses, date_params = _build_date_filter(start_date, end_date, channel)
+        join_sql, filter_clauses, filter_params = _build_message_filters(
+            start_date=start_date,
+            end_date=end_date,
+            channel=channel,
+            conversation_status=conversation_status,
+            ai_status=ai_status,
+        )
 
         select_parts = []
         like_params = []
         for i, w in enumerate(words):
-            select_parts.append(f"SUM(CASE WHEN TextContent LIKE ? THEN 1 ELSE 0 END) AS col_{i}")
+            select_parts.append(f"SUM(CASE WHEN m.TextContent LIKE ? THEN 1 ELSE 0 END) AS col_{i}")
             like_params.append(f"%{w}%")
 
         where_sql = ""
-        if date_clauses:
-            where_sql = " AND " + " AND ".join(date_clauses)
+        if filter_clauses:
+            where_sql = " AND " + " AND ".join(f"({clause})" for clause in filter_clauses)
 
         query = f"""
             SELECT {', '.join(select_parts)}
-            FROM WebChat_MessageLogs
-            WHERE TextContent IS NOT NULL AND TextContent != ''
+            FROM WebChat_MessageLogs m
+            {join_sql}
+            WHERE m.TextContent IS NOT NULL AND m.TextContent != ''
             {where_sql}
         """
 
-        params = tuple(like_params + date_params)
+        params = tuple(like_params + filter_params)
 
         try:
             rows = execute_query(query, params)
@@ -115,58 +210,200 @@ class KeywordRepository:
 
     # ─── Đếm tổng số lần xuất hiện của một nhóm từ trong khoảng thời gian ──
     def count_words_in_period(
-        self, words: list, start_date: str = None, end_date: str = None, channel: str = None
+        self,
+        words: list,
+        start_date: str = None,
+        end_date: str = None,
+        channel: str = None,
+        conversation_status: str = None,
+        ai_status: str = None,
     ) -> int:
         if not words:
             return 0
         try:
-            conditions = ["TextContent LIKE ?" for _ in words]
+            conditions = ["m.TextContent LIKE ?" for _ in words]
             params = [f"%{w}%" for w in words]
 
             or_cond = " OR ".join(conditions)
-            date_clauses, date_params = _build_date_filter(start_date, end_date, channel)
-            where_extra = (" AND " + " AND ".join(date_clauses)) if date_clauses else ""
+            join_sql, filter_clauses, filter_params = _build_message_filters(
+                start_date=start_date,
+                end_date=end_date,
+                channel=channel,
+                conversation_status=conversation_status,
+                ai_status=ai_status,
+            )
+            where_extra = (" AND " + " AND ".join(f"({clause})" for clause in filter_clauses)) if filter_clauses else ""
 
             query = f"""
                 SELECT COUNT(*) AS cnt
-                FROM WebChat_MessageLogs
+                FROM WebChat_MessageLogs m
+                {join_sql}
                 WHERE ({or_cond})
+                  AND m.TextContent IS NOT NULL AND m.TextContent != ''
                 {where_extra}
             """
-            res = execute_query(query, tuple(params + date_params))
+            res = execute_query(query, tuple(params + filter_params))
             return res[0]["cnt"] if res else 0
         except Exception as e:
             print("Lỗi khi count_words_in_period:", e)
             return 0
 
-    def get_monthly_counts_for_words(self, words: list, months: int = 8, channel: str = None) -> list:
+    def batch_count_group_periods(
+        self,
+        group_words_map: dict,
+        current_start: str,
+        current_end: str,
+        previous_start: str,
+        previous_end: str,
+        channel: str = None,
+        conversation_status: str = None,
+        ai_status: str = None,
+    ) -> dict:
+        if not group_words_map:
+            return {}
+
+        join_sql, filter_clauses, filter_params = _build_message_filters(
+            channel=channel,
+            conversation_status=conversation_status,
+            ai_status=ai_status,
+        )
+        filter_clauses.extend(["m.SentAt >= ?", "m.SentAt <= ?"])
+        filter_params.extend([
+            _parse_filter_datetime(previous_start),
+            _parse_filter_datetime(current_end),
+        ])
+
+        select_parts = []
+        select_params = []
+
+        for group_id, words in group_words_map.items():
+            if not words:
+                continue
+
+            group_or = " OR ".join(["m.TextContent LIKE ?" for _ in words])
+
+            select_parts.append(
+                f"SUM(CASE WHEN ({group_or}) AND m.SentAt >= ? AND m.SentAt <= ? THEN 1 ELSE 0 END) AS cur_{group_id}"
+            )
+            select_params.extend([f"%{word}%" for word in words])
+            select_params.extend([
+                _parse_filter_datetime(current_start),
+                _parse_filter_datetime(current_end),
+            ])
+
+            select_parts.append(
+                f"SUM(CASE WHEN ({group_or}) AND m.SentAt >= ? AND m.SentAt <= ? THEN 1 ELSE 0 END) AS prev_{group_id}"
+            )
+            select_params.extend([f"%{word}%" for word in words])
+            select_params.extend([
+                _parse_filter_datetime(previous_start),
+                _parse_filter_datetime(previous_end),
+            ])
+
+        if not select_parts:
+            return {}
+
+        where_extra = " AND " + " AND ".join(f"({clause})" for clause in filter_clauses)
+        query = f"""
+            SELECT {', '.join(select_parts)}
+            FROM WebChat_MessageLogs m
+            {join_sql}
+            WHERE m.TextContent IS NOT NULL AND m.TextContent != ''
+            {where_extra}
+        """
+
+        try:
+            rows = execute_query(query, tuple(select_params + filter_params))
+            row = rows[0] if rows else {}
+            return {
+                group_id: {
+                    "cur": row.get(f"cur_{group_id}") or 0,
+                    "prev": row.get(f"prev_{group_id}") or 0,
+                }
+                for group_id in group_words_map
+            }
+        except Exception as e:
+            print("Lỗi batch_count_group_periods:", e)
+            return {group_id: {"cur": 0, "prev": 0} for group_id in group_words_map}
+
+    def get_monthly_counts_for_words(
+        self,
+        words: list,
+        months: int = 8,
+        channel: str = None,
+        start_date: str = None,
+        end_date: str = None,
+        conversation_status: str = None,
+        ai_status: str = None,
+        granularity: str = "month",
+    ) -> list:
         if not words:
             return []
         try:
-            conditions = ["TextContent LIKE ?" for _ in words]
+            if granularity not in ("day", "week", "month"):
+                granularity = "month"
+
+            conditions = ["m.TextContent LIKE ?" for _ in words]
             params = [f"%{w}%" for w in words]
 
             or_cond = " OR ".join(conditions)
-            params.append(-months)
+            join_sql, filter_clauses, filter_params = _build_message_filters(
+                start_date=start_date,
+                end_date=end_date,
+                channel=channel,
+                conversation_status=conversation_status,
+                ai_status=ai_status,
+            )
 
-            channel_clause = " AND Source = ?" if channel else ""
-            if channel:
-                params.append(channel)
+            if not start_date and not end_date:
+                filter_clauses.append("m.SentAt >= DATEADD(MONTH, ?, GETDATE())")
+                filter_params.append(-months)
 
-            query = f"""
-                SELECT
-                  YEAR(SentAt) AS yr,
-                  MONTH(SentAt) AS mo,
-                  COUNT(*) AS cnt
-                FROM WebChat_MessageLogs
-                WHERE ({or_cond})
-                  AND SentAt >= DATEADD(MONTH, ?, GETDATE())
-                  AND TextContent IS NOT NULL AND TextContent != ''
-                {channel_clause}
-                GROUP BY YEAR(SentAt), MONTH(SentAt)
-                ORDER BY yr, mo
-            """
-            return execute_query(query, tuple(params))
+            where_extra = (" AND " + " AND ".join(f"({clause})" for clause in filter_clauses)) if filter_clauses else ""
+
+            if granularity == "day":
+                query = f"""
+                    SELECT
+                      CONVERT(VARCHAR(10), m.SentAt, 120) AS bucket_key,
+                      COUNT(*) AS cnt
+                    FROM WebChat_MessageLogs m
+                    {join_sql}
+                    WHERE ({or_cond})
+                      AND m.TextContent IS NOT NULL AND m.TextContent != ''
+                    {where_extra}
+                    GROUP BY CONVERT(VARCHAR(10), m.SentAt, 120)
+                    ORDER BY bucket_key
+                """
+            elif granularity == "week":
+                query = f"""
+                    SELECT
+                      CONCAT(YEAR(m.SentAt), '-W', RIGHT('0' + CAST(DATEPART(ISO_WEEK, m.SentAt) AS VARCHAR(2)), 2)) AS bucket_key,
+                      MIN(CONVERT(VARCHAR(10), m.SentAt, 120)) AS bucket_start,
+                      COUNT(*) AS cnt
+                    FROM WebChat_MessageLogs m
+                    {join_sql}
+                    WHERE ({or_cond})
+                      AND m.TextContent IS NOT NULL AND m.TextContent != ''
+                    {where_extra}
+                    GROUP BY YEAR(m.SentAt), DATEPART(ISO_WEEK, m.SentAt)
+                    ORDER BY MIN(m.SentAt)
+                """
+            else:
+                query = f"""
+                    SELECT
+                      CONCAT(YEAR(m.SentAt), '-', RIGHT('0' + CAST(MONTH(m.SentAt) AS VARCHAR(2)), 2)) AS bucket_key,
+                      YEAR(m.SentAt) AS yr,
+                      MONTH(m.SentAt) AS mo,
+                      COUNT(*) AS cnt
+                    FROM WebChat_MessageLogs m
+                    {join_sql}
+                    WHERE ({or_cond})
+                      AND m.TextContent IS NOT NULL AND m.TextContent != ''
+                    {where_extra}
+                    GROUP BY YEAR(m.SentAt), MONTH(m.SentAt)
+                    ORDER BY yr, mo
+                """
+            return execute_query(query, tuple(params + filter_params))
         except Exception as e:
             print("Lỗi khi get_monthly_counts_for_words:", e)
             return []
@@ -179,6 +416,8 @@ class KeywordRepository:
         start_date=None,
         end_date=None,
         channel=None,
+        conversation_status=None,
+        ai_status=None,
     ) -> dict:
         """
         group_words_map: {group_id: [word1, word2, ...]}
@@ -189,11 +428,17 @@ class KeywordRepository:
         if not group_words_map or not cross_words:
             return {}
 
-        date_clauses, date_params = _build_date_filter(start_date, end_date, channel)
-        where_extra = (" AND " + " AND ".join(date_clauses)) if date_clauses else ""
+        join_sql, filter_clauses, filter_params = _build_message_filters(
+            start_date=start_date,
+            end_date=end_date,
+            channel=channel,
+            conversation_status=conversation_status,
+            ai_status=ai_status,
+        )
+        where_extra = (" AND " + " AND ".join(f"({clause})" for clause in filter_clauses)) if filter_clauses else ""
 
         select_parts = []
-        all_params = list(date_params)
+        select_params = []
 
         col_map = {}
         col_idx = 0
@@ -201,16 +446,16 @@ class KeywordRepository:
         for group_id, group_words in group_words_map.items():
             if not group_words:
                 continue
-            group_or = " OR ".join(["TextContent LIKE ?" for _ in group_words])
+            group_or = " OR ".join(["m.TextContent LIKE ?" for _ in group_words])
             for cw in cross_words:
                 col_name = f"col_{col_idx}"
                 col_map[col_name] = (group_id, cw)
                 select_parts.append(
-                    f"SUM(CASE WHEN TextContent LIKE ? AND ({group_or}) THEN 1 ELSE 0 END) AS {col_name}"
+                    f"SUM(CASE WHEN m.TextContent LIKE ? AND ({group_or}) THEN 1 ELSE 0 END) AS {col_name}"
                 )
-                all_params.append(f"%{cw}%")
+                select_params.append(f"%{cw}%")
                 for gw in group_words:
-                    all_params.append(f"%{gw}%")
+                    select_params.append(f"%{gw}%")
                 col_idx += 1
 
         if not select_parts:
@@ -218,13 +463,14 @@ class KeywordRepository:
 
         query = f"""
             SELECT {', '.join(select_parts)}
-            FROM WebChat_MessageLogs
-            WHERE TextContent IS NOT NULL AND TextContent != ''
+            FROM WebChat_MessageLogs m
+            {join_sql}
+            WHERE m.TextContent IS NOT NULL AND m.TextContent != ''
             {where_extra}
         """
 
         try:
-            rows = execute_query(query, tuple(all_params))
+            rows = execute_query(query, tuple(select_params + filter_params))
             result = {}
             if rows:
                 row = rows[0]
@@ -247,6 +493,8 @@ class KeywordRepository:
             start_date=filters.get("startDate"),
             end_date=filters.get("endDate"),
             channel=filters.get("channel"),
+            conversation_status=filters.get("conversationStatus"),
+            ai_status=filters.get("aiStatus"),
         )
         return res.get(("_single", cross_word), 0)
 

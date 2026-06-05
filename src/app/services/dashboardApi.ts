@@ -1,7 +1,7 @@
 import { DashboardKpiData, APIResponse } from "../types/dashboard";
 
 // Lấy Base URL từ biến môi trường (Vite sử dụng import.meta.env)
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:5000";
 
 /**
  * Gọi API lấy dữ liệu KPI của Dashboard

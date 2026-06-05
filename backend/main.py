@@ -237,7 +237,9 @@ async def get_keywords(
     groupId: str = None,
     startDate: str = None,
     endDate: str = None,
-    channel: str = None
+    channel: str = None,
+    conversationStatus: str = None,
+    aiStatus: str = None
 ):
     try:
         res = await keyword_service.get_keywords({
@@ -248,7 +250,9 @@ async def get_keywords(
             "groupId": groupId,
             "startDate": startDate,
             "endDate": endDate,
-            "channel": channel
+            "channel": channel,
+            "conversationStatus": conversationStatus,
+            "aiStatus": aiStatus
         })
         return {
             "success": True,
@@ -267,6 +271,8 @@ async def get_group_stats(
     endDate: str = None,
     channel: str = None,
     topic: str = None,
+    conversationStatus: str = None,
+    aiStatus: str = None,
     topN: int = 5
 ):
     try:
@@ -275,6 +281,8 @@ async def get_group_stats(
             "endDate": endDate,
             "channel": channel,
             "topic": topic,
+            "conversationStatus": conversationStatus,
+            "aiStatus": aiStatus,
             "topN": topN
         })
         return {
@@ -288,10 +296,25 @@ async def get_group_stats(
 @app.get("/api/admin/crm-keywords/trends")
 async def get_trend_data(
     months: int = 8,
-    channel: str = None
+    channel: str = None,
+    startDate: str = None,
+    endDate: str = None,
+    topic: str = None,
+    conversationStatus: str = None,
+    aiStatus: str = None,
+    granularity: str = "month"
 ):
     try:
-        res = await keyword_service.get_trend_data(months=months, channel=channel)
+        res = await keyword_service.get_trend_data(
+            months=months,
+            channel=channel,
+            start_date=startDate,
+            end_date=endDate,
+            topic=topic,
+            conversation_status=conversationStatus,
+            ai_status=aiStatus,
+            granularity=granularity,
+        )
         return {
             "success": True,
             "message": "Get trend data successfully",
@@ -304,10 +327,20 @@ async def get_trend_data(
 async def get_heatmap_data(
     startDate: str = None,
     endDate: str = None,
-    channel: str = None
+    channel: str = None,
+    topic: str = None,
+    conversationStatus: str = None,
+    aiStatus: str = None
 ):
     try:
-        res = await keyword_service.get_heatmap_data(start_date=startDate, end_date=endDate, channel=channel)
+        res = await keyword_service.get_heatmap_data(
+            start_date=startDate,
+            end_date=endDate,
+            channel=channel,
+            topic=topic,
+            conversation_status=conversationStatus,
+            ai_status=aiStatus,
+        )
         return {
             "success": True,
             "message": "Get heatmap data successfully",
@@ -378,4 +411,4 @@ async def delete_keyword(id: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="localhost", port=5000, reload=True)
+    uvicorn.run("backend.main:app", host="localhost", port=5000, reload=True)

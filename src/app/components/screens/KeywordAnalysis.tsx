@@ -12,6 +12,24 @@ const NAVY = "#003865";
 const ORANGE = "#D73C01";
 const CTA = "#ED5206";
 const COLORS = [NAVY, ORANGE, "rgba(0,56,101,0.6)", "rgba(215,60,1,0.6)", "rgba(0,56,101,0.3)", "rgba(215,60,1,0.3)"];
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:5000";
+
+type KeywordItem = {
+  word: string;
+  count: number;
+  trend: number;
+};
+
+type KeywordGroup = {
+  id: string;
+  name: string;
+  color: string;
+  totalQuestions: number;
+  changeRate: number;
+  aiFailed: number;
+  faqNeeded: number;
+  keywords: KeywordItem[];
+};
 
 const missingFaqsData: Record<string, { question: string; source: string; added?: boolean }[]> = {
   toeic: [
@@ -53,7 +71,7 @@ const missingFaqsData: Record<string, { question: string; source: string; added?
 };
 
 
-const topicGroups = [
+const topicGroups: KeywordGroup[] = [
   {
     id: "toeic",
     name: "TOEIC",
@@ -158,7 +176,7 @@ function normalizeFaqText(value: string) {
     .trim();
 }
 
-function generateFaqSuggestions(groups: typeof topicGroups) {
+function generateFaqSuggestions(groups: KeywordGroup[]) {
   const templates: Record<string, (keyword: string, count: number, aiFailed: number) => string> = {
     toeic: (keyword, count, aiFailed) => `Câu hỏi về ${keyword} trong TOEIC đang được khách hàng tìm nhiều (${count.toLocaleString("vi-VN")} hội thoại, ${aiFailed} lần AI thất bại)`,
     vstep: (keyword, count, aiFailed) => `Câu hỏi về ${keyword} trong VSTEP cần được giải đáp rõ hơn (${count.toLocaleString("vi-VN")} hội thoại, ${aiFailed} lần AI thất bại)`,
@@ -184,7 +202,7 @@ function generateFaqSuggestions(groups: typeof topicGroups) {
   }, {});
 }
 
-function mergeFaqSuggestions(existing: Record<string, { question: string; source: string; added?: boolean }[]>, groups: typeof topicGroups) {
+function mergeFaqSuggestions(existing: Record<string, { question: string; source: string; added?: boolean }[]>, groups: KeywordGroup[]) {
   const generated = generateFaqSuggestions(groups);
 
   return Object.keys(generated).reduce<Record<string, { question: string; source: string; added?: boolean }[]>>((acc, groupId) => {
@@ -207,6 +225,13 @@ interface Props {
   onFiltersChange: (f: FilterValues) => void;
   onApplyFilters?: (f: FilterValues) => void;
   onNavigate: (s: string) => void;
+}
+
+function formatLocalDate(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 /** Chuyển FilterValues → query params để gửi lên API backend */
@@ -235,8 +260,13 @@ function buildApiParams(filters: FilterValues): URLSearchParams {
     }
   }
 
-  if (startDate) params.set("startDate", startDate.toISOString());
-  if (endDate)   params.set("endDate",   endDate.toISOString());
+  if (filters.dateRange === "Tùy chỉnh") {
+    if (filters.customDateFrom) params.set("startDate", filters.customDateFrom);
+    if (filters.customDateTo) params.set("endDate", filters.customDateTo);
+  } else {
+    if (startDate) params.set("startDate", formatLocalDate(startDate));
+    if (endDate) params.set("endDate", formatLocalDate(endDate));
+  }
 
   // --- Kênh ---
   const channelMap: Record<string, string> = {
@@ -254,7 +284,68 @@ function buildApiParams(filters: FilterValues): URLSearchParams {
     params.set("topic", filters.topic);
   }
 
+  if (filters.conversationStatus && filters.conversationStatus !== "Tất cả") {
+    params.set("conversationStatus", filters.conversationStatus);
+  }
+
+  if (filters.aiStatus && filters.aiStatus !== "Tất cả") {
+    params.set("aiStatus", filters.aiStatus);
+  }
+
   return params;
+}
+
+function buildTrendApiParams(filters: FilterValues): URLSearchParams {
+  const params = buildApiParams(filters);
+  params.delete("pageSize");
+  params.set("granularity", getTrendGranularity(filters));
+  params.set("months", "8");
+  return params;
+}
+
+function getTrendGranularity(filters: FilterValues) {
+  if (filters.dateRange === "Quý này") return "week";
+
+  if (filters.dateRange === "Tùy chỉnh" && filters.customDateFrom && filters.customDateTo) {
+    const start = new Date(filters.customDateFrom);
+    const end = new Date(filters.customDateTo);
+    const days = Math.abs(end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
+    if (days <= 45) return "day";
+    if (days <= 120) return "week";
+    return "month";
+  }
+
+  return "day";
+}
+
+function mapApiGroups(apiGroups: any[]): KeywordGroup[] {
+  return apiGroups.map((apiGroup: any) => {
+    const group = topicGroups.find(g => g.id === apiGroup.id);
+    return {
+      id: apiGroup.id,
+      name: apiGroup.name || group?.name || apiGroup.id,
+      color: apiGroup.color || group?.color || NAVY,
+      totalQuestions: apiGroup.totalQuestions || 0,
+      changeRate: apiGroup.changeRate || 0,
+      aiFailed: apiGroup.aiFailed || 0,
+      faqNeeded: group?.faqNeeded || 0,
+      keywords: (apiGroup.keywords || []).map((k: any) => ({
+        word: k.word,
+        count: k.count || 0,
+        trend: apiGroup.changeRate || 0,
+      })),
+    };
+  });
+}
+
+function mapTrendRows(apiRows: any[]) {
+  return apiRows.map((row: any) => ({
+    date: row.date,
+    TOEIC: row["TOEIC"] || 0,
+    VSTEP: row["VSTEP"] || 0,
+    "Tin học": row["Tin học / MOS / IC3"] || row["Tin học"] || 0,
+    "Chuẩn đầu ra": row["Chuẩn đầu ra / Chứng chỉ"] || row["Chuẩn đầu ra"] || 0,
+  }));
 }
 
 function normalizeFilterValue(value: string) {
@@ -277,6 +368,76 @@ function matchesKeywordFilter(topic: string, keyword: string) {
     normalizedKeyword.startsWith(`${normalizedTopic} `) ||
     normalizedKeyword.endsWith(` ${normalizedTopic}`) ||
     normalizedKeyword.includes(` ${normalizedTopic} `);
+}
+
+function KeywordLoadingState() {
+  const block = (style: React.CSSProperties = {}) => (
+    <div
+      style={{
+        borderRadius: "10px",
+        background: "linear-gradient(90deg, #f0f4f8 25%, #e2e8f0 50%, #f0f4f8 75%)",
+        backgroundSize: "200% 100%",
+        animation: "keywordShimmer 1.4s infinite",
+        ...style,
+      }}
+    />
+  );
+
+  return (
+    <div>
+      <style>{`
+        @keyframes keywordShimmer {
+          0% { background-position: -200% 0; }
+          100% { background-position: 200% 0; }
+        }
+      `}</style>
+      <div style={{ marginBottom: "20px" }}>
+        {block({ width: "220px", height: "24px", marginBottom: "8px" })}
+        {block({ width: "320px", height: "15px" })}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "14px", marginBottom: "24px" }}>
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} style={{ background: "#fff", borderRadius: "14px", padding: "18px", border: "1px solid rgba(0,56,101,0.08)", minHeight: "142px" }}>
+            {block({ width: "45%", height: "16px", marginBottom: "18px" })}
+            {block({ width: "28%", height: "30px", marginBottom: "10px" })}
+            {block({ width: "35%", height: "13px", marginBottom: "16px" })}
+            <div style={{ display: "flex", gap: "10px" }}>
+              {block({ width: "52px", height: "14px" })}
+              {block({ width: "86px", height: "14px" })}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "20px", marginBottom: "20px" }}>
+        <div style={{ background: "#fff", borderRadius: "16px", padding: "20px", border: "1px solid rgba(0,56,101,0.08)", height: "262px" }}>
+          {block({ width: "220px", height: "18px", marginBottom: "24px" })}
+          <div style={{ height: "190px", display: "flex", alignItems: "flex-end", gap: "16px" }}>
+            {[58, 82, 44, 70, 38, 92].map((height, i) => (
+              <div key={i} style={{ flex: 1, height: `${height}%`, borderRadius: "6px 6px 0 0", background: i % 2 ? "#eef3f8" : "#f6f8fb" }} />
+            ))}
+          </div>
+        </div>
+        <div style={{ background: "#fff", borderRadius: "16px", padding: "20px", border: "1px solid rgba(0,56,101,0.08)", height: "262px" }}>
+          {block({ width: "160px", height: "18px", marginBottom: "28px" })}
+          <div style={{ display: "flex", justifyContent: "center" }}>
+            <div style={{ width: "138px", height: "138px", borderRadius: "50%", border: "18px solid #eef3f8", borderTopColor: "#d7e4f2" }} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function KeywordErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div style={{ background: "#fff", border: "1px solid rgba(0,56,101,0.08)", borderRadius: "16px", padding: "44px 24px", textAlign: "center" }}>
+      <div style={{ fontSize: "15px", fontWeight: 700, color: NAVY, marginBottom: "8px" }}>Không thể tải dữ liệu Keywords</div>
+      <div style={{ fontSize: "13px", color: "rgba(0,56,101,0.55)", marginBottom: "18px" }}>{message}</div>
+      <button onClick={onRetry} style={{ padding: "9px 18px", borderRadius: "8px", border: "none", background: NAVY, color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: "12px" }}>
+        Tải lại
+      </button>
+    </div>
+  );
 }
 
 export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNavigate }: Props) {
@@ -387,117 +548,123 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
   };
 
   const [activeGroup, setActiveGroup] = useState<string | null>(null);
-  const [groups, setGroups] = useState(topicGroups);
-  const [loading, setLoading] = useState(false);
+  const [groups, setGroups] = useState<KeywordGroup[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Hàm xử lý khi bấm "Áp dụng" — cập nhật appliedFilters để trigger fetch
   const handleApplyFilters = (newFilters: FilterValues) => {
+    setLoading(true);
     onFiltersChange(newFilters);
     setAppliedFilters(newFilters);
     if (onApplyFilters) onApplyFilters(newFilters);
   };
 
   useEffect(() => {
-    setMissingFaqs((prev) => mergeFaqSuggestions(prev, groups));
+    setAppliedFilters(filters);
+  }, [filters]);
+
+  useEffect(() => {
+    if (groups) {
+      setMissingFaqs((prev) => mergeFaqSuggestions(prev, groups));
+    }
   }, [groups]);
-  const [heatmapRows, setHeatmapRows] = useState(heatmapData);
-  const [trendRows, setTrendRows] = useState(trendData);
+  const [heatmapRows, setHeatmapRows] = useState<any[]>([]);
+  const [trendRows, setTrendRows] = useState<any[]>([]);
   const [heatmapColsDyn, setHeatmapColsDyn] = useState<{key:string; label:string}[]>(
     heatmapCols.map(k => ({ key: k, label: heatmapLabels[k] }))
   );
 
   useEffect(() => {
+    let cancelled = false;
+
     async function loadData() {
+      const params = buildApiParams(appliedFilters);
+      const trendParams = buildTrendApiParams(appliedFilters);
+
       try {
         setLoading(true);
+        setLoadError(null);
 
-        // Dùng appliedFilters thay vì filters — chỉ fetch khi bấm "Áp dụng"
-        const params = buildApiParams(appliedFilters);
-
-        const [groupsRes, heatmapRes] = await Promise.all([
-          fetch(`http://localhost:5000/api/admin/crm-keywords/groups?${params.toString()}`),
-          fetch(`http://localhost:5000/api/admin/crm-keywords/heatmap?${params.toString()}`),
+        const [groupsRes, heatmapRes, trendRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/api/admin/crm-keywords/groups?${params.toString()}`),
+          fetch(`${API_BASE_URL}/api/admin/crm-keywords/heatmap?${params.toString()}`),
+          fetch(`${API_BASE_URL}/api/admin/crm-keywords/trends?${trendParams.toString()}`),
         ]);
 
-        // ── Groups ──
-        try {
-          const resJson = await groupsRes.json();
-          if (resJson.success && resJson.data) {
-            const apiGroups = resJson.data;
-            const updatedGroups = topicGroups.map(group => {
-              const apiGroup = apiGroups.find((g: any) => g.id === group.id);
-              if (apiGroup) {
-                return {
-                  ...group,
-                  totalQuestions: apiGroup.totalQuestions,
-                  changeRate: apiGroup.changeRate,
-                  keywords: apiGroup.keywords.map((k: any) => ({
-                    word: k.word,
-                    count: k.count || 0,
-                    trend: group.keywords.find(gk => gk.word === k.word)?.trend || (apiGroup.changeRate >= 0 ? 5 : -5)
-                  }))
-                };
-              }
-              return group;
-            });
-            setGroups(updatedGroups);
-          }
-        } catch (err) {
-          console.error("Lỗi khi kết nối API Keywords Groups:", err);
+        const [groupsJson, hJson, tJson] = await Promise.all([
+          groupsRes.json(),
+          heatmapRes.json(),
+          trendRes.json(),
+        ]);
+
+        if (!groupsRes.ok || !groupsJson.success || !Array.isArray(groupsJson.data)) {
+          throw new Error(groupsJson.message || "Không thể tải thống kê nhóm Keywords.");
+        }
+        if (!heatmapRes.ok || !hJson.success || !Array.isArray(hJson.data)) {
+          throw new Error(hJson.message || "Không thể tải dữ liệu heatmap Keywords.");
+        }
+        if (!trendRes.ok || !tJson.success || !Array.isArray(tJson.data)) {
+          throw new Error(tJson.message || "Không thể tải dữ liệu xu hướng Keywords.");
         }
 
-        // ── Heatmap ──
-        try {
-          const hJson = await heatmapRes.json();
-          if (hJson.success && hJson.data) {
-            setHeatmapRows(hJson.data);
-            if (hJson.columns) setHeatmapColsDyn(hJson.columns);
-          }
-        } catch (err) {
-          console.error("Lỗi khi kết nối API Heatmap:", err);
-        }
+        if (cancelled) return;
 
-        // ── Trends (chỉ cần channel, không cần date) ──
-        try {
-          const channelMap: Record<string, string> = {
-            "Zalo OA":       "ZaloOA",
-            "Zalo Business": "ZaloBusiness",
-            "Chat Widget":   "ChatWidget",
-            "Facebook":      "Facebook",
-          };
-          const tParams = new URLSearchParams();
-          if (appliedFilters.channel && appliedFilters.channel !== "Tất cả") {
-            const mapped = channelMap[appliedFilters.channel];
-            if (mapped) tParams.set("channel", mapped);
-          }
-          const tRes = await fetch(`http://localhost:5000/api/admin/crm-keywords/trends?${tParams.toString()}`);
-          const tJson = await tRes.json();
-          if (tJson.success && tJson.data) {
-            const mappedTrend = tJson.data.map((row: any) => ({
-              date: row.date,
-              TOEIC: row["TOEIC"] || 0,
-              VSTEP: row["VSTEP"] || 0,
-              "Tin học": row["Tin học / MOS / IC3"] || row["Tin học"] || 0,
-              "Chuẩn đầu ra": row["Chuẩn đầu ra / Chứng chỉ"] || row["Chuẩn đầu ra"] || 0,
-            }));
-            setTrendRows(mappedTrend);
-          }
-        } catch (err) {
-          console.error("Lỗi khi kết nối API Trends:", err);
-        }
+        const nextData = {
+          groups: mapApiGroups(groupsJson.data),
+          heatmapRows: hJson.data,
+          heatmapCols: hJson.columns || heatmapCols.map(k => ({ key: k, label: heatmapLabels[k] })),
+          trendRows: mapTrendRows(tJson.data),
+        };
 
+        setGroups(nextData.groups);
+        setHeatmapRows(nextData.heatmapRows);
+        setHeatmapColsDyn(nextData.heatmapCols);
+        setTrendRows(nextData.trendRows);
+      } catch (err: any) {
+        if (cancelled) return;
+
+        console.error("Lỗi khi tải dữ liệu Keywords:", err);
+        setGroups(null);
+        setHeatmapRows([]);
+        setTrendRows([]);
+        setLoadError(err.message || "Không thể kết nối API Keywords.");
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
 
     loadData();
+    return () => {
+      cancelled = true;
+    };
   // Chỉ re-fetch khi appliedFilters thay đổi (khi bấm "Áp dụng")
   }, [appliedFilters]);
 
+  const retryLoadData = () => {
+    setAppliedFilters({ ...appliedFilters });
+  };
+
+  const renderLoadingOrError = () => {
+    if (loading) return <KeywordLoadingState />;
+    if (loadError) return <KeywordErrorState message={loadError} onRetry={retryLoadData} />;
+    return null;
+  };
+
+  const nonDataState = renderLoadingOrError();
+
+  if (nonDataState) {
+    return (
+      <div style={{ padding: "24px" }}>
+        <FilterPanel filters={filters} onFiltersChange={handleApplyFilters} />
+        {nonDataState}
+      </div>
+    );
+  }
+
   // 1. Topic (Chủ đề) Filter
-  const filteredGroups = groups.filter(g => {
-    const topic = filters.topic || "";
+  const filteredGroups = (groups || []).filter(g => {
+    const topic = appliedFilters.topic || "";
     if (!topic || topic === "Tất cả") return true;
 
     const normalizedTopic = normalizeFilterValue(topic);
@@ -522,23 +689,8 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
       (normalizedGroupName === normalizedTopic || normalizedGroupName.includes(normalizedTopic) || (tokenCoverage >= 2 && normalizedTopic.split(" ").length >= 2));
   });
 
-  // 2. Conversation Status and AI Status simulation scale
-  let scaleFactor = 1.0;
-  if (filters.aiStatus && filters.aiStatus !== "Tất cả") {
-    if (filters.aiStatus === "AI trả lời thành công") scaleFactor *= 0.75;
-    else if (filters.aiStatus === "AI trả lời thất bại") scaleFactor *= 0.15;
-    else if (filters.aiStatus === "AI không chắc chắn") scaleFactor *= 0.25;
-    else if (filters.aiStatus === "AI trả lời sai") scaleFactor *= 0.08;
-    else if (filters.aiStatus === "Không tìm thấy dữ liệu") scaleFactor *= 0.35;
-    else scaleFactor *= 0.12;
-  }
-  if (filters.conversationStatus && filters.conversationStatus !== "Tất cả") {
-    if (filters.conversationStatus === "Chờ xử lý") scaleFactor *= 0.3;
-    else if (filters.conversationStatus === "Đang xử lý") scaleFactor *= 0.4;
-    else if (filters.conversationStatus === "Chờ quản lý xác nhận") scaleFactor *= 0.15;
-    else if (filters.conversationStatus === "Hoàn thành") scaleFactor *= 0.8;
-    else scaleFactor *= 0.2;
-  }
+  // Trạng thái hội thoại và trạng thái AI đã được backend query theo bộ lọc.
+  const scaleFactor = 1.0;
 
   // Apply scaling to groups
   const finalGroups = filteredGroups.map(g => ({

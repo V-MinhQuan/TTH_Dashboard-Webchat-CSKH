@@ -1,5 +1,5 @@
 # Keywords feature module
-from keywords.repository import keyword_repository
-from keywords.service import keyword_service
+from backend.keywords.repository import keyword_repository
+from backend.keywords.service import keyword_service
 
 __all__ = ["keyword_repository", "keyword_service"]

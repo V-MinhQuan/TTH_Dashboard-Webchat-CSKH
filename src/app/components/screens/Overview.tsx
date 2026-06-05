@@ -63,7 +63,12 @@ interface OverviewProps {
  */
 function getDatesFromRange(range: string, customFrom?: string, customTo?: string): { startDate?: string; endDate?: string } {
   const today = new Date();
-  const formatDateStr = (d: Date) => d.toISOString().split("T")[0];
+  const formatDateStr = (d: Date) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
 
   if (range === "Hôm nay") {
     const dateStr = formatDateStr(today);
@@ -299,7 +304,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
   const dailyTrends = kpiData?.dailyTrends || [];
 
   // Render các trạng thái đặc biệt
-  if (loading && !kpiData) {
+  if (loading) {
     return <LoadingState />;
   }
 

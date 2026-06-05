@@ -18,18 +18,10 @@ import { Settings } from "./components/screens/Settings";
 import { FAQ } from "./components/screens/FAQ";
 import { SheetChatbot } from "./components/screens/SheetChatbot";
 import { PersonalInfo } from "./components/screens/PersonalInfo";
-import { FilterValues } from "./components/FilterPanel";
+import { defaultFilterValues, FilterValues } from "./components/FilterPanel";
 
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { LoginScreen } from "./components/screens/Login";
-
-const defaultFilters: FilterValues = {
-  dateRange: "30 ngày qua",
-  channel: "Tất cả",
-  topic: "Tất cả",
-  conversationStatus: "Tất cả",
-  aiStatus: "Tất cả",
-};
 
 function formatTime(d: Date) {
   return new Intl.DateTimeFormat('en-GB', {
@@ -40,12 +32,39 @@ function formatTime(d: Date) {
   }).format(d);
 }
 
+function ScreenTransitionLoading() {
+  return (
+    <div style={{ minHeight: "100%", padding: "24px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <style>{`
+        @keyframes screenLoaderSpin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "14px", color: "#003865" }}>
+        <div
+          style={{
+            width: "34px",
+            height: "34px",
+            borderRadius: "50%",
+            border: "3px solid rgba(0,56,101,0.12)",
+            borderTopColor: "#ED5206",
+            animation: "screenLoaderSpin 0.8s linear infinite",
+          }}
+        />
+        <div style={{ fontSize: "13px", fontWeight: 700 }}>Đang tải dữ liệu...</div>
+      </div>
+    </div>
+  );
+}
+
 function MainApp() {
   const { role } = useAuth();
   const [activeScreen, setActiveScreen] = useState("overview");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [filters, setFilters] = useState<FilterValues>(defaultFilters);
+  const [filters, setFilters] = useState<FilterValues>(defaultFilterValues);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [screenSwitching, setScreenSwitching] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(() => formatTime(new Date()));
 
   const triggerRefresh = useCallback(() => {
@@ -60,6 +79,12 @@ function MainApp() {
     const interval = setInterval(triggerRefresh, 1800000);
     return () => clearInterval(interval);
   }, [triggerRefresh]);
+
+  useEffect(() => {
+    setScreenSwitching(true);
+    const timer = window.setTimeout(() => setScreenSwitching(false), 220);
+    return () => window.clearTimeout(timer);
+  }, [activeScreen]);
 
   if (!role) {
     return <LoginScreen />;
@@ -148,7 +173,7 @@ function MainApp() {
             overflowX: "hidden",
           }}
         >
-          {renderScreen()}
+          {screenSwitching ? <ScreenTransitionLoading /> : renderScreen()}
         </main>
       </div>
 

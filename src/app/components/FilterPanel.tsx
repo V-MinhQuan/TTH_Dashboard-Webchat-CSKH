@@ -18,12 +18,20 @@ export interface FilterValues {
   aiStatus: string;
 }
 
+export const defaultFilterValues: FilterValues = {
+  dateRange: "30 ngày qua",
+  channel: "Tất cả",
+  topic: "Tất cả",
+  conversationStatus: "Tất cả",
+  aiStatus: "Tất cả",
+};
+
 interface FilterPanelProps {
   filters: FilterValues;
   onFiltersChange: (filters: FilterValues) => void;
 }
 
-const dateRanges = ["Hôm nay", "7 ngày qua", "Tháng này", "Quý này", "Tùy chỉnh"];
+const dateRanges = ["30 ngày qua", "7 ngày qua", "Hôm nay", "Tháng này", "Quý này", "Tùy chỉnh"];
 const channels = ["Tất cả", "Zalo OA", "Zalo Business", "Chat Widget", "Facebook"];
 const topics = ["Tất cả", "TOEIC", "VSTEP", "Chuẩn đầu ra", "Tin học", "Tra cứu điểm", "Lịch thi", "Khác"];
 const conversationStatuses = ["Tất cả", "Chờ xử lý", "Đang xử lý", "Hoàn thành"];
@@ -39,12 +47,28 @@ export function FilterPanel({ filters, onFiltersChange }: FilterPanelProps) {
   }, [filters]);
 
   const handleLocalChange = (key: keyof FilterValues, value: string) => {
-    setLocalFilters((prev) => ({ ...prev, [key]: value }));
+    setLocalFilters((prev) => {
+      if (key === "dateRange" && value !== "Tùy chỉnh") {
+        const nextFilters = { ...prev, dateRange: value };
+        delete nextFilters.customDateFrom;
+        delete nextFilters.customDateTo;
+        return nextFilters;
+      }
+
+      return { ...prev, [key]: value };
+    });
   };
 
   const handleApply = () => {
     onFiltersChange(localFilters);
     toast.success("Đã áp dụng bộ lọc");
+  };
+
+  const handleReset = () => {
+    const nextFilters = { ...defaultFilterValues };
+    setLocalFilters(nextFilters);
+    onFiltersChange(nextFilters);
+    toast.info("Đã đặt lại bộ lọc");
   };
 
   const handleExport = async () => {
@@ -136,16 +160,16 @@ export function FilterPanel({ filters, onFiltersChange }: FilterPanelProps) {
         {label.toUpperCase()}
       </label>
       <select value={value} onChange={(e) => onChange(e.target.value)} style={selectStyle}>
-        {label === "Khoảng thời gian" && value === "30 ngày qua" && (
-          <option value="30 ngày qua">30 ngày qua</option>
-        )}
         {options.map((o) => <option key={o} value={o}>{o}</option>)}
       </select>
     </div>
   );
 
-  const hasActiveFilters = localFilters.channel !== "Tất cả" || localFilters.topic !== "Tất cả" ||
-    localFilters.conversationStatus !== "Tất cả" || localFilters.aiStatus !== "Tất cả" || localFilters.dateRange !== "30 ngày qua";
+  const hasActiveFilters = localFilters.channel !== defaultFilterValues.channel ||
+    localFilters.topic !== defaultFilterValues.topic ||
+    localFilters.conversationStatus !== defaultFilterValues.conversationStatus ||
+    localFilters.aiStatus !== defaultFilterValues.aiStatus ||
+    localFilters.dateRange !== defaultFilterValues.dateRange;
 
   return (
     <div
@@ -211,7 +235,7 @@ export function FilterPanel({ filters, onFiltersChange }: FilterPanelProps) {
           </div>
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
             <button
-              onClick={() => { const def = { dateRange: "30 ngày qua", channel: "Tất cả", topic: "Tất cả", conversationStatus: "Tất cả", aiStatus: "Tất cả" }; setLocalFilters(def); onFiltersChange(def); toast.info("Đã đặt lại bộ lọc"); }}
+              onClick={handleReset}
               style={{ padding: "8px 16px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.12)", background: "#fff", color: NAVY, cursor: "pointer", fontWeight: 600, fontSize: "13px" }}
             >
               Đặt lại
