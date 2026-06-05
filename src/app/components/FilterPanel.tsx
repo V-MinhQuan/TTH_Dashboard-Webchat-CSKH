@@ -23,15 +23,16 @@ interface FilterPanelProps {
   onFiltersChange: (filters: FilterValues) => void;
 }
 
-const dateRanges = ["Hôm nay", "7 ngày qua", "30 ngày qua", "Tháng này", "Quý này", "Tùy chỉnh"];
+const dateRanges = ["Hôm nay", "7 ngày qua", "Tháng này", "Quý này", "Tùy chỉnh"];
 const channels = ["Tất cả", "Zalo OA", "Zalo Business", "Chat Widget", "Facebook"];
-const topics = ["Tất cả", "TOEIC", "VSTEP", "Chuẩn đầu ra", "Tin học cơ sở", "MOS/IC3", "Lịch thi", "Lệ phí thi", "Tra cứu điểm"];
-const conversationStatuses = ["Tất cả", "Chờ xử lý", "Đang xử lý", "Chờ quản lý xác nhận", "Hoàn thành", "Không cần phản hồi"];
-const aiStatuses = ["Tất cả", "AI trả lời thành công", "AI trả lời thất bại", "AI không chắc chắn", "AI trả lời sai", "Không tìm thấy dữ liệu", "AI có nguy cơ tự tạo thông tin", "Cần kiểm duyệt"];
+const topics = ["Tất cả", "TOEIC", "VSTEP", "Chuẩn đầu ra", "Tin học", "Tra cứu điểm", "Lịch thi", "Khác"];
+const conversationStatuses = ["Tất cả", "Chờ xử lý", "Đang xử lý", "Hoàn thành"];
+const aiStatuses = ["Tất cả", "AI trả lời thành công", "AI trả lời thất bại", "Không tìm thấy dữ liệu"];
 
 export function FilterPanel({ filters, onFiltersChange }: FilterPanelProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const [localFilters, setLocalFilters] = useState<FilterValues>(filters);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     setLocalFilters(filters);
@@ -44,6 +45,72 @@ export function FilterPanel({ filters, onFiltersChange }: FilterPanelProps) {
   const handleApply = () => {
     onFiltersChange(localFilters);
     toast.success("Đã áp dụng bộ lọc");
+  };
+
+  const handleExport = async () => {
+    const target = document.querySelector<HTMLElement>('[data-pdf-report="overview"]');
+    if (!target) {
+      toast.error("Không tìm thấy mẫu báo cáo tổng quan để xuất PDF.");
+      return;
+    }
+
+    try {
+      setExporting(true);
+      toast.info("Đang tạo báo cáo PDF...");
+
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
+
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+        import("html2canvas"),
+        import("jspdf"),
+      ]);
+
+      const canvas = await html2canvas(target, {
+        backgroundColor: "#ffffff",
+        scale: Math.min(2, window.devicePixelRatio || 1.5),
+        useCORS: true,
+        logging: false,
+        width: target.scrollWidth,
+        height: target.scrollHeight,
+        windowWidth: Math.max(document.documentElement.clientWidth, target.scrollWidth),
+        windowHeight: Math.max(document.documentElement.clientHeight, target.scrollHeight),
+      });
+
+      const pdf = new jsPDF({
+        orientation: "landscape",
+        unit: "mm",
+        format: "a4",
+        compress: true,
+      });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 0;
+      const printableWidth = pageWidth - margin * 2;
+      const printableHeight = pageHeight - margin * 2;
+      const imageHeight = (canvas.height * printableWidth) / canvas.width;
+      const imageData = canvas.toDataURL("image/png");
+
+      let remainingHeight = imageHeight;
+      let y = margin;
+      pdf.addImage(imageData, "PNG", margin, y, printableWidth, imageHeight, undefined, "FAST");
+      remainingHeight -= printableHeight;
+
+      while (remainingHeight > 0) {
+        y = margin - (imageHeight - remainingHeight);
+        pdf.addPage();
+        pdf.addImage(imageData, "PNG", margin, y, printableWidth, imageHeight, undefined, "FAST");
+        remainingHeight -= printableHeight;
+      }
+
+      pdf.save(`tong-quan-he-thong-${new Date().toISOString().slice(0, 10)}.pdf`);
+      toast.success("Đã xuất PDF", { description: "File PDF đã được tải xuống." });
+    } catch (err: any) {
+      toast.error(err.message || "Không thể xuất PDF.");
+    } finally {
+      setExporting(false);
+    }
   };
 
   const selectStyle: React.CSSProperties = {
@@ -69,6 +136,9 @@ export function FilterPanel({ filters, onFiltersChange }: FilterPanelProps) {
         {label.toUpperCase()}
       </label>
       <select value={value} onChange={(e) => onChange(e.target.value)} style={selectStyle}>
+        {label === "Khoảng thời gian" && value === "30 ngày qua" && (
+          <option value="30 ngày qua">30 ngày qua</option>
+        )}
         {options.map((o) => <option key={o} value={o}>{o}</option>)}
       </select>
     </div>
@@ -104,10 +174,12 @@ export function FilterPanel({ filters, onFiltersChange }: FilterPanelProps) {
           )}
         </div>
         <button
-          onClick={(e) => { e.stopPropagation(); toast.success("Đang xuất dữ liệu...", { description: "File sẽ được tải xuống trong giây lát" }); }}
-          style={{ padding: "6px 12px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.12)", background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: NAVY }}
+          onClick={(e) => { e.stopPropagation(); handleExport(); }}
+          disabled={exporting}
+          data-print-hidden="true"
+          style={{ padding: "6px 12px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.12)", background: "#fff", cursor: exporting ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: NAVY, opacity: exporting ? 0.65 : 1 }}
         >
-          <Download size={12} /> Xuất dữ liệu
+          <Download size={12} /> {exporting ? "Đang xuất..." : "Xuất PDF"}
         </button>
       </div>
 

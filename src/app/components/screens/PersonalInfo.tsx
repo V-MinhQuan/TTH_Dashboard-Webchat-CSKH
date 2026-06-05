@@ -59,7 +59,7 @@ function OtpModal({ isOpen, onClose, onConfirm }: { isOpen: boolean; onClose: ()
 }
 
 export function PersonalInfo({ onNavigate }: PersonalInfoProps) {
-  const { role } = useAuth();
+  const { role, user } = useAuth();
   const isManager = role === "manager";
   const [showOtpModal, setShowOtpModal] = useState(false);
 
@@ -85,11 +85,11 @@ export function PersonalInfo({ onNavigate }: PersonalInfoProps) {
             color: "#fff", fontSize: "26px", fontWeight: 700,
             boxShadow: "0 4px 16px rgba(0,56,101,0.2)",
           }}>
-            {isManager ? "AD" : "NV"}
+            {user ? user.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase() : (isManager ? "AD" : "NV")}
           </div>
           <div>
             <h1 style={{ fontSize: "22px", fontWeight: 700, color: NAVY, margin: "0 0 4px" }}>
-              {isManager ? "Admin FLIC" : "Nhân viên CSKH"}
+              {user ? user.name : (isManager ? "Admin FLIC" : "Nhân viên CSKH")}
             </h1>
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
               <span style={{ fontSize: "13px", padding: "3px 10px", borderRadius: "20px", backgroundColor: isManager ? "#eff6ff" : "#fff7ed", color: isManager ? "#1565C0" : ORANGE, fontWeight: 600 }}>
@@ -107,9 +107,9 @@ export function PersonalInfo({ onNavigate }: PersonalInfoProps) {
       {/* Info grid */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "20px" }}>
         {[
-          { icon: User, label: "Họ và tên", value: isManager ? "Admin FLIC" : "Nhân viên CSKH" },
-          { icon: Mail, label: "Email", value: isManager ? "admin@flic.edu.vn" : "staff@flic.edu.vn" },
-          { icon: Building2, label: isManager ? "Kênh quản lý" : "Kênh phụ trách", value: isManager ? "Tất cả kênh" : "Zalo OA, Facebook" },
+          { icon: User, label: "Họ và tên", value: user ? user.name : (isManager ? "Admin FLIC" : "Nhân viên CSKH") },
+          { icon: Mail, label: "Email", value: user ? user.email : (isManager ? "admin@flic.edu.vn" : "staff@flic.edu.vn") },
+          { icon: Building2, label: isManager ? "Kênh quản lý" : "Kênh phụ trách", value: isManager ? "Tất cả kênh" : (user?.username === "thutrang" ? "Zalo Business, Facebook" : "Zalo OA, Chat Widget") },
           { icon: Clock, label: "Đăng nhập lần cuối", value: "09:38 hôm nay" },
         ].map(({ icon: Icon, label, value }) => (
           <div key={label} style={{ backgroundColor: "#fff", borderRadius: "14px", border: "1px solid rgba(0,56,101,0.08)", padding: "18px 20px", display: "flex", gap: "14px", alignItems: "flex-start" }}>

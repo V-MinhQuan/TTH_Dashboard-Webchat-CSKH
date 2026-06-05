@@ -9,8 +9,8 @@ const ORANGE = "#D73C01";
 const initialUsers = [
   { id: 1, name: "Admin FLIC", role: "Quản lý CSKH", email: "admin@flic.edu.vn", channels: "Tất cả", permissions: "Toàn hệ thống", status: "Đang hoạt động", lastLogin: "14:20 hôm nay" },
   { id: 2, name: "Thu Trang", role: "Nhân viên CSKH", email: "thutrang@flic.edu.vn", channels: "Zalo Business, Facebook", permissions: "Xử lý hội thoại, can thiệp AI, đề xuất FAQ", status: "Đang hoạt động", lastLogin: "08:15 hôm nay" },
-  { id: 3, name: "Thùy NT", role: "Nhân viên CSKH", email: "thuynt@flic.edu.vn", channels: "Zalo OA, Chat Widget", permissions: "Xử lý hội thoại, đánh dấu AI sai, gửi admin", status: "Đang hoạt động", lastLogin: "Hôm qua" },
-  { id: 4, name: "Người dùng thử", role: "Nhân viên CSKH", email: "test@flic.edu.vn", channels: "Thử nghiệm", permissions: "Giới hạn", status: "Tạm khóa", lastLogin: "1 tuần trước" },
+  { id: 3, name: "Thùy NT", role: "Quản lý CSKH", email: "thuynt@flic.edu.vn", channels: "Zalo OA, Chat Widget", permissions: "Xem và xử lý toàn quyền hệ thống", status: "Đang hoạt động", lastLogin: "Hôm qua" },
+  { id: 4, name: "Người dùng thử", role: "Quản lý CSKH", email: "test@flic.edu.vn", channels: "Tất cả", permissions: "Toàn quyền hệ thống (Thử nghiệm)", status: "Đang hoạt động", lastLogin: "1 tuần trước" },
 ];
 
 export function UserManagement() {

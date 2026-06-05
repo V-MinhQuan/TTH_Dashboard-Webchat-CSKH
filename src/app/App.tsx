@@ -115,6 +115,7 @@ function MainApp() {
 
   return (
     <div
+      className="app-shell"
       style={{
         display: "flex",
         height: "100vh",
@@ -123,19 +124,24 @@ function MainApp() {
         backgroundColor: "#f4f6fa",
       }}
     >
-      <Sidebar
-        activeScreen={activeScreen}
-        onNavigate={setActiveScreen}
-        collapsed={sidebarCollapsed}
-        onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
-      />
-
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
-        <Header
+      <div className="print-hidden" style={{ display: "flex" }}>
+        <Sidebar
           activeScreen={activeScreen}
           onNavigate={setActiveScreen}
+          collapsed={sidebarCollapsed}
+          onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
         />
+      </div>
+
+      <div className="app-content" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
+        <div className="print-hidden">
+          <Header
+            activeScreen={activeScreen}
+            onNavigate={setActiveScreen}
+          />
+        </div>
         <main
+          className="app-main"
           style={{
             flex: 1,
             overflowY: isFullHeight ? "hidden" : "auto",
@@ -146,7 +152,9 @@ function MainApp() {
         </main>
       </div>
 
-      <AIChatWidget />
+      <div className="print-hidden">
+        <AIChatWidget />
+      </div>
 
       <Toaster
         position="bottom-right"

@@ -68,7 +68,7 @@ interface HeaderProps {
 }
 
 export function Header({ activeScreen, onNavigate }: HeaderProps) {
-  const { role, logout } = useAuth();
+  const { role, user, logout } = useAuth();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showAvatar, setShowAvatar] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -226,11 +226,11 @@ export function Header({ activeScreen, onNavigate }: HeaderProps) {
           onMouseLeave={(e) => (e.currentTarget as HTMLButtonElement).style.backgroundColor = "transparent"}
         >
           <div style={{ width: "34px", height: "34px", borderRadius: "50%", background: role === "manager" ? `linear-gradient(135deg, ${NAVY}, #1565C0)` : `linear-gradient(135deg, #64748b, #94a3b8)`, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: "13px", fontWeight: 600 }}>
-            {role === "manager" ? "AD" : "NV"}
+            {user ? user.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase() : (role === "manager" ? "AD" : "NV")}
           </div>
           <div style={{ textAlign: "left" }}>
             <div style={{ fontSize: "13px", fontWeight: 600, color: NAVY, lineHeight: 1.2 }}>
-              {role === "manager" ? "Admin FLIC" : "Nhân viên CSKH"}
+              {user ? user.name : (role === "manager" ? "Admin FLIC" : "Nhân viên CSKH")}
             </div>
             <div style={{ fontSize: "11px", color: "rgba(0,56,101,0.4)" }}>
               {role === "manager" ? "Quản lý CSKH" : "Nhân viên CSKH"}
@@ -242,8 +242,8 @@ export function Header({ activeScreen, onNavigate }: HeaderProps) {
         {showAvatar && (
           <div style={{ position: "absolute", top: "calc(100% + 8px)", right: 0, width: "210px", backgroundColor: "#fff", borderRadius: "14px", boxShadow: "0 8px 32px rgba(0,56,101,0.15)", border: "1px solid rgba(0,56,101,0.08)", overflow: "hidden", zIndex: 100 }}>
             <div style={{ padding: "12px 16px", borderBottom: "1px solid rgba(0,56,101,0.06)", backgroundColor: "#f8fafc" }}>
-              <div style={{ fontSize: "13px", fontWeight: 700, color: NAVY }}>{role === "manager" ? "Admin FLIC" : "Nhân viên CSKH"}</div>
-              <div style={{ fontSize: "11px", color: "rgba(0,56,101,0.45)" }}>{role === "manager" ? "admin@flic.edu.vn" : "staff@flic.edu.vn"}</div>
+              <div style={{ fontSize: "13px", fontWeight: 700, color: NAVY }}>{user ? user.name : (role === "manager" ? "Admin FLIC" : "Nhân viên CSKH")}</div>
+              <div style={{ fontSize: "11px", color: "rgba(0,56,101,0.45)" }}>{user ? user.email : (role === "manager" ? "admin@flic.edu.vn" : "staff@flic.edu.vn")}</div>
             </div>
             {dropdownItem(() => { onNavigate(role === "manager" ? "personalinfo" : "profile"); setShowAvatar(false); }, <User size={15} style={{ color: NAVY }} />, "Thông tin cá nhân")}
             {dropdownItem(() => { onNavigate("settings"); setShowAvatar(false); }, <Settings size={15} style={{ color: NAVY }} />, role === "manager" ? "Cài đặt" : "Cài đặt cá nhân")}

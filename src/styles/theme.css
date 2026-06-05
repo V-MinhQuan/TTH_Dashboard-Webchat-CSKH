@@ -133,9 +133,67 @@
   * These are in @layer base, so Tailwind utility classes (like text-sm, text-lg) automatically override them.
   */
 
-  html {
-    font-size: var(--font-size);
+html {
+  font-size: var(--font-size);
+}
+
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 10mm;
   }
+
+  html,
+  body,
+  #root {
+    width: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    background: #f4f6fa !important;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .print-hidden,
+  [data-print-hidden="true"],
+  [data-sonner-toaster] {
+    display: none !important;
+  }
+
+  .app-shell,
+  .app-content,
+  .app-main {
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    background: #f4f6fa !important;
+  }
+
+  .app-main,
+  .app-main * {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  .app-main {
+    padding: 0 !important;
+  }
+
+  .app-main > div {
+    padding: 0 !important;
+  }
+
+  .app-main svg,
+  .app-main canvas {
+    break-inside: avoid;
+  }
+}
 
   h1 {
     font-size: var(--text-2xl);
