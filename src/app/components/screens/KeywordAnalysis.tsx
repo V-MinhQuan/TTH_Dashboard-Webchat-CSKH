@@ -578,7 +578,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
   const donutData = finalGroups.map((g) => ({ name: g.name.split(" / ")[0], value: g.totalQuestions }));
 
   return (
-    <div style={{ padding: "24px" }}>
+    <div className="printable-page" style={{ padding: "24px" }}>
       {/* Truyền handleApplyFilters để chỉ fetch khi bấm "Áp dụng" */}
       <FilterPanel filters={filters} onFiltersChange={handleApplyFilters} />
 

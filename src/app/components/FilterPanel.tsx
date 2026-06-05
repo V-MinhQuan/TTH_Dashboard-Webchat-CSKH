@@ -77,6 +77,11 @@ export function FilterPanel({ filters, onFiltersChange }: FilterPanelProps) {
   const hasActiveFilters = localFilters.channel !== "Tất cả" || localFilters.topic !== "Tất cả" ||
     localFilters.conversationStatus !== "Tất cả" || localFilters.aiStatus !== "Tất cả" || localFilters.dateRange !== "30 ngày qua";
 
+  const handleExport = () => {
+    window.print();
+    toast.success("Đang mở màn hình in báo cáo");
+  };
+
   return (
     <div
       style={{
@@ -104,7 +109,7 @@ export function FilterPanel({ filters, onFiltersChange }: FilterPanelProps) {
           )}
         </div>
         <button
-          onClick={(e) => { e.stopPropagation(); toast.success("Đang xuất dữ liệu...", { description: "File sẽ được tải xuống trong giây lát" }); }}
+          onClick={(e) => { e.stopPropagation(); handleExport(); }}
           style={{ padding: "6px 12px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.12)", background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: NAVY }}
         >
           <Download size={12} /> Xuất dữ liệu

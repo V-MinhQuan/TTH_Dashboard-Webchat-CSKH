@@ -1,3 +1,49 @@
 @import './fonts.css';
 @import './tailwind.css';
 @import './theme.css';
+
+@page {
+  size: auto;
+  margin: 10mm;
+}
+
+@media print {
+  html,
+  body,
+  #root {
+    width: 100%;
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .print-hide {
+    display: none !important;
+  }
+
+  .app-shell,
+  .app-main {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  main {
+    overflow: visible !important;
+  }
+
+  .printable-page,
+  .printable-page * {
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+  }
+
+  .printable-page {
+    padding: 0 !important;
+  }
+}
