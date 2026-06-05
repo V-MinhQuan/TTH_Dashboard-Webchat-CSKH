@@ -256,7 +256,27 @@ export function MyWorkspace() {
         <AddSheetModal
           prefillQuestion={activeTask.topic}
           onClose={() => setShowSheetModal(false)}
-          onSave={() => toast.success("Đã thêm dữ liệu vào Sheet Chatbot")}
+          onSave={(data) => {
+            let currentRows = [];
+            const saved = localStorage.getItem("flic_sheet_rows");
+            if (saved) {
+              try {
+                currentRows = JSON.parse(saved);
+              } catch (e) {
+                console.error(e);
+              }
+            }
+            const newRow = {
+              id: `CS-${Date.now()}`,
+              addedAt: "Vừa thêm",
+              addedBy: "Thu Trang",
+              ...data
+            };
+            currentRows.unshift(newRow);
+            localStorage.setItem("flic_sheet_rows", JSON.stringify(currentRows));
+            window.dispatchEvent(new Event("storage"));
+            toast.success("Đã thêm dữ liệu vào Sheet Chatbot");
+          }}
         />
       )}
     </div>
