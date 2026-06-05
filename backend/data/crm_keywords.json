@@ -1,0 +1,154 @@
+[
+  {
+    "id": 1,
+    "word": "lệ phí",
+    "groupId": "toeic",
+    "status": "active",
+    "createdAt": "2026-06-03T04:00:00.000Z",
+    "updatedAt": "2026-06-03T04:00:00.000Z"
+  },
+  {
+    "id": 2,
+    "word": "lịch thi",
+    "groupId": "toeic",
+    "status": "active",
+    "createdAt": "2026-06-03T04:00:00.000Z",
+    "updatedAt": "2026-06-03T04:00:00.000Z"
+  },
+  {
+    "id": 3,
+    "word": "điểm thi",
+    "groupId": "toeic",
+    "status": "active",
+    "createdAt": "2026-06-03T04:00:00.000Z",
+    "updatedAt": "2026-06-03T04:00:00.000Z"
+  },
+  {
+    "id": 4,
+    "word": "chứng chỉ",
+    "groupId": "toeic",
+    "status": "active",
+    "createdAt": "2026-06-03T04:00:00.000Z",
+    "updatedAt": "2026-06-03T04:00:00.000Z"
+  },
+  {
+    "id": 5,
+    "word": "đăng ký thi",
+    "groupId": "toeic",
+    "status": "active",
+    "createdAt": "2026-06-03T04:00:00.000Z",
+    "updatedAt": "2026-06-03T04:00:00.000Z"
+  },
+  {
+    "id": 6,
+    "word": "lịch thi",
+    "groupId": "vstep",
+    "status": "active",
+    "createdAt": "2026-06-03T04:00:00.000Z",
+    "updatedAt": "2026-06-03T04:00:00.000Z"
+  },
+  {
+    "id": 7,
+    "word": "hồ sơ",
+    "groupId": "vstep",
+    "status": "active",
+    "createdAt": "2026-06-03T04:00:00.000Z",
+    "updatedAt": "2026-06-03T04:00:00.000Z"
+  },
+  {
+    "id": 8,
+    "word": "cấp chứng chỉ",
+    "groupId": "vstep",
+    "status": "active",
+    "createdAt": "2026-06-03T04:00:00.000Z",
+    "updatedAt": "2026-06-03T04:00:00.000Z"
+  },
+  {
+    "id": 9,
+    "word": "ôn tập",
+    "groupId": "vstep",
+    "status": "active",
+    "createdAt": "2026-06-03T04:00:00.000Z",
+    "updatedAt": "2026-06-03T04:00:00.000Z"
+  },
+  {
+    "id": 10,
+    "word": "kết quả thi",
+    "groupId": "vstep",
+    "status": "active",
+    "createdAt": "2026-06-03T04:00:00.000Z",
+    "updatedAt": "2026-06-03T04:00:00.000Z"
+  },
+  {
+    "id": 11,
+    "word": "CNTT Cơ bản",
+    "groupId": "tinhoc",
+    "status": "active",
+    "createdAt": "2026-06-03T04:00:00.000Z",
+    "updatedAt": "2026-06-03T04:00:00.000Z"
+  },
+  {
+    "id": 12,
+    "word": "CNTT Nâng cao",
+    "groupId": "tinhoc",
+    "status": "active",
+    "createdAt": "2026-06-03T04:00:00.000Z",
+    "updatedAt": "2026-06-03T04:00:00.000Z"
+  },
+  {
+    "id": 13,
+    "word": "MOS",
+    "groupId": "tinhoc",
+    "status": "active",
+    "createdAt": "2026-06-03T04:00:00.000Z",
+    "updatedAt": "2026-06-03T04:00:00.000Z"
+  },
+  {
+    "id": 14,
+    "word": "IC3",
+    "groupId": "tinhoc",
+    "status": "active",
+    "createdAt": "2026-06-03T04:00:00.000Z",
+    "updatedAt": "2026-06-03T04:00:00.000Z"
+  },
+  {
+    "id": 15,
+    "word": "quên mật khẩu khóa học",
+    "groupId": "tinhoc",
+    "status": "active",
+    "createdAt": "2026-06-03T04:00:00.000Z",
+    "updatedAt": "2026-06-03T04:00:00.000Z"
+  },
+  {
+    "id": 16,
+    "word": "điều kiện chuẩn đầu ra",
+    "groupId": "chuandaura",
+    "status": "active",
+    "createdAt": "2026-06-03T04:00:00.000Z",
+    "updatedAt": "2026-06-03T04:00:00.000Z"
+  },
+  {
+    "id": 17,
+    "word": "chứng chỉ hợp lệ",
+    "groupId": "chuandaura",
+    "status": "active",
+    "createdAt": "2026-06-03T04:00:00.000Z",
+    "updatedAt": "2026-06-03T04:00:00.000Z"
+  },
+  {
+    "id": 18,
+    "word": "thời hạn chứng chỉ",
+    "groupId": "chuandaura",
+    "status": "active",
+    "createdAt": "2026-06-03T04:00:00.000Z",
+    "updatedAt": "2026-06-03T04:00:00.000Z"
+  },
+  {
+    "id": 19,
+    "word": "quy đổi điểm",
+    "groupId": "chuandaura",
+    "status": "active",
+    "createdAt": "2026-06-03T04:00:00.000Z",
+    "updatedAt": "2026-06-03T04:00:00.000Z"
+  }
+]

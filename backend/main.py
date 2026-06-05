@@ -2,7 +2,7 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException, status
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -12,6 +12,7 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from backend.config.db import get_db_connection
 from backend.services.dashboard_service import dashboard_service
+from backend.keywords.service import keyword_service
 
 app = FastAPI()
 
@@ -215,6 +216,165 @@ def close_conversation_endpoint(request: CloseConversationRequest):
             "success": False,
             "message": f"Lỗi khi đánh dấu xử lý hội thoại: {str(e)}"
         })
+
+# Pydantic models for keywords
+class KeywordCreateBody(BaseModel):
+    word: str
+    groupId: str
+    status: str = "active"
+
+class KeywordUpdateBody(BaseModel):
+    word: str = None
+    groupId: str = None
+    status: str = None
+
+@app.get("/api/admin/crm-keywords")
+async def get_keywords(
+    page: int = 1,
+    pageSize: int = 10,
+    search: str = None,
+    status: str = None,
+    groupId: str = None,
+    startDate: str = None,
+    endDate: str = None,
+    channel: str = None
+):
+    try:
+        res = await keyword_service.get_keywords({
+            "page": page,
+            "pageSize": pageSize,
+            "search": search,
+            "status": status,
+            "groupId": groupId,
+            "startDate": startDate,
+            "endDate": endDate,
+            "channel": channel
+        })
+        return {
+            "success": True,
+            "message": "Get CRM keywords successfully",
+            "data": res["keywords"],
+            "total": res["total"],
+            "page": res["page"],
+            "pageSize": res["pageSize"]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/admin/crm-keywords/groups")
+async def get_group_stats(
+    startDate: str = None,
+    endDate: str = None,
+    channel: str = None,
+    topic: str = None,
+    topN: int = 5
+):
+    try:
+        res = await keyword_service.get_group_stats({
+            "startDate": startDate,
+            "endDate": endDate,
+            "channel": channel,
+            "topic": topic,
+            "topN": topN
+        })
+        return {
+            "success": True,
+            "message": "Get group stats successfully",
+            "data": res
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/admin/crm-keywords/trends")
+async def get_trend_data(
+    months: int = 8,
+    channel: str = None
+):
+    try:
+        res = await keyword_service.get_trend_data(months=months, channel=channel)
+        return {
+            "success": True,
+            "message": "Get trend data successfully",
+            "data": res
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/admin/crm-keywords/heatmap")
+async def get_heatmap_data(
+    startDate: str = None,
+    endDate: str = None,
+    channel: str = None
+):
+    try:
+        res = await keyword_service.get_heatmap_data(start_date=startDate, end_date=endDate, channel=channel)
+        return {
+            "success": True,
+            "message": "Get heatmap data successfully",
+            "data": res["data"],
+            "columns": res["columns"],
+            "maxRaw": res["maxRaw"]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/admin/crm-keywords/{id}")
+async def get_keyword_by_id(id: str):
+    try:
+        res = await keyword_service.get_keyword_by_id(id)
+        return {
+            "success": True,
+            "message": "Get CRM keyword detail successfully",
+            "data": res
+        }
+    except Exception as e:
+        status_code = 404
+        if "groupId" in str(e) or "Không tìm thấy" in str(e):
+            status_code = 404
+        raise HTTPException(status_code=status_code, detail=str(e))
+
+@app.post("/api/admin/crm-keywords", status_code=201)
+async def create_keyword(body: KeywordCreateBody):
+    try:
+        res = await keyword_service.create_keyword(word=body.word, group_id=body.groupId, status=body.status)
+        return {
+            "success": True,
+            "message": "Create CRM keyword successfully",
+            "data": res
+        }
+    except Exception as e:
+        status_code = 400
+        if "đã tồn tại" in str(e):
+            status_code = 409
+        raise HTTPException(status_code=status_code, detail=str(e))
+
+@app.put("/api/admin/crm-keywords/{id}")
+async def update_keyword(id: str, body: KeywordUpdateBody):
+    try:
+        res = await keyword_service.update_keyword(keyword_id=id, word=body.word, group_id=body.groupId, status=body.status)
+        return {
+            "success": True,
+            "message": "Update CRM keyword successfully",
+            "data": res
+        }
+    except Exception as e:
+        status_code = 400
+        if "đã tồn tại" in str(e):
+            status_code = 409
+        elif "Không tìm thấy" in str(e):
+            status_code = 404
+        raise HTTPException(status_code=status_code, detail=str(e))
+
+@app.delete("/api/admin/crm-keywords/{id}")
+async def delete_keyword(id: str):
+    try:
+        await keyword_service.delete_keyword(id)
+        return {
+            "success": True,
+            "message": "Delete CRM keyword successfully"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
