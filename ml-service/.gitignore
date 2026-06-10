@@ -1,0 +1,34 @@
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Model files (nặng, không commit lên Git)
+models/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Pytest cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# HuggingFace cache
+.cache/
+
+# Build artifacts
+*.egg-info/
+dist/
+build/
+
+# Persistent metrics file (runtime data, không commit lên Git)
+data/

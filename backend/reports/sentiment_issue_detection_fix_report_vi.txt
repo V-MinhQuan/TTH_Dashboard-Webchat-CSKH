@@ -1,0 +1,151 @@
+# Báo cáo sửa các tồn đọng Sentiment Analysis + Independent Issue Detection
+
+Ngày thực hiện: 2026-06-09
+
+## 1. Tóm tắt vấn đề đã xử lý
+
+Trạng thái cuối giữ nguyên: `PASS_WITH_MONITORING`.
+
+Các thay đổi đã thực hiện:
+
+- Sửa `evaluate-blind-test.js` để bảng before/after không còn hard-code sai chỉ số.
+- Báo cáo evaluation mới phân biệt rõ `sentimentLabel`, `issueFlag`, `needStaffReview`.
+- Thêm câu chuẩn về ViSoBERT: “ViSoBERT has been integrated at the experimental level but has not been confirmed as the production runtime. The current runtime is ensemble-phobert-rule-v1.”
+- Chuẩn bị migration thêm metadata issue vào `WebChat_MessageAnalytics`.
+- Backend đã sẵn sàng lưu `issueFlag`, `issueType`, `issueReason`, `issueConfidence` nếu DB đã có cột.
+- Thêm endpoint canonical `need-review-conversations`.
+- Giữ endpoint legacy `negative-conversations` để không làm vỡ frontend.
+- Thêm keyword mode và endpoint `need-review-keywords`.
+- Tối ưu `/api/dashboard/kpi` bằng SQL aggregate, có fallback sang logic cũ nếu aggregate lỗi.
+- Gắn nhãn demo cho `ConversationDetail`.
+- Thêm monitoring plan cho IssueDetector.
+
+## 2. File đã sửa / thêm
+
+| File | Thay đổi |
+|---|---|
+| `backend/scripts/evaluate-blind-test.js` | Bỏ hard-code metrics trong report; dùng metrics tính từ lần chạy; thêm runtime/ViSoBERT wording |
+| `backend/services/ai-sentiment.service.js` | Parse thêm `issueConfidence` từ `/predict-ensemble` |
+| `backend/services/analytics.service.js` | Đưa issue metadata vào object analytics; parse issue fields ở response need-review |
+| `backend/repositories/analytics.repository.js` | Schema-aware optional issue columns; need-review condition; keyword modes |
+| `backend/controllers/analytics.controller.js` | Thêm `need-review-conversations`, `need-review-keywords`, validate keyword mode |
+| `backend/routes/analytics.routes.js` | Thêm routes canonical mới, giữ routes legacy |
+| `backend/repositories/conversation.repository.js` | Thêm SQL aggregate cho KPI |
+| `backend/services/dashboard.service.js` | Ưu tiên aggregate KPI trong SQL, fallback logic cũ |
+| `backend/server.js` | Log endpoint canonical need-review |
+| `backend/tests/analytics.api.test.js` | Thêm tests cho need-review endpoints và keyword mode |
+| `src/app/services/analyticsApi.ts` | Thêm frontend helpers cho need-review endpoints |
+| `src/app/types/analytics.ts` | Mở rộng type issue metadata và keyword mode |
+| `src/app/components/screens/SentimentAnalysis.tsx` | Dùng endpoint canonical need-review conversations |
+| `src/app/components/screens/Overview.tsx` | Dùng endpoint canonical need-review conversations |
+| `src/app/components/screens/ConversationDetail.tsx` | Gắn nhãn “Dữ liệu demo - chưa kết nối API thật” |
+| `backend/db/migrations/add_issue_metadata_to_message_analytics.sql` | Migration proposal, chưa chạy production |
+| `backend/docs/sentiment_issue_api_contract.md` | Tài liệu contract sentiment/issue/API |
+| `docs/sentiment_monitoring_plan.md` | Kế hoạch monitoring IssueDetector |
+| `backend/reports/sentiment_issue_detection_fix_report_vi.txt` | Báo cáo fix này |
+
+## 3. API mới / thay đổi
+
+### Endpoint canonical mới
+
+- `GET /api/analytics/need-review-conversations`
+- `GET /api/analytics/need-review-keywords`
+
+### Endpoint legacy giữ lại
+
+- `GET /api/analytics/negative-conversations`
+
+Endpoint này vẫn hoạt động nhưng được đánh dấu `meta.endpointStatus = legacy`.
+
+### Keyword modes
+
+- `GET /api/analytics/negative-keywords?mode=negative`
+- `GET /api/analytics/negative-keywords?mode=needReview`
+- `GET /api/analytics/negative-keywords?mode=issue`
+- `GET /api/analytics/need-review-keywords`
+
+Logic:
+
+- `negative`: chỉ `sentimentLabel = 'negative'`.
+- `needReview`: `needStaffReview = 1 OR issueFlag = 1 OR sentimentLabel = 'negative'`.
+- `issue`: `issueFlag = 1 OR issueType IS NOT NULL`.
+
+Nếu DB chưa có issue columns, issue mode trả rỗng an toàn thay vì lỗi.
+
+## 4. DB migration đã chuẩn bị
+
+File:
+
+```text
+backend/db/migrations/add_issue_metadata_to_message_analytics.sql
+```
+
+Thêm các cột nullable:
+
+- `issueFlag BIT NULL`
+- `issueType NVARCHAR(100) NULL`
+- `issueReason NVARCHAR(1000) NULL`
+- `issueConfidence FLOAT NULL`
+
+Migration này **chưa chạy trên production**. Không có reprocess DB trong task này.
+
+## 5. Validation
+
+### Test/build
+
+| Lệnh | Kết quả |
+|---|---|
+| `backend: npm test` | PASS, 11 suites, 214 tests |
+| `frontend: npm run build` | PASS |
+| `ml-service: python -m pytest tests -q` | PASS, 56 tests, 1 warning |
+
+### API validation bằng backend tạm port 5011
+
+| Endpoint | Kết quả |
+|---|---|
+| `/api/health` | 200 |
+| `/api/analytics/sentiment-summary` | 200, total = 20,183 |
+| `/api/analytics/sentiment-trend` | 200 |
+| `/api/analytics/negative-conversations?page=1&pageSize=1` | 200, total = 299, legacy |
+| `/api/analytics/need-review-conversations?page=1&pageSize=1` | 200, total = 299, canonical |
+| `/api/analytics/negative-keywords?mode=negative` | 200, count = 45 |
+| `/api/analytics/need-review-keywords?mode=needReview` | 200, count = 45 |
+| `/api/dashboard/kpi` | 200, totalConversations = 3,437 |
+
+### ml-service health
+
+`http://localhost:8001/health` không kết nối được tại thời điểm validation. Vì vậy không xác nhận ViSoBERT active trong lần chạy này. Không claim ViSoBERT production.
+
+## 6. Việc không thực hiện
+
+- Không reprocess production DB.
+- Không chạy migration trên production DB.
+- Không overwrite dữ liệu production.
+- Không đổi backend sang FastAPI.
+- Không gỡ endpoint legacy.
+- Không claim full PASS.
+- Không claim automation-ready.
+- Không claim ViSoBERT production-ready.
+
+## 7. Rủi ro còn lại
+
+- Issue metadata chưa tồn tại trong DB production cho đến khi migration được duyệt và chạy.
+- Dữ liệu cũ chưa có `issueFlag / issueType / issueReason / issueConfidence`, nên issue keyword mode hiện trả rỗng nếu schema chưa có cột.
+- IssueDetector vẫn phụ thuộc static rules, cần monitoring typo/slang/context-required cases.
+- `need-review-keywords` hiện vẫn phụ thuộc dữ liệu keyword đã lưu; sau migration và reprocess có thể phong phú hơn.
+- Một số màn AI/demo vẫn là demo nhưng đã/đang được gắn nhãn rõ, không dùng làm bằng chứng production.
+
+## 8. Khuyến nghị tiếp theo
+
+1. Review và approve migration issue metadata.
+2. Chạy migration sau khi có backup DB.
+3. Chạy dry-run reprocess để so sánh `needStaffReview`, `issueType`, false positive/false negative.
+4. Sau dry-run đạt ngưỡng, mới reprocess DB production.
+5. Tạo fresh blind test mới sau khi đã thêm issue metadata.
+6. Giữ ViSoBERT ở trạng thái experimental cho đến khi `/health` và benchmark xác nhận.
+
+## 9. Kết luận
+
+Giữ trạng thái: `PASS_WITH_MONITORING`.
+
+Module đủ dùng cho dashboard và hàng đợi “Cần nhân viên xem xét”, nhưng chưa dùng cho automation nghiệp vụ và chưa nên reprocess production DB cho issue metadata cho đến khi migration được duyệt.
