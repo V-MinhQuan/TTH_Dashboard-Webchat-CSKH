@@ -7,6 +7,7 @@ import {
 } from "recharts";
 import { FilterPanel, FilterValues } from "../FilterPanel";
 import { toast } from "sonner";
+import { useAuth } from "../../context/AuthContext";
 
 const NAVY = "#003865";
 const ORANGE = "#D73C01";
@@ -441,6 +442,8 @@ function KeywordErrorState({ message, onRetry }: { message: string; onRetry: () 
 }
 
 export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNavigate }: Props) {
+  const { user } = useAuth();
+  const currentUserName = user?.name || user?.username || "Admin FLIC";
   // appliedFilters chỉ cập nhật khi bấm "Áp dụng", không re-fetch khi thay đổi bộ lọc chưa áp dụng
   const [appliedFilters, setAppliedFilters] = useState<FilterValues>(filters);
   const [missingFaqs, setMissingFaqs] = useState<Record<string, { question: string; source: string; added?: boolean }[]>>(() => {
@@ -448,7 +451,11 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
       const saved = localStorage.getItem("flic_missing_faqs");
       if (saved) {
         try {
-          return JSON.parse(saved);
+          const parsed = JSON.parse(saved);
+          return Object.keys(parsed).reduce<Record<string, { question: string; source: string; added?: boolean }[]>>((acc, groupId) => {
+            acc[groupId] = (parsed[groupId] || []).filter((item: { added?: boolean }) => !item.added);
+            return acc;
+          }, {});
         } catch (e) {
           console.error(e);
         }
@@ -476,12 +483,11 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
       return;
     }
 
-    // 1. Mark as added in missingFaqs
+    // 1. Remove from missingFaqs after moving it to Sheet Chatbot.
     const groupItems = [...(missingFaqs[selectedGroupId!] || [])];
-    groupItems[index] = { ...groupItems[index], added: true };
     setMissingFaqs({
       ...missingFaqs,
-      [selectedGroupId!]: groupItems
+      [selectedGroupId!]: groupItems.filter((_, itemIndex) => itemIndex !== index)
     });
 
     // 2. Add to flic_sheet_rows list in localStorage
@@ -495,9 +501,9 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
       }
     } else {
       currentRows = [
-        { id: "CS-001", addedAt: "09:30 hôm nay", addedBy: "Thu Trang", question: "Lệ phí thi TOEIC hiện tại là bao nhiêu?", correctAnswer: "Lệ phí thi TOEIC tại FLIC là 750.000 VNĐ/lần thi. Sinh viên có thẻ được giảm 10%.", topic: "TOEIC", source: "AI trả lời sai", risk: "Thấp", status: "Có thể sử dụng", notes: "AI trả lời sai số tiền, đã kiểm tra bảng giá 2026" },
+        { id: "CS-001", addedAt: "09:30 hôm nay", addedBy: "Thu Trang", question: "Lệ phí thi TOEIC hiện tại là bao nhiêu?", correctAnswer: "Lệ phí thi TOEIC tại FLIC là 750.000 VNĐ/lần thi. Sinh viên có thẻ được giảm 10%.", topic: "TOEIC", source: "AI trả lời sai", risk: "Thấp", status: "Chờ xử lý", notes: "AI trả lời sai số tiền, đã kiểm tra bảng giá 2026" },
         { id: "CS-002", addedAt: "08:15 hôm nay", addedBy: "Thùy NT", question: "Thi xong VSTEP bao lâu có kết quả?", correctAnswer: "Kết quả thi VSTEP được trả trong vòng 30 ngày làm việc kể từ ngày thi.", topic: "VSTEP", source: "AI trả lời sai", risk: "Trung bình", status: "Chờ xử lý", notes: "AI nói 2 tháng nhưng thực tế là 30 ngày làm việc" },
-        { id: "CS-003", addedAt: "Hôm qua 16:40", addedBy: "Thu Trang", question: "Điểm TOEIC 600 có đủ chuẩn đầu ra không?", correctAnswer: "Điểm TOEIC 600 đạt chuẩn đầu ra cho hầu hết các ngành. Một số ngành đặc biệt yêu cầu 650+. Cần kiểm tra theo ngành học cụ thể.", topic: "Chuẩn đầu ra ngoại ngữ", source: "AI không chắc chắn", risk: "Cao", status: "Chờ quản lý xác nhận", notes: "Câu trả lời liên quan đến quy định trường — cần xác nhận chính thức" },
+        { id: "CS-003", addedAt: "Hôm qua 16:40", addedBy: "Thu Trang", question: "Điểm TOEIC 600 có đủ chuẩn đầu ra không?", correctAnswer: "Điểm TOEIC 600 đạt chuẩn đầu ra cho hầu hết các ngành. Một số ngành đặc biệt yêu cầu 650+. Cần kiểm tra theo ngành học cụ thể.", topic: "Chuẩn đầu ra ngoại ngữ", source: "AI không chắc chắn", risk: "Cao", status: "Chờ xử lý", notes: "Câu trả lời liên quan đến quy định trường — cần xác nhận chính thức" },
         { id: "CS-004", addedAt: "Hôm qua 14:00", addedBy: "Thùy NT", question: "Đăng ký thi CNTT nhóm trên 3 bạn thì thế nào?", correctAnswer: "Nhóm từ 3 người trở lên có thể đăng ký thi theo nhóm qua form online. Nhóm trưởng điền thông tin của tất cả thành viên.", topic: "CNTT Cơ bản", source: "Không tìm thấy dữ liệu", risk: "Thấp", status: "Đã duyệt", notes: "" },
         { id: "CS-005", addedAt: "28/05/2026", addedBy: "Thu Trang", question: "Lịch thi VSTEP tháng 6/2026 có chưa?", correctAnswer: "Lịch thi VSTEP tháng 6/2026 sẽ được công bố vào ngày 20/05/2026. Vui lòng theo dõi website chính thức của FLIC.", topic: "VSTEP", source: "AI không chắc chắn", risk: "Thấp", status: "Cần chỉnh sửa", notes: "Cần cập nhật ngày công bố chính xác hơn" },
         { id: "CS-006", addedAt: "27/05/2026", addedBy: "Thùy NT", question: "Hồ sơ đăng ký thi CNTT Nâng cao cần những gì?", correctAnswer: "Hồ sơ đăng ký thi CNTT Nâng cao gồm: CCCD/CMND bản sao, chứng chỉ CNTT Cơ bản (nếu có), phiếu đăng ký điền đầy đủ.", topic: "CNTT Nâng cao", source: "Câu hỏi lặp lại nhiều lần", risk: "Thấp", status: "Đã duyệt", notes: "" }
@@ -527,13 +533,13 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
     const newSheetRow = {
       id: `CS-${Date.now()}`,
       addedAt: "Vừa thêm",
-      addedBy: "Đề xuất tự động (AI)",
+      addedBy: currentUserName,
       question: question,
       correctAnswer: composeAnswer,
       topic: topicMapSheet[selectedGroupId!] || "TOEIC",
       source: sheetSource,
       risk: "Trung bình",
-      status: "Chờ quản lý xác nhận",
+      status: "Chờ xử lý",
       notes: "Thêm từ Phân tích Keywords"
     };
 

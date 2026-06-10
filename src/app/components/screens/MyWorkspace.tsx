@@ -28,7 +28,8 @@ const aiStatusColors: Record<string, { bg: string; color: string }> = {
 };
 
 export function MyWorkspace() {
-  const { role } = useAuth();
+  const { role, user } = useAuth();
+  const currentUserName = user?.name || user?.username || "Thu Trang";
   const [activeTask, setActiveTask] = useState(tasks[0]);
   const [replyText, setReplyText] = useState("");
   const [showSheetModal, setShowSheetModal] = useState(false);
@@ -269,7 +270,7 @@ export function MyWorkspace() {
             const newRow = {
               id: `CS-${Date.now()}`,
               addedAt: "Vừa thêm",
-              addedBy: "Thu Trang",
+              addedBy: currentUserName,
               ...data
             };
             currentRows.unshift(newRow);

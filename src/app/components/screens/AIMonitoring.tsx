@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Brain, Cpu, Zap, Activity, AlertOctagon, Check, X, Shield, Terminal, FileText, Flag, Send, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
 import { AddSheetModal } from "./SheetChatbot";
+import { useAuth } from "../../context/AuthContext";
 
 const DARK_BG = "#020617";
 const PANEL_BG = "#0f172a";
@@ -96,6 +97,8 @@ const aiStatusColor: Record<AIStatus, { color: string; bg: string }> = {
 };
 
 export function AIMonitoring() {
+  const { user } = useAuth();
+  const currentUserName = user?.name || user?.username || "Admin FLIC";
   const [activeAnomaly, setActiveAnomaly] = useState<AnomalyItem>(anomalies[0]);
   const [editedAnswer, setEditedAnswer] = useState<Record<string, string>>({});
   const [showSheetModal, setShowSheetModal] = useState(false);
@@ -354,7 +357,7 @@ export function AIMonitoring() {
             const newRow = {
               id: `CS-${Date.now()}`,
               addedAt: "Vừa thêm",
-              addedBy: "Đề xuất tự động (AI)",
+              addedBy: currentUserName,
               ...data
             };
             currentRows.unshift(newRow);
