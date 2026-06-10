@@ -66,6 +66,34 @@ const sourceTableData = [
 
 const COLORS = [NAVY, CTA, "rgba(0,59,185,0.6)", CTA_SOFT, "rgba(0,59,185,0.3)", ORANGE_200];
 
+function normalizeValue(value: string) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .trim();
+}
+
+function isChannelKey(key: string) {
+  const normalized = normalizeValue(key);
+  return ["zalooa", "zalobusiness", "facebook", "chatwidget"].includes(normalized);
+}
+
+function toTableRows(data: any) {
+  if (Array.isArray(data)) return data;
+  if (data && typeof data === "object") {
+    return Object.entries(data).map(([key, value]) => ({ name: key, value }));
+  }
+  return sourceTableData;
+}
+
+function formatCellValue(value: any) {
+  if (typeof value === "number") return value.toLocaleString("vi-VN");
+  if (value === null || value === undefined) return "";
+  return String(value);
+}
+
 function ChartRenderer({ type, data }: { type: string; data: typeof baseData }) {
   if (type === "donut" || type === "pie") {
     const pieData = data.map((d) => ({ name: d.name, value: d.hoidthoai }));
@@ -148,9 +176,10 @@ interface ChartCardProps {
   defaultChartType?: string;
   onOpenBuilder?: () => void;
   data?: any;
+  showToolbarActions?: boolean;
 }
 
-export function ChartCard({ title, children, useDefaultChart, defaultChartType = "bar", onOpenBuilder, data }: ChartCardProps) {
+export function ChartCard({ title, children, useDefaultChart, defaultChartType = "bar", onOpenBuilder, data, showToolbarActions = true }: ChartCardProps) {
   const [chartType, setChartType] = useState(defaultChartType);
   const [chartTitle, setChartTitle] = useState(title);
   const [isEdited, setIsEdited] = useState(false);
@@ -219,39 +248,78 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
     if (!rawValues || !Array.isArray(rawValues)) return rawValues;
     let processed = [...rawValues];
 
-    // 1. Filter by dateRange
-    if (filters.dateRange === "7 ngày qua") {
+    const hasDateField = processed.some(item => item && typeof item === "object" && "date" in item);
+
+    if (hasDateField && filters.dateRange === "7 ngày qua") {
       processed = processed.slice(-7);
-    } else if (filters.dateRange === "Hôm nay") {
+    } else if (hasDateField && filters.dateRange === "Hôm nay") {
       processed = processed.slice(-2);
     }
 
-    // 2. Scale values if filtered by channel or topic
-    let scale = 1.0;
     if (filters.channel !== "Tất cả") {
-      if (filters.channel.includes("Zalo OA")) scale *= 0.35;
-      else if (filters.channel.includes("Zalo Business")) scale *= 0.25;
-      else if (filters.channel.includes("Facebook")) scale *= 0.2;
-      else if (filters.channel.includes("Chat Widget")) scale *= 0.15;
-      else scale *= 0.05;
-    }
-    if (filters.topic !== "Tất cả") {
-      if (filters.topic.includes("TOEIC")) scale *= 0.3;
-      else if (filters.topic.includes("VSTEP")) scale *= 0.2;
-      else if (filters.topic.includes("Chuẩn đầu ra")) scale *= 0.25;
-      else if (filters.topic.includes("MOS/IC3")) scale *= 0.15;
-      else if (filters.topic.includes("Tin học")) scale *= 0.1;
-      else scale *= 0.05;
+      const target = normalizeValue(filters.channel);
+      const hasChannelField = processed.some(item => item && typeof item === "object" && "channel" in item);
+
+      if (hasChannelField) {
+        processed = processed.filter(item => normalizeValue(item.channel) === target);
+      } else {
+        processed = processed.map(item => {
+          if (!item || typeof item !== "object") return item;
+          const channelKeys = Object.keys(item).filter(isChannelKey);
+          if (!channelKeys.length) return item;
+
+          return Object.keys(item).reduce((acc: any, key) => {
+            if (key === "date" || key === "name") {
+              acc[key] = item[key];
+            } else if (normalizeValue(key) === target) {
+              acc[key] = item[key];
+            } else if (isChannelKey(key)) {
+              acc[key] = 0;
+            } else {
+              acc[key] = item[key];
+            }
+            return acc;
+          }, {});
+        });
+      }
     }
 
-    if (scale !== 1.0) {
-      processed = processed.map(item => {
-        const newItem = { ...item };
-        Object.keys(newItem).forEach(key => {
-          if (key !== "date" && key !== "name" && typeof newItem[key] === "number") {
-            newItem[key] = Math.round(newItem[key] * scale);
-          }
+    if (filters.topic !== "Tất cả") {
+      const target = normalizeValue(filters.topic);
+      const hasTopicField = processed.some(item => item && typeof item === "object" && "topic" in item);
+      if (hasTopicField) {
+        processed = processed.filter(item => normalizeValue(item.topic) === target);
+      }
+    }
+
+    if (filters.status !== "Tất cả") {
+      const target = filters.status;
+      const hasStatusField = processed.some(item => item && typeof item === "object" && "status" in item);
+      if (hasStatusField) {
+        processed = processed.filter(item => item.status === target);
+      } else {
+        processed = processed.map(item => {
+          if (!item || typeof item !== "object" || !(target in item)) return item;
+          return Object.keys(item).reduce((acc: any, key) => {
+            if (key === "channel" || key === "date" || key === "name") {
+              acc[key] = item[key];
+            } else if (["Chờ xử lý", "Đang xử lý", "Hoàn thành"].includes(key)) {
+              acc[key] = key === target ? item[key] : 0;
+            } else {
+              acc[key] = item[key];
+            }
+            return acc;
+          }, {});
         });
+      }
+    }
+
+    if (filters.aiStatus !== "Tất cả") {
+      processed = processed.map(item => {
+        if (!item || typeof item !== "object") return item;
+        const newItem = { ...item };
+        if (filters.aiStatus === "AI trả lời thành công" && "ai_fail" in newItem) newItem.ai_fail = 0;
+        if (filters.aiStatus === "AI trả lời thất bại" && "ai_ok" in newItem) newItem.ai_ok = 0;
         return newItem;
       });
     }
@@ -318,6 +386,10 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
   };
 
   const sentimentColors: Record<string, string> = { "Tích cực": "#228A61", "Trung lập": AMBER_TEXT, "Tiêu cực": RED_TEXT };
+  const tableRows = toTableRows(chartData);
+  const tableColumns = Array.from(
+    new Set(tableRows.flatMap((row: any) => row && typeof row === "object" ? Object.keys(row) : []))
+  );
 
   return (
     <div style={{ position: "relative" }}>
@@ -346,45 +418,46 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
               </span>
             )}
           </div>
-          <div style={{ display: "flex", gap: "4px", position: "relative" }} ref={popoverRef}>
-            {toolbarItems.map(({ icon: Icon, tooltip, active, onClick }, i) => (
-              <div key={i} style={{ position: "relative" }}>
-                <button
-                  onClick={onClick}
-                  title={tooltip}
-                  style={{
-                    width: "30px",
-                    height: "30px",
-                    borderRadius: "8px",
-                    border: active ? `1.5px solid ${ORANGE}` : "1.5px solid transparent",
-                    backgroundColor: active ? ORANGE_50 : "#f8fafc",
-                    color: active ? ORANGE : "rgba(0,59,185,0.5)",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    transition: "all 0.2s",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!active) {
-                      (e.currentTarget as HTMLButtonElement).style.backgroundColor = "#f0f4f8";
-                      (e.currentTarget as HTMLButtonElement).style.color = NAVY;
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!active) {
-                      (e.currentTarget as HTMLButtonElement).style.backgroundColor = "#f8fafc";
-                      (e.currentTarget as HTMLButtonElement).style.color = "rgba(0,59,185,0.5)";
-                    }
-                  }}
-                >
-                  <Icon size={14} />
-                </button>
-              </div>
-            ))}
+          {showToolbarActions && (
+            <div style={{ display: "flex", gap: "4px", position: "relative" }} ref={popoverRef}>
+              {toolbarItems.map(({ icon: Icon, tooltip, active, onClick }, i) => (
+                <div key={i} style={{ position: "relative" }}>
+                  <button
+                    onClick={onClick}
+                    title={tooltip}
+                    style={{
+                      width: "30px",
+                      height: "30px",
+                      borderRadius: "8px",
+                      border: active ? `1.5px solid ${ORANGE}` : "1.5px solid transparent",
+                      backgroundColor: active ? ORANGE_50 : "#f8fafc",
+                      color: active ? ORANGE : "rgba(0,59,185,0.5)",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      transition: "all 0.2s",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!active) {
+                        (e.currentTarget as HTMLButtonElement).style.backgroundColor = "#f0f4f8";
+                        (e.currentTarget as HTMLButtonElement).style.color = NAVY;
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!active) {
+                        (e.currentTarget as HTMLButtonElement).style.backgroundColor = "#f8fafc";
+                        (e.currentTarget as HTMLButtonElement).style.color = "rgba(0,59,185,0.5)";
+                      }
+                    }}
+                  >
+                    <Icon size={14} />
+                  </button>
+                </div>
+              ))}
 
-            {/* Chart Type Popover */}
-            {chartTypeOpen && (
+              {/* Chart Type Popover */}
+              {chartTypeOpen && (
               <div
                 style={{
                   position: "absolute",
@@ -432,8 +505,9 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
                   })}
                 </div>
               </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Chart Content */}
@@ -480,7 +554,7 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
                 { label: "Khoảng thời gian", key: "dateRange", options: ["30 ngày qua", "7 ngày qua", "Hôm nay", "Tháng này"] },
                 { label: "Kênh", key: "channel", options: channels },
                 { label: "Chủ đề", key: "topic", options: ["Tất cả", ...topics] },
-                { label: "Trạng thái hội thoại", key: "status", options: ["Tất cả", "Đang xử lý", "Hoàn thành", "Chờ quản lý xác nhận"] },
+                { label: "Trạng thái hội thoại", key: "status", options: ["Tất cả", "Chờ xử lý", "Đang xử lý", "Hoàn thành"] },
                 { label: "Trạng thái AI", key: "aiStatus", options: ["Tất cả", "AI trả lời thành công", "AI trả lời thất bại", "AI không chắc chắn"] },
               ].map(({ label, key, options }) => (
                 <div key={key}>
@@ -535,7 +609,7 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
             <div style={{ padding: "24px 28px", borderBottom: "1px solid rgba(0,59,185,0.08)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div>
                 <h3 style={{ color: NAVY, fontSize: "16px", fontWeight: 700, marginBottom: "2px" }}>Dữ liệu nguồn của biểu đồ</h3>
-                <p style={{ color: "rgba(0,59,185,0.5)", fontSize: "12px" }}>{sourceTableData.length} bản ghi</p>
+                <p style={{ color: "rgba(0,59,185,0.5)", fontSize: "12px" }}>{tableRows.length} bản ghi</p>
               </div>
               <div style={{ display: "flex", gap: "10px" }}>
                 <button onClick={() => { setDataModalOpen(false); onOpenBuilder?.(); }} style={{ padding: "8px 16px", borderRadius: "10px", border: `1.5px solid ${ORANGE}`, background: "#fff", cursor: "pointer", fontSize: "13px", color: ORANGE, fontWeight: 600 }}>
@@ -550,7 +624,7 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
                 <thead>
                   <tr style={{ backgroundColor: "#f8fafc" }}>
-                    {["Ngày", "Kênh", "Chủ đề", "Số HT", "AI trả lời thành công", "AI trả lời thất bại", "Cảm xúc", "Trạng thái"].map((h) => (
+                    {tableColumns.map((h) => (
                       <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontWeight: 600, color: "rgba(0,59,185,0.6)", fontSize: "11px", letterSpacing: "0.04em", borderBottom: "1px solid rgba(0,59,185,0.08)" }}>
                         {h}
                       </th>
@@ -558,29 +632,25 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
                   </tr>
                 </thead>
                 <tbody>
-                  {sourceTableData.map((row, i) => (
+                  {tableRows.map((row: any, i: number) => (
                     <tr key={i} style={{ borderBottom: "1px solid rgba(0,59,185,0.04)" }}
                       onMouseEnter={(e) => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "#f8fafc"}
                       onMouseLeave={(e) => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "transparent"}
                     >
-                      <td style={{ padding: "12px 16px", color: "rgba(0,59,185,0.6)" }}>{row.date}</td>
-                      <td style={{ padding: "12px 16px", color: NAVY, fontWeight: 500 }}>{row.channel}</td>
-                      <td style={{ padding: "12px 16px", color: NAVY }}>{row.topic}</td>
-                      <td style={{ padding: "12px 16px", color: NAVY, fontWeight: 600 }}>{row.count}</td>
-                      <td style={{ padding: "12px 16px", color: "#228A61", fontWeight: 600 }}>{row.ai_ok}</td>
-                      <td style={{ padding: "12px 16px", color: ORANGE, fontWeight: 600 }}>{row.ai_fail}</td>
-                      <td style={{ padding: "12px 16px" }}>
-                        <span style={{ padding: "3px 8px", borderRadius: "20px", fontSize: "11px", fontWeight: 600, backgroundColor: row.sentiment === "Tích cực" ? "#EAF8F1" : row.sentiment === "Tiêu cực" ? "#FFF1F1" : "#FFF7E6", color: sentimentColors[row.sentiment] }}>
-                          {row.sentiment}
-                        </span>
-                      </td>
-                      <td style={{ padding: "12px 16px" }}>
-                        <span style={{ padding: "3px 8px", borderRadius: "20px", fontSize: "11px", backgroundColor: row.status === "Đã xử lý" ? "#EAF8F1" : row.status === "Chờ quản lý xác nhận" ? "#FFF4EE" : "#dbeafe", color: row.status === "Đã xử lý" ? "#228A61" : row.status === "Chờ quản lý xác nhận" ? ORANGE : "#3b82f6", fontWeight: 500 }}>
-                          {row.status}
-                        </span>
-                      </td>
+                      {tableColumns.map((col) => (
+                        <td key={col} style={{ padding: "12px 16px", color: typeof row[col] === "number" ? NAVY : "rgba(0,59,185,0.68)", fontWeight: typeof row[col] === "number" ? 600 : 400 }}>
+                          {formatCellValue(row[col])}
+                        </td>
+                      ))}
                     </tr>
                   ))}
+                  {tableRows.length === 0 && (
+                    <tr>
+                      <td colSpan={Math.max(tableColumns.length, 1)} style={{ padding: "28px", textAlign: "center", color: "rgba(0,59,185,0.45)", fontSize: "13px" }}>
+                        Không có dữ liệu phù hợp với bộ lọc biểu đồ.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>

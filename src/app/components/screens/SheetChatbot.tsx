@@ -1,7 +1,15 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { Plus, Search, Filter, CheckCircle2, XCircle, Clock, AlertTriangle, Edit2, Check, X, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
+import {
+  createSheetChatbotRow,
+  getSheetChatbotRows,
+  mergeSheetChatbotToFaq,
+  updateSheetChatbotRow,
+  updateSheetChatbotStatus,
+  type SheetChatbotFaq,
+} from "../../services/sheetChatbotApi";
 
 const NAVY    = "#003865";
 const ORANGE  = "#D73C01";
@@ -11,9 +19,9 @@ const ORANGE_50 = "#FFF4EE";
 const AMBER_50  = "#FFF7E6";
 const AMBER_TEXT= "#B7791F";
 
-type SheetStatus = "Có thể sử dụng" | "Chờ xử lý" | "Chờ quản lý xác nhận" | "Đã duyệt" | "Cần chỉnh sửa" | "Bị từ chối";
+type SheetStatus = "Chờ xử lý" | "Đã duyệt" | "Cần chỉnh sửa" | "Từ chối";
 type RiskLevel = "Thấp" | "Trung bình" | "Cao";
-type SourceType = "AI trả lời sai" | "Không tìm thấy dữ liệu" | "AI không chắc chắn" | "Câu hỏi lặp lại nhiều lần" | "Nhân viên đề xuất";
+type SourceType = "AI trả lời sai" | "Không tìm thấy dữ liệu" | "AI không chắc chắn" | "Câu hỏi lặp lại nhiều lần" | "Nhân viên đề xuất" | (string & {});
 
 interface SheetRow {
   id: string;
@@ -32,21 +40,19 @@ const TOPICS = ["TOEIC", "VSTEP", "CNTT Cơ bản", "CNTT Nâng cao", "Chuẩn �
 const SOURCES: SourceType[] = ["AI trả lời sai", "Không tìm thấy dữ liệu", "AI không chắc chắn", "Câu hỏi lặp lại nhiều lần", "Nhân viên đề xuất"];
 
 const initialRows: SheetRow[] = [
-  { id: "CS-001", addedAt: "09:30 hôm nay", addedBy: "Thu Trang", question: "Lệ phí thi TOEIC hiện tại là bao nhiêu?", correctAnswer: "Lệ phí thi TOEIC tại FLIC là 750.000 VNĐ/lần thi. Sinh viên có thẻ được giảm 10%.", topic: "TOEIC", source: "AI trả lời sai", risk: "Thấp", status: "Có thể sử dụng", notes: "AI trả lời sai số tiền, đã kiểm tra bảng giá 2026" },
+  { id: "CS-001", addedAt: "09:30 hôm nay", addedBy: "Thu Trang", question: "Lệ phí thi TOEIC hiện tại là bao nhiêu?", correctAnswer: "Lệ phí thi TOEIC tại FLIC là 750.000 VNĐ/lần thi. Sinh viên có thẻ được giảm 10%.", topic: "TOEIC", source: "AI trả lời sai", risk: "Thấp", status: "Đã duyệt", notes: "AI trả lời sai số tiền, đã kiểm tra bảng giá 2026" },
   { id: "CS-002", addedAt: "08:15 hôm nay", addedBy: "Thùy NT", question: "Thi xong VSTEP bao lâu có kết quả?", correctAnswer: "Kết quả thi VSTEP được trả trong vòng 30 ngày làm việc kể từ ngày thi.", topic: "VSTEP", source: "AI trả lời sai", risk: "Trung bình", status: "Chờ xử lý", notes: "AI nói 2 tháng nhưng thực tế là 30 ngày làm việc" },
-  { id: "CS-003", addedAt: "Hôm qua 16:40", addedBy: "Thu Trang", question: "Điểm TOEIC 600 có đủ chuẩn đầu ra không?", correctAnswer: "Điểm TOEIC 600 đạt chuẩn đầu ra cho hầu hết các ngành. Một số ngành đặc biệt yêu cầu 650+. Cần kiểm tra theo ngành học cụ thể.", topic: "Chuẩn đầu ra ngoại ngữ", source: "AI không chắc chắn", risk: "Cao", status: "Chờ quản lý xác nhận", notes: "Câu trả lời liên quan đến quy định trường — cần xác nhận chính thức" },
+  { id: "CS-003", addedAt: "Hôm qua 16:40", addedBy: "Thu Trang", question: "Điểm TOEIC 600 có đủ chuẩn đầu ra không?", correctAnswer: "Điểm TOEIC 600 đạt chuẩn đầu ra cho hầu hết các ngành. Một số ngành đặc biệt yêu cầu 650+. Cần kiểm tra theo ngành học cụ thể.", topic: "Chuẩn đầu ra ngoại ngữ", source: "AI không chắc chắn", risk: "Cao", status: "Chờ xử lý", notes: "Câu trả lời liên quan đến quy định trường — cần xác nhận chính thức" },
   { id: "CS-004", addedAt: "Hôm qua 14:00", addedBy: "Thùy NT", question: "Đăng ký thi CNTT nhóm trên 3 bạn thì thế nào?", correctAnswer: "Nhóm từ 3 người trở lên có thể đăng ký thi theo nhóm qua form online. Nhóm trưởng điền thông tin của tất cả thành viên.", topic: "CNTT Cơ bản", source: "Không tìm thấy dữ liệu", risk: "Thấp", status: "Đã duyệt", notes: "" },
   { id: "CS-005", addedAt: "28/05/2026", addedBy: "Thu Trang", question: "Lịch thi VSTEP tháng 6/2026 có chưa?", correctAnswer: "Lịch thi VSTEP tháng 6/2026 sẽ được công bố vào ngày 20/05/2026. Vui lòng theo dõi website chính thức của FLIC.", topic: "VSTEP", source: "AI không chắc chắn", risk: "Thấp", status: "Cần chỉnh sửa", notes: "Cần cập nhật ngày công bố chính xác hơn" },
   { id: "CS-006", addedAt: "27/05/2026", addedBy: "Thùy NT", question: "Hồ sơ đăng ký thi CNTT Nâng cao cần những gì?", correctAnswer: "Hồ sơ đăng ký thi CNTT Nâng cao gồm: CCCD/CMND bản sao, chứng chỉ CNTT Cơ bản (nếu có), phiếu đăng ký điền đầy đủ.", topic: "CNTT Nâng cao", source: "Câu hỏi lặp lại nhiều lần", risk: "Thấp", status: "Đã duyệt", notes: "" },
 ];
 
 const statusConfig: Record<SheetStatus, { bg: string; color: string; icon: typeof CheckCircle2 }> = {
-  "Có thể sử dụng":     { bg: "#EAF8F1", color: "#16a34a", icon: CheckCircle2 },
-  "Chờ xử lý":          { bg: AMBER_50,  color: AMBER_TEXT, icon: Clock },
-  "Chờ quản lý xác nhận": { bg: ORANGE_50, color: ORANGE,     icon: AlertTriangle },
-  "Đã duyệt":           { bg: "#dbeafe", color: "#2563eb", icon: CheckCircle2 },
-  "Cần chỉnh sửa":       { bg: "#f3e8ff", color: "#7c3aed", icon: Edit2 },
-  "Bị từ chối":         { bg: "#f1f5f9", color: "#64748b", icon: XCircle },
+  "Chờ xử lý":     { bg: ORANGE_50, color: ORANGE, icon: Clock },
+  "Đã duyệt":      { bg: "#dbeafe", color: "#2563eb", icon: CheckCircle2 },
+  "Cần chỉnh sửa": { bg: "#f3e8ff", color: "#7c3aed", icon: Edit2 },
+  "Từ chối":       { bg: "#fee2e2", color: "#ef4444", icon: XCircle },
 };
 
 const riskConfig: Record<RiskLevel, { bg: string; color: string }> = {
@@ -56,9 +62,29 @@ const riskConfig: Record<RiskLevel, { bg: string; color: string }> = {
 };
 
 function statusFromRisk(risk: RiskLevel): SheetStatus {
-  if (risk === "Thấp") return "Có thể sử dụng";
-  if (risk === "Trung bình") return "Chờ xử lý";
-  return "Chờ quản lý xác nhận";
+  return "Chờ xử lý";
+}
+
+function formatAddedAt(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  const now = new Date();
+  const sameDay =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const isYesterday =
+    date.getFullYear() === yesterday.getFullYear() &&
+    date.getMonth() === yesterday.getMonth() &&
+    date.getDate() === yesterday.getDate();
+  const time = date.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+
+  if (sameDay) return `${time} hôm nay`;
+  if (isYesterday) return `Hôm qua ${time}`;
+  return date.toLocaleDateString("vi-VN");
 }
 
 interface DuplicateModalProps {
@@ -119,17 +145,18 @@ function DuplicateModal({ question, onAddNew, onMerge, onClose }: DuplicateModal
 interface AddSheetModalProps {
   prefillQuestion?: string;
   prefillAnswer?: string;
+  initialValues?: Partial<Omit<SheetRow, "id" | "addedAt" | "addedBy">>;
   onClose: () => void;
-  onSave?: (row: Omit<SheetRow, "id" | "addedAt" | "addedBy">) => void;
+  onSave?: (row: Omit<SheetRow, "id" | "addedAt" | "addedBy">) => void | Promise<void>;
 }
 
-export function AddSheetModal({ prefillQuestion = "", prefillAnswer = "", onClose, onSave }: AddSheetModalProps) {
-  const [question, setQuestion] = useState(prefillQuestion);
-  const [answer, setAnswer] = useState(prefillAnswer);
-  const [topic, setTopic] = useState(TOPICS[0]);
-  const [source, setSource] = useState<SourceType>(SOURCES[0]);
-  const [risk, setRisk] = useState<RiskLevel>("Thấp");
-  const [notes, setNotes] = useState("");
+export function AddSheetModal({ prefillQuestion = "", prefillAnswer = "", initialValues, onClose, onSave }: AddSheetModalProps) {
+  const [question, setQuestion] = useState(initialValues?.question ?? prefillQuestion);
+  const [answer, setAnswer] = useState(initialValues?.correctAnswer ?? prefillAnswer);
+  const [topic, setTopic] = useState(initialValues?.topic ?? TOPICS[0]);
+  const [source, setSource] = useState<SourceType>((initialValues?.source as SourceType) ?? SOURCES[0]);
+  const [risk, setRisk] = useState<RiskLevel>((initialValues?.risk as RiskLevel) ?? "Thấp");
+  const [notes, setNotes] = useState(initialValues?.notes ?? "");
   const [showDuplicate, setShowDuplicate] = useState(false);
 
   const handleSave = () => {
@@ -141,15 +168,19 @@ export function AddSheetModal({ prefillQuestion = "", prefillAnswer = "", onClos
     doSave();
   };
 
-  const doSave = () => {
+  const doSave = async () => {
     const status = statusFromRisk(risk);
-    onSave?.({ question, correctAnswer: answer, topic, source, risk, status, notes });
-    if (risk === "Cao") {
-      toast.success("Đã thêm vào Sheet Chatbot và chờ quản lý xác nhận");
-    } else {
-      toast.success("Đã thêm dữ liệu vào Sheet Chatbot");
+    try {
+      await onSave?.({ question, correctAnswer: answer, topic, source, risk, status, notes });
+      if (risk === "Cao") {
+        toast.success("Đã thêm vào Sheet Chatbot và chờ xử lý");
+      } else {
+        toast.success("Đã thêm dữ liệu vào Sheet Chatbot");
+      }
+      onClose();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không thể lưu dữ liệu vào Sheet Chatbot");
     }
-    onClose();
   };
 
   return (
@@ -157,7 +188,7 @@ export function AddSheetModal({ prefillQuestion = "", prefillAnswer = "", onClos
       <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 150, display: "flex", alignItems: "center", justifyContent: "center" }}>
         <div style={{ background: "#fff", borderRadius: "18px", width: "560px", maxHeight: "90vh", overflowY: "auto", padding: "28px", boxShadow: "0 16px 48px rgba(0,0,0,0.15)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
-            <h3 style={{ fontSize: "16px", fontWeight: 700, color: NAVY, margin: 0 }}>Thêm dữ liệu vào Sheet Chatbot</h3>
+            <h3 style={{ fontSize: "16px", fontWeight: 700, color: NAVY, margin: 0 }}>{initialValues ? "Chỉnh sửa dữ liệu thêm vào chatbot" : "Thêm dữ liệu vào Sheet Chatbot"}</h3>
             <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(0,56,101,0.4)" }}><X size={18} /></button>
           </div>
 
@@ -234,48 +265,44 @@ export function AddSheetModal({ prefillQuestion = "", prefillAnswer = "", onClos
 }
 
 export function SheetChatbot() {
-  const { role } = useAuth();
-  
-  // Load from localStorage or initialRows
-  const [rows, setRows] = useState<SheetRow[]>(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("flic_sheet_rows");
-      if (saved) {
-        try {
-          return JSON.parse(saved);
-        } catch (e) {
-          console.error("Failed parsing flic_sheet_rows", e);
-        }
-      }
-    }
-    return initialRows;
-  });
-
-  // Save to localStorage
-  useEffect(() => {
-    localStorage.setItem("flic_sheet_rows", JSON.stringify(rows));
-  }, [rows]);
-
-  // Sync rows periodically across tabs
-  useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === "flic_sheet_rows" && e.newValue) {
-        try {
-          setRows(JSON.parse(e.newValue));
-        } catch (err) {
-          console.error(err);
-        }
-      }
-    };
-    window.addEventListener("storage", handleStorageChange);
-    return () => window.removeEventListener("storage", handleStorageChange);
-  }, []);
+  const { role, user } = useAuth();
+  const currentUserName = role === "manager" ? "Admin FLIC" : user?.name || "Thu Trang";
+  const apiRole = role === "manager" ? "manager" : "staff";
+  const [rows, setRows] = useState<SheetRow[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [editingRow, setEditingRow] = useState<SheetRow | null>(null);
 
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("Tất cả");
   const [filterRisk, setFilterRisk] = useState("Tất cả");
   const [showAddModal, setShowAddModal] = useState(false);
 
+  const loadRows = useCallback(async () => {
+    setIsLoading(true);
+    setLoadError(null);
+
+    try {
+      const response = await getSheetChatbotRows({
+        page: 1,
+        pageSize: 500,
+        role: apiRole,
+        addedBy: apiRole === "manager" ? undefined : currentUserName,
+      });
+      setRows(response.data);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Không thể tải dữ liệu Sheet Chatbot";
+      setLoadError(message);
+      setRows([]);
+      toast.error(message);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [apiRole, currentUserName]);
+
+  useEffect(() => {
+    loadRows();
+  }, [loadRows]);
 
   const filtered = rows.filter(r => {
     const matchSearch = r.question.toLowerCase().includes(search.toLowerCase()) ||
@@ -283,75 +310,99 @@ export function SheetChatbot() {
       r.addedBy.toLowerCase().includes(search.toLowerCase());
     const matchStatus = filterStatus === "Tất cả" || r.status === filterStatus;
     const matchRisk = filterRisk === "Tất cả" || r.risk === filterRisk;
-    const matchRole = role === "manager" ? true : r.addedBy === "Thu Trang";
+    const matchRole = role === "manager" ? true : r.addedBy === currentUserName;
     return matchSearch && matchStatus && matchRisk && matchRole;
   });
 
-  const handleAddRow = (data: Omit<SheetRow, "id" | "addedAt" | "addedBy">) => {
-    const newRow: SheetRow = {
-      id: `CS-${String(rows.length + 1).padStart(3, "0")}`,
-      addedAt: "Vừa thêm",
-      addedBy: role === "manager" ? "Admin FLIC" : "Thu Trang",
+  const handleAddRow = async (data: Omit<SheetRow, "id" | "addedAt" | "addedBy">) => {
+    if (editingRow) {
+      const updated = await updateSheetChatbotRow(editingRow.id, data);
+      setRows(prev => prev.map(row => row.id === updated.id ? updated : row));
+      setEditingRow(null);
+      return;
+    }
+
+    const created = await createSheetChatbotRow({
       ...data,
-    };
-    setRows(prev => [newRow, ...prev]);
-  };
-
-  const updateStatus = (id: string, status: SheetStatus) => {
-    setRows(prev => {
-      const updatedRows = prev.map(r => r.id === id ? { ...r, status } : r);
-      if (status === "Đã duyệt") {
-        const approvedRow = updatedRows.find(r => r.id === id);
-        if (approvedRow) {
-          let currentFaqs = [];
-          const saved = localStorage.getItem("flic_faqs");
-          if (saved) {
-            try {
-              currentFaqs = JSON.parse(saved);
-            } catch (e) {
-              console.error(e);
-            }
-          }
-          let faqTopic = approvedRow.topic;
-          if (faqTopic === "Chuẩn đầu ra ngoại ngữ") faqTopic = "Chuẩn đầu ra";
-          if (faqTopic === "CNTT Cơ bản" || faqTopic === "CNTT Nâng cao" || faqTopic === "MOS/IC3") faqTopic = "MOS";
-
-          const exists = currentFaqs.some((f: any) => f.question.toLowerCase() === approvedRow.question.toLowerCase());
-          if (!exists) {
-            const newFaq = {
-              id: `FAQ-${Date.now()}`,
-              question: approvedRow.question,
-              answer: approvedRow.correctAnswer,
-              topic: faqTopic,
-              proposer: approvedRow.addedBy,
-              source: approvedRow.source,
-              status: "Đã duyệt",
-              riskLevel: approvedRow.risk,
-              date: new Date().toISOString().split('T')[0],
-              notes: approvedRow.notes || "Duyệt từ Sheet Chatbot"
-            };
-            currentFaqs.unshift(newFaq);
-            localStorage.setItem("flic_faqs", JSON.stringify(currentFaqs));
-            window.dispatchEvent(new Event("storage"));
-          }
-        }
-      }
-      return updatedRows;
+      addedBy: currentUserName,
     });
-    toast.success("Đã cập nhật trạng thái dữ liệu chatbot");
+    setRows(prev => [created, ...prev]);
   };
 
-  const statuses: SheetStatus[] = ["Có thể sử dụng", "Chờ xử lý", "Chờ quản lý xác nhận", "Đã duyệt", "Cần chỉnh sửa", "Bị từ chối"];
+  const syncFaqStorage = (faq: SheetChatbotFaq) => {
+    let currentFaqs: any[] = [];
+    const saved = localStorage.getItem("flic_faqs");
+    if (saved) {
+      try {
+        currentFaqs = JSON.parse(saved);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    const exists = currentFaqs.some((f: any) => f.question.toLowerCase() === faq.question.toLowerCase());
+    if (exists) return false;
+
+    const nextFaqs = [faq, ...currentFaqs];
+    const nextValue = JSON.stringify(nextFaqs);
+    localStorage.setItem("flic_faqs", nextValue);
+    try {
+      window.dispatchEvent(new StorageEvent("storage", { key: "flic_faqs", newValue: nextValue }));
+    } catch {
+      window.dispatchEvent(new Event("storage"));
+    }
+    return true;
+  };
+
+  const updateStatus = async (id: string, status: SheetStatus) => {
+    try {
+      if (status === "Đã duyệt") {
+        const faq = await mergeSheetChatbotToFaq(id, currentUserName);
+        syncFaqStorage(faq);
+        await loadRows();
+        toast.success("Đã cập nhật trạng thái dữ liệu chatbot");
+        return;
+      }
+
+      const updated = await updateSheetChatbotStatus(id, status, currentUserName);
+      setRows(prev => prev.map(row => row.id === updated.id ? updated : row));
+      toast.success("Đã cập nhật trạng thái dữ liệu chatbot");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không thể cập nhật trạng thái dữ liệu chatbot");
+    }
+  };
+
+  const handleMergeFaq = async (id: string) => {
+    try {
+      const faq = await mergeSheetChatbotToFaq(id, currentUserName);
+      const added = syncFaqStorage(faq);
+      await loadRows();
+      if (added) {
+        toast.success("Đã gộp vào danh sách FAQ thành công!");
+      } else {
+        toast.info("FAQ này đã tồn tại trong danh sách FAQ!");
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không thể gộp FAQ");
+    }
+  };
+
+  const closeSheetModal = () => {
+    setShowAddModal(false);
+    setEditingRow(null);
+  };
+
+  const statuses: SheetStatus[] = ["Chờ xử lý", "Đã duyệt", "Cần chỉnh sửa", "Từ chối"];
 
   const kpiCounts = {
     total: filtered.length,
-    pending: rows.filter(r => r.status === "Chờ quản lý xác nhận").length,
+    pending: rows.filter(r => r.status === "Chờ xử lý").length,
     approved: rows.filter(r => r.status === "Đã duyệt").length,
-    usable: rows.filter(r => r.status === "Có thể sử dụng").length,
+    rejected: rows.filter(r => r.status === "Từ chối").length,
   };
 
   return (
-    <div style={{ padding: "24px", height: "100%", display: "flex", flexDirection: "column", gap: "20px" }}>
+    <div style={{ padding: "24px", height: "100%", minHeight: 0, display: "flex", flexDirection: "column", gap: "20px", overflow: "hidden" }}>
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
@@ -363,7 +414,7 @@ export function SheetChatbot() {
           </p>
         </div>
         <button
-          onClick={() => setShowAddModal(true)}
+          onClick={() => { setEditingRow(null); setShowAddModal(true); }}
           style={{ padding: "9px 18px", borderRadius: "10px", backgroundColor: NAVY, color: "#fff", border: "none", display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontWeight: 600, fontSize: "13px" }}
         >
           <Plus size={15} /> Thêm vào Sheet Chatbot
@@ -374,9 +425,9 @@ export function SheetChatbot() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "12px" }}>
         {[
           { label: "Tổng dữ liệu", value: rows.length, color: NAVY },
-          { label: "Chờ quản lý xác nhận", value: kpiCounts.pending, color: ORANGE, warning: true },
+          { label: "Chờ xử lý", value: kpiCounts.pending, color: ORANGE, warning: true },
           { label: "Đã duyệt", value: kpiCounts.approved, color: "#2563eb" },
-          { label: "Có thể sử dụng", value: kpiCounts.usable, color: "#16a34a" },
+          { label: "Từ chối", value: kpiCounts.rejected, color: "#ef4444" },
         ].map(kpi => (
           <div key={kpi.label} style={{ backgroundColor: "#fff", borderRadius: "14px", padding: "18px 20px", border: kpi.warning ? `1px solid ${ORANGE}25` : "1px solid rgba(0,62,154,0.07)", borderLeft: kpi.warning ? `4px solid ${ORANGE}` : `4px solid ${kpi.color}`, boxShadow: "0 2px 8px rgba(0,62,154,0.05)" }}>
             <div style={{ fontSize: "24px", fontWeight: 700, color: kpi.color, marginBottom: "4px" }}>{kpi.value}</div>
@@ -404,34 +455,34 @@ export function SheetChatbot() {
       </div>
 
       {/* Table */}
-      <div style={{ backgroundColor: "#fff", borderRadius: "16px", border: "1px solid rgba(0,62,154,0.07)", overflow: "hidden", flex: 1 }}>
-        <div style={{ overflowX: "auto" }}>
+      <div style={{ backgroundColor: "#fff", borderRadius: "16px", border: "1px solid rgba(0,62,154,0.07)", overflow: "hidden", flex: 1, minHeight: 0 }}>
+        <div style={{ overflow: "auto", height: "100%" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
             <thead>
               <tr style={{ backgroundColor: "#f8fafc" }}>
                 {["Thời gian thêm", "Người thêm", "Câu hỏi", "Câu trả lời đúng", "Chủ đề", "Nguồn", "Mức rủi ro", "Trạng thái", "Hành động"].map(h => (
-                  <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontWeight: 600, color: "rgba(0,62,154,0.5)", fontSize: "11px", letterSpacing: "0.04em", borderBottom: "1px solid rgba(0,62,154,0.07)", whiteSpace: "nowrap" }}>{h}</th>
+                  <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontWeight: 600, color: "rgba(0,62,154,0.5)", fontSize: "11px", letterSpacing: "0.04em", borderBottom: "1px solid rgba(0,62,154,0.07)", whiteSpace: "nowrap", position: "sticky", top: 0, zIndex: 1, backgroundColor: "#f8fafc" }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 && (
+              {(isLoading || loadError || filtered.length === 0) && (
                 <tr>
                   <td colSpan={9} style={{ padding: "40px", textAlign: "center", color: "rgba(0,62,154,0.4)", fontSize: "13px" }}>
-                    Không có dữ liệu phù hợp
+                    {isLoading ? "Đang tải dữ liệu..." : loadError || "Không có dữ liệu phù hợp"}
                   </td>
                 </tr>
               )}
-              {filtered.map(row => {
-                const sc = statusConfig[row.status];
-                const rc = riskConfig[row.risk];
+              {!isLoading && !loadError && filtered.map(row => {
+                const sc = statusConfig[row.status] || { bg: "#f1f5f9", color: "#64748b", icon: Clock };
+                const rc = riskConfig[row.risk] || riskConfig["Thấp"];
                 const StatusIcon = sc.icon;
                 return (
                   <tr key={row.id} style={{ borderBottom: "1px solid rgba(0,62,154,0.04)" }}
                     onMouseEnter={e => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "#f8fafc"}
                     onMouseLeave={e => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "transparent"}
                   >
-                    <td style={{ padding: "12px 14px", color: "rgba(0,62,154,0.55)", whiteSpace: "nowrap" }}>{row.addedAt}</td>
+                    <td style={{ padding: "12px 14px", color: "rgba(0,62,154,0.55)", whiteSpace: "nowrap" }}>{formatAddedAt(row.addedAt)}</td>
                     <td style={{ padding: "12px 14px", color: NAVY, fontWeight: 600, whiteSpace: "nowrap" }}>{row.addedBy}</td>
                     <td style={{ padding: "12px 14px", maxWidth: "200px" }}>
                       <div style={{ color: NAVY, fontWeight: 500, lineHeight: 1.4, fontSize: "12px" }}>{row.question}</div>
@@ -456,49 +507,14 @@ export function SheetChatbot() {
                     <td style={{ padding: "12px 14px" }}>
                       {role === "manager" ? (
                         <div style={{ display: "flex", gap: "5px", flexWrap: "wrap" }}>
-                          {row.status === "Chờ quản lý xác nhận" || row.status === "Chờ xử lý" ? (
+                          {row.status === "Chờ quản lý xác nhận" || row.status === "Chờ xử lý" || row.status === "Cần chỉnh sửa" ? (
                             <>
                               <button onClick={() => updateStatus(row.id, "Đã duyệt")} style={{ padding: "3px 9px", borderRadius: "6px", border: "1px solid #bbf7d0", background: "#f0fdf4", color: "#16a34a", cursor: "pointer", fontSize: "10px", fontWeight: 600 }}>Duyệt</button>
-                              <button onClick={() => updateStatus(row.id, "Cần chỉnh sửa")} style={{ padding: "3px 9px", borderRadius: "6px", border: "1px solid #e9d5ff", background: "#faf5ff", color: "#7c3aed", cursor: "pointer", fontSize: "10px", fontWeight: 600 }}>Chỉnh sửa</button>
+                              <button onClick={() => { setEditingRow(row); setShowAddModal(true); }} style={{ padding: "3px 9px", borderRadius: "6px", border: "1px solid #e9d5ff", background: "#faf5ff", color: "#7c3aed", cursor: "pointer", fontSize: "10px", fontWeight: 600 }}>Chỉnh sửa</button>
                               <button onClick={() => updateStatus(row.id, "Bị từ chối")} style={{ padding: "3px 9px", borderRadius: "6px", border: "1px solid rgba(0,62,154,0.12)", background: "#f8fafc", color: "#64748b", cursor: "pointer", fontSize: "10px", fontWeight: 600 }}>Từ chối</button>
                             </>
                           ) : row.status === "Đã duyệt" ? (
-                            <button onClick={() => {
-                              let currentFaqs = [];
-                              const saved = localStorage.getItem("flic_faqs");
-                              if (saved) {
-                                try {
-                                  currentFaqs = JSON.parse(saved);
-                                } catch (e) {
-                                  console.error(e);
-                                }
-                              }
-                              let faqTopic = row.topic;
-                              if (faqTopic === "Chuẩn đầu ra ngoại ngữ") faqTopic = "Chuẩn đầu ra";
-                              if (faqTopic === "CNTT Cơ bản" || faqTopic === "CNTT Nâng cao" || faqTopic === "MOS/IC3") faqTopic = "MOS";
-
-                              const exists = currentFaqs.some((f: any) => f.question.toLowerCase() === row.question.toLowerCase());
-                              if (exists) {
-                                toast.info("FAQ này đã tồn tại trong danh sách FAQ!");
-                              } else {
-                                const newFaq = {
-                                  id: `FAQ-${Date.now()}`,
-                                  question: row.question,
-                                  answer: row.correctAnswer,
-                                  topic: faqTopic,
-                                  proposer: row.addedBy,
-                                  source: row.source,
-                                  status: "Đã duyệt",
-                                  riskLevel: row.risk,
-                                  date: new Date().toISOString().split('T')[0],
-                                  notes: row.notes || "Gộp từ Sheet Chatbot"
-                                };
-                                currentFaqs.unshift(newFaq);
-                                localStorage.setItem("flic_faqs", JSON.stringify(currentFaqs));
-                                window.dispatchEvent(new Event("storage"));
-                                toast.success("Đã gộp vào danh sách FAQ thành công!");
-                              }
-                            }} style={{ padding: "3px 9px", borderRadius: "6px", border: `1px solid ${NAVY}20`, background: "#f8fafc", color: NAVY, cursor: "pointer", fontSize: "10px", fontWeight: 600 }}>Gộp FAQ</button>
+                            <button onClick={() => handleMergeFaq(row.id)} style={{ padding: "3px 9px", borderRadius: "6px", border: `1px solid ${NAVY}20`, background: "#f8fafc", color: NAVY, cursor: "pointer", fontSize: "10px", fontWeight: 600 }}>Gộp FAQ</button>
                           ) : (
                             <span style={{ fontSize: "11px", color: "rgba(0,62,154,0.4)" }}>—</span>
                           )}
@@ -506,7 +522,7 @@ export function SheetChatbot() {
                       ) : (
                         <div>
                           {row.status === "Cần chỉnh sửa" ? (
-                            <button onClick={() => setShowAddModal(true)} style={{ padding: "3px 9px", borderRadius: "6px", border: `1px solid #e9d5ff`, background: "#faf5ff", color: "#7c3aed", cursor: "pointer", fontSize: "10px", fontWeight: 600 }}>Chỉnh sửa</button>
+                            <button onClick={() => { setEditingRow(row); setShowAddModal(true); }} style={{ padding: "3px 9px", borderRadius: "6px", border: `1px solid #e9d5ff`, background: "#faf5ff", color: "#7c3aed", cursor: "pointer", fontSize: "10px", fontWeight: 600 }}>Chỉnh sửa</button>
                           ) : (
                             <span style={{ fontSize: "11px", color: "rgba(0,62,154,0.4)" }}>{row.status}</span>
                           )}
@@ -523,7 +539,16 @@ export function SheetChatbot() {
 
       {showAddModal && (
         <AddSheetModal
-          onClose={() => setShowAddModal(false)}
+          initialValues={editingRow ? {
+            question: editingRow.question,
+            correctAnswer: editingRow.correctAnswer,
+            topic: editingRow.topic,
+            source: editingRow.source,
+            risk: editingRow.risk,
+            status: editingRow.status,
+            notes: editingRow.notes,
+          } : undefined}
+          onClose={closeSheetModal}
           onSave={handleAddRow}
         />
       )}

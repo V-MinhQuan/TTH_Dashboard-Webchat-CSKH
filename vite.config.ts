@@ -31,4 +31,19 @@ export default defineConfig({
   },
 
   assetsInclude: ['**/*.svg', '**/*.csv'],
+
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined
+          if (id.includes('recharts') || id.includes('d3-')) return 'charts'
+          if (id.includes('html2canvas') || id.includes('jspdf') || id.includes('dompurify')) return 'pdf'
+          if (id.includes('@radix-ui')) return 'radix-ui'
+          if (id.includes('lucide-react')) return 'icons'
+          return 'vendor'
+        },
+      },
+    },
+  },
 })

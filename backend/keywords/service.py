@@ -339,14 +339,25 @@ class KeywordService:
         ) if active_words else {}
 
         previous_start, previous_end = get_previous_period(start_date, end_date)
-        previous_count_map = keyword_repository.batch_count_keyword_occurrences(
-            active_words,
-            start_date=previous_start,
-            end_date=previous_end,
+        period_words_map = {}
+        for group_id in ORDERED_GROUP_IDS:
+            group_keywords = [k for k in group_map.get(group_id, []) if k.get("status") == "active"]
+            group_words = [kw["word"] for kw in group_keywords]
+            if topic:
+                group_only_match = matches_group_topic(topic, {"id": group_id, "keywords": []})
+                if not group_only_match:
+                    group_words = [word for word in group_words if matches_topic_filter(topic, word)]
+            if group_words:
+                period_words_map[group_id] = group_words
+
+        previous_totals = keyword_repository.batch_count_groups(
+            period_words_map,
+            previous_start,
+            previous_end,
             channel=channel,
             conversation_status=conversation_status,
             ai_status=ai_status,
-        ) if active_words else {}
+        ) if period_words_map else {}
 
         results = []
         for group_id in ORDERED_GROUP_IDS:
@@ -359,14 +370,18 @@ class KeywordService:
             ]
 
             if topic:
-                filtered_keywords = [kw for kw in keywords_with_count if matches_topic_filter(topic, kw["word"])]
+                group_only_match = matches_group_topic(topic, {"id": group_id, "keywords": []})
+                if group_only_match:
+                    filtered_keywords = keywords_with_count
+                else:
+                    filtered_keywords = [kw for kw in keywords_with_count if matches_topic_filter(topic, kw["word"])]
             else:
                 filtered_keywords = keywords_with_count
 
             sorted_keywords = sorted(filtered_keywords, key=lambda x: x["count"], reverse=True)
             top_keywords = sorted_keywords[:top_n]
             total_questions = sum(kw["count"] for kw in filtered_keywords)
-            previous_total = sum(previous_count_map.get(kw["word"], 0) for kw in filtered_keywords)
+            previous_total = previous_totals.get(group_id, 0)
 
             change_rate = 0
             if previous_total > 0:
@@ -427,6 +442,7 @@ class KeywordService:
             group_map[gid].append(kw["word"])
 
         trend_by_key = seed_trend_buckets(start_date, end_date, granularity)
+        trend_words_map = {}
         for group_id in ORDERED_GROUP_IDS:
             words = group_map.get(group_id, [])
             if not words:
@@ -439,23 +455,27 @@ class KeywordService:
                 if not words:
                     continue
 
-            rows = keyword_repository.get_monthly_counts_for_words(
-                words,
-                months,
-                channel,
-                start_date=start_date,
-                end_date=end_date,
-                conversation_status=conversation_status,
-                ai_status=ai_status,
-                granularity=granularity,
-            )
-            for row in rows:
-                key = row.get("bucket_key")
-                if not key:
-                    key = f"{row['yr']}-{str(row['mo']).zfill(2)}"
-                if key not in trend_by_key:
-                    trend_by_key[key] = {"date": format_trend_label(key, granularity)}
-                trend_by_key[key][group_id] = row["cnt"]
+            trend_words_map[group_id] = words
+
+        rows = keyword_repository.get_trend_counts_for_groups(
+            trend_words_map,
+            months,
+            channel,
+            start_date=start_date,
+            end_date=end_date,
+            conversation_status=conversation_status,
+            ai_status=ai_status,
+            granularity=granularity,
+        )
+        for row in rows:
+            key = row.get("bucket_key")
+            if not key:
+                key = f"{row['yr']}-{str(row['mo']).zfill(2)}"
+            if key not in trend_by_key:
+                trend_by_key[key] = {"date": format_trend_label(key, granularity)}
+            for group_id in ORDERED_GROUP_IDS:
+                if group_id in trend_words_map:
+                    trend_by_key[key][group_id] = row.get(group_id, 0) or 0
 
         sorted_keys = sorted(trend_by_key.keys())
         trends = []
@@ -510,7 +530,6 @@ class KeywordService:
 
         cross_words = [ck["word"] for ck in CROSS_KEYWORDS]
 
-        # 1 query thay vì 4 × 5 = 20 queries
         group_words_map = {}
         for gid in ORDERED_GROUP_IDS:
             words = group_map.get(gid, [])

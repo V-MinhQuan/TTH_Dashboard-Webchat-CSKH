@@ -9,7 +9,8 @@ from fastapi.testclient import TestClient
 sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from backend.services.conversation_cleaner import conversation_cleaner_service
-from backend.services.dashboard_service import DashboardService, hash_str, classify_topic
+from backend.services.dashboard_service import DashboardService, hash_str, classify_topic, clear_dashboard_cache
+from backend.repositories.conversation_repository import ConversationRepository
 from backend.main import app
 
 client = TestClient(app)
@@ -72,50 +73,37 @@ def test_cleaner_normalizes_source():
 # 2. Tests for Dashboard Service
 # ==========================================
 
-@patch('backend.repositories.conversation_repository.ConversationRepository.get_conversations')
+@patch('backend.repositories.conversation_repository.ConversationRepository.get_conversation_summary')
 @patch('backend.repositories.conversation_repository.ConversationRepository.get_message_counts')
 @patch('backend.repositories.conversation_repository.ConversationRepository.get_ai_failures_count')
 @patch('backend.repositories.conversation_repository.ConversationRepository.get_trends')
 @patch('backend.repositories.conversation_repository.ConversationRepository.get_urgent_alerts_data')
 @patch('backend.repositories.conversation_repository.ConversationRepository.get_top_questions_data')
-@patch('backend.repositories.conversation_repository.ConversationRepository.get_ai_grouped_stats')
-@patch('backend.repositories.conversation_repository.ConversationRepository.get_message_texts')
+@patch('backend.repositories.conversation_repository.ConversationRepository.get_priority_conversations_data')
+@patch('backend.repositories.conversation_repository.ConversationRepository.get_daily_conversation_summary')
+@patch('backend.repositories.conversation_repository.ConversationRepository.get_ai_daily_stats')
 def test_dashboard_service_computes_correct_kpis(
-    mock_msg_texts, mock_ai_grouped, mock_top_q, mock_alerts, mock_trends, mock_ai_fail, mock_counts, mock_convs
+    mock_ai_daily, mock_daily, mock_priority, mock_top_q, mock_alerts, mock_trends, mock_ai_fail, mock_counts, mock_summary
 ):
-    # Setup mocks
-    mock_convs.return_value = [
-        {
-            "id": 1,
-            "customer_id": "C1",
-            "customer_name": "Nguyen Van A",
-            "status": "mới",
-            "source": "facebook",
-            "created_at": datetime(2026, 6, 1, 8, 0),
-            "first_response_at": datetime(2026, 6, 1, 8, 10),  # 10 mins response
-            "updated_at": datetime(2026, 6, 1, 8, 15)
+    clear_dashboard_cache()
+    mock_summary.return_value = {
+        "totalConversations": 3,
+        "newCustomers": 2,
+        "statusSummary": {
+            "new": 1,
+            "open": 1,
+            "pending": 0,
+            "closed": 1,
+            "unknown": 0
         },
-        {
-            "id": 2,
-            "customer_id": "C2",
-            "customer_name": "Le Thi B",
-            "status": "đang xử lý",
-            "source": "zalooa",
-            "created_at": datetime(2026, 6, 1, 8, 30),
-            "first_response_at": datetime(2026, 6, 1, 8, 50),  # 20 mins response
-            "updated_at": datetime(2026, 6, 1, 8, 55)
+        "sourceSummary": {
+            "Facebook": 1,
+            "ZaloOA": 1,
+            "ZaloBusiness": 0,
+            "ChatWidget": 1
         },
-        {
-            "id": 3,
-            "customer_id": "C1",  # duplicate customer
-            "customer_name": "Nguyen Van A",
-            "status": "closed",
-            "source": "chatwidget",
-            "created_at": datetime(2026, 6, 1, 9, 0),
-            "first_response_at": None,
-            "updated_at": datetime(2026, 6, 1, 9, 5)
-        }
-    ]
+        "averageResponseTimeMinutes": 15
+    }
     mock_counts.return_value = []
     mock_ai_fail.return_value = 0
     mock_trends.return_value = {
@@ -127,8 +115,9 @@ def test_dashboard_service_computes_correct_kpis(
     }
     mock_alerts.return_value = []
     mock_top_q.return_value = []
-    mock_ai_grouped.return_value = []
-    mock_msg_texts.return_value = []
+    mock_priority.return_value = []
+    mock_daily.return_value = []
+    mock_ai_daily.return_value = []
 
     service = DashboardService()
     kpi = service.get_kpis("2026-06-01", "2026-06-30")
@@ -217,37 +206,40 @@ def test_api_close_conversation_missing_params():
     assert response.json()["success"] is False
     assert "Thiếu" in response.json()["message"]
 
-@patch('backend.repositories.conversation_repository.ConversationRepository.get_conversations')
+@patch('backend.repositories.conversation_repository.ConversationRepository.get_conversation_summary')
 @patch('backend.repositories.conversation_repository.ConversationRepository.get_message_counts')
 @patch('backend.repositories.conversation_repository.ConversationRepository.get_ai_failures_count')
 @patch('backend.repositories.conversation_repository.ConversationRepository.get_trends')
 @patch('backend.repositories.conversation_repository.ConversationRepository.get_urgent_alerts_data')
 @patch('backend.repositories.conversation_repository.ConversationRepository.get_top_questions_data')
-@patch('backend.repositories.conversation_repository.ConversationRepository.get_ai_grouped_stats')
-@patch('backend.repositories.conversation_repository.ConversationRepository.get_message_texts')
+@patch('backend.repositories.conversation_repository.ConversationRepository.get_priority_conversations_data')
+@patch('backend.repositories.conversation_repository.ConversationRepository.get_daily_conversation_summary')
+@patch('backend.repositories.conversation_repository.ConversationRepository.get_ai_daily_stats')
 def test_dashboard_service_priority_conversations_mapping(
-    mock_msg_texts, mock_ai_grouped, mock_top_q, mock_alerts, mock_trends, mock_ai_fail, mock_counts, mock_convs
+    mock_ai_daily, mock_daily, mock_priority, mock_top_q, mock_alerts, mock_trends, mock_ai_fail, mock_counts, mock_summary
 ):
-    mock_convs.return_value = [
+    clear_dashboard_cache()
+    mock_summary.return_value = {
+        "totalConversations": 2,
+        "newCustomers": 2,
+        "statusSummary": {"new": 0, "open": 1, "pending": 1, "closed": 0, "unknown": 0},
+        "sourceSummary": {"ZaloOA": 1, "ZaloBusiness": 0, "Facebook": 1, "ChatWidget": 0},
+        "averageResponseTimeMinutes": 10,
+    }
+    mock_priority.return_value = [
         {
             "id": 1,
             "customer_id": "C1",
-            "customer_name": "Nguyen Van A",
             "status": "pending",
             "source": "facebook",
-            "created_at": datetime(2026, 6, 1, 8, 0),
-            "first_response_at": None,
-            "updated_at": datetime(2026, 6, 1, 8, 15)
+            "wait_mins": 30,
         },
         {
             "id": 2,
             "customer_id": "C2",
-            "customer_name": "Le Thi B",
             "status": "open",
             "source": "zalooa",
-            "created_at": datetime(2026, 6, 1, 8, 30),
-            "first_response_at": datetime(2026, 6, 1, 8, 50),
-            "updated_at": datetime(2026, 6, 1, 8, 55)
+            "wait_mins": 90,
         }
     ]
     mock_counts.return_value = []
@@ -261,8 +253,8 @@ def test_dashboard_service_priority_conversations_mapping(
     }
     mock_alerts.return_value = []
     mock_top_q.return_value = []
-    mock_ai_grouped.return_value = []
-    mock_msg_texts.return_value = []
+    mock_daily.return_value = []
+    mock_ai_daily.return_value = []
 
     service = DashboardService()
     kpi = service.get_kpis()
@@ -278,3 +270,85 @@ def test_dashboard_service_priority_conversations_mapping(
     c2 = next(c for c in priority_convs if c["customerId"] == "C2")
     assert c2["status"] == "Đang xử lý"
 
+@patch('backend.repositories.conversation_repository.ConversationRepository.get_channel_conversation_stats')
+@patch('backend.repositories.conversation_repository.ConversationRepository.get_channel_ai_summary')
+@patch('backend.repositories.conversation_repository.ConversationRepository.get_channel_topic_stats')
+def test_dashboard_service_channel_analytics_uses_filters_and_ai_stats(
+    mock_topic_stats, mock_ai_summary, mock_channel_stats
+):
+    clear_dashboard_cache()
+    mock_channel_stats.return_value = [
+        {"source": "facebook", "date_str": "2026-06-01", "status": "pending", "total": 1, "avg_response_minutes": 5},
+        {"source": "facebook", "date_str": "2026-06-02", "status": "closed", "total": 1, "avg_response_minutes": 20},
+        {"source": "zalobusiness", "date_str": "2026-06-02", "status": "open", "total": 1, "avg_response_minutes": 10},
+        {"source": "tiktok", "date_str": "2026-06-02", "status": "open", "total": 1, "avg_response_minutes": 10},
+    ]
+    mock_ai_summary.return_value = [
+        {"source": "facebook", "ai_ok": 2, "ai_fail": 1},
+        {"source": "zalobusiness", "ai_ok": 1, "ai_fail": 0},
+    ]
+    mock_topic_stats.return_value = [
+        {"source": "facebook", "topic": "Khác", "value": 2},
+        {"source": "zalobusiness", "topic": "Khác", "value": 1},
+    ]
+
+    service = DashboardService()
+    result = service.get_channel_analytics("2026-06-01", "2026-06-02", {"channel": "Facebook"})
+
+    assert result["channels"][0]["channel"] == "Facebook"
+    assert result["channels"][0]["total"] == 2
+    assert result["channels"][0]["unresolved"] == 1
+    assert result["channels"][0]["ai_ok"] == 2
+    assert result["channels"][0]["ai_fail"] == 1
+    assert result["statusByChannel"][0]["Chờ xử lý"] == 1
+    assert result["statusByChannel"][0]["Hoàn thành"] == 1
+    assert len(result["trend"]) == 2
+    assert any(cell["topic"] == "Khác" and cell["value"] == 2 for cell in result["heatmap"])
+
+    all_channels_result = service.get_channel_analytics("2026-06-01", "2026-06-02")
+    assert all_channels_result["channelsList"] == ["Zalo Business", "Facebook", "Zalo OA", "Chat Widget"]
+    assert "Khác" not in [row["channel"] for row in all_channels_result["channels"]]
+
+@patch('backend.repositories.conversation_repository.get_db_connection')
+def test_channel_topic_stats_counts_only_failed_ai_messages(mock_get_db):
+    conn = MagicMock()
+    cursor = MagicMock()
+    conn.cursor.return_value.__enter__.return_value = cursor
+    cursor.fetchall.return_value = [{"source": "facebook", "topic": "TOEIC", "value": 1}]
+    mock_get_db.return_value = conn
+
+    result = ConversationRepository().get_channel_topic_stats("2026-06-01", "2026-06-30")
+
+    query, params = cursor.execute.call_args.args
+    assert result == [{"source": "facebook", "topic": "TOEIC", "value": 1}]
+    assert "OUTER APPLY" in query
+    assert "customer.SentAt <= m.SentAt" in query
+    assert "m.FromHost = 1" in query
+    assert "m.HostDisplayName = 'AI Assistant'" in query
+    assert "m.TextContent LIKE N'%không tìm thấy%'" in query
+    assert params == ("2026-06-01", "2026-06-30 23:59:59.999")
+    conn.close.assert_called_once()
+
+@patch('backend.repositories.conversation_repository.get_db_connection')
+def test_channel_topic_stats_returns_empty_for_ai_success_filter(mock_get_db):
+    assert ConversationRepository().get_channel_topic_stats(ai_status="AI trả lời thành công") == []
+    mock_get_db.assert_not_called()
+
+@patch('backend.services.dashboard_service.dashboard_service.get_channel_analytics')
+def test_api_get_channel_analytics_success(mock_get_channel_analytics):
+    mock_data = {
+        "channels": [],
+        "trend": [],
+        "statusByChannel": [],
+        "heatmap": [],
+        "topics": [],
+        "channelsList": [],
+        "dateRange": {"startDate": "2026-06-01", "endDate": "2026-06-30", "granularity": "day"},
+    }
+    mock_get_channel_analytics.return_value = mock_data
+
+    response = client.get("/api/dashboard/channels?startDate=2026-06-01&endDate=2026-06-30&channel=Facebook")
+
+    assert response.status_code == 200
+    assert response.json()["success"] is True
+    assert response.json()["data"] == mock_data
