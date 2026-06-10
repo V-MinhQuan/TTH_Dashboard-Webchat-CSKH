@@ -1,27 +1,28 @@
-import { useState, useEffect, useCallback } from "react";
+import { lazy, Suspense, useState, useEffect, useCallback } from "react";
 import { Toaster } from "sonner";
 import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
-import { AIChatWidget } from "./components/AIChatWidget";
-import { Overview } from "./components/screens/Overview";
-import { ChannelAnalysis } from "./components/screens/ChannelAnalysis";
-import { QuestionAnalysis } from "./components/screens/QuestionAnalysis";
-import { KeywordAnalysis } from "./components/screens/KeywordAnalysis";
-import { PerformanceAnalysis } from "./components/screens/PerformanceAnalysis";
-import { MyWorkspace } from "./components/screens/MyWorkspace";
-import { UrgentCenter } from "./components/screens/UrgentCenter";
-import { AIMonitoring } from "./components/screens/AIMonitoring";
-import { SentimentAnalysis } from "./components/screens/SentimentAnalysis";
-import { AIInsights } from "./components/screens/AIInsights";
-import { ChartBuilder } from "./components/screens/ChartBuilder";
-import { Settings } from "./components/screens/Settings";
-import { FAQ } from "./components/screens/FAQ";
-import { SheetChatbot } from "./components/screens/SheetChatbot";
-import { PersonalInfo } from "./components/screens/PersonalInfo";
 import { defaultFilterValues, FilterValues } from "./components/FilterPanel";
 
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { LoginScreen } from "./components/screens/Login";
+
+const AIChatWidget = lazy(() => import("./components/AIChatWidget").then((m) => ({ default: m.AIChatWidget })));
+const Overview = lazy(() => import("./components/screens/Overview").then((m) => ({ default: m.Overview })));
+const ChannelAnalysis = lazy(() => import("./components/screens/ChannelAnalysis").then((m) => ({ default: m.ChannelAnalysis })));
+const QuestionAnalysis = lazy(() => import("./components/screens/QuestionAnalysis").then((m) => ({ default: m.QuestionAnalysis })));
+const KeywordAnalysis = lazy(() => import("./components/screens/KeywordAnalysis").then((m) => ({ default: m.KeywordAnalysis })));
+const PerformanceAnalysis = lazy(() => import("./components/screens/PerformanceAnalysis").then((m) => ({ default: m.PerformanceAnalysis })));
+const MyWorkspace = lazy(() => import("./components/screens/MyWorkspace").then((m) => ({ default: m.MyWorkspace })));
+const UrgentCenter = lazy(() => import("./components/screens/UrgentCenter").then((m) => ({ default: m.UrgentCenter })));
+const AIMonitoring = lazy(() => import("./components/screens/AIMonitoring").then((m) => ({ default: m.AIMonitoring })));
+const SentimentAnalysis = lazy(() => import("./components/screens/SentimentAnalysis").then((m) => ({ default: m.SentimentAnalysis })));
+const AIInsights = lazy(() => import("./components/screens/AIInsights").then((m) => ({ default: m.AIInsights })));
+const ChartBuilder = lazy(() => import("./components/screens/ChartBuilder").then((m) => ({ default: m.ChartBuilder })));
+const Settings = lazy(() => import("./components/screens/Settings").then((m) => ({ default: m.Settings })));
+const FAQ = lazy(() => import("./components/screens/FAQ").then((m) => ({ default: m.FAQ })));
+const SheetChatbot = lazy(() => import("./components/screens/SheetChatbot").then((m) => ({ default: m.SheetChatbot })));
+const PersonalInfo = lazy(() => import("./components/screens/PersonalInfo").then((m) => ({ default: m.PersonalInfo })));
 
 function formatTime(d: Date) {
   return new Intl.DateTimeFormat('en-GB', {
@@ -173,12 +174,20 @@ function MainApp() {
             overflowX: "hidden",
           }}
         >
-          {screenSwitching ? <ScreenTransitionLoading /> : renderScreen()}
+          {screenSwitching ? (
+            <ScreenTransitionLoading />
+          ) : (
+            <Suspense fallback={<ScreenTransitionLoading />}>
+              {renderScreen()}
+            </Suspense>
+          )}
         </main>
       </div>
 
       <div className="print-hidden">
-        <AIChatWidget />
+        <Suspense fallback={null}>
+          <AIChatWidget />
+        </Suspense>
       </div>
 
       <Toaster

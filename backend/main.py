@@ -190,6 +190,56 @@ def get_kpi(
         "data": kpis
     }
 
+@app.get("/api/dashboard/channels")
+def get_channel_analytics(
+    startDate: str = None,
+    endDate: str = None,
+    channel: str = None,
+    topic: str = None,
+    conversationStatus: str = None,
+    aiStatus: str = None
+):
+    if startDate:
+        try:
+            datetime.strptime(startDate.split("T")[0], '%Y-%m-%d')
+        except ValueError:
+            return JSONResponse(status_code=400, content={
+                "success": False,
+                "message": "Định dạng startDate không hợp lệ. Vui lòng truyền định dạng YYYY-MM-DD."
+            })
+
+    if endDate:
+        try:
+            datetime.strptime(endDate.split("T")[0], '%Y-%m-%d')
+        except ValueError:
+            return JSONResponse(status_code=400, content={
+                "success": False,
+                "message": "Định dạng endDate không hợp lệ. Vui lòng truyền định dạng YYYY-MM-DD."
+            })
+
+    if startDate and endDate:
+        start_dt = datetime.strptime(startDate.split("T")[0], '%Y-%m-%d')
+        end_dt = datetime.strptime(endDate.split("T")[0], '%Y-%m-%d')
+        if start_dt > end_dt:
+            return JSONResponse(status_code=400, content={
+                "success": False,
+                "message": "Ngày bắt đầu (startDate) không thể lớn hơn ngày kết thúc (endDate)."
+            })
+
+    filters = {
+        "channel": channel,
+        "topic": topic,
+        "conversationStatus": conversationStatus,
+        "aiStatus": aiStatus
+    }
+
+    data = dashboard_service.get_channel_analytics(startDate, endDate, filters)
+    return {
+        "success": True,
+        "message": "Channel analytics fetched successfully",
+        "data": data
+    }
+
 class CloseConversationRequest(BaseModel):
     customerId: str
     source: str

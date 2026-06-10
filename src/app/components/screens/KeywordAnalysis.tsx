@@ -7,12 +7,12 @@ import {
 } from "recharts";
 import { FilterPanel, FilterValues } from "../FilterPanel";
 import { toast } from "sonner";
+import { buildApiUrl, fetchApiJson } from "../../services/dashboardApi";
 
 const NAVY = "#003865";
 const ORANGE = "#D73C01";
 const CTA = "#ED5206";
 const COLORS = [NAVY, ORANGE, "rgba(0,56,101,0.6)", "rgba(215,60,1,0.6)", "rgba(0,56,101,0.3)", "rgba(215,60,1,0.3)"];
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:5000";
 
 type KeywordItem = {
   word: string;
@@ -29,6 +29,25 @@ type KeywordGroup = {
   aiFailed: number;
   faqNeeded: number;
   keywords: KeywordItem[];
+};
+
+type KeywordGroupsResponse = {
+  success: boolean;
+  message?: string;
+  data: any[];
+};
+
+type KeywordHeatmapResponse = {
+  success: boolean;
+  message?: string;
+  data: any[];
+  columns?: { key: string; label: string }[];
+};
+
+type KeywordTrendResponse = {
+  success: boolean;
+  message?: string;
+  data: any[];
 };
 
 const missingFaqsData: Record<string, { question: string; source: string; added?: boolean }[]> = {
@@ -586,25 +605,19 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
         setLoading(true);
         setLoadError(null);
 
-        const [groupsRes, heatmapRes, trendRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/api/admin/crm-keywords/groups?${params.toString()}`),
-          fetch(`${API_BASE_URL}/api/admin/crm-keywords/heatmap?${params.toString()}`),
-          fetch(`${API_BASE_URL}/api/admin/crm-keywords/trends?${trendParams.toString()}`),
-        ]);
-
         const [groupsJson, hJson, tJson] = await Promise.all([
-          groupsRes.json(),
-          heatmapRes.json(),
-          trendRes.json(),
+          fetchApiJson<KeywordGroupsResponse>(buildApiUrl("/api/admin/crm-keywords/groups", params)),
+          fetchApiJson<KeywordHeatmapResponse>(buildApiUrl("/api/admin/crm-keywords/heatmap", params)),
+          fetchApiJson<KeywordTrendResponse>(buildApiUrl("/api/admin/crm-keywords/trends", trendParams)),
         ]);
 
-        if (!groupsRes.ok || !groupsJson.success || !Array.isArray(groupsJson.data)) {
+        if (!groupsJson.success || !Array.isArray(groupsJson.data)) {
           throw new Error(groupsJson.message || "Không thể tải thống kê nhóm Keywords.");
         }
-        if (!heatmapRes.ok || !hJson.success || !Array.isArray(hJson.data)) {
+        if (!hJson.success || !Array.isArray(hJson.data)) {
           throw new Error(hJson.message || "Không thể tải dữ liệu heatmap Keywords.");
         }
-        if (!trendRes.ok || !tJson.success || !Array.isArray(tJson.data)) {
+        if (!tJson.success || !Array.isArray(tJson.data)) {
           throw new Error(tJson.message || "Không thể tải dữ liệu xu hướng Keywords.");
         }
 

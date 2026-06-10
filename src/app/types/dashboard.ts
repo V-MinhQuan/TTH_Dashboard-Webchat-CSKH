@@ -84,9 +84,53 @@ export interface DashboardKpiData {
   priorityConversations: PriorityConversation[];
 }
 
+export interface ChannelSummary {
+  channel: string;
+  source: string;
+  total: number;
+  unresolved: number;
+  ai_ok: number;
+  ai_fail: number;
+  avg_time: number;
+  satisfaction: number;
+  negative: number;
+}
+
+export interface ChannelTrendRow {
+  date: string;
+  [channel: string]: string | number;
+}
+
+export interface ChannelStatusRow {
+  channel: string;
+  "Chờ xử lý": number;
+  "Đang xử lý": number;
+  "Hoàn thành": number;
+}
+
+export interface ChannelHeatmapCell {
+  channel: string;
+  source: string;
+  topic: string;
+  value: number;
+}
+
+export interface ChannelAnalyticsData {
+  channels: ChannelSummary[];
+  trend: ChannelTrendRow[];
+  statusByChannel: ChannelStatusRow[];
+  heatmap: ChannelHeatmapCell[];
+  topics: string[];
+  channelsList: string[];
+  dateRange: {
+    startDate: string;
+    endDate: string;
+    granularity: string;
+  };
+}
+
 export interface APIResponse<T> {
   success: boolean;
   message: string;
   data: T;
 }
-
