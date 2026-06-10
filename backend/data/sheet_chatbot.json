@@ -1,0 +1,44 @@
+[
+  {
+    "id": "CS-001",
+    "addedAt": "2026-06-08T02:30:00Z",
+    "addedBy": "Thu Trang",
+    "question": "Lệ phí thi TOEIC hiện tại là bao nhiêu?",
+    "correctAnswer": "Lệ phí thi TOEIC tại FLIC là 750.000 VNĐ/lần thi. Sinh viên có thẻ được giảm 10%.",
+    "topic": "TOEIC",
+    "source": "AI trả lời sai",
+    "risk": "Thấp",
+    "status": "Có thể sử dụng",
+    "notes": "AI trả lời sai số tiền, đã kiểm tra bảng giá 2026",
+    "createdAt": "2026-06-08T02:30:00Z",
+    "updatedAt": "2026-06-08T02:30:00Z"
+  },
+  {
+    "id": "CS-002",
+    "addedAt": "2026-06-08T01:15:00Z",
+    "addedBy": "Thùy NT",
+    "question": "Thi xong VSTEP bao lâu có kết quả?",
+    "correctAnswer": "Kết quả thi VSTEP được trả trong vòng 30 ngày làm việc kể từ ngày thi.",
+    "topic": "VSTEP",
+    "source": "AI trả lời sai",
+    "risk": "Trung bình",
+    "status": "Chờ xử lý",
+    "notes": "AI nói 2 tháng nhưng thực tế là 30 ngày làm việc",
+    "createdAt": "2026-06-08T01:15:00Z",
+    "updatedAt": "2026-06-08T01:15:00Z"
+  },
+  {
+    "id": "CS-003",
+    "addedAt": "2026-06-07T09:40:00Z",
+    "addedBy": "Thu Trang",
+    "question": "Điểm TOEIC 600 có đủ chuẩn đầu ra không?",
+    "correctAnswer": "Điểm TOEIC 600 đạt chuẩn đầu ra cho hầu hết các ngành. Một số ngành đặc biệt yêu cầu 650+.",
+    "topic": "Chuẩn đầu ra ngoại ngữ",
+    "source": "AI không chắc chắn",
+    "risk": "Cao",
+    "status": "Chờ quản lý xác nhận",
+    "notes": "Cần xác nhận theo quy định từng ngành.",
+    "createdAt": "2026-06-07T09:40:00Z",
+    "updatedAt": "2026-06-07T09:40:00Z"
+  }
+]

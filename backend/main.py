@@ -13,6 +13,7 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 from backend.config.db import get_db_connection
 from backend.services.dashboard_service import dashboard_service
 from backend.keywords.service import keyword_service
+from backend.sheet_chatbot.service import sheet_chatbot_service
 
 app = FastAPI()
 
@@ -278,6 +279,34 @@ class KeywordUpdateBody(BaseModel):
     groupId: str = None
     status: str = None
 
+class SheetChatbotCreateBody(BaseModel):
+    question: str
+    correctAnswer: str
+    topic: str = None
+    source: str = None
+    risk: str = None
+    status: str = None
+    notes: str = None
+    addedBy: str = None
+
+class SheetChatbotUpdateBody(BaseModel):
+    question: str = None
+    correctAnswer: str = None
+    topic: str = None
+    source: str = None
+    risk: str = None
+    status: str = None
+    notes: str = None
+    addedBy: str = None
+
+class SheetChatbotStatusBody(BaseModel):
+    status: str
+    reviewer: str = None
+    notes: str = None
+
+class SheetChatbotMergeBody(BaseModel):
+    reviewer: str = None
+
 @app.get("/api/admin/crm-keywords")
 async def get_keywords(
     page: int = 1,
@@ -455,6 +484,148 @@ async def delete_keyword(id: str):
         return {
             "success": True,
             "message": "Delete CRM keyword successfully"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+@app.get("/api/admin/sheet-chatbot")
+async def get_sheet_chatbot_rows(
+    page: int = 1,
+    pageSize: int = 10,
+    search: str = None,
+    status: str = None,
+    risk: str = None,
+    addedBy: str = None,
+    role: str = None
+):
+    try:
+        res = await sheet_chatbot_service.get_rows({
+            "page": page,
+            "pageSize": pageSize,
+            "search": search,
+            "status": status,
+            "risk": risk,
+            "addedBy": addedBy,
+            "role": role
+        })
+        return {
+            "success": True,
+            "message": "Get Sheet Chatbot rows successfully",
+            "data": res["rows"],
+            "total": res["total"],
+            "page": res["page"],
+            "pageSize": res["pageSize"],
+            "stats": res["stats"]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/admin/sheet-chatbot/stats")
+async def get_sheet_chatbot_stats():
+    try:
+        return {
+            "success": True,
+            "message": "Get Sheet Chatbot stats successfully",
+            "data": sheet_chatbot_service.get_stats()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/admin/sheet-chatbot/duplicates")
+async def get_sheet_chatbot_duplicates(
+    question: str,
+    minSimilarity: float = 0.75,
+    limit: int = 5
+):
+    try:
+        res = await sheet_chatbot_service.find_duplicates(
+            question=question,
+            min_similarity=minSimilarity,
+            limit=limit
+        )
+        return {
+            "success": True,
+            "message": "Find duplicate Sheet Chatbot rows successfully",
+            "data": res
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/admin/sheet-chatbot/{id}")
+async def get_sheet_chatbot_row_by_id(id: str):
+    try:
+        res = await sheet_chatbot_service.get_row_by_id(id)
+        return {
+            "success": True,
+            "message": "Get Sheet Chatbot row successfully",
+            "data": res
+        }
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+@app.post("/api/admin/sheet-chatbot", status_code=201)
+async def create_sheet_chatbot_row(body: SheetChatbotCreateBody):
+    try:
+        res = await sheet_chatbot_service.create_row(body.model_dump(exclude_none=True))
+        return {
+            "success": True,
+            "message": "Create Sheet Chatbot row successfully",
+            "data": res
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.put("/api/admin/sheet-chatbot/{id}")
+async def update_sheet_chatbot_row(id: str, body: SheetChatbotUpdateBody):
+    try:
+        res = await sheet_chatbot_service.update_row(id, body.model_dump(exclude_none=True))
+        return {
+            "success": True,
+            "message": "Update Sheet Chatbot row successfully",
+            "data": res
+        }
+    except Exception as e:
+        status_code = 404 if "Khong tim thay" in str(e) or "Không tìm thấy" in str(e) else 400
+        raise HTTPException(status_code=status_code, detail=str(e))
+
+@app.patch("/api/admin/sheet-chatbot/{id}/status")
+async def update_sheet_chatbot_status(id: str, body: SheetChatbotStatusBody):
+    try:
+        res = await sheet_chatbot_service.update_status(
+            row_id=id,
+            status=body.status,
+            reviewer=body.reviewer,
+            notes=body.notes
+        )
+        return {
+            "success": True,
+            "message": "Update Sheet Chatbot status successfully",
+            "data": res
+        }
+    except Exception as e:
+        status_code = 404 if "Khong tim thay" in str(e) or "Không tìm thấy" in str(e) else 400
+        raise HTTPException(status_code=status_code, detail=str(e))
+
+@app.post("/api/admin/sheet-chatbot/{id}/merge-faq")
+async def merge_sheet_chatbot_to_faq(id: str, body: SheetChatbotMergeBody = None):
+    try:
+        reviewer = body.reviewer if body else None
+        res = await sheet_chatbot_service.merge_to_faq(id, reviewer=reviewer)
+        return {
+            "success": True,
+            "message": "Merge Sheet Chatbot row to FAQ successfully",
+            "data": res
+        }
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+@app.delete("/api/admin/sheet-chatbot/{id}")
+async def delete_sheet_chatbot_row(id: str):
+    try:
+        await sheet_chatbot_service.delete_row(id)
+        return {
+            "success": True,
+            "message": "Delete Sheet Chatbot row successfully"
         }
     except Exception as e:
         raise HTTPException(status_code=404, detail=str(e))
