@@ -25,7 +25,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True if cors_origin != "*" else False,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
 )
 
@@ -632,4 +632,4 @@ async def delete_sheet_chatbot_row(id: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("backend.main:app", host="localhost", port=5000, reload=True)
+    uvicorn.run("backend.main:app", host="localhost", port=int(os.getenv("PORT", "5000")), reload=True)

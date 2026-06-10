@@ -8,7 +8,7 @@
     "topic": "TOEIC",
     "source": "AI trả lời sai",
     "risk": "Thấp",
-    "status": "Có thể sử dụng",
+    "status": "Đã duyệt",
     "notes": "AI trả lời sai số tiền, đã kiểm tra bảng giá 2026",
     "createdAt": "2026-06-08T02:30:00Z",
     "updatedAt": "2026-06-08T02:30:00Z"
@@ -22,10 +22,12 @@
     "topic": "VSTEP",
     "source": "AI trả lời sai",
     "risk": "Trung bình",
-    "status": "Chờ xử lý",
+    "status": "Đã duyệt",
     "notes": "AI nói 2 tháng nhưng thực tế là 30 ngày làm việc",
     "createdAt": "2026-06-08T01:15:00Z",
-    "updatedAt": "2026-06-08T01:15:00Z"
+    "updatedAt": "2026-06-10T10:01:04Z",
+    "reviewedAt": "2026-06-10T10:01:04Z",
+    "reviewedBy": "Admin FLIC"
   },
   {
     "id": "CS-003",
@@ -36,9 +38,65 @@
     "topic": "Chuẩn đầu ra ngoại ngữ",
     "source": "AI không chắc chắn",
     "risk": "Cao",
-    "status": "Chờ quản lý xác nhận",
+    "status": "Chờ xử lý",
     "notes": "Cần xác nhận theo quy định từng ngành.",
     "createdAt": "2026-06-07T09:40:00Z",
     "updatedAt": "2026-06-07T09:40:00Z"
+  },
+  {
+    "id": "CS-004",
+    "addedAt": "2026-06-07T07:00:00Z",
+    "addedBy": "Thùy NT",
+    "question": "Đăng ký thi CNTT nhóm trên 3 bạn thì thế nào?",
+    "correctAnswer": "Nhóm từ 3 người trở lên có thể đăng ký thi theo nhóm qua form online. Nhóm trưởng điền thông tin của tất cả thành viên.",
+    "topic": "CNTT Cơ bản",
+    "source": "Không tìm thấy dữ liệu",
+    "risk": "Thấp",
+    "status": "Đã duyệt",
+    "notes": "",
+    "createdAt": "2026-06-07T07:00:00Z",
+    "updatedAt": "2026-06-07T07:00:00Z"
+  },
+  {
+    "id": "CS-005",
+    "addedAt": "2026-05-28T02:00:00Z",
+    "addedBy": "Thu Trang",
+    "question": "Lịch thi VSTEP tháng 6/2026 có chưa?",
+    "correctAnswer": "Lịch thi VSTEP tháng 6/2026 sẽ được công bố vào ngày 20/05/2026. Vui lòng theo dõi website chính thức của FLIC.",
+    "topic": "VSTEP",
+    "source": "AI không chắc chắn",
+    "risk": "Thấp",
+    "status": "Cần chỉnh sửa",
+    "notes": "Cần cập nhật ngày công bố chính xác hơn",
+    "createdAt": "2026-05-28T02:00:00Z",
+    "updatedAt": "2026-05-28T02:00:00Z"
+  },
+  {
+    "id": "CS-006",
+    "addedAt": "2026-05-27T02:00:00Z",
+    "addedBy": "Thùy NT",
+    "question": "Hồ sơ đăng ký thi CNTT Nâng cao cần những gì?",
+    "correctAnswer": "Hồ sơ đăng ký thi CNTT Nâng cao gồm: CCCD/CMND bản sao, chứng chỉ CNTT Cơ bản (nếu có), phiếu đăng ký điền đầy đủ.",
+    "topic": "CNTT Nâng cao",
+    "source": "Câu hỏi lặp lại nhiều lần",
+    "risk": "Thấp",
+    "status": "Đã duyệt",
+    "notes": "",
+    "createdAt": "2026-05-27T02:00:00Z",
+    "updatedAt": "2026-05-27T02:00:00Z"
+  },
+  {
+    "id": "CS-007",
+    "addedAt": "2026-06-10T09:00:00Z",
+    "addedBy": "test",
+    "question": "Test thêm chatbot FAQ",
+    "correctAnswer": "Câu trả lời mẫu cho test.",
+    "topic": "Khác",
+    "source": "Nhân viên đề xuất",
+    "risk": "Thấp",
+    "status": "Chờ xử lý",
+    "notes": "Test data",
+    "createdAt": "2026-06-10T09:00:00Z",
+    "updatedAt": "2026-06-10T09:00:00Z"
   }
 ]

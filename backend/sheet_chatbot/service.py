@@ -6,22 +6,16 @@ from backend.sheet_chatbot.repository import sheet_chatbot_repository
 
 
 VALID_STATUSES = {
-    "Có thể sử dụng",
     "Chờ xử lý",
-    "Chờ quản lý xác nhận",
     "Đã duyệt",
     "Cần chỉnh sửa",
-    "Bị từ chối",
     "Từ chối",
 }
 
 VALID_STATUS_KEYS = {
-    "co the su dung",
     "cho xu ly",
-    "cho quan ly xac nhan",
     "da duyet",
     "can chinh sua",
-    "bi tu choi",
     "tu choi",
 }
 
@@ -38,16 +32,12 @@ def normalize_text(value=""):
 
 def normalize_sheet_status(value):
     normalized = normalize_text(value)
-    if normalized == "co the su dung":
-        return "Có thể sử dụng"
-    if normalized == "cho quan ly xac nhan":
-        return "Chờ quản lý xác nhận"
     if normalized == "da duyet":
         return "Đã duyệt"
     if normalized == "can chinh sua":
         return "Cần chỉnh sửa"
     if normalized in ("tu choi", "bi tu choi"):
-        return "Bị từ chối"
+        return "Từ chối"
     return "Chờ xử lý"
 
 
@@ -59,13 +49,17 @@ def is_valid_risk(value):
     return normalize_text(value) in VALID_RISK_KEYS
 
 
-def status_from_risk(risk):
-    normalized = normalize_text(risk)
-    if normalized == "thap":
-        return "Có thể sử dụng"
+def normalize_risk(value):
+    normalized = normalize_text(value)
     if normalized == "trung binh":
-        return "Chờ xử lý"
-    return "Chờ quản lý xác nhận"
+        return "Trung bình"
+    if normalized == "cao":
+        return "Cao"
+    return "Thấp"
+
+
+def status_from_risk(risk):
+    return "Chờ xử lý"
 
 
 def next_row_id(rows):
@@ -83,7 +77,7 @@ class SheetChatbotService:
 
     async def get_rows(self, filters):
         page = max(int(filters.get("page") or 1), 1)
-        page_size = max(min(int(filters.get("pageSize") or 10), 100), 1)
+        page_size = max(min(int(filters.get("pageSize") or 10), 1000), 1)
         search = normalize_text(filters.get("search"))
         status = filters.get("status")
         risk = filters.get("risk")
@@ -145,6 +139,7 @@ class SheetChatbotService:
         risk = data.get("risk") or "Thấp"
         if not is_valid_risk(risk):
             raise Exception("risk không hợp lệ.")
+        risk = normalize_risk(risk)
         status = normalize_sheet_status(data.get("status") or status_from_risk(risk))
         row = {
             "id": next_row_id(rows),
@@ -188,8 +183,10 @@ class SheetChatbotService:
             updated["status"] = normalize_sheet_status(updated["status"])
         else:
             updated["status"] = "Chờ xử lý"
-        if updated.get("risk") and not is_valid_risk(updated["risk"]):
-            raise Exception("risk không hợp lệ.")
+        if updated.get("risk"):
+            if not is_valid_risk(updated["risk"]):
+                raise Exception("risk không hợp lệ.")
+            updated["risk"] = normalize_risk(updated["risk"])
 
         updated["updatedAt"] = self.repository.now_iso()
         rows[index] = updated
@@ -269,11 +266,10 @@ class SheetChatbotService:
             rows = self.repository.get_all()
         return {
             "total": len(rows),
-            "pendingManager": sum(1 for row in rows if normalize_text(row.get("status")) == "cho quan ly xac nhan"),
+            "pending": sum(1 for row in rows if normalize_text(row.get("status")) == "cho xu ly"),
             "approved": sum(1 for row in rows if normalize_text(row.get("status")) == "da duyet"),
-            "usable": sum(1 for row in rows if normalize_text(row.get("status")) == "co the su dung"),
             "needsEdit": sum(1 for row in rows if normalize_text(row.get("status")) == "can chinh sua"),
-            "rejected": sum(1 for row in rows if normalize_text(row.get("status")) in ("bi tu choi", "tu choi")),
+            "rejected": sum(1 for row in rows if normalize_text(row.get("status")) == "tu choi"),
         }
 
     def _find_row(self, row_id):

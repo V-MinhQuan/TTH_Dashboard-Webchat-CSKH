@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Brain, Cpu, Zap, Activity, AlertOctagon, Check, X, Shield, Terminal, FileText, Flag, Send, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
 import { AddSheetModal } from "./SheetChatbot";
+import { createSheetChatbotRow } from "../../services/sheetChatbotApi";
 
 const DARK_BG = "#020617";
 const PANEL_BG = "#0f172a";
@@ -341,25 +342,11 @@ export function AIMonitoring() {
           prefillQuestion={activeAnomaly.question}
           prefillAnswer={currentAnswer}
           onClose={() => setShowSheetModal(false)}
-          onSave={(data) => {
-            let currentRows = [];
-            const saved = localStorage.getItem("flic_sheet_rows");
-            if (saved) {
-              try {
-                currentRows = JSON.parse(saved);
-              } catch (e) {
-                console.error(e);
-              }
-            }
-            const newRow = {
-              id: `CS-${Date.now()}`,
-              addedAt: "Vừa thêm",
+          onSave={async (data) => {
+            await createSheetChatbotRow({
+              ...data,
               addedBy: "Đề xuất tự động (AI)",
-              ...data
-            };
-            currentRows.unshift(newRow);
-            localStorage.setItem("flic_sheet_rows", JSON.stringify(currentRows));
-            window.dispatchEvent(new Event("storage"));
+            });
             toast.success("Đã thêm dữ liệu vào Sheet Chatbot");
           }}
         />

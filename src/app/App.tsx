@@ -61,7 +61,14 @@ function ScreenTransitionLoading() {
 
 function MainApp() {
   const { role } = useAuth();
-  const [activeScreen, setActiveScreen] = useState("overview");
+  const [activeScreen, setActiveScreen] = useState(() => {
+    try {
+      const saved = localStorage.getItem("dashboard_activeScreen");
+      return saved || "overview";
+    } catch {
+      return "overview";
+    }
+  });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [filters, setFilters] = useState<FilterValues>(defaultFilterValues);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -84,6 +91,11 @@ function MainApp() {
   useEffect(() => {
     setScreenSwitching(true);
     const timer = window.setTimeout(() => setScreenSwitching(false), 220);
+    
+    try {
+      localStorage.setItem("dashboard_activeScreen", activeScreen);
+    } catch {}
+
     return () => window.clearTimeout(timer);
   }, [activeScreen]);
 

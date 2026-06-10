@@ -82,11 +82,12 @@ export function buildApiUrl(path: string, params?: URLSearchParams | Record<stri
 
 export async function fetchApiJson<T>(
   urlInput: string | URL,
-  options: RequestInit & { timeoutMs?: number; cache?: boolean } = {},
+  options: Omit<RequestInit, "cache"> & { timeoutMs?: number; cache?: boolean } = {},
 ): Promise<T> {
   const url = urlInput.toString();
-  const method = (options.method || "GET").toUpperCase();
-  const useCache = options.cache !== false && method === "GET";
+  const { timeoutMs, cache: cacheOption, ...fetchOptions } = options;
+  const method = (fetchOptions.method || "GET").toUpperCase();
+  const useCache = cacheOption !== false && method === "GET";
   const cacheKey = `${method}:${url}`;
 
   if (useCache) {
@@ -98,15 +99,15 @@ export async function fetchApiJson<T>(
   }
 
   const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), options.timeoutMs || API_TIMEOUT_MS);
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs || API_TIMEOUT_MS);
 
   const request = fetch(url, {
-    ...options,
+    ...fetchOptions,
     method,
     signal: controller.signal,
     headers: {
       "Content-Type": "application/json",
-      ...(options.headers || {}),
+      ...(fetchOptions.headers || {}),
     },
   })
     .then(async (response) => {
