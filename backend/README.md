@@ -1,29 +1,31 @@
-# Backend API - Dashboard Chăm sóc Khách hàng
+# FastAPI Backend - FLIC WebChat Customer Support Dashboard
 
-Backend API được xây dựng trên nền tảng Node.js, Express.js và Microsoft SQL Server nhằm phục vụ dữ liệu KPI cho giao diện Dashboard CSKH.
+Thành phần backend chính thức của dự án FLIC WebChat Customer Support Dashboard, được xây dựng bằng **Python** và **FastAPI**, thay thế hoàn toàn Node.js backend cũ.
 
-## 1. Cấu trúc thư mục dự án
+---
+
+## 1. Cấu trúc thư mục hiện tại
 
 ```text
 backend/
-├── config/
-│   └── db.js                        # Kết nối và quản lý Connection Pool SQL Server
-├── controllers/
-│   └── dashboard.controller.js      # Tiếp nhận request, kiểm tra dữ liệu đầu vào
-├── repositories/
-│   └── conversation.repository.js   # Truy vấn SQL Server trực tiếp (Có map bảng/cột)
-├── routes/
-│   └── dashboard.routes.js          # Khai báo các endpoints của ứng dụng
-├── services/
-│   ├── conversation-cleaner.service.js # Làm sạch dữ liệu, loại bỏ trùng lặp, chuẩn hóa
-│   └── dashboard.service.js         # Tổng hợp dữ liệu thành các chỉ số KPI cần thiết
-├── middlewares/
-│   └── error.middleware.js          # Middleware xử lý lỗi toàn hệ thống và bảo mật
-├── .env.example                     # File chứa cấu hình môi trường mẫu
-├── .env                             # File cấu hình môi trường thực tế (Chứa thông tin kết nối)
-├── server.js                        # Entry point - khởi tạo ứng dụng Express
-├── package.json                     # Khai báo dependencies và các script khởi chạy
-└── README.md                        # Hướng dẫn sử dụng và triển khai dự án này
+├── app/                        # Mã nguồn ứng dụng FastAPI chính
+│   ├── core/                   # Cấu hình hệ thống, ghi log, xử lý ngoại lệ (exceptions)
+│   ├── db/                     # Quản lý kết nối Database (SQL Server Connection Pool)
+│   ├── repositories/           # Tương tác truy vấn SQL Server trực tiếp
+│   ├── routers/                # Định nghĩa các Route / Endpoints của API (prefix: /api)
+│   ├── schemas/                # Định nghĩa cấu trúc dữ liệu Pydantic (Request/Response validation)
+│   ├── services/               # Lớp xử lý logic nghiệp vụ và đồng bộ dữ liệu
+│   ├── utils/                  # Các hàm tiện ích dùng chung
+│   └── main.py                 # File khởi tạo ứng dụng FastAPI chính
+├── database/                   # Các script SQL migration
+├── db/                         # Module tiện ích Python kết nối database dùng chung
+├── docs/                       # Tài liệu thiết kế API
+├── reports/                    # Báo cáo kỹ thuật và kiểm kê di chuyển backend
+├── scripts/                    # Các script Python chạy tác vụ admin/tiện ích
+├── tests_fastapi/              # Thư mục chứa bộ unit/integration test sử dụng pytest
+├── .env.example                # Tệp cấu hình mẫu biến môi trường
+├── .env                        # Tệp cấu hình biến môi trường thực tế (không commit)
+└── requirements.txt            # Khai báo các thư viện Python phụ thuộc
 ```
 
 ---
@@ -36,284 +38,113 @@ Mở terminal/command prompt và chuyển hướng vào thư mục backend:
 cd backend
 ```
 
-### Bước 2: Cài đặt các thư viện phụ thuộc
-Chạy lệnh sau để tải các package khai báo trong `package.json`:
+### Bước 2: Khởi tạo và kích hoạt Virtual Environment (Môi trường ảo)
 ```bash
-npm install
-```
-*Các thư viện được cài đặt gồm:*
-- **express**: Framework xây dựng API.
-- **mssql**: Kết nối và thực thi các câu lệnh SQL trên SQL Server.
-- **cors**: Cho phép frontend React gọi API chéo nguồn.
-- **dotenv**: Đọc các cấu hình từ file `.env`.
-- **nodemon** (devDependencies): Tự động restart server khi có thay đổi code trong lúc phát triển.
+# Tạo môi trường ảo
+python -m venv .venv
 
-### Bước 3: Cấu hình biến môi trường
-Tạo file `.env` (đã được tạo tự động) và điền các thông tin kết nối thực tế của bạn:
+# Kích hoạt trên Windows (PowerShell/CMD):
+.venv\Scripts\activate
+
+# Hoặc kích hoạt trên Linux/macOS:
+source .venv/bin/activate
+```
+
+### Bước 3: Cài đặt các thư viện phụ thuộc
+Sau khi kích hoạt môi trường ảo, chạy lệnh cài đặt:
+```bash
+pip install -r requirements.txt
+```
+*Các thư viện chính bao gồm: `fastapi`, `uvicorn`, `pyodbc` (để kết nối SQL Server), `pydantic-settings`, `httpx`, `pytest`.*
+
+### Bước 4: Cấu hình biến môi trường
+Sao chép tệp mẫu và điền thông tin kết nối SQL Server của bạn vào `.env`:
+```bash
+copy .env.example .env
+```
+Nội dung tệp cấu hình `.env` mẫu:
 ```env
-PORT=5000
-DB_USER=Dien_Username_Cua_Ban
-DB_PASSWORD=Dien_Password_Cua_Ban
-DB_SERVER=14.225.192.252
+APP_ENV=development
+APP_NAME="FLIC FastAPI Backend"
+APP_VERSION="fastapi-v1"
+
+# SQL Server Configuration
+DB_SERVER=localhost
 DB_PORT=1433
-DB_DATABASE=Dien_DatabaseName_Cua_Ban
-DB_TRUST_SERVER_CERTIFICATE=true
-CORS_ORIGIN=*
+DB_NAME=dbFLIC_dev
+DB_USER=sa
+DB_PASSWORD=your_password
+DB_DRIVER="ODBC Driver 17 for SQL Server"
+DB_ENCRYPT=False
+DB_TRUST_SERVER_CERTIFICATE=True
+DB_TIMEOUT_SECONDS=5
+
+# ML Service Integration
+ML_SERVICE_URL=http://localhost:8001
+ML_TIMEOUT_SECONDS=15.0
+
+# CORS Configuration (phân cách bằng dấu phẩy)
+CORS_ORIGINS=http://localhost:3000,http://localhost:5173,http://127.0.0.1:5173
 ```
 
 ---
 
-## 3. Cách chạy ứng dụng
+## 3. Khởi chạy Backend
 
-### Chạy ở chế độ phát triển (Development)
-Server sẽ tự động restart khi bạn chỉnh sửa file nguồn:
+Đảm bảo bạn đã kích hoạt virtual environment:
 ```bash
-npm run dev
+# Chạy uvicorn server trên cổng 8000
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### Chạy ở chế độ production
+* **Trang chủ API**: `http://localhost:8000/`
+* **Swagger UI (Interactive Docs)**: `http://localhost:8000/docs`
+* **Health Check**: `http://localhost:8000/api/health`
+
+---
+
+## 4. Chạy kiểm thử tự động (Unit Tests)
+
+Bộ test suite được cài đặt trong `tests_fastapi/` sử dụng `pytest`.
+
 ```bash
-npm start
+# Kích hoạt venv và chạy pytest
+cd backend
+.venv\Scripts\activate
+python -m pytest tests_fastapi -v
 ```
 
 ---
 
-## 4. Hướng dẫn kiểm thử API (Sử dụng Browser/Postman)
+## 5. Danh sách API Endpoints chính
 
-### 4.1. Kiểm tra trạng thái server (Health Check)
-- **URL**: `http://localhost:5000/api/health`
-- **Method**: `GET`
-- **Response mẫu**:
-  ```json
-  {
-    "success": true,
-    "message": "Backend is running successfully."
-  }
-  ```
+### Nhóm Health Check
+* `GET /api/health` — Trạng thái sức khỏe toàn bộ backend (kèm DB & ML Service).
+* `GET /api/health/ml` — Trạng thái kết nối trực tiếp đến ml-service.
 
-### 4.2. Kiểm tra kết nối SQL Server (Test DB)
-- **URL**: `http://localhost:5000/api/test-db`
-- **Method**: `GET`
-- **Description**: API này thực hiện chạy câu lệnh `SELECT GETDATE()` trên SQL Server của bạn và trả về thời gian hiện tại của DB Server.
-- **Response thành công**:
-  ```json
-  {
-    "success": true,
-    "message": "Database connection test successful",
-    "data": {
-      "serverTime": "2026-06-03T01:58:20.000Z"
-    }
-  }
-  ```
+### Nhóm Dashboard
+* `GET /api/dashboard/kpi` — Thống kê KPI cốt lõi (hội thoại, khách hàng mới, phân bổ kênh).
 
-### 4.3. Lấy chỉ số KPI Dashboard (Mặc định)
-- **URL**: `http://localhost:5000/api/dashboard/kpi`
-- **Method**: `GET`
-- **Response mẫu**:
-  ```json
-  {
-    "success": true,
-    "message": "Dashboard KPI fetched successfully",
-    "data": {
-      "totalConversations": 120,
-      "newCustomers": 85,
-      "statusSummary": {
-        "new": 20,
-        "open": 40,
-        "pending": 15,
-        "closed": 45,
-        "unknown": 0
-      },
-      "sourceSummary": {
-        "ZaloOA": 30,
-        "ZaloBusiness": 10,
-        "Facebook": 50,
-        "ChatWidget": 25,
-        "other": 5
-      },
-      "averageResponseTimeMinutes": 12
-    }
-  }
-  ```
+### Nhóm Sentiment & Analytics
+* `GET /api/analytics/sentiment-summary` — Tổng hợp phân bổ cảm xúc (Tích cực, Trung lập, Tiêu cực).
+* `GET /api/analytics/sentiment-trend` — Thống kê xu hướng cảm xúc theo ngày.
+* `GET /api/analytics/satisfaction-summary` — Tổng hợp chỉ số CSAT thỏa mãn của khách hàng.
+* `GET /api/analytics/satisfaction-trend` — Biểu đồ xu hướng CSAT theo ngày.
+* `GET /api/analytics/topics` — Thống kê tần suất các chủ đề phổ biến.
+* `GET /api/analytics/need-review-conversations` — Danh sách các hội thoại cần nhân viên xem xét (`needStaffReview = True`).
+* `GET /api/analytics/negative-conversations` — Danh sách các hội thoại tiêu cực.
+* `GET /api/analytics/need-review-keywords` — Phân tích từ khóa phổ biến trong hội thoại cần review.
+* `GET /api/analytics/negative-keywords` — Phân tích từ khóa phổ biến trong hội thoại tiêu cực.
+* `POST /api/sentiment/predict` — Dự đoán cảm xúc của văn bản nhập vào (gọi qua ml-service).
+* `POST /api/analytics/run` — API tác vụ phân tích lại hàng loạt (Trả về `501 Not Implemented` do luồng reprocess/ghi DB yêu cầu phê duyệt riêng).
 
-### 4.4. Lấy chỉ số KPI Dashboard có lọc theo ngày
-- **URL**: `http://localhost:5000/api/dashboard/kpi?startDate=2026-06-01&endDate=2026-06-30`
-- **Method**: `GET`
-- **Query Params**:
-  - `startDate`: Ngày bắt đầu lọc (định dạng `YYYY-MM-DD`).
-  - `endDate`: Ngày kết thúc lọc (định dạng `YYYY-MM-DD`).
+### Nhóm Conversations
+* `GET /api/conversations` — Danh sách hội thoại phân trang (kèm bộ lọc khoảng ngày, kênh, nguồn).
+* `GET /api/conversations/{conversation_id}` — Lấy thông tin chi tiết một hội thoại (bao gồm nội dung tin nhắn).
+* `GET /api/conversations/by-message/{message_id}` — Tra cứu hội thoại tương ứng thông qua ID tin nhắn.
 
 ---
 
-## 5. Hướng dẫn Frontend React (Vite/TypeScript) kết nối API
+## 6. Lưu ý về Node.js Legacy
 
-Tại mã nguồn Frontend React của bạn, hãy làm theo hướng dẫn dưới đây để gọi API này:
-
-### Bước 1: Khai báo Types cho API Response (TypeScript)
-
-Tạo file chứa định nghĩa kiểu dữ liệu, ví dụ `src/types/dashboard.ts`:
-```typescript
-export interface KPIStatusSummary {
-  new: number;
-  open: number;
-  pending: number;
-  closed: number;
-  unknown: number;
-}
-
-export interface KPISourceSummary {
-  ZaloOA: number;
-  ZaloBusiness: number;
-  Facebook: number;
-  ChatWidget: number;
-  other: number;
-}
-
-export interface KPIData {
-  totalConversations: number;
-  newCustomers: number;
-  statusSummary: KPIStatusSummary;
-  sourceSummary: KPISourceSummary;
-  averageResponseTimeMinutes: number;
-}
-
-export interface APIResponse<T> {
-  success: boolean;
-  message: string;
-  data: T;
-}
-```
-
-### Bước 2: Viết hàm gọi API sử dụng `fetch` hoặc `axios`
-
-Ví dụ hàm gọi API trong file `src/services/dashboard.service.ts`:
-```typescript
-import { KPIData, APIResponse } from '../types/dashboard';
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-
-export async function fetchKPIData(startDate?: string, endDate?: string): Promise<KPIData> {
-  const url = new URL(`${API_BASE_URL}/dashboard/kpi`);
-  
-  if (startDate) url.searchParams.append('startDate', startDate);
-  if (endDate) url.searchParams.append('endDate', endDate);
-
-  const response = await fetch(url.toString(), {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
-
-  const resJson: APIResponse<KPIData> = await response.json();
-  if (!response.ok || !resJson.success) {
-    throw new Error(resJson.message || 'Lỗi khi lấy dữ liệu KPI');
-  }
-
-  return resJson.data;
-}
-```
-
-### Bước 3: Sử dụng Hook trong Component của React để hiển thị dữ liệu
-
-```tsx
-import React, { useEffect, useState } from 'react';
-import { fetchKPIData } from './services/dashboard.service';
-import { KPIData } from './types/dashboard';
-
-export default function Dashboard() {
-  const [kpiData, setKpiData] = useState<KPIData | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-
-  // Bộ lọc khoảng thời gian mặc định
-  const [filters, setFilters] = useState({
-    startDate: '2026-06-01',
-    endDate: '2026-06-30'
-  });
-
-  useEffect(() => {
-    async function loadData() {
-      try {
-        setLoading(true);
-        setError(null);
-        const data = await fetchKPIData(filters.startDate, filters.endDate);
-        setKpiData(data);
-      } catch (err: any) {
-        setError(err.message || 'Có lỗi xảy ra.');
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadData();
-  }, [filters]);
-
-  if (loading) return <div>Đang tải dữ liệu...</div>;
-  if (error) return <div style={{ color: 'red' }}>Lỗi: {error}</div>;
-  if (!kpiData) return <div>Không có dữ liệu.</div>;
-
-  return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold mb-4">Dashboard CSKH</h1>
-      
-      {/* Thống kê Tổng quan */}
-      <div className="grid grid-cols-4 gap-4 mb-6">
-        <div className="p-4 bg-blue-100 rounded">
-          <h3>Tổng số hội thoại</h3>
-          <p className="text-xl font-bold">{kpiData.totalConversations}</p>
-        </div>
-        <div className="p-4 bg-green-100 rounded">
-          <h3>Khách hàng mới</h3>
-          <p className="text-xl font-bold">{kpiData.newCustomers}</p>
-        </div>
-        <div className="p-4 bg-yellow-100 rounded">
-          <h3>Thời gian phản hồi TB</h3>
-          <p className="text-xl font-bold">{kpiData.averageResponseTimeMinutes} phút</p>
-        </div>
-      </div>
-
-      {/* Hiển thị chi tiết theo Status và Source */}
-      <div className="grid grid-cols-2 gap-6">
-        <div className="p-4 border rounded">
-          <h2 className="font-bold mb-2">Trạng thái hội thoại</h2>
-          <ul>
-            <li>Mới (New): {kpiData.statusSummary.new}</li>
-            <li>Đang xử lý (Open): {kpiData.statusSummary.open}</li>
-            <li>Chờ (Pending): {kpiData.statusSummary.pending}</li>
-            <li>Hoàn tất (Closed): {kpiData.statusSummary.closed}</li>
-          </ul>
-        </div>
-        <div className="p-4 border rounded">
-          <h2 className="font-bold mb-2">Nguồn dữ liệu</h2>
-          <ul>
-            <li>ZaloOA: {kpiData.sourceSummary.ZaloOA}</li>
-            <li>ZaloBusiness: {kpiData.sourceSummary.ZaloBusiness}</li>
-            <li>Facebook: {kpiData.sourceSummary.Facebook}</li>
-            <li>ChatWidget: {kpiData.sourceSummary.ChatWidget}</li>
-            <li>Khác: {kpiData.sourceSummary.other}</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-  );
-}
-```
-
----
-
-## 6. Hướng dẫn chạy thử nghiệm tự động (Unit Test / Integration Test)
-
-Chúng tôi đã viết đầy đủ bộ test suite bằng **Jest** và **Supertest** để kiểm tra tính đúng đắn của logic dọn dẹp dữ liệu, tính toán KPI và các API Endpoints.
-
-### Cách chạy kiểm thử:
-Di chuyển vào thư mục `backend` và chạy lệnh:
-```bash
-npm test
-```
-
-### Các Suite Test đã cài đặt:
-1. **`conversation-cleaner.test.js`**: Kiểm tra quá trình dọn dẹp (loại trùng lặp, bỏ bản ghi lỗi, chuẩn hóa status/source).
-2. **`dashboard.service.test.js`**: Sử dụng Mock Repository để kiểm tra tính toán KPI (các tổng hợp số lượng, khách hàng mới, thời gian phản hồi trung bình).
-3. **`dashboard.api.test.js`**: Sử dụng Supertest để giả lập gọi HTTP request tới các API `/api/health`, `/api/dashboard/kpi`, `/api/test-db` nhằm kiểm thử phản hồi, xử lý lỗi và validate dữ liệu đầu vào.
-
+Toàn bộ mã nguồn Node.js cũ đã được di chuyển sang thư mục lưu trữ `/backend_legacy_node/` ở thư mục gốc của dự án. Không sử dụng hoặc chạy Node.js cho môi trường phát triển hay vận hành thông thường.

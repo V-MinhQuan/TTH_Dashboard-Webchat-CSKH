@@ -1,0 +1,18 @@
+================================================================================
+       BÁO CÁO MIGRATION SIÊU DỮ LIỆU SỰ CỐ (ISSUE METADATA MIGRATION REPORT)
+================================================================================
+
+1. THÔNG TIN DATABASE Môi trường Dev/Test:
+   - DB Server    : 14.225.192.252
+   - DB Name      : Dashboard_ChatBot
+   - Environment  : Dev/Test Environment
+   - IsProduction : false
+
+2. TRẠNG THÁI CÁC CỘT SAU MIGRATION:
+   * Cột: issueConfidence      | Kiểu: float      | MaxLen: N/A   | Nullable: YES
+   * Cột: issueFlag            | Kiểu: bit        | MaxLen: N/A   | Nullable: YES
+   * Cột: issueReason          | Kiểu: nvarchar   | MaxLen: 1000  | Nullable: YES
+   * Cột: issueType            | Kiểu: nvarchar   | MaxLen: 100   | Nullable: YES
+
+3. KẾT LUẬN: MIGRATION THÀNH CÔNG VÀ ĐỒNG BỘ CỘT HOÀN TOÀN ✅
+================================================================================

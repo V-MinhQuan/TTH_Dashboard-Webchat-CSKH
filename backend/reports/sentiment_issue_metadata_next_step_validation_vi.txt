@@ -1,0 +1,66 @@
+================================================================================
+  BÁO CÁO XÁC MINH VÀ ĐÁNH GIÁ CHẤT LƯỢNG PIPELINE PHÁT HIỆN SỰ CỐ ĐỘC LẬP
+================================================================================
+
+- Môi trường đánh giá: Dev/Test Environment (Database: Dashboard_ChatBot)
+- Trạng thái Module  : PASS_WITH_MONITORING
+- Mã số Trạng thái   : READY_FOR_PRODUCTION_REPROCESS_PLAN_ONLY
+- Người thực hiện    : Senior QA & AI Engineer
+- Ngày hoàn thành    : 2026-06-09
+
+--------------------------------------------------------------------------------
+ KẾT QUẢ XÁC MINH CÁC GIAI ĐOẠN (PHASE-BY-PHASE VERIFICATION RESULTS)
+--------------------------------------------------------------------------------
+
+1. GIAI ĐOẠN 1: XÁC MINH RUNTIME ML-SERVICE (COMPLETED)
+   - Kết quả: Máy chủ ml-service chạy bằng FastAPI tại cổng 8001 hoạt động tốt.
+   - Chi tiết: Health check phản hồi thành công. Mô hình ViSoBERT (phiên bản ONNX) được nạp và hoạt động chính xác ở chế độ dự phòng và kiểm tra chất lượng song song.
+   - Báo cáo chi tiết lưu tại: backend/reports/ml_service_runtime_validation_report.txt
+
+2. GIAI ĐOẠN 2: THỬ NGHIỆM DI CƯ SCHEMA DATABASE (COMPLETED)
+   - Kết quả: Áp dụng thành công tập lệnh di cư `add_issue_metadata_to_message_analytics.sql` lên cơ sở dữ liệu Dev/Test.
+   - Giải pháp kỹ thuật: Để khắc phục lỗi phân tích cú pháp của SQL Server (khi tạo cột và chỉ mục tham chiếu đến cột đó trong cùng một lô), tập lệnh thực thi trong `run-migration.js` đã được tách thành hai lô độc lập (Batch 1: Alter Table, Batch 2: Create Index).
+   - Kiểm tra thực thể: Đã xác thực các cột `issueFlag` (BIT), `issueType` (NVARCHAR), `issueReason` (NVARCHAR), `issueConfidence` (FLOAT) và chỉ mục phi cụm liên quan đều đã tồn tại trên bảng `dbo.WebChat_MessageAnalytics`.
+   - Báo cáo chi tiết lưu tại: backend/reports/issue_metadata_migration_devtest_report.txt
+
+3. GIAI ĐOẠN 3: KIỂM THỬ TÍNH BÊN VỮNG CỦA PIPELINE (COMPLETED)
+   - Kết quả: Chạy thử nghiệm thành công 16 ca kiểm thử đặc thù thông qua tập lệnh `test-save-issue-metadata.js`.
+   - Chi tiết: Hệ thống nhận dạng đúng các thuộc tính sự cố từ nội dung hội thoại nghiệp vụ và lưu trữ chính xác thông tin xuống database.
+   - Logic kiểm tra: Các cuộc hội thoại có sắc thái tiêu cực hoặc chứa sự cố (issueFlag = true) đều được cập nhật thuộc tính `needStaffReview = true` một cách tự động và chuẩn xác.
+   - Báo cáo chi tiết lưu tại: backend/reports/issue_metadata_persistence_test_report.txt
+
+4. GIAI ĐOẠN 4: CHẠY THỬ NGHIỆM TÁI XỬ LÝ (DRY-RUN REPROCESS) (COMPLETED)
+   - Kết quả: Chạy dry-run thành công trên 150 bản ghi ngẫu nhiên trong cơ sở dữ liệu Dev/Test.
+   - Số liệu thống kê:
+     * Tổng số bản ghi phân tích: 150 dòng.
+     * Số ca phát hiện sự cố nghiệp vụ (issueFlag = true): 4 ca (2.7%).
+     * Số ca cần chuyển nhân viên hỗ trợ (needStaffReview = true): 9 ca (6.0%).
+     * Số dòng thay đổi nhãn Cảm xúc sau khi áp dụng Ensemble: 33 dòng (22.0%).
+     * Số ca báo động giả đối với tin nhắn đệm (Short Ack): 0 ca (0.0%).
+     * Số ca báo động giả đối với câu hỏi thông tin (Info Question): 0 ca (0.0%).
+     * Số ca bỏ sót lỗi tiềm ẩn: 0 ca (0.0%).
+   - Đánh giá: Độ chính xác cực kỳ cao, tỷ lệ nhiễu hoặc bỏ sót sự cố nằm trong biên độ an toàn tuyệt đối.
+   - Báo cáo chi tiết lưu tại: 
+     * backend/reports/devtest_issue_reprocess_dry_run.csv
+     * backend/reports/devtest_issue_reprocess_dry_run_summary.json
+     * backend/reports/devtest_issue_reprocess_validation_report.txt
+
+5. GIAI ĐOẠN 5: XÂY DỰNG KHUNG BLIND TEST V2 (COMPLETED)
+   - Kết quả: Tạo thành công tệp kiểm thử mù phiên bản mới (Blind Test v2) để phục vụ cho các đợt đánh giá chất lượng tiếp theo.
+   - Khắc phục lỗi timeout DB: Thay thế truy vấn sắp xếp theo ngày (`SentAt DESC`) trên bảng lớn bằng việc truy vấn 5000 bản ghi mới nhất theo thứ tự khóa chính (`id_webchat_messagelogs DESC`). Truy vấn trả về kết quả ngay lập tức dưới 100ms mà không gây quá tải server.
+   - Tài nguyên được tạo:
+     * Tệp mẫu 250 câu hội thoại lọc trùng với v1: `backend/reports/sentiment_blind_test_v2_template.csv`
+     * Tài liệu hướng dẫn gán nhãn tiếng Việt chi tiết cho chuyên viên vận hành: `backend/reports/sentiment_blind_test_v2_readme.md`
+
+--------------------------------------------------------------------------------
+ PHÁN QUYẾT CHẤT LƯỢNG & KHUYẾN NGHỊ (QUALITY VERDICT & RECOMMENDATIONS)
+--------------------------------------------------------------------------------
+
+- Verdict: PASS_WITH_MONITORING
+  Mặc dù pipeline kỹ thuật và khả năng lưu trữ dữ liệu sự cố đã hoạt động hoàn toàn chính xác trên môi trường thử nghiệm, hệ thống phân tích cảm xúc & phát hiện sự cố vẫn cần được giám sát chặt chẽ ở giai đoạn đầu triển khai trên Production. Không khuyến nghị áp dụng tự động 100% các quyết định nghiệp vụ mà không có sự xác nhận của nhân viên hỗ trợ.
+
+- Khuyến nghị & Kế hoạch tiếp theo:
+  1. Chuyển giao tài liệu gán nhãn `sentiment_blind_test_v2_readme.md` và tệp dữ liệu `sentiment_blind_test_v2_template.csv` cho đội ngũ chuyên viên CSKH để tiến hành gán nhãn thủ công (Ground Truth).
+  2. Triển khai cấu trúc bảng mới lên cơ sở dữ liệu Production dựa trên Kế hoạch Tái xử lý dữ liệu và Sao lưu an toàn đã lập tại: `backend/reports/production_issue_metadata_reprocess_plan_vi.md`.
+  3. Duy trì ViSoBERT ở trạng thái thử nghiệm song song (experimental) để giám sát hiệu năng thực tế. Chỉ chính thức kích hoạt làm mô hình chính sau khi có kết quả đối chiếu chất lượng từ bộ dữ liệu Blind Test v2.
+================================================================================

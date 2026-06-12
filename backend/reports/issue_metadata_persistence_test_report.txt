@@ -1,0 +1,154 @@
+================================================================================
+     BÁO CÁO THỬ NGHIỆM LƯU SIÊU DỮ LIỆU SỰ CỐ (ISSUE METADATA PERSISTENCE TEST REPORT)
+================================================================================
+
+1. KẾT QUẢ PHÂN TÍCH VÀ GHI NHẬN TRỰC TIẾP:
+   * Text: "em chưa nhận được email xác nhận"
+     - Expected Issue : true
+     - Saved issueFlag: true (Bit: 1)
+     - Saved needReview: true (Bit: 1)
+     - Saved issueType: missing_email_or_notification
+     - Saved reason   : matched pattern: chua nhan duoc email
+     - Confidence     : 0.9
+     - Status         : PASS ✅
+
+   * Text: "em không thấy mã QR để chuyển khoản"
+     - Expected Issue : true
+     - Saved issueFlag: true (Bit: 1)
+     - Saved needReview: true (Bit: 1)
+     - Saved issueType: payment_or_qr_issue
+     - Saved reason   : matched pattern: khong thay ma qr
+     - Confidence     : 0.9
+     - Status         : PASS ✅
+
+   * Text: "em không mở được file ôn tập"
+     - Expected Issue : true
+     - Saved issueFlag: true (Bit: 1)
+     - Saved needReview: true (Bit: 1)
+     - Saved issueType: file_extract_or_document_issue
+     - Saved reason   : matched pattern: khong mo duoc file
+     - Confidence     : 0.9
+     - Status         : PASS ✅
+
+   * Text: "extract file bị yêu cầu mật khẩu"
+     - Expected Issue : true
+     - Saved issueFlag: true (Bit: 1)
+     - Saved needReview: true (Bit: 1)
+     - Saved issueType: file_extract_or_document_issue
+     - Saved reason   : matched pattern: extract
+     - Confidence     : 0.9
+     - Status         : PASS ✅
+
+   * Text: "em chx nhận đc mail ạ"
+     - Expected Issue : true
+     - Saved issueFlag: true (Bit: 1)
+     - Saved needReview: true (Bit: 1)
+     - Saved issueType: typo_slang_abbreviation
+     - Saved reason   : matched pattern: chx nhan
+     - Confidence     : 0.9
+     - Status         : PASS ✅
+
+   * Text: "em k mở đc file"
+     - Expected Issue : true
+     - Saved issueFlag: true (Bit: 1)
+     - Saved needReview: true (Bit: 1)
+     - Saved issueType: typo_slang_abbreviation
+     - Saved reason   : matched pattern: k mo dc
+     - Confidence     : 0.9
+     - Status         : PASS ✅
+
+   * Text: "trả lời dùm em vứiii"
+     - Expected Issue : true
+     - Saved issueFlag: true (Bit: 1)
+     - Saved needReview: true (Bit: 1)
+     - Saved issueType: contact_failure
+     - Saved reason   : matched pattern: tra loi dum
+     - Confidence     : 0.9
+     - Status         : PASS ✅
+
+   * Text: "dạ cho em hỏi web bị sao vào kh được sao học ạ"
+     - Expected Issue : true
+     - Saved issueFlag: true (Bit: 1)
+     - Saved needReview: true (Bit: 1)
+     - Saved issueType: access_or_login_issue
+     - Saved reason   : matched pattern: kh duoc
+     - Confidence     : 0.9
+     - Status         : PASS ✅
+
+   * Text: "lịch thi tháng 6 có chưa ạ"
+     - Expected Issue : false
+     - Saved issueFlag: false (Bit: 0)
+     - Saved needReview: false (Bit: 0)
+     - Saved issueType: none
+     - Saved reason   : no issue pattern matched
+     - Confidence     : 0
+     - Status         : PASS ✅
+
+   * Text: "hồ sơ thi gồm những gì ạ"
+     - Expected Issue : false
+     - Saved issueFlag: false (Bit: 0)
+     - Saved needReview: false (Bit: 0)
+     - Saved issueType: none
+     - Saved reason   : matches whitelist: informational question or short greeting
+     - Confidence     : 0
+     - Status         : PASS ✅
+
+   * Text: "lệ phí thi bao nhiêu ạ"
+     - Expected Issue : false
+     - Saved issueFlag: false (Bit: 0)
+     - Saved needReview: false (Bit: 0)
+     - Saved issueType: none
+     - Saved reason   : matches whitelist: informational question or short greeting
+     - Confidence     : 0
+     - Status         : PASS ✅
+
+   * Text: "có cần công chứng không ạ"
+     - Expected Issue : false
+     - Saved issueFlag: false (Bit: 0)
+     - Saved needReview: false (Bit: 0)
+     - Saved issueType: none
+     - Saved reason   : matches whitelist: informational question or short greeting
+     - Confidence     : 0
+     - Status         : PASS ✅
+
+   * Text: "Dạ"
+     - Expected Issue : false
+     - Saved issueFlag: false (Bit: 0)
+     - Saved needReview: false (Bit: 0)
+     - Saved issueType: none
+     - Saved reason   : matches whitelist: informational question or short greeting
+     - Confidence     : 0
+     - Status         : PASS ✅
+
+   * Text: "Vâng ạ"
+     - Expected Issue : false
+     - Saved issueFlag: false (Bit: 0)
+     - Saved needReview: false (Bit: 0)
+     - Saved issueType: none
+     - Saved reason   : matches whitelist: informational question or short greeting
+     - Confidence     : 0
+     - Status         : PASS ✅
+
+   * Text: "Ok"
+     - Expected Issue : false
+     - Saved issueFlag: false (Bit: 0)
+     - Saved needReview: false (Bit: 0)
+     - Saved issueType: none
+     - Saved reason   : matches whitelist: informational question or short greeting
+     - Confidence     : 0
+     - Status         : PASS ✅
+
+   * Text: "Dạ em cảm ơn chị"
+     - Expected Issue : false
+     - Saved issueFlag: false (Bit: 0)
+     - Saved needReview: false (Bit: 0)
+     - Saved issueType: none
+     - Saved reason   : matches whitelist: informational question or short greeting
+     - Confidence     : 0
+     - Status         : PASS ✅
+
+2. TỔNG HỢP KẾT QUẢ:
+   - Số ca sự cố Đạt (Expected Issue): 8/8
+   - Số ca thông tin Đạt (Expected Non-Issue): 8/8
+   - KẾT LUẬN CHUNG: HOÀN TOÀN ĐẠT YÊU CẦU ✅
+================================================================================

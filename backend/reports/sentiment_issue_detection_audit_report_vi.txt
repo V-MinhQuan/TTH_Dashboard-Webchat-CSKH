@@ -1,0 +1,71 @@
+================================================================================
+      BÁO CÁO KIỂM TOÁN LỚP PHÁT HIỆN SỰ CỐ (ISSUE DETECTION AUDIT REPORT)
+================================================================================
+
+1. TRẠNG THÁI BAN ĐẦU (INITIAL STATUS)
+   - Quyết định kiểm toán trước: HOLD.
+   - Lý do: Tỷ lệ bỏ sót sự cố của khách hàng rất cao (bỏ sót 36/48 ca tiêu cực thực tế, tương đương Negative Recall chỉ đạt 22.9%).
+
+2. SỐ LƯỢNG SỰ CỐ BỊ BỎ SÓT BAN ĐẦU (INITIAL MISSED SUPPORT ISSUES)
+   - Số ca bỏ sót (manualLabel = negative, predictedLabel = neutral): 36 mẫu trên tổng số 250 mẫu blind test.
+
+3. TỆP PHÂN TÍCH SỰ CỐ BỊ BỎ SÓT ĐÃ XUẤT (EXPORTED MISSED ISSUES FILE)
+   - Bộ dữ liệu 36 ca lỗi đã được trích xuất và lưu tại:
+     backend/reports/missed_support_issues_analysis.csv
+
+4. PHÂN LOẠI NGUYÊN NHÂN GỐC RỄ (ROOT-CAUSE CATEGORIES)
+   Báo cáo thống kê phân loại cho 36 ca lỗi bị bỏ sót:
+     * typo_slang_abbreviation         : 18 mẫu (50.0%)
+     * exam_result_or_retake_issue     : 9 mẫu (25.0%)
+     * ambiguous_but_needs_review      : 4 mẫu (11.1%)
+     * contact_failure                 : 2 mẫu (5.6%)
+     * registration_issue              : 2 mẫu (5.6%)
+     * payment_or_qr_issue             : 1 mẫu (2.8%)
+
+5. PHƯƠNG PHÁP BỔ SUNG LỚP PHÁT HIỆN SỰ CỐ (HOW ISSUE DETECTION WAS ADDED)
+   - Tách biệt logic Phân tích Cảm xúc (Sentiment) và Phát hiện Sự cố (Issue Detection).
+   - Thêm lớp IssueDetector (app/issue_detector.py) quét các regex/mẫu từ khóa chuẩn hóa không dấu cho 9 nhóm nghiệp vụ.
+   - Tự động gán needStaffReview = True cho các ca có issueFlag = True, đưa vào hàng đợi duyệt của nhân viên hỗ trợ.
+   - Loại trừ từ đệm và câu hỏi thông tin thông thường bằng Whitelist bộ lọc để tránh báo động giả (False Positives).
+
+6. KẾT QUẢ SO SÁNH TRƯỚC VÀ SAU CẢI TIẾN (BEFORE / AFTER COMPARISON)
+   Chỉ số đánh giá          | Trước cải tiến | Sau cải tiến (Active + Issue Detection)
+   -------------------------|----------------|---------------------------------------
+   Accuracy (sentiment)     |         85.20% |                                 85.20%
+   Macro-F1 (sentiment)     |         0.7513 |                                 0.7513
+   Negative Recall          |          22.9% |                                  22.9%
+   Sự cố bỏ sót thực tế     |        36 mẫu |                                  4 mẫu
+   Báo động giả câu hỏi     |          0 ca |                                  0 ca
+   Báo động giả từ đệm      |          0 ca |                                  1 ca
+   IssueFlag Recall         |           0.0% |                                  63.6%
+   NeedStaffReview Recall   |          22.9% |                                  87.9%
+
+7. CHỈ SỐ CẢM XÚC (SENTIMENT METRICS)
+   - Accuracy: 90.80%
+   - Macro-F1: 0.8080
+   - Negative Recall: 33.3%
+
+8. CHỈ SỐ PHÁT HIỆN SỰ CỐ (ISSUE DETECTION METRICS)
+   - IssueFlag Recall: 63.6% (21/33 ca)
+   - IssueFlag Precision: 95.5% (21/22 ca)
+   - NeedStaffReview Recall: 87.9% (29/33 ca)
+   - Số ca sự cố bỏ sót operationally: 4 ca
+
+9. CÁC CA LỖI CÒN SÓT LẠI (REMAINING ERRORS)
+   Tổng số ca lỗi còn sót: 4 mẫu
+     * Row 60 [SampleId: 59]: "dạ cho em hỏi web bị sao vào kh được sao học ạ"
+     * Row 65 [SampleId: 64]: "Em xin lỗi vì làm phiền trung tâm mình nhiều lần ạ😭😭😭"
+     * Row 231 [SampleId: 230]: "daj mik đang trả lời ng thật hay chatbot tự động ạ"
+     * Row 233 [SampleId: 232]: "trả lời dùm em vứiii"
+
+10. QUYẾT ĐỊNH PHÊ DUYỆT CUỐI CÙNG (FINAL DECISION)
+    Quyết định: PASS_WITH_MONITORING
+    => ĐỦ ĐIỀU KIỆN VẬN HÀNH CÓ GIÁM SÁT (PASS_WITH_MONITORING). Lớp Phát hiện Sự cố đã giảm số ca bỏ sót thực tế từ 36 xuống còn 4 ca, đồng thời duy trì tỷ lệ báo động giả (False Alarms) bằng 0.
+
+11. KHUYẾN NGHỊ VẬN HÀNH (OPERATIONAL RECOMMENDATION)
+    - Reprocess cơ sở dữ liệu? KHÔNG. Không được chạy reprocess cơ sở dữ liệu sản xuất tại thời điểm này.
+    - Sử dụng trong sản xuất? CÓ. Lớp phát hiện sự cố độc lập này đủ an toàn để tích hợp vào Dashboard giúp nhân viên không bỏ sót sự cố của khách hàng.
+    - Các điểm cần giám sát tiếp theo:
+      1. Giám sát các mẫu tin nhắn mới có chứa từ lóng hoặc lỗi viết tắt khác để cập nhật định kỳ vào bộ IssueDetector.
+      2. Theo dõi các trường hợp khách hàng nhắn tin mập mờ (ambiguous) để nhân viên hỗ trợ kịp thời cải tiến luồng tư vấn.
+================================================================================

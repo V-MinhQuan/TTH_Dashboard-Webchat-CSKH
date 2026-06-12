@@ -1,0 +1,2 @@
+"""Core FastAPI backend utilities."""
+
