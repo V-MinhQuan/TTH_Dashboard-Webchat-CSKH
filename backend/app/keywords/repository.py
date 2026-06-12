@@ -1,7 +1,7 @@
 import os
 import json
 from datetime import datetime, time
-from backend.db import execute_query
+from app.core.legacy_db_executor import execute_query
 
 # File JSON stored in data/crm_keywords.json relative to backend root
 JSON_FILE_PATH = os.path.join(os.path.dirname(__file__), "../data/crm_keywords.json")

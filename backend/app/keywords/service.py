@@ -2,7 +2,7 @@ import unicodedata
 import json
 import time
 from datetime import datetime, timedelta
-from backend.keywords.repository import keyword_repository
+from app.keywords.repository import keyword_repository
 
 GROUP_META = {
     "toeic":      {"name": "TOEIC",                    "color": "#003865"},

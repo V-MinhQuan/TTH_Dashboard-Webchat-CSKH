@@ -10,10 +10,10 @@ from pydantic import BaseModel
 # Thêm thư mục hiện tại vào sys.path để import dễ dàng
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-from backend.config.db import get_db_connection
-from backend.services.dashboard_service import dashboard_service
-from backend.keywords.service import keyword_service
-from backend.sheet_chatbot.service import sheet_chatbot_service
+from app.core.legacy_db import get_db_connection
+from app.services.legacy_dashboard_service import dashboard_service
+from app.keywords.service import keyword_service
+from app.sheet_chatbot.service import sheet_chatbot_service
 
 router = APIRouter()
 

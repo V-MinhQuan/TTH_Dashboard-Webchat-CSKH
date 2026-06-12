@@ -1,7 +1,7 @@
 import os
 from datetime import datetime, timedelta
 import pymssql
-from backend.config.db import get_db_connection
+from app.core.legacy_db import get_db_connection
 
 class ConversationRepository:
     def _append_date_and_channel_filters(self, conditions, params, date_column, source_column, start_date=None, end_date=None, channel=None):

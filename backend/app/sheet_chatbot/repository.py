@@ -287,7 +287,7 @@ class SheetChatbotRepository:
         return parsed
 
     def _get_db_connection(self):
-        from backend.config.db import get_db_connection
+        from app.core.legacy_db import get_db_connection
 
         return get_db_connection()
 

@@ -2,7 +2,7 @@ import re
 import unicodedata
 from difflib import SequenceMatcher
 
-from backend.sheet_chatbot.repository import sheet_chatbot_repository
+from app.sheet_chatbot.repository import sheet_chatbot_repository
 
 
 VALID_STATUSES = {

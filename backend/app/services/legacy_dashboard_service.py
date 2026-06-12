@@ -2,8 +2,8 @@ import json
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
-from backend.repositories.conversation_repository import ConversationRepository
-from backend.services.conversation_cleaner import conversation_cleaner_service
+from app.repositories.legacy_conversation_repository import ConversationRepository
+from app.services.conversation_cleaner import conversation_cleaner_service
 
 DASHBOARD_CACHE_TTL_SECONDS = 90
 DASHBOARD_QUERY_WORKERS = 9
