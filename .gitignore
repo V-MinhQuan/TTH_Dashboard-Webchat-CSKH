@@ -1,0 +1,75 @@
+# === Node.js / Frontend ===
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+dist/
+.vercel/
+.sixth/
+
+# === Environment Variables ===
+.env
+.env.*
+!.env.example
+!backend/.env.example
+!ml-service/.env.example
+
+# === Logs ===
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+logs/
+
+# === OS ===
+.DS_Store
+Thumbs.db
+
+# === IDE ===
+.vscode/
+.idea/
+*.swp
+
+# === Python Cache ===
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage/
+htmlcov/
+*.egg-info/
+
+# === Python Virtual Environments ===
+.venv/
+venv/
+env/
+
+# === Build artifacts ===
+build/
+.vite/
+.cache/
+
+# === Zip / Archives ===
+*.zip
+*.tar.gz
+
+# === Temp / Backup files ===
+tmp/
+temp/
+*.tmp
+*.bak
+*.backup
+*.old
+
+# === Runtime State / Temporary files ===
+.ensemble-reprocess-state.json
+scratch_*.js
+
+# === ML Model files (large binary) ===
+ml-service/models/
+ml-service/data/
