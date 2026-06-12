@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 from typing import Any, Dict, Iterable, List
@@ -109,30 +109,19 @@ class AnalyticsService:
         ]
 
     def get_topic_summary(self, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
-        topic_stats: Dict[str, Dict[str, int]] = {}
+        topic_count: Dict[str, int] = {}
         for row in self.repository.get_topic_raw_data(filters):
             count = int(row.get("msgCount") or 1)
-            pos = int(row.get("positive") or 0)
-            neu = int(row.get("neutral") or 0)
-            neg = int(row.get("negative") or 0)
             for topic in _json_array(row.get("detectedTopics")):
                 key = str(topic)
-                if key not in topic_stats:
-                    topic_stats[key] = {"count": 0, "positive": 0, "neutral": 0, "negative": 0}
-                topic_stats[key]["count"] += count
-                topic_stats[key]["positive"] += pos
-                topic_stats[key]["neutral"] += neu
-                topic_stats[key]["negative"] += neg
+                topic_count[key] = topic_count.get(key, 0) + count
         return [
             {
                 "topicKey": topic,
                 "topicLabel": TOPIC_LABELS.get(topic, topic),
-                "count": stats["count"],
-                "positive": stats["positive"],
-                "neutral": stats["neutral"],
-                "negative": stats["negative"]
+                "count": count,
             }
-            for topic, stats in sorted(topic_stats.items(), key=lambda item: item[1]["count"], reverse=True)
+            for topic, count in sorted(topic_count.items(), key=lambda item: item[1], reverse=True)
         ]
 
     def get_keywords(self, filters: Dict[str, Any]) -> List[Dict[str, Any]]:

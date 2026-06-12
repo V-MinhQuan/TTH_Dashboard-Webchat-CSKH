@@ -1,122 +1,31 @@
+import React, { useState, useEffect } from "react";
+
+class ErrorBoundary extends React.Component<any, any> {
+  constructor(props: any) { super(props); this.state = { hasError: false, error: null }; }
+  static getDerivedStateFromError(error: any) { return { hasError: true, error }; }
+  render() { 
+    if (this.state.hasError) return (
+      <div style={{ color: "#D73C01", padding: "20px", border: "1px solid #FBCBB8", backgroundColor: "#FFF4EE", borderRadius: "10px" }}>
+        <strong>Lỗi hiển thị biểu đồ:</strong> {this.state.error?.message || "Lỗi không xác định"}
+      </div>
+    ); 
+    return this.props.children; 
+  }
+}
 import { Heart, Meh, Frown, TrendingUp, AlertTriangle, Lightbulb, Star } from "lucide-react";
 import {
   PieChart, Pie, Cell, LineChart, Line, BarChart, Bar, XAxis, YAxis,
-  CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  CartesianGrid, Tooltip, ResponsiveContainer, Legend, AreaChart, Area
 } from "recharts";
 import { ChartCard } from "../ChartCard";
 import { FilterPanel, FilterValues } from "../FilterPanel";
 import { toast } from "sonner";
+import { fetchApiJson, buildApiUrl } from "../../services/dashboardApi";
 
 const NAVY = "#003865";
 const ORANGE = "#D73C01";
 
-const sentimentTrend = [
-  { date: "1/4", positive: 60, neutral: 25, negative: 15 },
-  { date: "5/4", positive: 65, neutral: 22, negative: 13 },
-  { date: "10/4", positive: 58, neutral: 28, negative: 14 },
-  { date: "15/4", positive: 70, neutral: 18, negative: 12 },
-  { date: "20/4", positive: 63, neutral: 23, negative: 14 },
-  { date: "25/4", positive: 67, neutral: 20, negative: 13 },
-  { date: "27/4", positive: 64, neutral: 22, negative: 14 },
-];
-
-const topicSentiment = [
-  { topic: "TOEIC", positive: 72, neutral: 20, negative: 8 },
-  { topic: "VSTEP", positive: 68, neutral: 22, negative: 10 },
-  { topic: "Chuẩn đầu ra", positive: 75, neutral: 16, negative: 9 },
-  { topic: "Tin học", positive: 80, neutral: 15, negative: 5 },
-  { topic: "Lệ phí", positive: 42, neutral: 28, negative: 30 },
-  { topic: "Lịch thi", positive: 58, neutral: 27, negative: 15 },
-  { topic: "Tra cứu điểm", positive: 51, neutral: 25, negative: 24 },
-];
-
-const donutData = [
-  { name: "Tích cực", value: 64, color: "#3E9675" },
-  { name: "Trung lập", value: 22, color: "#E5A850" },
-  { name: "Tiêu cực", value: 14, color: "#D26767" },
-];
-
-const negKeywords = [
-  { word: "chờ quá lâu", count: 89, topic: "Lệ phí" },
-  { word: "không tìm thấy", count: 76, topic: "Tra cứu điểm" },
-  { word: "sai thông tin", count: 54, topic: "Lịch thi" },
-  { word: "không hiểu câu hỏi", count: 48, topic: "VSTEP" },
-  { word: "cần gặp nhân viên", count: 43, topic: "Chuẩn đầu ra" },
-];
-
 type NegLevel = "Rất tiêu cực" | "Tiêu cực" | "Hơi tiêu cực";
-
-const negativeConversations: {
-  id: string;
-  customer: string;
-  complaint: string;
-  topic: string;
-  channel: string;
-  level: NegLevel;
-  waitTime: string;
-  status: string;
-}[] = [
-  {
-    id: "HT-2451",
-    customer: "Nguyễn Văn A",
-    complaint: "Em hỏi lịch thi VSTEP mà chatbot trả lời không rõ, hỏi đi hỏi lại vẫn không có câu trả lời cụ thể.",
-    topic: "VSTEP",
-    channel: "Facebook",
-    level: "Rất tiêu cực",
-    waitTime: "2g 15p",
-    status: "Chờ quản lý xác nhận",
-  },
-  {
-    id: "HT-2440",
-    customer: "Phạm Thị D",
-    complaint: "Thông tin lệ phí TOEIC bị khác nhau giữa các lần hỏi, không biết đâu là đúng.",
-    topic: "TOEIC",
-    channel: "Zalo Business",
-    level: "Rất tiêu cực",
-    waitTime: "6g 40p",
-    status: "Chờ xử lý",
-  },
-  {
-    id: "HT-2432",
-    customer: "Trần Minh H",
-    complaint: "Không tìm thấy hướng dẫn đăng ký thi MOS ở đâu cả, chatbot không giúp được.",
-    topic: "MOS/IC3",
-    channel: "Chat Widget",
-    level: "Tiêu cực",
-    waitTime: "1g 30p",
-    status: "Đang xử lý",
-  },
-  {
-    id: "HT-2427",
-    customer: "Lê Thị K",
-    complaint: "Chờ phản hồi quá lâu, đã gửi câu hỏi từ sáng đến chiều chưa có ai trả lời.",
-    topic: "Chuẩn đầu ra",
-    channel: "Zalo OA",
-    level: "Tiêu cực",
-    waitTime: "8g 05p",
-    status: "Chờ xử lý",
-  },
-  {
-    id: "HT-2420",
-    customer: "Nguyễn Thị M",
-    complaint: "Tra cứu điểm thi nhưng hệ thống báo lỗi, chatbot không hỗ trợ được gì.",
-    topic: "Tra cứu điểm",
-    channel: "Facebook",
-    level: "Hơi tiêu cực",
-    waitTime: "55p",
-    status: "Đang xử lý",
-  },
-  {
-    id: "HT-2415",
-    customer: "Phan Văn N",
-    complaint: "Thắc mắc về điều kiện miễn thi Tin học nhưng bot không có thông tin, phải chờ quản lý.",
-    topic: "Tin học",
-    channel: "Zalo Business",
-    level: "Hơi tiêu cực",
-    waitTime: "2g 10p",
-    status: "Chờ quản lý xác nhận",
-  },
-];
 
 const negLevelConfig: Record<NegLevel, { bg: string; color: string; stars: number }> = {
   "Rất tiêu cực": { bg: "#FFF1F1", color: "#B42318", stars: 3 },
@@ -131,33 +40,255 @@ const statusConfig: Record<string, { bg: string; color: string }> = {
   "Hoàn thành":           { bg: "#EAF8F1", color: "#228A61" },
 };
 
+function getDatesFromRange(range: string, customFrom?: string, customTo?: string): { startDate?: string; endDate?: string } {
+  const today = new Date();
+  const formatDateStr = (d: Date) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  if (range === "Hôm nay") {
+    return { startDate: formatDateStr(today), endDate: formatDateStr(today) };
+  }
+  if (range === "7 ngày qua") {
+    const start = new Date();
+    start.setDate(today.getDate() - 7);
+    return { startDate: formatDateStr(start), endDate: formatDateStr(today) };
+  }
+  if (range === "30 ngày qua") {
+    const start = new Date();
+    start.setDate(today.getDate() - 30);
+    return { startDate: formatDateStr(start), endDate: formatDateStr(today) };
+  }
+  if (range === "Tháng này") {
+    const start = new Date(today.getFullYear(), today.getMonth(), 1);
+    return { startDate: formatDateStr(start), endDate: formatDateStr(today) };
+  }
+  if (range === "Tháng trước") {
+    const start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const end = new Date(today.getFullYear(), today.getMonth(), 0);
+    return { startDate: formatDateStr(start), endDate: formatDateStr(end) };
+  }
+  if (range === "Tùy chọn" && customFrom && customTo) {
+    return { startDate: customFrom, endDate: customTo };
+  }
+  return {};
+}
+
 interface SentimentAnalysisProps {
   filters: FilterValues;
   onFiltersChange: (f: FilterValues) => void;
   onNavigate: (s: string) => void;
 }
 
-export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: SentimentAnalysisProps) {
+function SentimentLoadingState() {
+  const block = (style: React.CSSProperties = {}) => (
+    <div
+      style={{
+        borderRadius: "10px",
+        background: "linear-gradient(90deg, #f0f4f8 25%, #e2e8f0 50%, #f0f4f8 75%)",
+        backgroundSize: "200% 100%",
+        animation: "sentimentShimmer 1.4s infinite",
+        ...style,
+      }}
+    />
+  );
+
   return (
-    <div style={{ padding: "24px" }}>
+    <div>
+      <style>{`
+        @keyframes sentimentShimmer {
+          0% { background-position: -200% 0; }
+          100% { background-position: 200% 0; }
+        }
+      `}</style>
+      <div style={{ marginBottom: "16px" }}>
+        {block({ width: "220px", height: "22px", marginBottom: "8px" })}
+        {block({ width: "330px", height: "14px" })}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px", marginBottom: "24px" }}>
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} style={{ background: "#fff", borderRadius: "20px", padding: "24px", border: "1px solid rgba(0,56,101,0.08)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "16px" }}>
+              {block({ width: "48px", height: "48px", borderRadius: "14px" })}
+              <div style={{ flex: 1 }}>
+                {block({ width: "70%", height: "14px", marginBottom: "6px" })}
+                {block({ width: "90%", height: "24px" })}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginBottom: "24px" }}>
+        {block({ height: "282px", backgroundColor: "#fff" })}
+        {block({ height: "282px", backgroundColor: "#fff" })}
+      </div>
+      <div style={{ marginBottom: "24px" }}>
+        {block({ height: "300px", backgroundColor: "#fff" })}
+      </div>
+    </div>
+  );
+}
+
+export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: SentimentAnalysisProps) {
+  const [loading, setLoading] = useState(false);
+  const [summaryData, setSummaryData] = useState<any>(null);
+  
+  const [sentimentTrend, setSentimentTrend] = useState<any[]>([]);
+  const [topicSentiment, setTopicSentiment] = useState<any[]>([]);
+  const [donutData, setDonutData] = useState<any[]>([
+    { name: "Tích cực", value: 64, color: "#3E9675" },
+    { name: "Trung lập", value: 22, color: "#E5A850" },
+    { name: "Tiêu cực", value: 14, color: "#D26767" },
+  ]);
+  const [negKeywords, setNegKeywords] = useState<any[]>([]);
+  const [negativeConversations, setNegativeConversations] = useState<any[]>([]);
+
+  useEffect(() => {
+    async function loadData() {
+      setLoading(true);
+      try {
+        const queryParams = new URLSearchParams();
+        const dates = getDatesFromRange(filters.dateRange, filters.customDateFrom, filters.customDateTo);
+        if (dates.startDate && dates.endDate) {
+          queryParams.set("startDate", dates.startDate);
+          queryParams.set("endDate", dates.endDate);
+        }
+
+        const [sumRes, trendRes, topicRes, kwRes, convRes] = await Promise.all([
+          fetchApiJson<any>(buildApiUrl("/api/analytics/sentiment-summary", queryParams.toString())),
+          fetchApiJson<any>(buildApiUrl("/api/analytics/sentiment-trend", queryParams.toString())),
+          fetchApiJson<any>(buildApiUrl("/api/analytics/topics", queryParams.toString())),
+          fetchApiJson<any>(buildApiUrl("/api/analytics/negative-keywords", queryParams.toString())),
+          fetchApiJson<any>(buildApiUrl("/api/analytics/negative-conversations", queryParams.toString()))
+        ]);
+
+        if (sumRes.success) {
+          setSummaryData(sumRes.data);
+          const total = sumRes.data.summary?.total || 1;
+          const pos = sumRes.data.summary?.positive || 0;
+          const neu = sumRes.data.summary?.neutral || 0;
+          const neg = sumRes.data.summary?.negative || 0;
+          
+          setDonutData([
+            { name: "Tích cực", value: Math.round((pos / total) * 100) || 0, color: "#3E9675" },
+            { name: "Trung lập", value: Math.round((neu / total) * 100) || 0, color: "#E5A850" },
+            { name: "Tiêu cực", value: Math.round((neg / total) * 100) || 0, color: "#D26767" },
+          ]);
+        }
+        
+        if (trendRes.success) {
+          const rawTrend = Array.isArray(trendRes.data) ? trendRes.data : [];
+          setSentimentTrend(rawTrend.map(d => {
+            const total = (d.positive + d.neutral + d.negative) || 1;
+            const dateObj = new Date(d.date);
+            return {
+              date: !isNaN(dateObj.getTime()) ? `${dateObj.getDate()}/${dateObj.getMonth() + 1}` : d.date,
+              positive: Math.round((d.positive / total) * 100) || 0,
+              neutral: Math.round((d.neutral / total) * 100) || 0,
+              negative: Math.round((d.negative / total) * 100) || 0
+            };
+          }));
+        }
+
+        if (topicRes.success) {
+          const rawTopic = Array.isArray(topicRes.data) ? topicRes.data : [];
+          setTopicSentiment(rawTopic.slice(0, 10).map(d => {
+            const total = d.count || 1;
+            const pos = d.positive !== undefined ? Math.round((d.positive / total) * 100) : 33;
+            const neu = d.neutral !== undefined ? Math.round((d.neutral / total) * 100) : 33;
+            const neg = d.negative !== undefined ? Math.round((d.negative / total) * 100) : 34;
+            return {
+              topic: d.topicLabel || "Chung",
+              positive: pos,
+              neutral: neu,
+              negative: neg
+            };
+          }));
+        }
+
+        if (kwRes.success) {
+          const rawKw = Array.isArray(kwRes.data) ? kwRes.data : [];
+          setNegKeywords(rawKw.slice(0, 10).map(d => ({
+            word: d.keyword,
+            count: d.count,
+            topic: d.issueType || "Chung"
+          })));
+        }
+
+        if (convRes.success) {
+          const rawConv = Array.isArray(convRes.data?.records) ? convRes.data.records : [];
+          setNegativeConversations(rawConv.map(conv => {
+            const waitTimeRaw = Date.now() - new Date(conv.messageAt).getTime();
+            const waitHours = Math.floor(waitTimeRaw / (1000 * 60 * 60));
+            const waitMins = Math.floor((waitTimeRaw / (1000 * 60)) % 60);
+            const waitTimeStr = !isNaN(waitHours) && waitHours > 0 ? `${waitHours}g ${waitMins}p` : !isNaN(waitMins) ? `${waitMins}p` : "0p";
+            const levelStr = conv.sentimentScore < 0.3 ? "Rất tiêu cực" : conv.sentimentScore < 0.6 ? "Tiêu cực" : "Hơi tiêu cực";
+            return {
+              id: `#${conv.messageId || conv.id_webchat_messagelogs || "N/A"}`,
+              customer: conv.customerId || "Khách hàng",
+              complaint: conv.textContent || "",
+              topic: Array.isArray(conv.detectedTopics) && conv.detectedTopics.length > 0 ? conv.detectedTopics.join(", ") : (conv.detectedTopics || "Chung"),
+              channel: conv.source || "Unknown",
+              level: levelStr as NegLevel,
+              waitTime: waitTimeStr,
+              status: conv.needStaffReview ? "Cần xử lý" : "Chờ xử lý"
+            };
+          }));
+        }
+      } catch (err) {
+        console.error("Lỗi khi tải dữ liệu cảm xúc:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, [filters]);
+
+  const posPctStr = summaryData?.summary?.total ? Math.round((summaryData.summary.positive / summaryData.summary.total) * 100) + "%" : "0%";
+  const neuPctStr = summaryData?.summary?.total ? Math.round((summaryData.summary.neutral / summaryData.summary.total) * 100) + "%" : "0%";
+  const negPctStr = summaryData?.summary?.total ? Math.round((summaryData.summary.negative / summaryData.summary.total) * 100) + "%" : "0%";
+  const satisfactionValue = summaryData?.avgSatisfaction ? (summaryData.avgSatisfaction > 5 ? summaryData.avgSatisfaction / 20 : summaryData.avgSatisfaction) : 0;
+  const satisfactionStr = satisfactionValue > 0 ? satisfactionValue.toFixed(1) + "/5" : "0/5";
+
+  const dynamicTopicData = topicSentiment && topicSentiment.length > 0 ? topicSentiment : [
+    { topic: "Khác", positive: 33, neutral: 33, negative: 34 },
+    { topic: "Lịch thi", positive: 33, neutral: 33, negative: 34 },
+    { topic: "Hồ sơ / Biểu mẫu", positive: 33, neutral: 33, negative: 34 },
+    { topic: "Tin học / MOS / IC3", positive: 33, neutral: 33, negative: 34 },
+    { topic: "TOEIC", positive: 33, neutral: 33, negative: 34 },
+    { topic: "Đăng ký thi", positive: 33, neutral: 33, negative: 34 },
+    { topic: "Lệ phí / Học phí", positive: 33, neutral: 33, negative: 34 },
+    { topic: "VSTEP", positive: 33, neutral: 33, negative: 34 },
+    { topic: "Liên hệ tư vấn", positive: 33, neutral: 33, negative: 34 },
+  ];
+
+  return (
+    <div style={{ padding: "24px", position: "relative" }}>
       <FilterPanel filters={filters} onFiltersChange={onFiltersChange} />
 
-      {/* Section Label */}
-      <div style={{ marginBottom: "16px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <div style={{ width: "4px", height: "22px", borderRadius: "2px", background: `linear-gradient(180deg, ${ORANGE}, #ED5206)` }} />
-          <h2 style={{ fontSize: "16px", fontWeight: 700, color: NAVY, margin: 0 }}>Phân tích cảm xúc</h2>
-        </div>
-        <p style={{ fontSize: "12px", color: "rgba(0,56,101,0.5)", marginLeft: "14px", marginTop: "4px" }}>Theo dõi và phân tích thái độ, mức độ hài lòng của khách hàng</p>
-      </div>
+      {loading ? (
+        <SentimentLoadingState />
+      ) : (
+        <>
+          {/* Section Label */}
+          <div style={{ marginBottom: "16px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <div style={{ width: "4px", height: "22px", borderRadius: "2px", background: `linear-gradient(180deg, ${ORANGE}, #ED5206)` }} />
+              <h2 style={{ fontSize: "16px", fontWeight: 700, color: NAVY, margin: 0 }}>Phân tích cảm xúc</h2>
+            </div>
+            <p style={{ fontSize: "12px", color: "rgba(0,56,101,0.5)", marginLeft: "14px", marginTop: "4px" }}>Theo dõi và phân tích thái độ, mức độ hài lòng của khách hàng</p>
+          </div>
 
-      {/* KPI Cards */}
+          {/* KPI Cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px", marginBottom: "24px" }}>
         {[
-          { icon: Heart, label: "Tỷ lệ tích cực", value: "64%", change: "+3%", color: "#228A61", bg: "#f0fdf4", trend: "+2.1% so với tuần trước" },
-          { icon: Meh, label: "Tỷ lệ trung lập", value: "22%", change: "0%", color: "#f59e0b", bg: "#fffbeb", trend: "Ổn định" },
-          { icon: Frown, label: "Tỷ lệ tiêu cực", value: "14%", change: "-2%", color: ORANGE, bg: "#fff5f5", trend: "-1.8% so với tuần trước" },
-          { icon: Star, label: "Mức độ hài lòng", value: "4.1/5", change: "+0.2", color: "#a855f7", bg: "#faf5ff", trend: "Tăng so với tháng trước" },
+          { icon: Heart, label: "Tỷ lệ tích cực", value: posPctStr, change: "+3%", color: "#228A61", bg: "#f0fdf4", trend: "+2.1% so với tuần trước" },
+          { icon: Meh, label: "Tỷ lệ trung lập", value: neuPctStr, change: "0%", color: "#f59e0b", bg: "#fffbeb", trend: "Ổn định" },
+          { icon: Frown, label: "Tỷ lệ tiêu cực", value: negPctStr, change: "-2%", color: ORANGE, bg: "#fff5f5", trend: "-1.8% so với tuần trước" },
+          { icon: Star, label: "Mức độ hài lòng", value: satisfactionStr, change: "+0.2", color: "#a855f7", bg: "#faf5ff", trend: "Tăng so với tháng trước" },
         ].map(({ icon: Icon, label, value, change, color, bg, trend }) => (
           <div key={label} style={{ backgroundColor: "#fff", borderRadius: "20px", border: "1px solid rgba(0,56,101,0.08)", boxShadow: "0 2px 12px rgba(0,56,101,0.06)", padding: "24px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "16px" }}>
@@ -177,57 +308,199 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
 
       {/* Charts */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginBottom: "24px" }}>
-        <ChartCard title="Xu hướng cảm xúc theo thời gian" onOpenBuilder={() => onNavigate("chartbuilder")}>
-          <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={sentimentTrend}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" />
-              <XAxis dataKey="date" tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
-              <YAxis tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} unit="%" />
-              <Tooltip formatter={(v) => `${v}%`} />
-              <Legend iconSize={10} />
-              <Line type="monotone" dataKey="positive" name="Tích cực" stroke="#3E9675" strokeWidth={2} dot={{ r: 2 }} />
-              <Line type="monotone" dataKey="neutral" name="Trung lập" stroke="#E5A850" strokeWidth={2} dot={{ r: 2 }} />
-              <Line type="monotone" dataKey="negative" name="Tiêu cực" stroke="#D26767" strokeWidth={2} dot={{ r: 2 }} />
-            </LineChart>
-          </ResponsiveContainer>
-        </ChartCard>
+        <ErrorBoundary>
+        <ChartCard title="Xu hướng cảm xúc theo thời gian" data={sentimentTrend} onOpenBuilder={() => onNavigate("chartbuilder")}>
+          {({ chartType, chartData, editValues }: any) => {
+            const showLegend = editValues?.legend !== false;
+            const safeData = Array.isArray(chartData) ? chartData : [];
+            
+            if (chartType === "pie" || chartType === "donut") {
+              const pieData = [
+                { name: "Tích cực", value: safeData.reduce((a: number, c: any) => a + (c.positive || 0), 0), fill: "#3E9675" },
+                { name: "Trung lập", value: safeData.reduce((a: number, c: any) => a + (c.neutral || 0), 0), fill: "#E5A850" },
+                { name: "Tiêu cực", value: safeData.reduce((a: number, c: any) => a + (c.negative || 0), 0), fill: "#D26767" },
+              ];
+              return (
+                <ResponsiveContainer width="100%" height={220}>
+                  <PieChart>
+                    <Pie data={pieData} cx="50%" cy="50%" innerRadius={chartType === "pie" ? 0 : 50} outerRadius={80} dataKey="value">
+                      {pieData.map((d, i) => <Cell key={i} fill={d.fill} />)}
+                    </Pie>
+                    <Tooltip formatter={(v: any) => `${v}%`} />
+                    {showLegend && <Legend iconSize={10} />}
+                  </PieChart>
+                </ResponsiveContainer>
+              );
+            }
 
-        <ChartCard title="Phân bổ cảm xúc tổng quan" onOpenBuilder={() => onNavigate("chartbuilder")}>
-          <div style={{ display: "flex", alignItems: "center", gap: "24px", height: "220px" }}>
-            <PieChart width={200} height={200}>
-              <Pie data={donutData} cx={100} cy={100} innerRadius={55} outerRadius={85} dataKey="value">
-                {donutData.map((d) => <Cell key={`sentiment-donut-${d.name}`} fill={d.color} />)}
-              </Pie>
-            </PieChart>
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              {donutData.map((d) => (
-                <div key={d.name} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                  <div style={{ width: "12px", height: "12px", borderRadius: "3px", backgroundColor: d.color }} />
-                  <span style={{ fontSize: "13px", color: NAVY }}>{d.name}</span>
-                  <span style={{ fontSize: "16px", fontWeight: 700, color: d.color, marginLeft: "auto" }}>{d.value}%</span>
-                </div>
-              ))}
-            </div>
-          </div>
+            if (chartType === "bar" || chartType === "hbar") {
+              return (
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={safeData} layout={chartType === "hbar" ? "vertical" : "horizontal"}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" />
+                    {chartType === "hbar" ? <XAxis type="number" tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} /> : <XAxis dataKey="date" tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />}
+                    {chartType === "hbar" ? <YAxis dataKey="date" type="category" tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} width={80} /> : <YAxis tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} unit="%" />}
+                    <Tooltip formatter={(v: any) => `${v}%`} />
+                    {showLegend && <Legend iconSize={10} />}
+                    <Bar dataKey="positive" name="Tích cực" fill="#3E9675" radius={chartType === "hbar" ? [0,4,4,0] : [4,4,0,0]} />
+                    <Bar dataKey="neutral" name="Trung lập" fill="#E5A850" radius={chartType === "hbar" ? [0,4,4,0] : [4,4,0,0]} />
+                    <Bar dataKey="negative" name="Tiêu cực" fill="#D26767" radius={chartType === "hbar" ? [0,4,4,0] : [4,4,0,0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              );
+            }
+            
+            const ChartComponent = chartType === "area" ? AreaChart : LineChart;
+            const SeriesComponent = chartType === "area" ? Area : Line;
+            
+            return (
+              <ResponsiveContainer width="100%" height={220}>
+                <ChartComponent data={safeData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" />
+                  <XAxis dataKey="date" tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
+                  <YAxis tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} unit="%" />
+                  <Tooltip formatter={(v: any) => `${v}%`} />
+                  {showLegend && <Legend iconSize={10} />}
+                  <SeriesComponent type="monotone" dataKey="positive" name="Tích cực" stroke="#3E9675" fill="#3E9675" strokeWidth={2} dot={{ r: 2 }} />
+                  <SeriesComponent type="monotone" dataKey="neutral" name="Trung lập" stroke="#E5A850" fill="#E5A850" strokeWidth={2} dot={{ r: 2 }} />
+                  <SeriesComponent type="monotone" dataKey="negative" name="Tiêu cực" stroke="#D26767" fill="#D26767" strokeWidth={2} dot={{ r: 2 }} />
+                </ChartComponent>
+              </ResponsiveContainer>
+            );
+          }}
         </ChartCard>
+        </ErrorBoundary>
+
+        <ErrorBoundary>
+        <ChartCard title="Phân bổ cảm xúc tổng quan" data={donutData} defaultChartType="donut" onOpenBuilder={() => onNavigate("chartbuilder")}>
+          {({ chartType, chartData, editValues }: any) => {
+            const showLegend = editValues?.legend !== false;
+            const safeData = Array.isArray(chartData) ? chartData : [];
+            
+            if (chartType === "pie" || chartType === "donut") {
+              return (
+                <div style={{ display: "flex", alignItems: "center", gap: "24px", height: "220px" }}>
+                  <PieChart width={200} height={200}>
+                    <Pie data={safeData} cx={100} cy={100} innerRadius={chartType === "pie" ? 0 : 55} outerRadius={85} dataKey="value">
+                      {safeData.map((d: any) => <Cell key={`sentiment-donut-${d.name}`} fill={d.color || "#003BB9"} />)}
+                    </Pie>
+                    <Tooltip formatter={(v: any) => `${v}%`} />
+                  </PieChart>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                    {showLegend && safeData.map((item: any, i: number) => (
+                      <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", minWidth: "140px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <div style={{ width: "10px", height: "10px", borderRadius: "50%", backgroundColor: item.color || "#003BB9" }} />
+                          <span style={{ fontSize: "13px", color: "rgba(0,56,101,0.6)" }}>{item.name}</span>
+                        </div>
+                        <span style={{ fontSize: "13px", fontWeight: 600, color: "#003865" }}>{item.value}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            }
+            
+            if (chartType === "bar" || chartType === "hbar") {
+              return (
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={safeData} layout={chartType === "hbar" ? "vertical" : "horizontal"} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" />
+                    {chartType === "hbar" ? <XAxis type="number" /> : <XAxis dataKey="name" tick={{ fontSize: 11 }} />}
+                    {chartType === "hbar" ? <YAxis dataKey="name" type="category" width={80} tick={{ fontSize: 11 }} /> : <YAxis />}
+                    <Tooltip formatter={(v: any) => `${v}%`} />
+                    {showLegend && <Legend />}
+                    <Bar dataKey="value" name="Tỷ lệ">
+                      {safeData.map((d: any, i: number) => <Cell key={i} fill={d.color || "#003BB9"} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              );
+            }
+            
+            const ChartComponent = chartType === "area" ? AreaChart : LineChart;
+            const SeriesComponent = chartType === "area" ? Area : Line;
+            
+            return (
+              <ResponsiveContainer width="100%" height={220}>
+                <ChartComponent data={safeData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" />
+                  <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                  <YAxis />
+                  <Tooltip formatter={(v: any) => `${v}%`} />
+                  {showLegend && <Legend />}
+                  <SeriesComponent type="monotone" dataKey="value" name="Tỷ lệ" stroke="#003BB9" fill="#003BB9" strokeWidth={2} />
+                </ChartComponent>
+              </ResponsiveContainer>
+            );
+          }}
+        </ChartCard>
+        </ErrorBoundary>
       </div>
 
       {/* Stacked by Topic */}
       <div style={{ marginBottom: "24px" }}>
-        <ChartCard title="Cảm xúc theo chủ đề" onOpenBuilder={() => onNavigate("chartbuilder")}>
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={topicSentiment}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" />
-              <XAxis dataKey="topic" tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
-              <YAxis tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} unit="%" />
-              <Tooltip formatter={(v) => `${v}%`} />
-              <Legend iconSize={10} />
-              <Bar dataKey="positive" name="Tích cực" stackId="a" fill="#3E9675" />
-              <Bar dataKey="neutral" name="Trung lập" stackId="a" fill="#E5A850" />
-              <Bar dataKey="negative" name="Tiêu cực" stackId="a" fill="#D26767" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+        <ErrorBoundary>
+        <ChartCard title="Cảm xúc theo chủ đề" data={dynamicTopicData} onOpenBuilder={() => onNavigate("chartbuilder")}>
+          {({ chartType, chartData, editValues }: any) => {
+            const showLegend = editValues?.legend !== false;
+            const safeData = Array.isArray(chartData) ? chartData : [];
+            
+            if (chartType === "pie" || chartType === "donut") {
+              const pieData = safeData.map((d: any) => ({
+                 name: d.topic,
+                 value: (d.positive || 0) + (d.neutral || 0) + (d.negative || 0)
+              }));
+              return (
+                <ResponsiveContainer width="100%" height={260}>
+                  <PieChart>
+                    <Pie data={pieData} cx="50%" cy="50%" innerRadius={chartType === "pie" ? 0 : 60} outerRadius={90} dataKey="value" label={showLegend ? { fontSize: 11, fill: "rgba(0,56,101,0.6)" } : false}>
+                      {pieData.map((d, i) => <Cell key={i} fill={`hsl(${(i * 50) % 360}, 70%, 55%)`} />)}
+                    </Pie>
+                    <Tooltip />
+                    {showLegend && <Legend iconSize={10} />}
+                  </PieChart>
+                </ResponsiveContainer>
+              );
+            }
+            
+            if (chartType === "bar" || chartType === "hbar") {
+              return (
+                <ResponsiveContainer width="100%" height={260}>
+                  <BarChart data={safeData} margin={{ top: 20, right: 20, left: -20, bottom: 20 }} layout={chartType === "hbar" ? "vertical" : "horizontal"}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" vertical={chartType !== "hbar"} horizontal={chartType === "hbar"} />
+                    {chartType === "hbar" ? <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "rgba(0,56,101,0.4)" }} tickFormatter={(v) => `${v}%`} /> : <XAxis dataKey="topic" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "rgba(0,56,101,0.4)" }} dy={10} />}
+                    {chartType === "hbar" ? <YAxis dataKey="topic" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "rgba(0,56,101,0.4)" }} width={100} /> : <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "rgba(0,56,101,0.4)" }} tickFormatter={(v) => `${v}%`} />}
+                    <Tooltip cursor={{ fill: "rgba(0,56,101,0.02)" }} formatter={(v: any) => `${v}%`} />
+                    {showLegend && <Legend iconSize={8} iconType="square" wrapperStyle={{ bottom: 0 }} />}
+                    <Bar dataKey="positive" name="Tích cực" stackId="a" fill="#3E9675" />
+                    <Bar dataKey="neutral" name="Trung lập" stackId="a" fill="#E5A850" />
+                    <Bar dataKey="negative" name="Tiêu cực" stackId="a" fill="#D26767" radius={chartType === "hbar" ? [0,4,4,0] : [4,4,0,0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              );
+            }
+            
+            const ChartComponent = chartType === "area" ? AreaChart : LineChart;
+            const SeriesComponent = chartType === "area" ? Area : Line;
+            
+            return (
+              <ResponsiveContainer width="100%" height={260}>
+                <ChartComponent data={safeData} margin={{ top: 20, right: 20, left: -20, bottom: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" vertical={false} />
+                  <XAxis dataKey="topic" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "rgba(0,56,101,0.4)" }} dy={10} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "rgba(0,56,101,0.4)" }} tickFormatter={(v) => `${v}%`} />
+                  <Tooltip cursor={{ fill: "rgba(0,56,101,0.02)" }} formatter={(v: any) => `${v}%`} />
+                  {showLegend && <Legend iconSize={8} iconType="square" wrapperStyle={{ bottom: 0 }} />}
+                  <SeriesComponent type="monotone" dataKey="positive" name="Tích cực" stroke="#3E9675" fill="#3E9675" strokeWidth={2} />
+                  <SeriesComponent type="monotone" dataKey="neutral" name="Trung lập" stroke="#E5A850" fill="#E5A850" strokeWidth={2} />
+                  <SeriesComponent type="monotone" dataKey="negative" name="Tiêu cực" stroke="#D26767" fill="#D26767" strokeWidth={2} />
+                </ChartComponent>
+              </ResponsiveContainer>
+            );
+          }}
         </ChartCard>
+        </ErrorBoundary>
       </div>
 
       {/* Negative Conversations Table */}
@@ -239,7 +512,10 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
             <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "20px", backgroundColor: "#FFF4EE", border: "1px solid #FBCBB8", color: ORANGE, fontWeight: 600 }}>{negativeConversations.length} hội thoại</span>
           </div>
           <button
-            onClick={() => toast.success("Đã đánh dấu xử lý toàn bộ danh sách")}
+            onClick={() => {
+              setNegativeConversations(prev => prev.map(c => ({ ...c, status: "Đã xử lý" })));
+              toast.success("Đã đánh dấu xử lý toàn bộ danh sách");
+            }}
             style={{ padding: "6px 14px", borderRadius: "8px", border: "none", background: `linear-gradient(135deg, #ED5206 0%, #F36C2E 100%)`, color: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 600, boxShadow: "0 4px 12px rgba(237,82,6,0.18)" }}
           >
             Đánh dấu xử lý (tất cả)
@@ -273,8 +549,8 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
                     <td style={{ padding: "12px 14px", maxWidth: "240px" }}>
                       <div style={{ fontSize: "12px", color: "rgba(0,56,101,0.7)", lineHeight: 1.5, fontStyle: "italic" }}>"{conv.complaint}"</div>
                     </td>
-                    <td style={{ padding: "12px 14px" }}>
-                      <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: "#eff6ff", color: "#3b82f6", whiteSpace: "nowrap" }}>{conv.topic}</span>
+                    <td style={{ padding: "12px 14px", maxWidth: "150px" }}>
+                      <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: "#eff6ff", color: "#3b82f6", display: "inline-block", wordBreak: "break-word" }}>{conv.topic}</span>
                     </td>
                     <td style={{ padding: "12px 14px", color: "rgba(0,56,101,0.65)", whiteSpace: "nowrap" }}>{conv.channel}</td>
                     <td style={{ padding: "12px 14px" }}>
@@ -296,18 +572,19 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
                     </td>
                     <td style={{ padding: "12px 14px" }}>
                       <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
-                        <button
-                          onClick={() => toast.success(`Đang xem hội thoại ${conv.id}`)}
-                          style={{ padding: "4px 10px", borderRadius: "6px", border: "1px solid rgba(0,56,101,0.15)", background: "#f8fafc", color: NAVY, cursor: "pointer", fontSize: "10px", fontWeight: 600, whiteSpace: "nowrap" }}
-                        >
-                          Xem hội thoại
-                        </button>
-                        <button
-                          onClick={() => toast.success(`Đã đánh dấu xử lý ${conv.id}`)}
-                          style={{ padding: "4px 10px", borderRadius: "6px", border: `1px solid ${ORANGE}30`, background: "#fff3ef", color: ORANGE, cursor: "pointer", fontSize: "10px", fontWeight: 600, whiteSpace: "nowrap" }}
-                        >
-                          Đánh dấu xử lý
-                        </button>
+                        {conv.status !== "Đã xử lý" ? (
+                          <button
+                            onClick={() => {
+                              setNegativeConversations(prev => prev.map(c => c.id === conv.id ? { ...c, status: "Đã xử lý" } : c));
+                              toast.success(`Đã đánh dấu xử lý ${conv.id}`);
+                            }}
+                            style={{ padding: "4px 10px", borderRadius: "6px", border: `1px solid ${ORANGE}30`, background: "#fff3ef", color: ORANGE, cursor: "pointer", fontSize: "10px", fontWeight: 600, whiteSpace: "nowrap" }}
+                          >
+                            Đánh dấu xử lý
+                          </button>
+                        ) : (
+                          <span style={{ fontSize: "10px", color: "rgba(0,56,101,0.4)", fontWeight: 600, textAlign: "center" }}>Hoàn tất</span>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -370,6 +647,8 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
           ))}
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 }

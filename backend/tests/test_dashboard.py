@@ -5,13 +5,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-# Add project root to sys.path
-sys.path.append(str(Path(__file__).resolve().parents[2]))
+# Add backend package root to sys.path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from backend.services.conversation_cleaner import conversation_cleaner_service
-from backend.services.dashboard_service import DashboardService, hash_str, classify_topic, clear_dashboard_cache
-from backend.repositories.conversation_repository import ConversationRepository
-from backend.main import app
+from app.services.conversation_cleaner import conversation_cleaner_service
+from app.services.legacy_dashboard_service import DashboardService, hash_str, classify_topic, clear_dashboard_cache
+from app.repositories.legacy_conversation_repository import ConversationRepository
+from app.main import app
 
 client = TestClient(app)
 
@@ -73,17 +73,16 @@ def test_cleaner_normalizes_source():
 # 2. Tests for Dashboard Service
 # ==========================================
 
-@patch('backend.repositories.conversation_repository.ConversationRepository.get_conversation_summary')
-@patch('backend.repositories.conversation_repository.ConversationRepository.get_message_counts')
-@patch('backend.repositories.conversation_repository.ConversationRepository.get_ai_failures_count')
-@patch('backend.repositories.conversation_repository.ConversationRepository.get_trends')
-@patch('backend.repositories.conversation_repository.ConversationRepository.get_urgent_alerts_data')
-@patch('backend.repositories.conversation_repository.ConversationRepository.get_top_questions_data')
-@patch('backend.repositories.conversation_repository.ConversationRepository.get_priority_conversations_data')
-@patch('backend.repositories.conversation_repository.ConversationRepository.get_daily_conversation_summary')
-@patch('backend.repositories.conversation_repository.ConversationRepository.get_ai_daily_stats')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_conversation_summary')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_message_counts_filtered')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_trends')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_urgent_alerts_data')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_top_questions_data')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_priority_conversations_data')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_daily_conversation_summary')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_ai_daily_stats')
 def test_dashboard_service_computes_correct_kpis(
-    mock_ai_daily, mock_daily, mock_priority, mock_top_q, mock_alerts, mock_trends, mock_ai_fail, mock_counts, mock_summary
+    mock_ai_daily, mock_daily, mock_priority, mock_top_q, mock_alerts, mock_trends, mock_counts, mock_summary
 ):
     clear_dashboard_cache()
     mock_summary.return_value = {
@@ -105,7 +104,6 @@ def test_dashboard_service_computes_correct_kpis(
         "averageResponseTimeMinutes": 15
     }
     mock_counts.return_value = []
-    mock_ai_fail.return_value = 0
     mock_trends.return_value = {
         "totalConversations": 12,
         "totalMessages": 8,
@@ -149,7 +147,7 @@ def test_api_health_check():
     assert response.json()["success"] is True
     assert "running successfully" in response.json()["message"]
 
-@patch('backend.services.dashboard_service.dashboard_service.get_kpis')
+@patch('app.services.legacy_dashboard_service.dashboard_service.get_kpis')
 def test_api_get_kpis_success(mock_get_kpis):
     mock_kpi_data = {
         "totalConversations": 10,
@@ -192,7 +190,7 @@ def test_api_unknown_route_returns_404():
     assert response.json()["success"] is False
     assert "không tồn tại" in response.json()["message"]
 
-@patch('backend.services.dashboard_service.dashboard_service.close_conversation')
+@patch('app.services.legacy_dashboard_service.dashboard_service.close_conversation')
 def test_api_close_conversation_success(mock_close):
     mock_close.return_value = True
     response = client.post("/api/conversations/close", json={"customerId": "123", "source": "Facebook"})
@@ -206,17 +204,16 @@ def test_api_close_conversation_missing_params():
     assert response.json()["success"] is False
     assert "Thiếu" in response.json()["message"]
 
-@patch('backend.repositories.conversation_repository.ConversationRepository.get_conversation_summary')
-@patch('backend.repositories.conversation_repository.ConversationRepository.get_message_counts')
-@patch('backend.repositories.conversation_repository.ConversationRepository.get_ai_failures_count')
-@patch('backend.repositories.conversation_repository.ConversationRepository.get_trends')
-@patch('backend.repositories.conversation_repository.ConversationRepository.get_urgent_alerts_data')
-@patch('backend.repositories.conversation_repository.ConversationRepository.get_top_questions_data')
-@patch('backend.repositories.conversation_repository.ConversationRepository.get_priority_conversations_data')
-@patch('backend.repositories.conversation_repository.ConversationRepository.get_daily_conversation_summary')
-@patch('backend.repositories.conversation_repository.ConversationRepository.get_ai_daily_stats')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_conversation_summary')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_message_counts_filtered')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_trends')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_urgent_alerts_data')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_top_questions_data')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_priority_conversations_data')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_daily_conversation_summary')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_ai_daily_stats')
 def test_dashboard_service_priority_conversations_mapping(
-    mock_ai_daily, mock_daily, mock_priority, mock_top_q, mock_alerts, mock_trends, mock_ai_fail, mock_counts, mock_summary
+    mock_ai_daily, mock_daily, mock_priority, mock_top_q, mock_alerts, mock_trends, mock_counts, mock_summary
 ):
     clear_dashboard_cache()
     mock_summary.return_value = {
@@ -243,7 +240,6 @@ def test_dashboard_service_priority_conversations_mapping(
         }
     ]
     mock_counts.return_value = []
-    mock_ai_fail.return_value = 0
     mock_trends.return_value = {
         "totalConversations": 2,
         "totalMessages": 2,
@@ -270,9 +266,9 @@ def test_dashboard_service_priority_conversations_mapping(
     c2 = next(c for c in priority_convs if c["customerId"] == "C2")
     assert c2["status"] == "Đang xử lý"
 
-@patch('backend.repositories.conversation_repository.ConversationRepository.get_channel_conversation_stats')
-@patch('backend.repositories.conversation_repository.ConversationRepository.get_channel_ai_summary')
-@patch('backend.repositories.conversation_repository.ConversationRepository.get_channel_topic_stats')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_channel_conversation_stats')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_channel_ai_summary')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_channel_topic_stats')
 def test_dashboard_service_channel_analytics_uses_filters_and_ai_stats(
     mock_topic_stats, mock_ai_summary, mock_channel_stats
 ):
@@ -309,7 +305,7 @@ def test_dashboard_service_channel_analytics_uses_filters_and_ai_stats(
     assert all_channels_result["channelsList"] == ["Zalo Business", "Facebook", "Zalo OA", "Chat Widget"]
     assert "Khác" not in [row["channel"] for row in all_channels_result["channels"]]
 
-@patch('backend.repositories.conversation_repository.get_db_connection')
+@patch('app.repositories.legacy_conversation_repository.get_db_connection')
 def test_channel_topic_stats_counts_only_failed_ai_messages(mock_get_db):
     conn = MagicMock()
     cursor = MagicMock()
@@ -329,12 +325,12 @@ def test_channel_topic_stats_counts_only_failed_ai_messages(mock_get_db):
     assert params == ("2026-06-01", "2026-06-30 23:59:59.999")
     conn.close.assert_called_once()
 
-@patch('backend.repositories.conversation_repository.get_db_connection')
+@patch('app.repositories.legacy_conversation_repository.get_db_connection')
 def test_channel_topic_stats_returns_empty_for_ai_success_filter(mock_get_db):
     assert ConversationRepository().get_channel_topic_stats(ai_status="AI trả lời thành công") == []
     mock_get_db.assert_not_called()
 
-@patch('backend.services.dashboard_service.dashboard_service.get_channel_analytics')
+@patch('app.services.legacy_dashboard_service.dashboard_service.get_channel_analytics')
 def test_api_get_channel_analytics_success(mock_get_channel_analytics):
     mock_data = {
         "channels": [],

@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 import logging
 
 logger = logging.getLogger(__name__)
@@ -18,6 +19,15 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=exc.status_code,
             content={"success": False, "message": exc.message, "data": None},
+        )
+
+    @app.exception_handler(StarletteHTTPException)
+    async def http_error_handler(_: Request, exc: StarletteHTTPException) -> JSONResponse:
+        detail = exc.detail if isinstance(exc.detail, str) else None
+        message = "Route không tồn tại." if exc.status_code == 404 else detail or "Request failed."
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"success": False, "message": message, "data": None},
         )
 
     @app.exception_handler(Exception)

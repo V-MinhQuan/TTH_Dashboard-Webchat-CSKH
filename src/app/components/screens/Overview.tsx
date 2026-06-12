@@ -303,13 +303,21 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
 
   const dailyTrends = kpiData?.dailyTrends || [];
 
-  // Render các trạng thái đặc biệt
-  if (loading) {
-    return <LoadingState />;
-  }
+  const renderLoadingOrError = () => {
+    if (loading) return <LoadingState />;
+    if (error) return <ErrorState message={error} onRetry={() => loadDashboardData()} />;
+    return null;
+  };
 
-  if (error) {
-    return <ErrorState message={error} onRetry={() => loadDashboardData()} />;
+  const nonDataState = renderLoadingOrError();
+
+  if (nonDataState) {
+    return (
+      <div style={{ padding: "24px" }}>
+        <FilterPanel filters={filters} onFiltersChange={onFiltersChange} />
+        {nonDataState}
+      </div>
+    );
   }
 
   if (kpiData && kpiData.totalConversations === 0) {

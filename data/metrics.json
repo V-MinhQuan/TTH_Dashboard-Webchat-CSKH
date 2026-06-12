@@ -1,0 +1,14 @@
+{
+  "totalRequests": 28,
+  "totalTexts": 52,
+  "totalErrors": 2,
+  "avgLatencyMs": 0.07,
+  "totalLatencyMs": 2.0,
+  "lastRequestAt": "2026-06-12T04:21:52Z",
+  "startedAt": "2026-06-12T04:21:52Z",
+  "modelLoaded": true,
+  "engine": "onnxruntime",
+  "modelName": "wonrax/phobert-base-vietnamese-sentiment",
+  "persistEnabled": true,
+  "metricsFilePath": "data\\metrics.json"
+}

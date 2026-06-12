@@ -134,7 +134,10 @@ class AnalyticsRepository:
                 SELECT
                   a.detectedTopics,
                   a.detectedKeywords,
-                  COUNT(*) AS msgCount
+                  COUNT(*) AS msgCount,
+                  SUM(CASE WHEN a.sentimentLabel = 'positive' THEN 1 ELSE 0 END) AS positive,
+                  SUM(CASE WHEN a.sentimentLabel = 'neutral' THEN 1 ELSE 0 END) AS neutral,
+                  SUM(CASE WHEN a.sentimentLabel = 'negative' THEN 1 ELSE 0 END) AS negative
                 FROM dbo.WebChat_MessageAnalytics a
                 {where + " AND" if where else "WHERE"} a.detectedTopics IS NOT NULL
                   AND a.detectedTopics <> '[]'

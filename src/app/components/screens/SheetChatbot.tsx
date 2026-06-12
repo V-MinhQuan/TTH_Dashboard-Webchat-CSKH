@@ -264,6 +264,52 @@ export function AddSheetModal({ prefillQuestion = "", prefillAnswer = "", initia
   );
 }
 
+function SheetLoadingState() {
+  const block = (style: React.CSSProperties = {}) => (
+    <div
+      style={{
+        borderRadius: "10px",
+        background: "linear-gradient(90deg, #f0f4f8 25%, #e2e8f0 50%, #f0f4f8 75%)",
+        backgroundSize: "200% 100%",
+        animation: "sheetShimmer 1.4s infinite",
+        ...style,
+      }}
+    />
+  );
+
+  return (
+    <div style={{ marginTop: "20px" }}>
+      <style>{`
+        @keyframes sheetShimmer {
+          0% { background-position: -200% 0; }
+          100% { background-position: 200% 0; }
+        }
+      `}</style>
+      {/* KPI Cards Skeletons */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "12px", marginBottom: "20px" }}>
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} style={{ backgroundColor: "#fff", borderRadius: "14px", padding: "18px 20px", border: "1px solid rgba(0,62,154,0.07)" }}>
+            {block({ width: "40px", height: "28px", marginBottom: "8px" })}
+            {block({ width: "60%", height: "14px" })}
+          </div>
+        ))}
+      </div>
+
+      {/* Table Skeleton */}
+      <div style={{ backgroundColor: "#fff", borderRadius: "16px", border: "1px solid rgba(0,62,154,0.07)", padding: "20px" }}>
+        <div style={{ display: "flex", gap: "20px", marginBottom: "20px", borderBottom: "1px solid rgba(0,62,154,0.07)", paddingBottom: "16px" }}>
+          {[1, 2, 3, 4, 5, 6, 7].map(i => <div key={i} style={{ flex: 1 }}>{block({ width: "80%", height: "16px" })}</div>)}
+        </div>
+        {[1, 2, 3, 4, 5].map(row => (
+          <div key={row} style={{ display: "flex", gap: "20px", marginBottom: "20px" }}>
+            {[1, 2, 3, 4, 5, 6, 7].map(col => <div key={col} style={{ flex: 1 }}>{block({ width: "100%", height: "14px" })}</div>)}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function SheetChatbot() {
   const { role, user } = useAuth();
   const currentUserName = role === "manager" ? "Admin FLIC" : user?.name || "Thu Trang";
@@ -421,23 +467,8 @@ export function SheetChatbot() {
         </button>
       </div>
 
-      {/* KPI Summary */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "12px" }}>
-        {[
-          { label: "Tổng dữ liệu", value: rows.length, color: NAVY },
-          { label: "Chờ xử lý", value: kpiCounts.pending, color: ORANGE, warning: true },
-          { label: "Đã duyệt", value: kpiCounts.approved, color: "#2563eb" },
-          { label: "Từ chối", value: kpiCounts.rejected, color: "#ef4444" },
-        ].map(kpi => (
-          <div key={kpi.label} style={{ backgroundColor: "#fff", borderRadius: "14px", padding: "18px 20px", border: kpi.warning ? `1px solid ${ORANGE}25` : "1px solid rgba(0,62,154,0.07)", borderLeft: kpi.warning ? `4px solid ${ORANGE}` : `4px solid ${kpi.color}`, boxShadow: "0 2px 8px rgba(0,62,154,0.05)" }}>
-            <div style={{ fontSize: "24px", fontWeight: 700, color: kpi.color, marginBottom: "4px" }}>{kpi.value}</div>
-            <div style={{ fontSize: "12px", color: "rgba(0,62,154,0.6)" }}>{kpi.label}</div>
-          </div>
-        ))}
-      </div>
-
       {/* Filters */}
-      <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap", marginBottom: "20px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "8px", backgroundColor: "#fff", borderRadius: "10px", padding: "8px 14px", border: "1px solid rgba(0,62,154,0.1)", flex: 1, minWidth: "200px" }}>
           <Search size={15} style={{ color: "rgba(0,62,154,0.4)" }} />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Tìm theo câu hỏi, chủ đề, nhân viên..." style={{ border: "none", outline: "none", fontSize: "13px", color: NAVY, width: "100%", background: "transparent" }} />
@@ -454,6 +485,25 @@ export function SheetChatbot() {
         </select>
       </div>
 
+      {isLoading ? (
+        <SheetLoadingState />
+      ) : (
+        <>
+          {/* KPI Summary */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "12px", marginBottom: "20px" }}>
+            {[
+              { label: "Tổng dữ liệu", value: rows.length, color: NAVY },
+              { label: "Chờ xử lý", value: kpiCounts.pending, color: ORANGE, warning: true },
+              { label: "Đã duyệt", value: kpiCounts.approved, color: "#2563eb" },
+              { label: "Từ chối", value: kpiCounts.rejected, color: "#ef4444" },
+            ].map(kpi => (
+              <div key={kpi.label} style={{ backgroundColor: "#fff", borderRadius: "14px", padding: "18px 20px", border: kpi.warning ? `1px solid ${ORANGE}25` : "1px solid rgba(0,62,154,0.07)", borderLeft: kpi.warning ? `4px solid ${ORANGE}` : `4px solid ${kpi.color}`, boxShadow: "0 2px 8px rgba(0,62,154,0.05)" }}>
+                <div style={{ fontSize: "24px", fontWeight: 700, color: kpi.color, marginBottom: "4px" }}>{kpi.value}</div>
+                <div style={{ fontSize: "12px", color: "rgba(0,62,154,0.6)" }}>{kpi.label}</div>
+              </div>
+            ))}
+          </div>
+
       {/* Table */}
       <div style={{ backgroundColor: "#fff", borderRadius: "16px", border: "1px solid rgba(0,62,154,0.07)", overflow: "hidden", flex: 1, minHeight: 0 }}>
         <div style={{ overflow: "auto", height: "100%" }}>
@@ -466,14 +516,14 @@ export function SheetChatbot() {
               </tr>
             </thead>
             <tbody>
-              {(isLoading || loadError || filtered.length === 0) && (
+              {(loadError || filtered.length === 0) && (
                 <tr>
                   <td colSpan={9} style={{ padding: "40px", textAlign: "center", color: "rgba(0,62,154,0.4)", fontSize: "13px" }}>
-                    {isLoading ? "Đang tải dữ liệu..." : loadError || "Không có dữ liệu phù hợp"}
+                    {loadError || "Không có dữ liệu phù hợp"}
                   </td>
                 </tr>
               )}
-              {!isLoading && !loadError && filtered.map(row => {
+              {!loadError && filtered.map(row => {
                 const sc = statusConfig[row.status] || { bg: "#f1f5f9", color: "#64748b", icon: Clock };
                 const rc = riskConfig[row.risk] || riskConfig["Thấp"];
                 const StatusIcon = sc.icon;
@@ -536,6 +586,8 @@ export function SheetChatbot() {
           </table>
         </div>
       </div>
+        </>
+      )}
 
       {showAddModal && (
         <AddSheetModal

@@ -25,28 +25,6 @@ export function LoadingState() {
         }
       `}</style>
 
-      {/* Header Loading */}
-      <div style={{ marginBottom: "24px" }}>
-        <SkeletonBlock h="28px" w="200px" />
-        <div style={{ marginTop: "8px" }}>
-          <SkeletonBlock h="16px" w="350px" />
-        </div>
-      </div>
-
-      {/* Filter Panel Loading */}
-      <div style={{ backgroundColor: "#fff", borderRadius: "16px", padding: "16px 20px", border: "1px solid rgba(0,56,101,0.08)", marginBottom: "20px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "12px" }}>
-          <SkeletonBlock h="20px" w="120px" />
-          <SkeletonBlock h="30px" w="110px" />
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
-          <SkeletonBlock h="45px" />
-          <SkeletonBlock h="45px" />
-          <SkeletonBlock h="45px" />
-          <SkeletonBlock h="45px" />
-        </div>
-      </div>
-
       {/* KPI Cards Skeletons */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "12px", marginBottom: "24px" }}>
         {[1, 2, 3, 4, 5].map((i) => (
