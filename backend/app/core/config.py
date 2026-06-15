@@ -23,6 +23,12 @@ class Settings(BaseSettings):
         validation_alias="DB_TRUST_SERVER_CERTIFICATE",
     )
     db_timeout_seconds: int = Field(default=5, validation_alias="DB_TIMEOUT_SECONDS")
+    chart_query_timeout_seconds: int = Field(
+        default=15,
+        ge=1,
+        le=120,
+        validation_alias="CHART_QUERY_TIMEOUT_SECONDS",
+    )
 
     ml_service_url: str = Field(default="http://localhost:8001", validation_alias="ML_SERVICE_URL")
     ml_timeout_seconds: float = Field(default=15.0, validation_alias="ML_TIMEOUT_SECONDS")

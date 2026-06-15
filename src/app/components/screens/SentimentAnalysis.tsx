@@ -145,6 +145,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
   ]);
   const [negKeywords, setNegKeywords] = useState<any[]>([]);
   const [negativeConversations, setNegativeConversations] = useState<any[]>([]);
+  const [sentimentKpiTrend, setSentimentKpiTrend] = useState<{ pos: string; neu: string; neg: string }>({ pos: "", neu: "", neg: "" });
 
   useEffect(() => {
     async function loadData() {
@@ -250,6 +251,23 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
             };
           }));
         }
+
+        // Tính toán xu hướng tích cực/trung lập/tiêu cực từ trend data thực
+        // (so sánh nửa đầu và nửa sau của dữ liệu trend để xác định chiều hướng)
+        if (trendRes.success && Array.isArray(trendRes.data) && trendRes.data.length >= 2) {
+          const half = Math.floor(trendRes.data.length / 2);
+          const firstHalf = trendRes.data.slice(0, half);
+          const secondHalf = trendRes.data.slice(half);
+          const avg = (arr: any[], key: string) => arr.reduce((s, d) => s + (d[key] || 0), 0) / Math.max(arr.length, 1);
+          const posChange = avg(secondHalf, "positive") - avg(firstHalf, "positive");
+          const neuChange = avg(secondHalf, "neutral") - avg(firstHalf, "neutral");
+          const negChange = avg(secondHalf, "negative") - avg(firstHalf, "negative");
+          setSentimentKpiTrend({
+            pos: posChange > 0 ? `+${posChange.toFixed(1)}%` : posChange < 0 ? `${posChange.toFixed(1)}%` : "Ổn định",
+            neu: neuChange > 0 ? `+${neuChange.toFixed(1)}%` : neuChange < 0 ? `${neuChange.toFixed(1)}%` : "Ổn định",
+            neg: negChange > 0 ? `+${negChange.toFixed(1)}%` : negChange < 0 ? `${negChange.toFixed(1)}%` : "Ổn định",
+          });
+        }
       } catch (err) {
         console.error("Lỗi khi tải dữ liệu cảm xúc:", err);
       } finally {
@@ -265,17 +283,8 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
   const satisfactionValue = summaryData?.avgSatisfaction ? (summaryData.avgSatisfaction > 5 ? summaryData.avgSatisfaction / 20 : summaryData.avgSatisfaction) : 0;
   const satisfactionStr = satisfactionValue > 0 ? satisfactionValue.toFixed(1) + "/5" : "0/5";
 
-  const dynamicTopicData = topicSentiment && topicSentiment.length > 0 ? topicSentiment : [
-    { topic: "Khác", positive: 33, neutral: 33, negative: 34 },
-    { topic: "Lịch thi", positive: 33, neutral: 33, negative: 34 },
-    { topic: "Hồ sơ / Biểu mẫu", positive: 33, neutral: 33, negative: 34 },
-    { topic: "Tin học / MOS / IC3", positive: 33, neutral: 33, negative: 34 },
-    { topic: "TOEIC", positive: 33, neutral: 33, negative: 34 },
-    { topic: "Đăng ký thi", positive: 33, neutral: 33, negative: 34 },
-    { topic: "Lệ phí / Học phí", positive: 33, neutral: 33, negative: 34 },
-    { topic: "VSTEP", positive: 33, neutral: 33, negative: 34 },
-    { topic: "Liên hệ tư vấn", positive: 33, neutral: 33, negative: 34 },
-  ];
+  // Dữ liệu chủ đề từ API thực — hiển thị empty state nếu chưa có dữ liệu
+  const dynamicTopicData = topicSentiment && topicSentiment.length > 0 ? topicSentiment : [];
 
   return (
     <div style={{ padding: "24px", position: "relative" }}>
@@ -297,10 +306,10 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
           {/* KPI Cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px", marginBottom: "24px" }}>
         {[
-          { icon: Heart, label: "Tỷ lệ tích cực", value: posPctStr, change: "+3%", color: "#228A61", bg: "#f0fdf4", trend: "+2.1% so với tuần trước" },
-          { icon: Meh, label: "Tỷ lệ trung lập", value: neuPctStr, change: "0%", color: "#f59e0b", bg: "#fffbeb", trend: "Ổn định" },
-          { icon: Frown, label: "Tỷ lệ tiêu cực", value: negPctStr, change: "-2%", color: ORANGE, bg: "#fff5f5", trend: "-1.8% so với tuần trước" },
-          { icon: Star, label: "Mức độ hài lòng", value: satisfactionStr, change: "+0.2", color: "#a855f7", bg: "#faf5ff", trend: "Tăng so với tháng trước" },
+          { icon: Heart, label: "Tỷ lệ tích cực", value: posPctStr, change: sentimentKpiTrend.pos || "—", color: "#228A61", bg: "#f0fdf4", trend: sentimentKpiTrend.pos ? `${sentimentKpiTrend.pos} so với kỳ trước` : "Chưa đủ dữ liệu xu hướng" },
+          { icon: Meh, label: "Tỷ lệ trung lập", value: neuPctStr, change: sentimentKpiTrend.neu || "—", color: "#f59e0b", bg: "#fffbeb", trend: sentimentKpiTrend.neu ? `${sentimentKpiTrend.neu} so với kỳ trước` : "Chưa đủ dữ liệu xu hướng" },
+          { icon: Frown, label: "Tỷ lệ tiêu cực", value: negPctStr, change: sentimentKpiTrend.neg || "—", color: ORANGE, bg: "#fff5f5", trend: sentimentKpiTrend.neg ? `${sentimentKpiTrend.neg} so với kỳ trước` : "Chưa đủ dữ liệu xu hướng" },
+          { icon: Star, label: "Mức độ hài lòng", value: satisfactionStr, change: "—", color: "#a855f7", bg: "#faf5ff", trend: "Từ dữ liệu MessageAnalytics" },
         ].map(({ icon: Icon, label, value, change, color, bg, trend }) => (
           <div key={label} style={{ backgroundColor: "#fff", borderRadius: "20px", border: "1px solid rgba(0,56,101,0.08)", boxShadow: "0 2px 12px rgba(0,56,101,0.06)", padding: "24px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "16px" }}>
@@ -457,7 +466,16 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
           {({ chartType, chartData, editValues }: any) => {
             const showLegend = editValues?.legend !== false;
             const safeData = Array.isArray(chartData) ? chartData : [];
-            
+
+            // Hiển thị empty state nếu không có dữ liệu từ API
+            if (safeData.length === 0) {
+              return (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "220px", color: "rgba(0,56,101,0.4)", fontSize: "13px", fontStyle: "italic" }}>
+                  Chưa có dữ liệu phân tích chủ đề. Dữ liệu sẽ hiển thị khi ML service phân tích xong tin nhắn.
+                </div>
+              );
+            }
+
             if (chartType === "pie" || chartType === "donut") {
               const pieData = safeData.map((d: any) => ({
                  name: d.topic,
@@ -626,37 +644,38 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-          {[
-            {
-              icon: TrendingUp,
-              title: "Dự báo xu hướng cảm xúc",
-              color: NAVY,
-              content: "Sentiment tiêu cực có thể tăng 3-5% trong tuần tới do gần deadline đăng ký thi. Đặc biệt topic 'Lệ phí' và 'Tra cứu điểm' cần quan tâm.",
-            },
-            {
-              icon: Lightbulb,
-              title: "Khuyến nghị cải thiện",
-              color: "#228A61",
-              items: ["Cải thiện tốc độ tra cứu điểm thi", "Thêm FAQ cho topic Lệ phí", "Tăng độ chính xác trả lời về Lịch thi", "Bổ sung chính sách giảm giá học sinh vào cơ sở tri thức"],
-            },
-          ].map(({ icon: Icon, title, color, content, items }) => (
-            <div key={title} style={{ backgroundColor: "#fff", borderRadius: "16px", border: "1px solid rgba(0,56,101,0.08)", boxShadow: "0 2px 8px rgba(0,56,101,0.05)", padding: "20px", flex: 1 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
-                <Icon size={16} style={{ color }} />
-                <span style={{ fontWeight: 700, fontSize: "14px", color: NAVY }}>{title}</span>
-              </div>
-              {content && <p style={{ fontSize: "13px", color: "rgba(0,56,101,0.7)", lineHeight: 1.6, margin: 0 }}>{content}</p>}
-              {items && (
-                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                  {items.map((item, i) => (
-                    <div key={i} style={{ display: "flex", gap: "8px", fontSize: "13px", color: "rgba(0,56,101,0.75)" }}>
-                      <span style={{ color, fontWeight: 700 }}>•</span> {item}
-                    </div>
-                  ))}
-                </div>
-              )}
+          <div style={{ backgroundColor: "#fff", borderRadius: "16px", border: "1px solid rgba(0,56,101,0.08)", boxShadow: "0 2px 8px rgba(0,56,101,0.05)", padding: "20px", flex: 1 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
+              <TrendingUp size={16} style={{ color: NAVY }} />
+              <span style={{ fontWeight: 700, fontSize: "14px", color: NAVY }}>Dự báo xu hướng cảm xúc</span>
             </div>
-          ))}
+            <p style={{ fontSize: "13px", color: "rgba(0,56,101,0.55)", lineHeight: 1.6, margin: 0, fontStyle: "italic" }}>
+              Tính năng dự báo AI sẽ được bổ sung sau khi có đủ dữ liệu sentiment từ database.
+              Hiện tại, xem xu hướng thực tế qua biểu đồ "Xu hướng cảm xúc theo thời gian" ở trên.
+            </p>
+          </div>
+          <div style={{ backgroundColor: "#fff", borderRadius: "16px", border: "1px solid rgba(0,56,101,0.08)", boxShadow: "0 2px 8px rgba(0,56,101,0.05)", padding: "20px", flex: 1 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
+              <Lightbulb size={16} style={{ color: "#228A61" }} />
+              <span style={{ fontWeight: 700, fontSize: "14px", color: NAVY }}>Khuyến nghị cải thiện</span>
+            </div>
+            {negKeywords.length > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                <p style={{ fontSize: "12px", color: "rgba(0,56,101,0.55)", margin: "0 0 8px" }}>Dựa trên từ khóa tiêu cực phổ biến nhất:</p>
+                {negKeywords.slice(0, 4).map((kw, i) => (
+                  <div key={i} style={{ display: "flex", gap: "8px", fontSize: "13px", color: "rgba(0,56,101,0.75)" }}>
+                    <span style={{ color: "#228A61", fontWeight: 700 }}>•</span>
+                    Xem xét cải thiện phản hồi liên quan đến "{kw.word}" ({kw.count} lần xuất hiện)
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p style={{ fontSize: "13px", color: "rgba(0,56,101,0.55)", lineHeight: 1.6, margin: 0, fontStyle: "italic" }}>
+                Chưa có đủ dữ liệu từ khóa tiêu cực để đưa ra khuyến nghị.
+                Các khuyến nghị sẽ tự động hiển thị khi ML service phân tích xong tin nhắn.
+              </p>
+            )}
+          </div>
         </div>
       </div>
         </>

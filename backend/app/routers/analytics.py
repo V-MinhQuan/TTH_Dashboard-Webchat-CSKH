@@ -235,3 +235,10 @@ def ai_suggested_faqs(
     data = service.get_suggested_faqs(filters)
     return {"success": True, "message": "Lấy danh sách đề xuất FAQ thành công.", "data": data}
 
+
+def custom_chart(
+    request: CustomChartRequest,
+    service: AnalyticsService = Depends(get_analytics_service),
+):
+    data = service.get_custom_chart_data(request.model_dump(by_alias=True, mode="json"))
+    return {"success": True, "message": "Lay du lieu bieu do tuy chinh thanh cong.", "data": data}

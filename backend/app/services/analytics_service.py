@@ -315,3 +315,56 @@ def _date_str(value: Any) -> str:
         return ""
     return str(value).split(" ")[0].split("T")[0]
 
+
+    def get_custom_chart_data(self, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
+            rows = self.repository.get_custom_chart_data(filters)
+            x_axis = filters["xAxis"]
+    
+            # Format labels if needed
+            if x_axis == "topic":
+                topic_stats: Dict[str, Dict[str, Any]] = {}
+                for row in rows:
+                    topics = _json_array(row.get("name"))
+                    if not topics:
+                        topics = ["Khac"]
+                    for topic in topics:
+                        key = str(topic)
+                        if key not in topic_stats:
+                            topic_stats[key] = {k: 0 for k in row.keys() if k != "name"}
+                            topic_stats[key]["name"] = TOPIC_LABELS.get(key, key)
+                        for k, v in row.items():
+                            if k != "name":
+                                topic_stats[key][k] += (v or 0)
+    
+                # Convert back to list and sort by value DESC
+                aggregated_rows = list(topic_stats.values())
+                aggregated_rows.sort(key=lambda item: item.get("value", 0), reverse=True)
+                return aggregated_rows
+    
+            normalized = [
+                {
+                    key: (_date_str(value) if key == "name" else int(value or 0))
+                    for key, value in row.items()
+                }
+                for row in rows
+            ]
+            if x_axis == "channel":
+                for row in normalized:
+                    row["name"] = _channel_label(str(row.get("name") or "Unknown"))
+            return normalized
+
+    def _channel_label(value: str) -> str:
+        normalized = value.strip().lower()
+        labels = {
+            "facebook": "Facebook",
+            "fb": "Facebook",
+            "messenger": "Facebook",
+            "zalooa": "Zalo OA",
+            "zalo": "Zalo OA",
+            "zalobusiness": "Zalo Business",
+            "zalobiz": "Zalo Business",
+            "chatwidget": "Chat Widget",
+            "website": "Chat Widget",
+            "web": "Chat Widget",
+        }
+        return labels.get(normalized, "Không xác định" if normalized in {"", "unknown"} else value)
