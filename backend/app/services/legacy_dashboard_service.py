@@ -92,6 +92,47 @@ def format_wait_time(mins: int) -> str:
         return f"{mins // 60} giờ {mins % 60} phút"
     return f"{mins} phút"
 
+def excerpt_text(value: str = '', limit: int = 100) -> str:
+    text = ' '.join(str(value or '').split())
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + '...'
+
+def classify_alert_topic(last_cust_text: str = '', last_ai_text: str = '', row_id: str = '') -> str:
+    combined = f"{last_cust_text or ''} {last_ai_text or ''}".strip()
+    if not combined:
+        return 'Không xác định'
+    return classify_topic(combined, row_id)
+
+def build_alert_description(alert_type: str, last_cust_text: str = '', last_ai_text: str = '') -> str:
+    customer_text = excerpt_text(last_cust_text, 100)
+    ai_text = excerpt_text(last_ai_text, 100)
+
+    if alert_type == 'overtime':
+        if customer_text:
+            return f'Tin nhắn khách cuối: "{customer_text}"'
+        return 'Nội dung tin nhắn khách cuối đang trống trong database.'
+
+    if alert_type == 'ai_no_data':
+        if customer_text and ai_text:
+            return f'Tin nhắn khách: "{customer_text}" — Phản hồi AI: "{ai_text}"'
+        if customer_text:
+            return f'Tin nhắn khách: "{customer_text}" — phản hồi AI khớp dấu hiệu không tìm thấy dữ liệu.'
+        if ai_text:
+            return f'Phản hồi AI khớp dấu hiệu không tìm thấy dữ liệu: "{ai_text}"'
+        return 'Nội dung tin nhắn khách và phản hồi AI đang trống trong database.'
+
+    if alert_type == 'ai_uncertain':
+        if customer_text and ai_text:
+            return f'Tin nhắn khách: "{customer_text}" — Phản hồi AI: "{ai_text}"'
+        if customer_text:
+            return f'Tin nhắn khách: "{customer_text}" — phản hồi AI khớp dấu hiệu không chắc chắn.'
+        if ai_text:
+            return f'Phản hồi AI khớp dấu hiệu không chắc chắn: "{ai_text}"'
+        return 'Nội dung tin nhắn khách và phản hồi AI đang trống trong database.'
+
+    return 'Không có nội dung cảnh báo trong database.'
+
 class DashboardService:
     def __init__(self):
         self.repository = ConversationRepository()
@@ -119,6 +160,7 @@ class DashboardService:
             'message_counts': lambda: self.repository.get_message_counts_filtered(start_date, end_date, channel, conversation_status, topic, ai_status),
             'trends': lambda: self._cached_repo_call('trends_base', start_date, end_date, lambda: self.repository.get_trends(start_date, end_date)),
             'urgent_alerts': lambda: self._cached_repo_call('urgent_alerts_base', start_date, end_date, lambda: self.repository.get_urgent_alerts_data(start_date, end_date)),
+            'overtime_alerts': lambda: self._cached_repo_call('urgent_overtime_all', None, None, lambda: self.repository.get_urgent_alerts_data(None, None)),
             'top_questions': lambda: self._cached_repo_call('top_questions_base', start_date, end_date, lambda: self.repository.get_top_questions_data(start_date, end_date)),
             'priority_conversations': lambda: self.repository.get_priority_conversations_data(start_date, end_date, channel, conversation_status, topic, ai_status),
             'daily_conversations': lambda: self.repository.get_daily_conversation_summary(start_date, end_date, channel, conversation_status, topic, ai_status),
@@ -133,11 +175,19 @@ class DashboardService:
         raw_message_counts = query_results.get('message_counts') or []
         trends = query_results.get('trends') or {}
         raw_urgent_alerts = query_results.get('urgent_alerts') or []
+        raw_overtime_alerts = query_results.get('overtime_alerts') or []
         raw_top_questions = query_results.get('top_questions') or []
         raw_priority_conversations = query_results.get('priority_conversations') or []
         daily_conversations = query_results.get('daily_conversations') or []
         ai_daily_stats = query_results.get('ai_daily_stats') or []
         ai_failures = sum(row.get('ai_fail') or 0 for row in ai_daily_stats)
+
+        alert_keys = {(row.get('id'), normalize_source_key(row.get('source'))) for row in raw_urgent_alerts}
+        for row in raw_overtime_alerts:
+            key = (row.get('id'), normalize_source_key(row.get('source')))
+            if row.get('alert_type') == 'overtime' and key not in alert_keys:
+                raw_urgent_alerts.append(row)
+                alert_keys.add(key)
 
         message_summary = {
             "ZaloOA": 0,
@@ -228,9 +278,9 @@ class DashboardService:
             if alert_type == 'none':
                 continue
 
-            alert_topic = classify_topic(last_cust_text + ' ' + last_ai_text, row.get('id'))
+            alert_topic = classify_alert_topic(last_cust_text, last_ai_text, row.get('id'))
             alert_channel = format_channel(row.get('source'))
-            customer = row.get('customer_id') or 'Khách hàng'
+            customer = row.get('customer_id') or ''
 
             if alert_type == 'overtime':
                 urgent_alerts.append({
@@ -242,10 +292,10 @@ class DashboardService:
                     "channel": alert_channel,
                     "topic": alert_topic,
                     "waitTime": format_wait_time(wait_mins),
-                    "desc": f'Khách hỏi: "{last_cust_text[:100]}..."' if last_cust_text else 'Khách hỏi thông tin, chatbot chưa có phản hồi.',
+                    "desc": build_alert_description(alert_type, last_cust_text, last_ai_text),
                     "raw_source": normalize_source_key(row.get('source')),
                     "raw_status": 'pending',
-                    "raw_ai_status": 'AI trả lời thất bại'
+                    "raw_ai_status": 'Chưa có phản hồi'
                 })
             elif alert_type == 'ai_no_data':
                 urgent_alerts.append({
@@ -257,13 +307,12 @@ class DashboardService:
                     "channel": alert_channel,
                     "topic": alert_topic,
                     "waitTime": format_wait_time(wait_mins),
-                    "desc": f'Câu hỏi: "{last_cust_text[:60]}..." — không có trong cơ sở tri thức' if last_cust_text else 'Câu hỏi chưa có câu trả lời phù hợp trong cơ sở tri thức.',
+                    "desc": build_alert_description(alert_type, last_cust_text, last_ai_text),
                     "raw_source": normalize_source_key(row.get('source')),
                     "raw_status": 'open',
                     "raw_ai_status": 'Không tìm thấy dữ liệu'
                 })
             elif alert_type == 'ai_uncertain':
-                confidence_percent = 30 + (hash_str(last_ai_text) % 25)
                 urgent_alerts.append({
                     "id": row.get('id'),
                     "type": "ai_uncertain",
@@ -273,7 +322,7 @@ class DashboardService:
                     "channel": alert_channel,
                     "topic": alert_topic,
                     "waitTime": format_wait_time(wait_mins),
-                    "desc": f'Câu hỏi: "{last_cust_text[:60]}..." — Độ tin cậy: {confidence_percent}%' if last_cust_text else f'Độ tin cậy phản hồi thấp: {confidence_percent}%',
+                    "desc": build_alert_description(alert_type, last_cust_text, last_ai_text),
                     "raw_source": normalize_source_key(row.get('source')),
                     "raw_status": 'open',
                     "raw_ai_status": 'AI trả lời không chắc chắn'
@@ -714,9 +763,9 @@ class DashboardService:
             if alert_type == 'none':
                 continue
 
-            alert_topic = classify_topic(last_cust_text + ' ' + last_ai_text, row.get('id'))
+            alert_topic = classify_alert_topic(last_cust_text, last_ai_text, row.get('id'))
             alert_channel = format_channel(row.get('source'))
-            customer = row.get('customer_id') or 'Khách hàng'
+            customer = row.get('customer_id') or ''
 
             if alert_type == 'overtime':
                 urgent_alerts.append({
@@ -728,10 +777,10 @@ class DashboardService:
                     "channel": alert_channel,
                     "topic": alert_topic,
                     "waitTime": format_wait_time(wait_mins),
-                    "desc": f'Khách hỏi: "{last_cust_text[:100]}..."' if last_cust_text else 'Khách hỏi thông tin, chatbot chưa có phản hồi.',
+                    "desc": build_alert_description(alert_type, last_cust_text, last_ai_text),
                     "raw_source": row.get('source'),
                     "raw_status": 'pending',
-                    "raw_ai_status": 'AI trả lời thất bại'
+                    "raw_ai_status": 'Chưa có phản hồi'
                 })
             elif alert_type == 'ai_no_data':
                 urgent_alerts.append({
@@ -743,13 +792,12 @@ class DashboardService:
                     "channel": alert_channel,
                     "topic": alert_topic,
                     "waitTime": format_wait_time(wait_mins),
-                    "desc": f'Câu hỏi: "{last_cust_text[:60]}..." — không có trong cơ sở tri thức' if last_cust_text else 'Câu hỏi chưa có câu trả lời phù hợp trong cơ sở tri thức.',
+                    "desc": build_alert_description(alert_type, last_cust_text, last_ai_text),
                     "raw_source": row.get('source'),
                     "raw_status": 'open',
                     "raw_ai_status": 'Không tìm thấy dữ liệu'
                 })
             elif alert_type == 'ai_uncertain':
-                confidence_percent = 30 + (hash_str(last_ai_text) % 25)
                 urgent_alerts.append({
                     "id": row.get('id'),
                     "type": "ai_uncertain",
@@ -759,7 +807,7 @@ class DashboardService:
                     "channel": alert_channel,
                     "topic": alert_topic,
                     "waitTime": format_wait_time(wait_mins),
-                    "desc": f'Câu hỏi: "{last_cust_text[:60]}..." — Độ tin cậy: {confidence_percent}%' if last_cust_text else f'Độ tin cậy phản hồi thấp: {confidence_percent}%',
+                    "desc": build_alert_description(alert_type, last_cust_text, last_ai_text),
                     "raw_source": row.get('source'),
                     "raw_status": 'open',
                     "raw_ai_status": 'AI trả lời không chắc chắn'

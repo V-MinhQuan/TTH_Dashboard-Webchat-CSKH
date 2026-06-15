@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { useAuth } from "../../context/AuthContext";
 import { useSettings } from "../../context/SettingsContext";
 import { UserManagement } from "./UserManagement";
-import { getDashboardKpi, getChannelAnalytics } from "../../services/dashboardApi";
+import { API_BASE_URL, getDashboardKpi, getChannelAnalytics } from "../../services/dashboardApi";
 import { DashboardKpiData, ChannelAnalyticsData } from "../../types/dashboard";
 
 const NAVY = "#003865";
@@ -291,14 +291,15 @@ export function Settings({ defaultSection = "notifications" }: { defaultSection?
   const [newPw, setNewPw] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
   const [showWeeklyPreview, setShowWeeklyPreview] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
 
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+  const { settings, updateSetting: update, saveSettings, loadingSettings } = useSettings();
 
   // Load User Profile from backend DB
   useEffect(() => {
     if (user?.username) {
       setLoadingProfile(true);
-      fetch(`${API_BASE_URL}/api/settings/profile?username=${user.username}`)
+      fetch(`${API_BASE_URL}/api/settings/profile?username=${encodeURIComponent(user.username)}`)
         .then(res => res.json())
         .then(resJson => {
           if (resJson.success) {
@@ -317,8 +318,6 @@ export function Settings({ defaultSection = "notifications" }: { defaultSection?
   useEffect(() => {
     setActiveSection(defaultSection);
   }, [defaultSection]);
-
-  const { settings, updateSetting: update } = useSettings();
 
   const handleSaveProfile = async () => {
     if (!profileData.name.trim()) {
@@ -340,7 +339,7 @@ export function Settings({ defaultSection = "notifications" }: { defaultSection?
       if (res.ok && resJson.success) {
         toast.success("Cập nhật thông tin tài khoản thành công!");
       } else {
-        toast.error(resJson.detail || "Cập nhật thất bại.");
+        toast.error(resJson.message || resJson.detail || "Cập nhật thất bại.");
       }
     } catch (err) {
       toast.error("Không thể kết nối đến máy chủ.");
@@ -420,7 +419,11 @@ export function Settings({ defaultSection = "notifications" }: { defaultSection?
     if (activeSection === "profile") {
       handleSaveProfile();
     } else {
-      toast.success("Đã lưu cài đặt thành công");
+      setSavingSettings(true);
+      saveSettings()
+        .then(() => toast.success("Đã lưu cài đặt hệ thống thành công"))
+        .catch((err: any) => toast.error(err?.message || "Không thể lưu cài đặt hệ thống."))
+        .finally(() => setSavingSettings(false));
     }
   };
 
@@ -727,8 +730,12 @@ export function Settings({ defaultSection = "notifications" }: { defaultSection?
           {renderSection()}
           {activeSection !== "users" && (
             <div style={{ marginTop: "24px", paddingTop: "20px", borderTop: "1px solid rgba(0,56,101,0.08)" }}>
-              <button onClick={handleSave} style={{ padding: "10px 28px", borderRadius: "12px", border: "none", background: `linear-gradient(135deg, ${ORANGE}, ${CTA})`, cursor: "pointer", color: "#fff", fontSize: "14px", fontWeight: 700, display: "flex", alignItems: "center", gap: "8px", boxShadow: "0 4px 12px rgba(215,60,1,0.3)" }}>
-                <Save size={16} /> Lưu thay đổi
+              <button
+                onClick={handleSave}
+                disabled={savingSettings || loadingSettings}
+                style={{ padding: "10px 28px", borderRadius: "12px", border: "none", background: savingSettings || loadingSettings ? "#cbd5e1" : `linear-gradient(135deg, ${ORANGE}, ${CTA})`, cursor: savingSettings || loadingSettings ? "not-allowed" : "pointer", color: "#fff", fontSize: "14px", fontWeight: 700, display: "flex", alignItems: "center", gap: "8px", boxShadow: savingSettings || loadingSettings ? "none" : "0 4px 12px rgba(215,60,1,0.3)" }}
+              >
+                <Save size={16} /> {savingSettings ? "Đang lưu..." : "Lưu thay đổi"}
               </button>
             </div>
           )}

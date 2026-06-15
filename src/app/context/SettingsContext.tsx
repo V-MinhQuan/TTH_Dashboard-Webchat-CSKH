@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { getSettings as fetchSettings, updateSettings as persistSettings } from '../services/dashboardApi';
 
 export interface GlobalSettings {
   emailNotif: boolean;
@@ -42,10 +43,22 @@ const defaultSettings: GlobalSettings = {
 interface SettingsContextType {
   settings: GlobalSettings;
   updateSetting: (key: keyof GlobalSettings, value: any) => void;
+  saveSettings: () => Promise<GlobalSettings>;
+  reloadSettings: () => Promise<GlobalSettings>;
+  loadingSettings: boolean;
 }
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
 const SETTINGS_STORAGE_KEY = 'flic_dashboard_settings';
+
+function cacheSettings(settings: GlobalSettings) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+  } catch {
+    // Browser storage can be unavailable; backend persistence is still authoritative.
+  }
+}
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<GlobalSettings>(() => {
@@ -61,19 +74,59 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     }
     return defaultSettings;
   });
+  const [loadingSettings, setLoadingSettings] = useState(false);
+
+  const applySettings = (value: Record<string, any>) => {
+    const merged = { ...defaultSettings, ...value } as GlobalSettings;
+    setSettings(merged);
+    cacheSettings(merged);
+    return merged;
+  };
+
+  const reloadSettings = async () => {
+    setLoadingSettings(true);
+    try {
+      const remote = await fetchSettings();
+      return applySettings(remote);
+    } finally {
+      setLoadingSettings(false);
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingSettings(true);
+    fetchSettings()
+      .then((remote) => {
+        if (!cancelled) applySettings(remote);
+      })
+      .catch((err) => {
+        console.error("Failed to load settings from backend", err);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingSettings(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const updateSetting = (key: keyof GlobalSettings, value: any) => {
     setSettings((prev) => {
       const updated = { ...prev, [key]: value };
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(updated));
-      }
+      cacheSettings(updated);
       return updated;
     });
   };
 
+  const saveSettings = async () => {
+    const remote = await persistSettings(settings);
+    return applySettings(remote);
+  };
+
   return (
-    <SettingsContext.Provider value={{ settings, updateSetting }}>
+    <SettingsContext.Provider value={{ settings, updateSetting, saveSettings, reloadSettings, loadingSettings }}>
       {children}
     </SettingsContext.Provider>
   );

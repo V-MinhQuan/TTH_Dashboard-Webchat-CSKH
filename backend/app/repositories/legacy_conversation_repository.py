@@ -992,7 +992,7 @@ class ConversationRepository:
                 "c.LastMessageId > 0",
                 """(
                   ((c.LastHostMessageAt IS NULL OR c.LastCustomerMessageAt > c.LastHostMessageAt) 
-                       AND DATEDIFF(MINUTE, c.LastCustomerMessageAt, (SELECT MAX(LastCustomerMessageAt) FROM WebChat_Conversations)) > 600)
+                       AND DATEDIFF(MINUTE, c.LastCustomerMessageAt, @dbNow) > 600)
                   OR (ai.TextContent LIKE N'%không tìm thấy%' OR ai.TextContent LIKE N'%chưa hiểu%' 
                        OR ai.TextContent LIKE N'%chưa có%' OR ai.TextContent LIKE N'%không thể%' 
                        OR ai.TextContent LIKE N'%chưa hỗ trợ%'
@@ -1017,7 +1017,15 @@ class ConversationRepository:
             if conditions:
                 query += " WHERE " + " AND ".join(conditions)
                 
-            query += " ORDER BY c.LastCustomerMessageAt DESC"
+            query += """
+                ORDER BY
+                  CASE
+                    WHEN (c.LastHostMessageAt IS NULL OR c.LastCustomerMessageAt > c.LastHostMessageAt)
+                         AND DATEDIFF(MINUTE, c.LastCustomerMessageAt, @dbNow) > 600
+                    THEN 0 ELSE 1
+                  END,
+                  c.LastCustomerMessageAt DESC
+            """
             
             with conn.cursor(as_dict=True) as cursor:
                 cursor.execute(query, tuple(params))

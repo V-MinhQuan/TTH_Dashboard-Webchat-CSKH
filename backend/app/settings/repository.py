@@ -26,6 +26,7 @@ DEFAULT_SETTINGS = {
     "alertResponseTime": 30,
     "alertUncertainRate": 25,
     "dataSourceZalo": True,
+    "dataSourceZaloBiz": True,
     "dataSourceFb": True,
     "dataSourceWidget": True,
     "dataSyncInterval": "5",

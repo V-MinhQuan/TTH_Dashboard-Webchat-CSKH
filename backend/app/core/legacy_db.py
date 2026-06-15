@@ -18,7 +18,7 @@ DB_USER = os.getenv("DB_USER")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
 DB_SERVER = os.getenv("DB_SERVER", "14.225.192.252")
 DB_PORT = int(os.getenv("DB_PORT", "1433"))
-DB_DATABASE = os.getenv("DB_DATABASE")
+DB_DATABASE = os.getenv("DB_DATABASE") or os.getenv("DB_NAME")
 
 print("[DB] Configuring connection:")
 print({

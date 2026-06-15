@@ -1,4 +1,6 @@
 import random
+import secrets
+import string
 import time
 from typing import Optional
 
@@ -23,6 +25,18 @@ class UserService:
 
     def get_all_users(self) -> list[dict]:
         return user_repository.get_all_users()
+
+    def create_user(self, username: str, password: str, name: str, email: str, phone: str, active: bool = True) -> dict:
+        if len(password or "") < 6:
+            raise Exception("Mật khẩu phải có ít nhất 6 ký tự.")
+        return user_repository.create_user(
+            username=username,
+            password=password,
+            name=name,
+            email=email,
+            phone=phone,
+            active=active,
+        )
 
     def update_profile(self, username: str, name: str, email: str, phone: str) -> dict:
         success = user_repository.update_profile(username, name, email, phone)
@@ -92,6 +106,35 @@ class UserService:
         # Clear OTP from memory store
         _otp_store.pop(username.lower(), None)
         return True
+
+    def set_user_active(self, username: str, active: bool) -> dict:
+        success = user_repository.set_active(username, active)
+        if not success:
+            raise Exception(f"Không tìm thấy người dùng {username}.")
+
+        user = user_repository.get_user_by_username(username)
+        if not user:
+            raise Exception("Không thể lấy thông tin người dùng sau khi cập nhật trạng thái.")
+        user.pop("password", None)
+        return user
+
+    def reset_user_password(self, username: str, new_password: Optional[str] = None) -> dict:
+        password = new_password or self._generate_temporary_password()
+        if len(password) < 6:
+            raise Exception("Mật khẩu mới phải có ít nhất 6 ký tự.")
+
+        success = user_repository.update_password(username, password)
+        if not success:
+            raise Exception(f"Không tìm thấy người dùng {username}.")
+
+        return {
+            "username": username,
+            "temporaryPassword": password,
+        }
+
+    def _generate_temporary_password(self) -> str:
+        alphabet = string.ascii_letters + string.digits
+        return "".join(secrets.choice(alphabet) for _ in range(10))
 
 
 user_service = UserService()

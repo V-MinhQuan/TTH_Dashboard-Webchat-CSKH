@@ -16,7 +16,7 @@ DEFAULT_ROWS = [
     {
         "id": "CS-001",
         "addedAt": "2026-06-08T02:30:00Z",
-        "addedBy": "Thu Trang",
+        "addedBy": "thutrang",
         "question": "Lệ phí thi TOEIC hiện tại là bao nhiêu?",
         "correctAnswer": "Lệ phí thi TOEIC tại FLIC là 750.000 VNĐ/lần thi. Sinh viên có thẻ được giảm 10%.",
         "topic": "TOEIC",
@@ -167,7 +167,7 @@ class SheetChatbotRepository:
         return all([
             os.getenv("DB_USER"),
             os.getenv("DB_PASSWORD"),
-            os.getenv("DB_DATABASE"),
+            os.getenv("DB_DATABASE") or os.getenv("DB_NAME"),
         ])
 
     def _ensure_sql_table(self):

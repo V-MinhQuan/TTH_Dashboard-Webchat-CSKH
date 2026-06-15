@@ -113,7 +113,7 @@ export async function fetchApiJson<T>(
     .then(async (response) => {
       const payload = await response.json().catch(() => null);
       if (!response.ok || payload?.success === false) {
-        throw new Error(payload?.message || `API trả về lỗi ${response.status}.`);
+        throw new Error(payload?.message || payload?.detail || `API trả về lỗi ${response.status}.`);
       }
 
       if (useCache) writeCache(cacheKey, payload);
@@ -254,5 +254,87 @@ export async function getAllUsers(): Promise<any[]> {
   if (!resJson.success) {
     throw new Error(resJson.message || "Không thể tải danh sách người dùng.");
   }
+  return resJson.data;
+}
+
+export async function getSettings(): Promise<Record<string, any>> {
+  const resJson = await fetchApiJson<{ success: boolean; data: Record<string, any>; message?: string }>(
+    buildApiUrl("/api/settings"),
+    { cache: false },
+  );
+  if (!resJson.success) {
+    throw new Error(resJson.message || "Không thể tải cấu hình hệ thống.");
+  }
+  return resJson.data;
+}
+
+export async function updateSettings(payload: Record<string, any>): Promise<Record<string, any>> {
+  const resJson = await fetchApiJson<{ success: boolean; data: Record<string, any>; message?: string }>(
+    buildApiUrl("/api/settings"),
+    {
+      method: "PUT",
+      cache: false,
+      body: JSON.stringify(payload),
+    },
+  );
+  if (!resJson.success) {
+    throw new Error(resJson.message || "Không thể lưu cấu hình hệ thống.");
+  }
+  clearApiCache();
+  return resJson.data;
+}
+
+export async function createSettingsUser(payload: {
+  username: string;
+  password: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  active?: boolean;
+}) {
+  const resJson = await fetchApiJson<{ success: boolean; data: any; message?: string }>(
+    buildApiUrl("/api/settings/users"),
+    {
+      method: "POST",
+      cache: false,
+      body: JSON.stringify(payload),
+    },
+  );
+  if (!resJson.success) {
+    throw new Error(resJson.message || "Không thể tạo người dùng.");
+  }
+  clearApiCache();
+  return resJson.data;
+}
+
+export async function updateSettingsUserStatus(username: string, active: boolean) {
+  const resJson = await fetchApiJson<{ success: boolean; data: any; message?: string }>(
+    buildApiUrl(`/api/settings/users/${encodeURIComponent(username)}/status`),
+    {
+      method: "PATCH",
+      cache: false,
+      body: JSON.stringify({ active }),
+    },
+  );
+  if (!resJson.success) {
+    throw new Error(resJson.message || "Không thể cập nhật trạng thái người dùng.");
+  }
+  clearApiCache();
+  return resJson.data;
+}
+
+export async function resetSettingsUserPassword(username: string, newPassword?: string) {
+  const resJson = await fetchApiJson<{ success: boolean; data: { temporaryPassword: string }; message?: string }>(
+    buildApiUrl(`/api/settings/users/${encodeURIComponent(username)}/reset-password`),
+    {
+      method: "POST",
+      cache: false,
+      body: JSON.stringify({ newPassword }),
+    },
+  );
+  if (!resJson.success) {
+    throw new Error(resJson.message || "Không thể reset mật khẩu người dùng.");
+  }
+  clearApiCache();
   return resJson.data;
 }

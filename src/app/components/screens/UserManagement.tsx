@@ -1,20 +1,47 @@
 import { useState, useEffect } from "react";
-import { Users, Edit2, Lock, KeyRound, Search, UserPlus, X, Check, ShieldAlert, Loader2 } from "lucide-react";
+import { Edit2, KeyRound, Loader2, Lock, Search, ShieldAlert, Unlock, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../../context/AuthContext";
-import { getAllUsers } from "../../services/dashboardApi";
+import {
+  createSettingsUser,
+  getAllUsers,
+  resetSettingsUserPassword,
+  updateSettingsUserStatus,
+} from "../../services/dashboardApi";
 
 const NAVY = "#003865";
 const ORANGE = "#D73C01";
 
+const emptyNewUser = {
+  username: "",
+  name: "",
+  email: "",
+  phone: "",
+  password: "",
+  active: true,
+};
 
 export function UserManagement() {
   const { role } = useAuth();
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [editingUser, setEditingUser] = useState<any>(null);
   const [isAddingUser, setIsAddingUser] = useState(false);
+  const [newUser, setNewUser] = useState(emptyNewUser);
+
+  const loadUsers = async (showLoader = true) => {
+    if (showLoader) setLoading(true);
+    try {
+      const data = await getAllUsers();
+      setUsers(data);
+    } catch (err: any) {
+      toast.error("Không thể tải danh sách người dùng: " + (err?.message || "Lỗi không xác định"));
+    } finally {
+      if (showLoader) setLoading(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -26,6 +53,80 @@ export function UserManagement() {
     return () => { cancelled = true; };
   }, []);
 
+  const isUserActive = (user: any) => {
+    if (typeof user.active === "boolean") return user.active;
+    return user.status === "Đang hoạt động";
+  };
+
+  const handleToggleUserStatus = async (targetUser: any) => {
+    const username = targetUser.username || targetUser.id;
+    const active = isUserActive(targetUser);
+    const nextActive = !active;
+    const actionText = nextActive ? "mở khóa" : "khóa";
+
+    if (!window.confirm(`Xác nhận ${actionText} tài khoản ${username}?`)) return;
+
+    setActionLoading(`status:${username}`);
+    try {
+      await updateSettingsUserStatus(username, nextActive);
+      toast.success(nextActive ? "Đã mở khóa tài khoản trong database" : "Đã khóa tài khoản trong database");
+      await loadUsers(false);
+    } catch (err: any) {
+      toast.error(err?.message || "Không thể cập nhật trạng thái tài khoản.");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleResetPassword = async (targetUser: any) => {
+    const username = targetUser.username || targetUser.id;
+    if (!window.confirm(`Reset mật khẩu tài khoản ${username}?`)) return;
+
+    setActionLoading(`reset:${username}`);
+    try {
+      const result = await resetSettingsUserPassword(username);
+      window.alert(`Mật khẩu tạm thời của ${username}: ${result.temporaryPassword}`);
+      toast.success("Đã reset mật khẩu trong database");
+    } catch (err: any) {
+      toast.error(err?.message || "Không thể reset mật khẩu.");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleCreateUser = async () => {
+    const payload = {
+      username: newUser.username.trim(),
+      name: newUser.name.trim(),
+      email: newUser.email.trim(),
+      phone: newUser.phone.trim(),
+      password: newUser.password,
+      active: newUser.active,
+    };
+
+    if (!payload.username || !payload.name || !payload.password) {
+      toast.error("Vui lòng nhập tên đăng nhập, họ tên và mật khẩu.");
+      return;
+    }
+    if (payload.password.length < 6) {
+      toast.error("Mật khẩu phải có ít nhất 6 ký tự.");
+      return;
+    }
+
+    setActionLoading("create");
+    try {
+      await createSettingsUser(payload);
+      toast.success("Đã tạo người dùng trong database");
+      setIsAddingUser(false);
+      setNewUser(emptyNewUser);
+      await loadUsers(false);
+    } catch (err: any) {
+      toast.error(err?.message || "Không thể tạo người dùng.");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   if (role !== "manager") {
     return (
       <div style={{ padding: "40px", textAlign: "center", height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
@@ -36,7 +137,11 @@ export function UserManagement() {
     );
   }
 
-  const filtered = users.filter((u) => u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase()));
+  const keyword = search.toLowerCase();
+  const filtered = users.filter((u) =>
+    [u.name, u.email, u.username, u.id]
+      .some((value) => String(value || "").toLowerCase().includes(keyword))
+  );
 
   if (loading) {
     return (
@@ -90,6 +195,7 @@ export function UserManagement() {
                 <td style={{ padding: "14px 20px" }}>
                   <div style={{ fontWeight: 600, color: NAVY, fontSize: "13px" }}>{user.name}</div>
                   <div style={{ fontSize: "11px", color: "rgba(0,56,101,0.5)", marginTop: "2px" }}>{user.email}</div>
+                  <div style={{ fontSize: "11px", color: isUserActive(user) ? "#228A61" : ORANGE, marginTop: "2px", fontWeight: 600 }}>{user.status}</div>
                 </td>
                 <td style={{ padding: "14px 20px" }}>
                   <span style={{ fontSize: "11px", padding: "4px 8px", borderRadius: "20px", backgroundColor: user.role === "Quản lý CSKH" ? "#e0e7ff" : "#f1f5f9", color: user.role === "Quản lý CSKH" ? NAVY : "#475569", fontWeight: 600 }}>
@@ -101,11 +207,21 @@ export function UserManagement() {
                     <button onClick={() => setEditingUser(user)} style={{ width: "28px", height: "28px", borderRadius: "6px", border: "1px solid rgba(0,56,101,0.1)", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: NAVY }} title="Sửa quyền">
                       <Edit2 size={14} />
                     </button>
-                    <button onClick={() => toast.success("Đã khóa tài khoản")} style={{ width: "28px", height: "28px", borderRadius: "6px", border: "1px solid rgba(0,56,101,0.1)", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: ORANGE }} title="Khóa tài khoản">
-                      <Lock size={14} />
+                    <button
+                      onClick={() => handleToggleUserStatus(user)}
+                      disabled={actionLoading === `status:${user.username || user.id}`}
+                      style={{ width: "28px", height: "28px", borderRadius: "6px", border: "1px solid rgba(0,56,101,0.1)", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: actionLoading === `status:${user.username || user.id}` ? "wait" : "pointer", color: ORANGE }}
+                      title={isUserActive(user) ? "Khóa tài khoản" : "Mở khóa tài khoản"}
+                    >
+                      {actionLoading === `status:${user.username || user.id}` ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : isUserActive(user) ? <Lock size={14} /> : <Unlock size={14} />}
                     </button>
-                    <button onClick={() => toast.success("Đã gửi email reset mật khẩu")} style={{ width: "28px", height: "28px", borderRadius: "6px", border: "1px solid rgba(0,56,101,0.1)", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#64748b" }} title="Reset mật khẩu">
-                      <KeyRound size={14} />
+                    <button
+                      onClick={() => handleResetPassword(user)}
+                      disabled={actionLoading === `reset:${user.username || user.id}`}
+                      style={{ width: "28px", height: "28px", borderRadius: "6px", border: "1px solid rgba(0,56,101,0.1)", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: actionLoading === `reset:${user.username || user.id}` ? "wait" : "pointer", color: "#64748b" }}
+                      title="Reset mật khẩu"
+                    >
+                      {actionLoading === `reset:${user.username || user.id}` ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <KeyRound size={14} />}
                     </button>
                   </div>
                 </td>
@@ -124,41 +240,34 @@ export function UserManagement() {
               <button onClick={() => setEditingUser(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(0,56,101,0.4)" }}><X size={18} /></button>
             </div>
             
-            <div style={{ marginBottom: "16px" }}>
-              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "8px" }}>Vai trò</label>
-              <select style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.1)", outline: "none", fontSize: "13px" }} defaultValue={editingUser.role}>
-                <option value="Nhân viên CSKH">Nhân viên CSKH</option>
-                <option value="Quản lý CSKH">Quản lý CSKH</option>
-              </select>
-            </div>
-
-            <div style={{ marginBottom: "16px" }}>
-              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "8px" }}>Kênh phụ trách</label>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-                {["Zalo Business", "Facebook", "Zalo OA", "Chat Widget"].map((ch) => (
-                  <label key={ch} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", cursor: "pointer" }}>
-                    <input type="checkbox" defaultChecked={editingUser.channels.includes(ch) || editingUser.channels === "Tất cả"} />
-                    {ch}
-                  </label>
-                ))}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "8px" }}>Tên đăng nhập</label>
+                <input readOnly value={editingUser.username || editingUser.id} style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.1)", outline: "none", fontSize: "13px", background: "#f8fafc", boxSizing: "border-box" }} />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "8px" }}>Vai trò hiện tại</label>
+                <input readOnly value={editingUser.role} style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.1)", outline: "none", fontSize: "13px", background: "#f8fafc", boxSizing: "border-box" }} />
               </div>
             </div>
 
-            <div style={{ marginBottom: "24px" }}>
-              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "8px" }}>Quyền hạn</label>
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                {["Xem hội thoại", "Trả lời hội thoại", "Sửa phản hồi AI", "Đánh dấu AI sai", "Đề xuất FAQ"].map((p) => (
-                  <label key={p} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", cursor: "pointer" }}>
-                    <input type="checkbox" defaultChecked />
-                    {p}
-                  </label>
-                ))}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "8px" }}>Kênh hiển thị</label>
+                <input readOnly value={editingUser.channels || ""} style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.1)", outline: "none", fontSize: "13px", background: "#f8fafc", boxSizing: "border-box" }} />
               </div>
+              <div>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "8px" }}>Quyền hiển thị</label>
+                <input readOnly value={editingUser.permissions || ""} style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.1)", outline: "none", fontSize: "13px", background: "#f8fafc", boxSizing: "border-box" }} />
+              </div>
+            </div>
+
+            <div style={{ marginBottom: "24px", padding: "12px 14px", borderRadius: "10px", background: "#fff7ed", border: "1px solid rgba(215,60,1,0.16)", color: ORANGE, fontSize: "12px", lineHeight: 1.5 }}>
+              Bảng [User] hiện chỉ có thông tin tài khoản, trạng thái, họ tên, email, điện thoại và mật khẩu. Vì chưa có cột role/channel/permission, phần phân quyền chi tiết đang được hiển thị theo quy ước hệ thống và không ghi giả xuống database.
             </div>
 
             <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px" }}>
-              <button onClick={() => setEditingUser(null)} style={{ padding: "8px 16px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.1)", background: "#fff", color: NAVY, cursor: "pointer", fontWeight: 600, fontSize: "13px" }}>Hủy</button>
-              <button onClick={() => { toast.success("Đã cập nhật phân quyền người dùng"); setEditingUser(null); }} style={{ padding: "8px 16px", borderRadius: "8px", border: "none", background: NAVY, color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: "13px" }}>Lưu phân quyền</button>
+              <button onClick={() => setEditingUser(null)} style={{ padding: "8px 16px", borderRadius: "8px", border: "none", background: NAVY, color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: "13px" }}>Đóng</button>
             </div>
           </div>
         </div>
@@ -170,71 +279,98 @@ export function UserManagement() {
           <div style={{ backgroundColor: "#fff", width: "560px", borderRadius: "16px", padding: "24px", boxShadow: "0 10px 40px rgba(0,0,0,0.1)", maxHeight: "90vh", overflowY: "auto" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
               <h3 style={{ fontSize: "18px", fontWeight: 700, color: NAVY, margin: 0 }}>Thêm người dùng mới</h3>
-              <button onClick={() => setIsAddingUser(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(0,56,101,0.4)" }}><X size={18} /></button>
+              <button onClick={() => { setIsAddingUser(false); setNewUser(emptyNewUser); }} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(0,56,101,0.4)" }}><X size={18} /></button>
             </div>
             
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "16px" }}>
               <div>
-                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "8px" }}>Họ tên</label>
-                <input type="text" placeholder="Nhập họ tên" style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.1)", outline: "none", fontSize: "13px", boxSizing: "border-box" }} />
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "8px" }}>Tên đăng nhập</label>
+                <input
+                  type="text"
+                  value={newUser.username}
+                  onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
+                  placeholder="VD: nguyenvana"
+                  style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.1)", outline: "none", fontSize: "13px", boxSizing: "border-box" }}
+                />
               </div>
+              <div>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "8px" }}>Họ tên</label>
+                <input
+                  type="text"
+                  value={newUser.name}
+                  onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
+                  placeholder="Nhập họ tên"
+                  style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.1)", outline: "none", fontSize: "13px", boxSizing: "border-box" }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "16px" }}>
               <div>
                 <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "8px" }}>Email</label>
-                <input type="email" placeholder="Nhập email" style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.1)", outline: "none", fontSize: "13px", boxSizing: "border-box" }} />
+                <input
+                  type="email"
+                  value={newUser.email}
+                  onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                  placeholder="Nhập email"
+                  style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.1)", outline: "none", fontSize: "13px", boxSizing: "border-box" }}
+                />
               </div>
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "16px" }}>
               <div>
                 <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "8px" }}>Số điện thoại</label>
-                <input type="text" placeholder="Nhập số điện thoại" style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.1)", outline: "none", fontSize: "13px", boxSizing: "border-box" }} />
-              </div>
-              <div>
-                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "8px" }}>Mật khẩu tạm thời</label>
-                <input type="text" placeholder="Nhập mật khẩu" style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.1)", outline: "none", fontSize: "13px", boxSizing: "border-box" }} />
+                <input
+                  type="text"
+                  value={newUser.phone}
+                  onChange={(e) => setNewUser({ ...newUser, phone: e.target.value })}
+                  placeholder="Nhập số điện thoại"
+                  style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.1)", outline: "none", fontSize: "13px", boxSizing: "border-box" }}
+                />
               </div>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "16px" }}>
               <div>
-                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "8px" }}>Vai trò</label>
-                <select style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.1)", outline: "none", fontSize: "13px", boxSizing: "border-box" }}>
-                  <option value="staff">Nhân viên CSKH</option>
-                  <option value="manager">Quản lý CSKH</option>
-                </select>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "8px" }}>Mật khẩu tạm thời</label>
+                <input
+                  type="text"
+                  value={newUser.password}
+                  onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+                  placeholder="Tối thiểu 6 ký tự"
+                  style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.1)", outline: "none", fontSize: "13px", boxSizing: "border-box" }}
+                />
               </div>
               <div>
-                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "8px" }}>Phòng ban</label>
-                <select style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.1)", outline: "none", fontSize: "13px", boxSizing: "border-box" }}>
-                  <option value="cskh">Chăm sóc khách hàng</option>
-                  <option value="tuyensinh">Tuyển sinh</option>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "8px" }}>Trạng thái tài khoản</label>
+                <select
+                  value={newUser.active ? "active" : "inactive"}
+                  onChange={(e) => setNewUser({ ...newUser, active: e.target.value === "active" })}
+                  style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.1)", outline: "none", fontSize: "13px", boxSizing: "border-box" }}
+                >
+                  <option value="active">Đang hoạt động</option>
+                  <option value="inactive">Tạm khóa</option>
                 </select>
               </div>
             </div>
 
-            <div style={{ marginBottom: "16px" }}>
-              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "8px" }}>Trạng thái tài khoản</label>
-              <select style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.1)", outline: "none", fontSize: "13px", boxSizing: "border-box" }}>
-                <option value="active">Đang hoạt động</option>
-                <option value="inactive">Tạm khóa</option>
-              </select>
-            </div>
-
-            <div style={{ marginBottom: "24px" }}>
-              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "8px" }}>Kênh quản lý</label>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-                {["Zalo Business", "Facebook", "Zalo OA", "Chat Widget"].map((ch) => (
-                  <label key={`add-${ch}`} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", cursor: "pointer" }}>
-                    <input type="checkbox" defaultChecked={false} />
-                    {ch}
-                  </label>
-                ))}
-              </div>
+            <div style={{ marginBottom: "24px", padding: "12px 14px", borderRadius: "10px", background: "#f8fafc", border: "1px solid rgba(0,56,101,0.08)", color: "rgba(0,56,101,0.62)", fontSize: "12px", lineHeight: 1.5 }}>
+              Tài khoản mới được ghi vào bảng [User]. Vai trò, kênh quản lý và quyền chi tiết chưa được nhập tại đây vì database hiện chưa có các cột lưu những trường này.
             </div>
 
             <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px", marginTop: "24px", paddingTop: "16px", borderTop: "1px solid rgba(0,56,101,0.08)" }}>
-              <button onClick={() => setIsAddingUser(false)} style={{ padding: "10px 20px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.1)", background: "#fff", color: NAVY, cursor: "pointer", fontWeight: 600, fontSize: "13px" }}>Hủy</button>
-              <button onClick={() => { toast.success("Đã tạo người dùng mới"); setIsAddingUser(false); }} style={{ padding: "10px 20px", borderRadius: "8px", border: "none", background: NAVY, color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: "13px" }}>Tạo tài khoản</button>
+              <button
+                onClick={() => { setIsAddingUser(false); setNewUser(emptyNewUser); }}
+                style={{ padding: "10px 20px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.1)", background: "#fff", color: NAVY, cursor: "pointer", fontWeight: 600, fontSize: "13px" }}
+              >
+                Hủy
+              </button>
+              <button
+                onClick={handleCreateUser}
+                disabled={actionLoading === "create"}
+                style={{ padding: "10px 20px", borderRadius: "8px", border: "none", background: actionLoading === "create" ? "#cbd5e1" : NAVY, color: "#fff", cursor: actionLoading === "create" ? "wait" : "pointer", fontWeight: 600, fontSize: "13px", display: "flex", alignItems: "center", gap: "8px" }}
+              >
+                {actionLoading === "create" && <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />}
+                Tạo tài khoản
+              </button>
             </div>
           </div>
         </div>

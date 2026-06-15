@@ -32,6 +32,7 @@ class SettingsUpdateSchema(BaseModel):
     alertResponseTime: Optional[int] = None
     alertUncertainRate: Optional[int] = None
     dataSourceZalo: Optional[bool] = None
+    dataSourceZaloBiz: Optional[bool] = None
     dataSourceFb: Optional[bool] = None
     dataSourceWidget: Optional[bool] = None
     dataSyncInterval: Optional[str] = None
@@ -42,6 +43,23 @@ class ProfileUpdateSchema(BaseModel):
     name: str
     email: str
     phone: str
+
+
+class UserCreateSchema(BaseModel):
+    username: str
+    password: str
+    name: str
+    email: str = ""
+    phone: str = ""
+    active: bool = True
+
+
+class UserStatusSchema(BaseModel):
+    active: bool
+
+
+class UserResetPasswordSchema(BaseModel):
+    newPassword: Optional[str] = None
 
 
 class OTPRequestSchema(BaseModel):
@@ -107,6 +125,61 @@ def get_all_users():
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+
+@router.post("/users", status_code=status.HTTP_201_CREATED)
+def create_user(body: UserCreateSchema):
+    try:
+        data = user_service.create_user(
+            username=body.username,
+            password=body.password,
+            name=body.name,
+            email=body.email,
+            phone=body.phone,
+            active=body.active,
+        )
+        return {
+            "success": True,
+            "message": "Tạo người dùng thành công.",
+            "data": data
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.patch("/users/{username}/status")
+def update_user_status(username: str, body: UserStatusSchema):
+    try:
+        data = user_service.set_user_active(username, body.active)
+        return {
+            "success": True,
+            "message": "Cập nhật trạng thái người dùng thành công.",
+            "data": data
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.post("/users/{username}/reset-password")
+def reset_user_password(username: str, body: UserResetPasswordSchema):
+    try:
+        data = user_service.reset_user_password(username, body.newPassword)
+        return {
+            "success": True,
+            "message": "Reset mật khẩu người dùng thành công.",
+            "data": data
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
 

@@ -42,6 +42,7 @@ export function Sidebar({ activeScreen, onNavigate, collapsed, onToggleCollapse 
     { id: "aiinsights", label: "Phân tích AI", icon: Bot },
     { id: "keyword", label: "Keywords", icon: Hash },
     { id: "sentiment", label: "Cảm xúc", icon: Heart },
+    { id: "performance", label: "Hiệu suất", icon: TrendingUp },
     { id: "chartbuilder", label: "Biểu đồ", icon: BarChart2 },
     { id: "chatbot_sheet", label: "Sheet Chatbot", icon: FileText },
     { id: "settings", label: "Cài đặt", icon: Settings },
@@ -49,9 +50,9 @@ export function Sidebar({ activeScreen, onNavigate, collapsed, onToggleCollapse 
 
   const staffMenuItems = [
     { id: "overview", label: "Tổng quan", icon: LayoutDashboard },
-    { id: "faq", label: "FAQ", icon: HelpCircle },
+    { id: "aiinsights", label: "Phân tích AI", icon: Bot },
+    { id: "sentiment", label: "Cảm xúc", icon: Heart },
     { id: "chatbot_sheet", label: "Sheet Chatbot", icon: FileText },
-    { id: "performance", label: "Hiệu suất", icon: TrendingUp },
     { id: "profile", label: "Hồ sơ", icon: User },
   ];
 
