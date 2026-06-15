@@ -521,23 +521,27 @@ export function Settings({ defaultSection = "notifications" }: { defaultSection?
       return (
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
           <SectionTitle title="Thông báo" />
-          {notifItems.map(({ label, desc, key, hasPreview }: any) => (
-            <div key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", borderRadius: "12px", border: "1px solid rgba(0,56,101,0.08)", backgroundColor: "#f8fafc" }}>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: "14px", color: NAVY }}>{label}</div>
-                <div style={{ fontSize: "12px", color: "rgba(0,56,101,0.5)", marginTop: "2px" }}>{desc}</div>
-                {hasPreview && (
-                  <button
-                    onClick={() => setShowWeeklyPreview(true)}
-                    style={{ marginTop: "8px", fontSize: "11px", fontWeight: 600, color: "#1565C0", background: "rgba(21,101,192,0.08)", border: "none", borderRadius: "6px", padding: "4px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px" }}
-                  >
-                    <Eye size={12} /> Xem mẫu báo cáo
-                  </button>
-                )}
+          {notifItems.map(({ label, desc, key, hasPreview }: any) => {
+            const isEnabled = (settings as any)[key];
+            return (
+              <div key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", borderRadius: "12px", border: "1px solid rgba(0,56,101,0.08)", backgroundColor: "#f8fafc", opacity: isEnabled ? 1 : 0.6, transition: "opacity 0.2s" }}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: "14px", color: NAVY }}>{label}</div>
+                  <div style={{ fontSize: "12px", color: "rgba(0,56,101,0.5)", marginTop: "2px" }}>{desc}</div>
+                  {hasPreview && (
+                    <button
+                      onClick={() => isEnabled && setShowWeeklyPreview(true)}
+                      disabled={!isEnabled}
+                      style={{ marginTop: "8px", fontSize: "11px", fontWeight: 600, color: isEnabled ? "#1565C0" : "#94a3b8", background: isEnabled ? "rgba(21,101,192,0.08)" : "#f1f5f9", border: "none", borderRadius: "6px", padding: "4px 10px", cursor: isEnabled ? "pointer" : "not-allowed", display: "flex", alignItems: "center", gap: "4px", transition: "all 0.2s" }}
+                    >
+                      <Eye size={12} /> Xem mẫu báo cáo
+                    </button>
+                  )}
+                </div>
+                <Toggle value={isEnabled} onChange={(v) => update(key, v)} />
               </div>
-              <Toggle value={(settings as any)[key]} onChange={(v) => update(key, v)} />
-            </div>
-          ))}
+            );
+          })}
           <WeeklyReportModal isOpen={showWeeklyPreview} onClose={() => setShowWeeklyPreview(false)} />
         </div>
       );
