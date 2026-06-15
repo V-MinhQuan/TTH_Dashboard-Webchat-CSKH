@@ -1,4 +1,5 @@
 import os
+import logging
 from pathlib import Path
 import pymssql
 from dotenv import load_dotenv
@@ -20,13 +21,8 @@ DB_SERVER = os.getenv("DB_SERVER", "14.225.192.252")
 DB_PORT = int(os.getenv("DB_PORT", "1433"))
 DB_DATABASE = os.getenv("DB_DATABASE")
 
-print("Đang cấu hình kết nối Database với:")
-print({
-    "server": DB_SERVER,
-    "port": DB_PORT,
-    "database": DB_DATABASE,
-    "user": DB_USER
-})
+_logger = logging.getLogger(__name__)
+_logger.debug("legacy_db: server=%s port=%s database=%s user=%s", DB_SERVER, DB_PORT, DB_DATABASE, DB_USER)
 
 def get_db_connection():
     """

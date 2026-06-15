@@ -93,13 +93,13 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173,http://127.0.0.1:5173
 
 Đảm bảo bạn đã kích hoạt virtual environment:
 ```bash
-# Chạy uvicorn server trên cổng 8000
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+# Chạy uvicorn server trên cổng 5000
+python -m uvicorn app.main:app --host 0.0.0.0 --port 5000 --reload
 ```
 
-* **Trang chủ API**: `http://localhost:8000/`
-* **Swagger UI (Interactive Docs)**: `http://localhost:8000/docs`
-* **Health Check**: `http://localhost:8000/api/health`
+* **Trang chủ API**: `http://localhost:5000/`
+* **Swagger UI (Interactive Docs)**: `http://localhost:5000/docs`
+* **Health Check**: `http://localhost:5000/api/health`
 
 ---
 

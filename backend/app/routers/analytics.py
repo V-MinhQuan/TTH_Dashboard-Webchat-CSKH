@@ -5,6 +5,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import JSONResponse
 
+from app.schemas.analytics import CustomChartRequest
 from app.services.analytics_service import AnalyticsService
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
@@ -167,4 +168,13 @@ def negative_conversations(
         },
         "data": data,
     }
+
+
+@router.post("/custom-chart")
+def custom_chart(
+    request: CustomChartRequest,
+    service: AnalyticsService = Depends(get_analytics_service),
+):
+    data = service.get_custom_chart_data(request.model_dump(by_alias=True, mode="json"))
+    return {"success": True, "message": "Lay du lieu bieu do tuy chinh thanh cong.", "data": data}
 

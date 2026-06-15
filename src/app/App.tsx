@@ -132,7 +132,7 @@ function MainApp() {
       case "aiinsights":
         return <AIInsights {...baseProps} />;
       case "chartbuilder":
-        return <ChartBuilder onNavigate={setActiveScreen} />;
+        return <ChartBuilder {...baseProps} />;
       case "settings":
       case "users":
         return <Settings defaultSection={activeScreen === "users" ? "users" : "notifications"} />;

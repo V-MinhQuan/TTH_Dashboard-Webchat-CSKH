@@ -8,7 +8,7 @@ Dashboard phân tích hội thoại và cảm xúc cho hệ thống WebChat Chă
 ┌─────────────────────────────────────────────────────────┐
 │  Frontend  React/TypeScript + Vite          :5173 (dev) │
 ├─────────────────────────────────────────────────────────┤
-│  FastAPI Backend  (backend/app/)            :8000        │
+│  FastAPI Backend  (backend/app/)            :5000        │
 ├─────────────────────────────────────────────────────────┤
 │  ML Service  FastAPI + PhoBERT ONNX         :8001        │
 ├─────────────────────────────────────────────────────────┤
@@ -19,7 +19,7 @@ Dashboard phân tích hội thoại và cảm xúc cho hệ thống WebChat Chă
 └─────────────────────────────────────────────────────────┘
 ```
 
-> **Lưu ý:** Backend chính thức hoạt động là **FastAPI :8000** kết nối với **ML Service :8001** và database.  
+> **Lưu ý:** Backend chính thức hoạt động là **FastAPI :5000** kết nối với **ML Service :8001** và database.
 > Node.js backend đã được di chuyển sang thư mục lưu trữ `backend_legacy_node/` để rollback khi cần thiết.
 
 ---
@@ -134,16 +134,16 @@ Kiểm tra: http://localhost:8001/health
 
 ---
 
-### Terminal 2 — FastAPI Backend (cổng 8000)
+### Terminal 2 — FastAPI Backend (cổng 5000)
 
 ```bash
 cd backend
 .venv\Scripts\activate
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+python -m uvicorn app.main:app --host 0.0.0.0 --port 5000 --reload
 ```
 
-Kiểm tra: http://localhost:8000/api/health  
-Swagger UI: http://localhost:8000/docs
+Kiểm tra: http://localhost:5000/api/health
+Swagger UI: http://localhost:5000/docs
 
 ---
 
@@ -255,7 +255,7 @@ TTH_Dashboard-Webchat-CSKH/
 
 ## API Endpoints chính
 
-### FastAPI Backend (:8000)
+### FastAPI Backend (:5000)
 
 | Method | Endpoint | Mô tả |
 |--------|----------|-------|
@@ -293,7 +293,7 @@ TTH_Dashboard-Webchat-CSKH/
 
 ```env
 # Cổng backend FastAPI
-FASTAPI_PORT=8000       # FastAPI (uvicorn tự đọc khi chạy)
+FASTAPI_PORT=5000       # FastAPI (uvicorn tự đọc khi chạy)
 
 # SQL Server Configuration
 DB_SERVER=localhost
@@ -315,7 +315,7 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173,http://127.0.0.1:5173
 
 ```env
 # Cho phép backend gọi ml-service
-ML_ALLOWED_ORIGINS=http://localhost:8000,http://127.0.0.1:8000
+ML_ALLOWED_ORIGINS=http://localhost:5000,http://127.0.0.1:5000
 
 # Chế độ phân tích: ensemble | phobert
 SENTIMENT_MODE=ensemble
@@ -343,7 +343,7 @@ Nếu chưa, chạy: python download_model.py
 
 **Frontend không gọi được API**
 ```
-Đảm bảo FastAPI backend đang chạy ở cổng 8000.
+Đảm bảo FastAPI backend đang chạy ở cổng 5000.
 Kiểm tra CORS_ORIGINS trong backend/.env có chứa http://localhost:5173.
 ```
 

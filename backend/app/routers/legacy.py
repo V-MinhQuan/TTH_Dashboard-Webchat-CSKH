@@ -49,12 +49,28 @@ def test_db():
     finally:
         conn.close()
 
+# ---------------------------------------------------------------------------
+# DEPRECATED: /api/auth/login trong legacy.py
+# Endpoint này đã được thay thế bởi app/routers/auth.py (modular router).
+# Vì modular auth router được mount TRƯỚC legacy router trong main.py,
+# FastAPI sẽ dùng phiên bản modular, và code dưới đây không còn được thực thi.
+#
+# Code được giữ lại cho mục đích tham khảo trong quá trình migration.
+# SAI LẦM CŨ: role được hardcode theo username ('test', 'thuynt') trong router.
+# ĐÚNG MỚI:   role được quản lý qua biến môi trường MANAGER_USERNAMES trong auth_service.py.
+# ---------------------------------------------------------------------------
 class LoginRequest(BaseModel):
     username: str
     password: str
 
-@router.post("/api/auth/login")
-def login(request: LoginRequest):
+@router.post("/api/auth/login", deprecated=True, include_in_schema=False)
+def login_legacy(request: LoginRequest):
+    """
+    [DEPRECATED] Endpoint này đã được thay thế bởi /api/auth/login trong auth.py.
+    Sẽ không được thực thi do modular auth router được mount trước.
+    """
+    # NOTE: role cũ bị hardcode theo username — đã được sửa trong auth_service.py
+    # Giữ lại để tham khảo, không nên xóa cho đến khi migration hoàn tất.
     username_val = request.username.strip()
     password_val = request.password
     
@@ -83,14 +99,13 @@ def login(request: LoginRequest):
                     "message": "Tài khoản của bạn đã bị khóa."
                 })
                 
+            # [OLD — DEPRECATED] Hardcoded role logic — đã chuyển sang auth_service.py
+            # role = 'manager' if user_name in ('test', 'thuynt') else 'staff'
             role = 'staff'
             user_name = row['UserName']
-            if user_name in ('test', 'thuynt'):
-                role = 'manager'
-                
             return {
                 "success": True,
-                "message": "Đăng nhập thành công.",
+                "message": "Đăng nhập thành công. (legacy — deprecated)",
                 "data": {
                     "username": user_name,
                     "name": row['HoTen'],

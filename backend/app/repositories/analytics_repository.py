@@ -8,6 +8,13 @@ from app.utils.date_filters import build_date_filter
 from app.utils.pagination import normalize_pagination
 
 
+_STATUS_EXPR = (
+    "CASE WHEN latestStatus.NoResponseNeeded = 1 "
+    "AND (c.LastCustomerMessageAt IS NULL OR c.LastCustomerMessageAt <= latestStatus.MarkedAt) THEN 'closed' "
+    "WHEN latestStatus.NoResponseNeeded = 0 THEN 'open' ELSE 'new' END"
+)
+
+
 class AnalyticsRepository:
     def __init__(self, connection_factory: Callable = get_connection):
         self._connection_factory = connection_factory
@@ -242,6 +249,227 @@ class AnalyticsRepository:
             },
             "optionalColumns": columns,
         }
+
+    def _deprecated_custom_chart_data(self, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
+        x_axis = filters.get("xAxis") or "topic"
+        y_axis = filters.get("yAxis") or "total"
+
+        with self._connection_factory() as conn:
+            columns = inspect_message_analytics_columns(conn)
+            where, params = self._build_read_where(filters, columns)
+
+            group_by_expr = ""
+            select_name_expr = ""
+            x_where_extra = ""
+
+            if x_axis == "channel":
+                group_by_expr = "a.source"
+                select_name_expr = "a.source AS name"
+                x_where_extra = "a.source IS NOT NULL"
+            elif x_axis == "date":
+                group_by_expr = "CONVERT(date, a.messageAt)"
+                select_name_expr = "CONVERT(varchar, CONVERT(date, a.messageAt), 23) AS name"
+            elif x_axis == "month":
+                group_by_expr = "FORMAT(a.messageAt, 'yyyy-MM')"
+                select_name_expr = "FORMAT(a.messageAt, 'yyyy-MM') AS name"
+            else:  # topic
+                group_by_expr = "a.detectedTopics"
+                select_name_expr = "a.detectedTopics AS name"
+                x_where_extra = "a.detectedTopics IS NOT NULL AND a.detectedTopics <> '[]'"
+
+            if x_where_extra:
+                where = (where + f" AND {x_where_extra}") if where else f"WHERE {x_where_extra}"
+
+            issue_expr = "a.issueFlag" if columns.get("issueFlag") else "0"
+
+            if y_axis == "ai_success":
+                select_val_expr = f"""
+                  SUM(CASE WHEN {issue_expr} = 0 THEN 1 ELSE 0 END) AS value,
+                  SUM(CASE WHEN {issue_expr} = 0 THEN 1 ELSE 0 END) AS [AI thành công]
+                """
+            elif y_axis == "ai_fail":
+                select_val_expr = f"""
+                  SUM(CASE WHEN {issue_expr} = 1 THEN 1 ELSE 0 END) AS value,
+                  SUM(CASE WHEN {issue_expr} = 1 THEN 1 ELSE 0 END) AS [AI thất bại]
+                """
+            elif y_axis == "sentiment":
+                select_val_expr = """
+                  SUM(CASE WHEN a.sentimentLabel = 'positive' THEN 1 ELSE 0 END) AS value,
+                  SUM(CASE WHEN a.sentimentLabel = 'positive' THEN 1 ELSE 0 END) AS [Tích cực],
+                  SUM(CASE WHEN a.sentimentLabel = 'neutral' THEN 1 ELSE 0 END) AS [Trung lập],
+                  SUM(CASE WHEN a.sentimentLabel = 'negative' THEN 1 ELSE 0 END) AS [Tiêu cực]
+                """
+            else:  # total
+                select_val_expr = f"""
+                  COUNT(*) AS value,
+                  COUNT(*) AS [Tổng hội thoại],
+                  SUM(CASE WHEN {issue_expr} = 0 THEN 1 ELSE 0 END) AS [AI thành công],
+                  SUM(CASE WHEN {issue_expr} = 1 THEN 1 ELSE 0 END) AS [AI thất bại]
+                """
+
+            rows = execute_all(
+                conn,
+                f"""
+                SELECT
+                  {select_name_expr},
+                  {select_val_expr}
+                FROM dbo.WebChat_MessageAnalytics a
+                {where}
+                GROUP BY {group_by_expr}
+                ORDER BY value DESC
+                """,
+                params,
+            )
+
+            # Format source names if channel
+            if x_axis == "channel":
+                for r in rows:
+                    raw_source = str(r.get("name", "")).strip().lower()
+                    if raw_source in ("facebook", "fb", "messenger"):
+                        r["name"] = "Facebook"
+                    elif raw_source in ("zalooa", "zalo"):
+                        r["name"] = "Zalo OA"
+                    elif raw_source in ("zalobusiness", "zalobiz"):
+                        r["name"] = "Zalo Business"
+                    elif raw_source in ("chatwidget", "website", "web"):
+                        r["name"] = "Chat Widget"
+            return rows
+
+    def get_custom_chart_data(self, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
+        x_axis = filters["xAxis"]
+        y_axis = filters["yAxis"]
+        chart_filters = filters.get("filters") or {}
+        use_conversations = (
+            y_axis == "total_conversations"
+            and x_axis in {"channel", "date", "month", "status"}
+            and not chart_filters.get("topic")
+            and not chart_filters.get("sentiment")
+        )
+        if use_conversations:
+            return self._get_conversation_chart(x_axis, chart_filters)
+        return self._get_analytics_chart(x_axis, y_axis, chart_filters)
+
+    def _get_conversation_chart(self, x_axis: str, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
+        expressions = {
+            "channel": ("c.Source", "c.Source"),
+            "date": ("CONVERT(date, c.LastMessageAt)", "CONVERT(varchar, CONVERT(date, c.LastMessageAt), 23)"),
+            "month": ("CONVERT(char(7), c.LastMessageAt, 126)", "CONVERT(char(7), c.LastMessageAt, 126)"),
+            "status": (_STATUS_EXPR, _STATUS_EXPR),
+        }
+        group_expr, name_expr = expressions[x_axis]
+        where, params = self._build_custom_where(
+            filters, date_column="c.LastMessageAt", channel_column="c.Source"
+        )
+        with self._connection_factory() as conn:
+            return execute_all(
+                conn,
+                f"""
+                SELECT {name_expr} AS name, COUNT(DISTINCT c.Id) AS value
+                FROM dbo.WebChat_Conversations c
+                OUTER APPLY (
+                  SELECT TOP 1 s.NoResponseNeeded, s.MarkedAt
+                  FROM dbo.WebChat_ConversationStatus s
+                  WHERE s.CustomerId = c.CustomerId AND s.Source = c.Source
+                  ORDER BY s.MarkedAt DESC
+                ) latestStatus
+                {where}
+                GROUP BY {group_expr}
+                ORDER BY value DESC
+                """,
+                params,
+            )
+
+    def _get_analytics_chart(
+        self, x_axis: str, y_axis: str, filters: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        expressions = {
+            "channel": ("a.source", "a.source"),
+            "date": ("CONVERT(date, a.messageAt)", "CONVERT(varchar, CONVERT(date, a.messageAt), 23)"),
+            "month": ("CONVERT(char(7), a.messageAt, 126)", "CONVERT(char(7), a.messageAt, 126)"),
+            "topic": ("a.detectedTopics", "a.detectedTopics"),
+            "sentiment": ("a.sentimentLabel", "a.sentimentLabel"),
+            "status": (_STATUS_EXPR, _STATUS_EXPR),
+        }
+        metrics = {
+            "total_conversations": "COUNT(DISTINCT a.conversationId)",
+            "total_messages": "COUNT(*)",
+            "positive_count": "SUM(CASE WHEN a.sentimentLabel = 'positive' THEN 1 ELSE 0 END)",
+            "neutral_count": "SUM(CASE WHEN a.sentimentLabel = 'neutral' THEN 1 ELSE 0 END)",
+            "negative_count": "SUM(CASE WHEN a.sentimentLabel = 'negative' THEN 1 ELSE 0 END)",
+        }
+        group_expr, name_expr = expressions[x_axis]
+        if y_axis == "sentiment_count":
+            value_expr = """COUNT(*) AS value,
+              SUM(CASE WHEN a.sentimentLabel = 'positive' THEN 1 ELSE 0 END) AS [Tích cực],
+              SUM(CASE WHEN a.sentimentLabel = 'neutral' THEN 1 ELSE 0 END) AS [Trung tính],
+              SUM(CASE WHEN a.sentimentLabel = 'negative' THEN 1 ELSE 0 END) AS [Tiêu cực]"""
+        else:
+            value_expr = f"{metrics[y_axis]} AS value"
+        where, params = self._build_custom_where(
+            filters,
+            date_column="a.messageAt",
+            channel_column="a.source",
+            sentiment_column="a.sentimentLabel",
+            topic_column="a.detectedTopics",
+        )
+        required = []
+        if x_axis == "topic":
+            required.append("a.detectedTopics IS NOT NULL AND a.detectedTopics <> '[]'")
+        if x_axis == "sentiment":
+            required.append("a.sentimentLabel IS NOT NULL")
+        if required:
+            suffix = " AND ".join(required)
+            where = f"{where} AND {suffix}" if where else f"WHERE {suffix}"
+        with self._connection_factory() as conn:
+            return execute_all(
+                conn,
+                f"""
+                SELECT {name_expr} AS name, {value_expr}
+                FROM dbo.WebChat_MessageAnalytics a
+                LEFT JOIN dbo.WebChat_Conversations c ON c.Id = a.conversationId
+                OUTER APPLY (
+                  SELECT TOP 1 s.NoResponseNeeded, s.MarkedAt
+                  FROM dbo.WebChat_ConversationStatus s
+                  WHERE s.CustomerId = c.CustomerId AND s.Source = c.Source
+                  ORDER BY s.MarkedAt DESC
+                ) latestStatus
+                {where}
+                GROUP BY {group_expr}
+                ORDER BY value DESC
+                """,
+                params,
+            )
+
+    def _build_custom_where(
+        self,
+        filters: Dict[str, Any],
+        *,
+        date_column: str,
+        channel_column: str,
+        sentiment_column: str | None = None,
+        topic_column: str | None = None,
+    ) -> Tuple[str, List[Any]]:
+        conditions: List[str] = []
+        params: List[Any] = []
+        if filters.get("fromDate"):
+            conditions.append(f"{date_column} >= ?")
+            params.append(filters["fromDate"])
+        if filters.get("toDate"):
+            conditions.append(f"{date_column} < DATEADD(day, 1, ?)")
+            params.append(filters["toDate"])
+        if filters.get("channel"):
+            conditions.append(f"{channel_column} = ?")
+            params.append(filters["channel"])
+        if filters.get("status"):
+            conditions.append(f"{_STATUS_EXPR} = ?")
+            params.append(filters["status"])
+        if filters.get("sentiment") and sentiment_column:
+            conditions.append(f"{sentiment_column} = ?")
+            params.append(filters["sentiment"])
+        if filters.get("topic") and topic_column:
+            conditions.append(f"{topic_column} LIKE ?")
+            params.append(f'%"{filters["topic"]}"%')
+        return ("WHERE " + " AND ".join(conditions)) if conditions else "", params
 
     def _build_read_where(self, filters: Dict[str, Any], columns: Dict[str, bool]) -> Tuple[str, List[Any]]:
         conditions: List[str] = []

@@ -70,6 +70,12 @@ temp/
 .ensemble-reprocess-state.json
 scratch_*.js
 
+
 # === ML Model files (large binary) ===
 ml-service/models/
 ml-service/data/
+
+# === Playwright Test Artifacts ===
+playwright-report/
+test-results/
+blob-report/
