@@ -1,24 +1,30 @@
-import { useState } from "react";
-import { Users, Edit2, Lock, KeyRound, Search, UserPlus, X, Check, ShieldAlert } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Users, Edit2, Lock, KeyRound, Search, UserPlus, X, Check, ShieldAlert, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../../context/AuthContext";
+import { getAllUsers } from "../../services/dashboardApi";
 
 const NAVY = "#003865";
 const ORANGE = "#D73C01";
 
-const initialUsers = [
-  { id: 1, name: "Admin FLIC", role: "Quản lý CSKH", email: "admin@flic.edu.vn", channels: "Tất cả", permissions: "Toàn hệ thống", status: "Đang hoạt động", lastLogin: "14:20 hôm nay" },
-  { id: 2, name: "Thu Trang", role: "Nhân viên CSKH", email: "thutrang@flic.edu.vn", channels: "Zalo Business, Facebook", permissions: "Xử lý hội thoại, can thiệp AI, đề xuất FAQ", status: "Đang hoạt động", lastLogin: "08:15 hôm nay" },
-  { id: 3, name: "Thùy NT", role: "Quản lý CSKH", email: "thuynt@flic.edu.vn", channels: "Zalo OA, Chat Widget", permissions: "Xem và xử lý toàn quyền hệ thống", status: "Đang hoạt động", lastLogin: "Hôm qua" },
-  { id: 4, name: "Người dùng thử", role: "Quản lý CSKH", email: "test@flic.edu.vn", channels: "Tất cả", permissions: "Toàn quyền hệ thống (Thử nghiệm)", status: "Đang hoạt động", lastLogin: "1 tuần trước" },
-];
 
 export function UserManagement() {
   const { role } = useAuth();
-  const [users, setUsers] = useState(initialUsers);
+  const [users, setUsers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [editingUser, setEditingUser] = useState<any>(null);
   const [isAddingUser, setIsAddingUser] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    getAllUsers()
+      .then((data) => { if (!cancelled) setUsers(data); })
+      .catch((err) => { if (!cancelled) toast.error("Không thể tải danh sách người dùng: " + err.message); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
 
   if (role !== "manager") {
     return (
@@ -31,6 +37,16 @@ export function UserManagement() {
   }
 
   const filtered = users.filter((u) => u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase()));
+
+  if (loading) {
+    return (
+      <div style={{ padding: "40px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "12px", color: "rgba(0,56,101,0.5)" }}>
+        <Loader2 size={32} style={{ animation: "spin 1s linear infinite", color: NAVY }} />
+        <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+        <span style={{ fontSize: "13px" }}>Đang tải danh sách người dùng...</span>
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: "24px", height: "100%", display: "flex", flexDirection: "column" }}>
@@ -65,8 +81,6 @@ export function UserManagement() {
             <tr style={{ backgroundColor: "#f8fafc", borderBottom: "1px solid rgba(0,56,101,0.08)" }}>
               <th style={{ padding: "14px 20px", fontSize: "12px", fontWeight: 600, color: "rgba(0,56,101,0.6)" }}>TÊN NGƯỜI DÙNG</th>
               <th style={{ padding: "14px 20px", fontSize: "12px", fontWeight: 600, color: "rgba(0,56,101,0.6)" }}>VAI TRÒ</th>
-              <th style={{ padding: "14px 20px", fontSize: "12px", fontWeight: 600, color: "rgba(0,56,101,0.6)" }}>KÊNH PHỤ TRÁCH</th>
-              <th style={{ padding: "14px 20px", fontSize: "12px", fontWeight: 600, color: "rgba(0,56,101,0.6)" }}>TRẠNG THÁI</th>
               <th style={{ padding: "14px 20px", fontSize: "12px", fontWeight: 600, color: "rgba(0,56,101,0.6)" }}>HÀNH ĐỘNG</th>
             </tr>
           </thead>
@@ -81,17 +95,6 @@ export function UserManagement() {
                   <span style={{ fontSize: "11px", padding: "4px 8px", borderRadius: "20px", backgroundColor: user.role === "Quản lý CSKH" ? "#e0e7ff" : "#f1f5f9", color: user.role === "Quản lý CSKH" ? NAVY : "#475569", fontWeight: 600 }}>
                     {user.role}
                   </span>
-                </td>
-                <td style={{ padding: "14px 20px" }}>
-                  <div style={{ fontSize: "12px", color: NAVY }}>{user.channels}</div>
-                  <div style={{ fontSize: "10px", color: "rgba(0,56,101,0.5)", marginTop: "4px" }}>{user.permissions}</div>
-                </td>
-                <td style={{ padding: "14px 20px" }}>
-                  <span style={{ fontSize: "11px", display: "inline-flex", alignItems: "center", gap: "4px", color: user.status === "Đang hoạt động" ? "#228A61" : "#94a3b8", fontWeight: 600 }}>
-                    <div style={{ width: "6px", height: "6px", borderRadius: "50%", backgroundColor: user.status === "Đang hoạt động" ? "#228A61" : "#94a3b8" }} />
-                    {user.status}
-                  </span>
-                  <div style={{ fontSize: "10px", color: "rgba(0,56,101,0.4)", marginTop: "4px" }}>Đăng nhập: {user.lastLogin}</div>
                 </td>
                 <td style={{ padding: "14px 20px" }}>
                   <div style={{ display: "flex", gap: "8px" }}>

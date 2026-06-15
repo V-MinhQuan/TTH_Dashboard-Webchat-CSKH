@@ -244,3 +244,15 @@ export async function closeConversation(customerId: string, source: string): Pro
   clearApiCache();
   return true;
 }
+
+/**
+ * Lấy danh sách tất cả người dùng từ database
+ */
+export async function getAllUsers(): Promise<any[]> {
+  const url = buildApiUrl("/api/settings/users");
+  const resJson = await fetchApiJson<{ success: boolean; data: any[]; message?: string }>(url, { cache: false });
+  if (!resJson.success) {
+    throw new Error(resJson.message || "Không thể tải danh sách người dùng.");
+  }
+  return resJson.data;
+}

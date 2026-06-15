@@ -9,36 +9,12 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 import { toast } from "sonner";
+import { useSettings } from "../../context/SettingsContext";
 
 const NAVY = "#003865";
 const ORANGE = "#D73C01";
 
-const fieldGroups = [
-  {
-    label: "Thời gian",
-    fields: ["Ngày", "Tuần", "Tháng", "Quý"],
-  },
-  {
-    label: "Hội thoại",
-    fields: ["Tổng hội thoại", "Hội thoại chờ xử lý", "Hội thoại chờ quản lý xác nhận", "Thời gian xử lý TB"],
-  },
-  {
-    label: "Kênh",
-    fields: ["Zalo Business", "Facebook", "Zalo OA", "Chat Widget"],
-  },
-  {
-    label: "Chủ đề",
-    fields: ["TOEIC", "VSTEP", "Chuẩn đầu ra", "MOS/IC3", "Tin học cơ sở", "Lịch thi", "Lệ phí"],
-  },
-  {
-    label: "Hiệu suất AI",
-    fields: ["Tỷ lệ AI thành công", "Tỷ lệ AI thất bại", "Tỷ lệ AI tự tạo thông tin", "Điểm tin cậy TB"],
-  },
-  {
-    label: "Cảm xúc",
-    fields: ["Cảm xúc tích cực", "Cảm xúc trung lập", "Cảm xúc tiêu cực", "Điểm cảm xúc TB"],
-  },
-];
+// fieldGroups is moved inside the component to be dynamic
 
 const chartTypeOptions = [
   { id: "bar", label: "Cột đứng", icon: BarChart },
@@ -85,6 +61,23 @@ export function ChartBuilder({ onNavigate }: ChartBuilderProps) {
   const [chartTitle, setChartTitle] = useState("Biểu đồ mới");
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
 
+  const { settings } = useSettings();
+
+  const channelFields = [];
+  if (settings.dataSourceZaloBiz) channelFields.push("Zalo Business");
+  if (settings.dataSourceFb) channelFields.push("Facebook");
+  if (settings.dataSourceZalo) channelFields.push("Zalo OA");
+  if (settings.dataSourceWidget) channelFields.push("Chat Widget");
+
+  const dynamicFieldGroups = [
+    { label: "Thời gian", fields: ["Ngày", "Tuần", "Tháng", "Quý"] },
+    { label: "Hội thoại", fields: ["Tổng hội thoại", "Hội thoại chờ xử lý", "Hội thoại chờ quản lý xác nhận", "Thời gian xử lý TB"] },
+    { label: "Kênh", fields: channelFields },
+    { label: "Chủ đề", fields: ["TOEIC", "VSTEP", "Chuẩn đầu ra", "MOS/IC3", "Tin học cơ sở", "Lịch thi", "Lệ phí"] },
+    { label: "Hiệu suất AI", fields: ["Tỷ lệ AI thành công", "Tỷ lệ AI thất bại", "Tỷ lệ AI tự tạo thông tin", "Điểm tin cậy TB"] },
+    { label: "Cảm xúc", fields: ["Cảm xúc tích cực", "Cảm xúc trung lập", "Cảm xúc tiêu cực", "Điểm cảm xúc TB"] },
+  ];
+
   const toggleGroup = (label: string) => {
     setExpandedGroups((prev) =>
       prev.includes(label) ? prev.filter((g) => g !== label) : [...prev, label]
@@ -101,7 +94,7 @@ export function ChartBuilder({ onNavigate }: ChartBuilderProps) {
     if (axisX === "Chủ đề") {
       labels = ["TOEIC", "VSTEP", "Chuẩn đầu ra", "MOS/IC3", "Tin học"];
     } else if (axisX === "Kênh") {
-      labels = ["Zalo Business", "Facebook", "Zalo OA", "Chat Widget"];
+      labels = channelFields;
     } else if (axisX === "Ngày") {
       labels = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"];
     } else { // Tháng
@@ -284,7 +277,7 @@ export function ChartBuilder({ onNavigate }: ChartBuilderProps) {
           <div style={{ fontSize: "12px", fontWeight: 700, color: "rgba(0,56,101,0.5)", letterSpacing: "0.08em", marginBottom: "4px" }}>TRƯỜNG DỮ LIỆU</div>
           <div style={{ fontSize: "11px", color: "rgba(0,56,101,0.35)" }}>Kéo thả vào vùng biểu đồ</div>
         </div>
-        {fieldGroups.map((group) => {
+        {dynamicFieldGroups.map((group) => {
           const isExpanded = expandedGroups.includes(group.label);
           return (
             <div key={group.label}>

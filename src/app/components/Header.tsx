@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
+import { useSettings } from "../context/SettingsContext";
 import { Search, Bell, ChevronDown, User, LogOut, ChevronRight, X, Key, Settings, HelpCircle } from "lucide-react";
 import { toast } from "sonner";
 
@@ -69,6 +70,7 @@ interface HeaderProps {
 
 export function Header({ activeScreen, onNavigate }: HeaderProps) {
   const { role, user, logout } = useAuth();
+  const { settings } = useSettings();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showAvatar, setShowAvatar] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -95,7 +97,25 @@ export function Header({ activeScreen, onNavigate }: HeaderProps) {
     success: "#228A61",
   };
 
-  const notificationsGroups = role === "manager" ? adminNotifications : staffNotifications;
+  let notificationsGroups = role === "manager" ? adminNotifications : staffNotifications;
+
+  // Filter based on notification settings
+  notificationsGroups = notificationsGroups.map(group => {
+    return {
+      ...group,
+      items: group.items.filter(n => {
+        if ((n.text.includes("AI") || n.text.includes("AI trả lời sai")) && !(settings as any).aiFailAlert) {
+          return false;
+        }
+        if (n.text.includes("hội thoại mới được phân công") && !(settings as any).emailNotif) {
+          return false;
+        }
+        return true;
+      })
+    };
+  }).filter(group => group.items.length > 0);
+
+  const unreadCount = notificationsGroups.reduce((acc, group) => acc + group.items.filter(n => n.status !== "completed").length, 0);
 
   const dropdownItem = (onClick: () => void, icon: React.ReactNode, label: string, danger = false) => (
     <div
@@ -167,7 +187,7 @@ export function Header({ activeScreen, onNavigate }: HeaderProps) {
           style={{ width: "36px", height: "36px", borderRadius: "10px", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: showNotifications ? "#fff3ef" : "#f4f6fa", color: showNotifications ? CTA : NAVY, transition: "all 0.2s", position: "relative" }}
         >
           <Bell size={16} />
-          <span style={{ position: "absolute", top: "6px", right: "6px", width: "8px", height: "8px", backgroundColor: ORANGE, borderRadius: "50%", border: "2px solid #fff" }} />
+          {unreadCount > 0 && <span style={{ position: "absolute", top: "6px", right: "6px", width: "8px", height: "8px", backgroundColor: ORANGE, borderRadius: "50%", border: "2px solid #fff" }} />}
         </button>
 
         {showNotifications && (

@@ -11,6 +11,7 @@ import {
 import { ChartCard } from "../ChartCard";
 import { FilterPanel, FilterValues } from "../FilterPanel";
 import { toast } from "sonner";
+import { useSettings } from "../../context/SettingsContext";
 
 // Import các types, services và components mới
 import { getDashboardKpi, closeConversation } from "../../services/dashboardApi";
@@ -228,9 +229,19 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
     });
   };
 
-  const urgentAlerts = kpiData?.urgentAlerts || [];
-  const topQuestions = kpiData?.topQuestions || [];
-  const priorityConversations = kpiData?.priorityConversations || [];
+  const { settings } = useSettings();
+
+  const isSourceEnabled = (channelName: string) => {
+    if (channelName.includes("Zalo Business") && !settings.dataSourceZaloBiz) return false;
+    if (channelName.includes("Facebook") && !settings.dataSourceFb) return false;
+    if (channelName.includes("Zalo OA") && !settings.dataSourceZalo) return false;
+    if (channelName.includes("Widget") && !settings.dataSourceWidget) return false;
+    return true;
+  };
+
+  const urgentAlerts = (kpiData?.urgentAlerts || []).filter(a => isSourceEnabled(a.channel || ""));
+  const topQuestions = kpiData?.topQuestions || []; // Can't easily filter by topic unless it maps to channel
+  const priorityConversations = (kpiData?.priorityConversations || []).filter(c => isSourceEnabled(c.channel || ""));
 
   const overtimeAlerts = urgentAlerts.filter(a => a.type === "overtime");
   const aiAlerts = urgentAlerts.filter(a => a.type === "ai_uncertain" || a.type === "ai_no_data");
@@ -333,17 +344,42 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
   const closedConversations = kpiData?.statusSummary.closed || 0;
   const activeConversations = kpiData?.statusSummary.pending || 0;
 
+  let totalConversations = kpiData?.totalConversations || 0;
+  let totalMessages = kpiData?.totalMessages || 0;
+
+  // Lọc tổng số theo kênh đang bật
+  if (kpiData) {
+    totalConversations = 0;
+    totalMessages = 0;
+    if (settings.dataSourceZaloBiz) {
+      totalConversations += kpiData.sourceSummary.ZaloBusiness || 0;
+      totalMessages += kpiData.messageSummary.ZaloBusiness || 0;
+    }
+    if (settings.dataSourceFb) {
+      totalConversations += kpiData.sourceSummary.Facebook || 0;
+      totalMessages += kpiData.messageSummary.Facebook || 0;
+    }
+    if (settings.dataSourceZalo) {
+      totalConversations += kpiData.sourceSummary.ZaloOA || 0;
+      totalMessages += kpiData.messageSummary.ZaloOA || 0;
+    }
+    if (settings.dataSourceWidget) {
+      totalConversations += kpiData.sourceSummary.ChatWidget || 0;
+      totalMessages += kpiData.messageSummary.ChatWidget || 0;
+    }
+  }
+
   const kpiList = [
     {
       title: "Tổng hội thoại",
-      value: viNum(kpiData?.totalConversations || 0),
+      value: viNum(totalConversations),
       icon: MessageSquare,
       change: kpiData?.trends.totalConversations,
       isWarning: false
     },
     {
       title: "Tổng tin nhắn",
-      value: viNum(kpiData?.totalMessages || 0),
+      value: viNum(totalMessages),
       icon: MessageCircle,
       change: kpiData?.trends.totalMessages,
       isWarning: false
@@ -372,12 +408,11 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
   ];
 
   // Thống kê theo kênh trên bảng phụ dưới biểu đồ
-  const sourceStats = [
-    { name: "Zalo Business", hoiday: kpiData?.sourceSummary.ZaloBusiness || 0, tinnan: kpiData?.messageSummary.ZaloBusiness || 0 },
-    { name: "Facebook", hoiday: kpiData?.sourceSummary.Facebook || 0, tinnan: kpiData?.messageSummary.Facebook || 0 },
-    { name: "Zalo OA", hoiday: kpiData?.sourceSummary.ZaloOA || 0, tinnan: kpiData?.messageSummary.ZaloOA || 0 },
-    { name: "Chat Widget", hoiday: kpiData?.sourceSummary.ChatWidget || 0, tinnan: kpiData?.messageSummary.ChatWidget || 0 }
-  ];
+  const sourceStats = [];
+  if (settings.dataSourceZaloBiz) sourceStats.push({ name: "Zalo Business", hoiday: kpiData?.sourceSummary.ZaloBusiness || 0, tinnan: kpiData?.messageSummary.ZaloBusiness || 0 });
+  if (settings.dataSourceFb) sourceStats.push({ name: "Facebook", hoiday: kpiData?.sourceSummary.Facebook || 0, tinnan: kpiData?.messageSummary.Facebook || 0 });
+  if (settings.dataSourceZalo) sourceStats.push({ name: "Zalo OA", hoiday: kpiData?.sourceSummary.ZaloOA || 0, tinnan: kpiData?.messageSummary.ZaloOA || 0 });
+  if (settings.dataSourceWidget) sourceStats.push({ name: "Chat Widget", hoiday: kpiData?.sourceSummary.ChatWidget || 0, tinnan: kpiData?.messageSummary.ChatWidget || 0 });
   const reportGeneratedAt = new Intl.DateTimeFormat("vi-VN", {
     timeZone: "Asia/Ho_Chi_Minh",
     day: "2-digit",
@@ -449,8 +484,8 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "12px", marginBottom: "18px" }}>
             {[
-              { label: "Tổng hội thoại", value: viNum(kpiData?.totalConversations || 0), color: "#003BB9" },
-              { label: "Tổng tin nhắn", value: viNum(kpiData?.totalMessages || 0), color: "#003865" },
+              { label: "Tổng hội thoại", value: viNum(totalConversations), color: "#003BB9" },
+              { label: "Tổng tin nhắn", value: viNum(totalMessages), color: "#003865" },
               { label: "Chờ xử lý", value: viNum(activeConversations), color: "#D73C01" },
               { label: "Hoàn thành", value: viNum(closedConversations), color: "#228A61" },
               { label: "AI thất bại", value: viNum(kpiData?.aiFailures || 0), color: "#B42318" },
