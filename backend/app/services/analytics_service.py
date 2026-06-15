@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import unicodedata
 from typing import Any, Dict, Iterable, List
 
 from app.repositories.analytics_repository import AnalyticsRepository
@@ -163,6 +164,115 @@ class AnalyticsService:
             },
         }
 
+    def get_ai_quality_metrics(self, filters: Dict[str, Any]) -> Dict[str, Any]:
+        payload = self.repository.get_ai_quality_metrics(filters)
+        row = payload.get("row") or {}
+        total = int(row.get("total") or 0)
+        failure = int(row.get("failure_count") or 0)
+        success = total - failure if total > 0 else 0
+        return {
+            "total_messages": total,
+            "success_rate": round(success / total * 100, 1) if total > 0 else 0.0,
+            "failure_count": failure,
+            "hallucination_count": int(row.get("hallucination_count") or 0),
+            "avg_confidence": _round(row.get("avg_confidence")) * 100,
+        }
+
+    def get_staff_activity_metrics(self, filters: Dict[str, Any]) -> Dict[str, Any]:
+        payload = self.repository.get_staff_activity_metrics(filters)
+        row = payload.get("row") or {}
+        return {
+            "reported_errors": int(row.get("reported_errors") or 0),
+            "pending_review": int(row.get("pending_review") or 0),
+        }
+
+    def get_ai_failure_trend(self, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
+        payload = self.repository.get_ai_failure_trend(filters)
+        return [
+            {
+                "date": _date_str(row.get("date")),
+                "failure": int(row.get("failure") or 0),
+                "hallucination": int(row.get("hallucination") or 0),
+                "uncertain": int(row.get("uncertain") or 0),
+            }
+            for row in payload.get("rows", [])
+        ]
+
+    def get_ai_failure_by_topic(self, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
+        payload = self.repository.get_ai_failure_by_topic(filters)
+        result_map = {}
+        for row in payload.get("rows", []):
+            topics = _json_array(row.get("detectedTopics"))
+            for topic in topics:
+                if not topic: continue
+                if topic not in result_map:
+                    result_map[topic] = {"topic": topic, "thieuDL": 0, "khongHieu": 0, "khongChac": 0, "ngoaiPhamVi": 0, "hallucination": 0}
+                result_map[topic]["thieuDL"] += int(row.get("thieuDL") or 0)
+                result_map[topic]["khongHieu"] += int(row.get("khongHieu") or 0)
+                result_map[topic]["khongChac"] += int(row.get("khongChac") or 0)
+                result_map[topic]["ngoaiPhamVi"] += int(row.get("ngoaiPhamVi") or 0)
+                result_map[topic]["hallucination"] += int(row.get("hallucination") or 0)
+        return list(result_map.values())
+
+    def get_failed_conversations(self, filters: Dict[str, Any]) -> Dict[str, Any]:
+        payload = self.repository.get_failed_conversations(filters)
+        return {
+            "records": [_normalize_review_record(row) for row in payload.get("records", [])],
+            "pagination": payload.get("pagination") or {"page": 1, "pageSize": 20, "total": 0},
+        }
+
+    def get_staff_reported_errors(self, filters: Dict[str, Any]) -> Dict[str, Any]:
+        payload = self.repository.get_staff_reported_errors(filters)
+        return {
+            "records": [_normalize_review_record(row) for row in payload.get("records", [])],
+            "pagination": payload.get("pagination") or {"page": 1, "pageSize": 20, "total": 0},
+        }
+
+    def get_suggested_faqs(self, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
+        rows = self.repository.get_suggested_faqs(filters)
+        res = []
+        for row in rows:
+            question = str(row.get("question") or "").strip()
+            if not question:
+                continue
+            topics = list(_json_array(row.get("detectedTopics")))
+            detected_topic = topics[0] if topics else "Khác"
+            topic = _infer_keyword_topic(
+                topics=topics,
+                question=question,
+                suggested_answer=str(row.get("suggestedAnswer") or ""),
+            )
+            freq = int(row.get("freq") or 0)
+            res.append({
+                "question": question,
+                "suggestedAnswer": str(row.get("suggestedAnswer") or "").strip(),
+                "topic": topic,
+                "detectedTopic": detected_topic,
+                "freq": freq,
+                "priority": "Ưu tiên cao" if freq > 30 else ("Ưu tiên trung bình" if freq > 10 else "Ưu tiên thấp")
+            })
+        return sorted(res, key=lambda x: x["freq"], reverse=True)
+
+
+def _normalize_topic_text(value: str) -> str:
+    normalized = unicodedata.normalize("NFD", str(value or ""))
+    without_diacritics = "".join(c for c in normalized if unicodedata.category(c) != "Mn")
+    return " ".join(without_diacritics.lower().split())
+
+
+def _infer_keyword_topic(topics: Iterable[Any], question: str, suggested_answer: str) -> str:
+    raw_text = " ".join([*(str(topic) for topic in topics), question, suggested_answer])
+    text = _normalize_topic_text(raw_text)
+    if "toeic" in text:
+        return "TOEIC"
+    if "vstep" in text:
+        return "VSTEP"
+    if any(token in text for token in ("tin hoc", "mos", "ic3", "cntt", "sat hach")):
+        return "Tin học / MOS / IC3"
+    if any(token in text for token in ("chuan dau ra", "dau ra", "chung chi")):
+        return "Chuẩn đầu ra / Chứng chỉ"
+    topics_list = list(topics)
+    return str(topics_list[0]) if topics_list else "Khác"
 
 def _json_array(value: Any) -> Iterable[Any]:
     if value is None:

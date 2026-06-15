@@ -26,6 +26,8 @@ def _analytics_filters(
     sentiment: Optional[str] = Query(default=None),
     sentimentLabel: Optional[str] = Query(default=None),
     issueType: Optional[str] = Query(default=None),
+    conversationStatus: Optional[str] = Query(default=None),
+    aiStatus: Optional[str] = Query(default=None),
 ):
     return {
         "dateRange": dateRange,
@@ -39,6 +41,8 @@ def _analytics_filters(
         "sentiment": sentiment,
         "sentimentLabel": sentimentLabel,
         "issueType": issueType,
+        "conversationStatus": conversationStatus,
+        "aiStatus": aiStatus,
     }
 
 
@@ -167,4 +171,67 @@ def negative_conversations(
         },
         "data": data,
     }
+
+
+@router.get("/ai/quality-metrics")
+def ai_quality_metrics(
+    filters: dict = Depends(_analytics_filters),
+    service: AnalyticsService = Depends(get_analytics_service),
+):
+    data = service.get_ai_quality_metrics(filters)
+    return {"success": True, "message": "Lấy số liệu chất lượng AI thành công.", "data": data}
+
+
+@router.get("/ai/staff-activity")
+def ai_staff_activity(
+    filters: dict = Depends(_analytics_filters),
+    service: AnalyticsService = Depends(get_analytics_service),
+):
+    data = service.get_staff_activity_metrics(filters)
+    return {"success": True, "message": "Lấy số liệu hoạt động nhân viên thành công.", "data": data}
+
+
+@router.get("/ai/failure-trend")
+def ai_failure_trend(
+    filters: dict = Depends(_analytics_filters),
+    service: AnalyticsService = Depends(get_analytics_service),
+):
+    data = service.get_ai_failure_trend(filters)
+    return {"success": True, "message": "Lấy xu hướng lỗi AI thành công.", "data": data}
+
+
+@router.get("/ai/failure-by-topic")
+def ai_failure_by_topic(
+    filters: dict = Depends(_analytics_filters),
+    service: AnalyticsService = Depends(get_analytics_service),
+):
+    data = service.get_ai_failure_by_topic(filters)
+    return {"success": True, "message": "Lấy phân bổ lỗi AI theo chủ đề thành công.", "data": data}
+
+
+@router.get("/ai/failed-conversations")
+def ai_failed_conversations(
+    filters: dict = Depends(_review_filters),
+    service: AnalyticsService = Depends(get_analytics_service),
+):
+    data = service.get_failed_conversations(filters)
+    return {"success": True, "message": "Lấy danh sách lỗi AI thành công.", "data": data}
+
+
+@router.get("/ai/staff-reported-errors")
+def ai_staff_reported_errors(
+    filters: dict = Depends(_review_filters),
+    service: AnalyticsService = Depends(get_analytics_service),
+):
+    data = service.get_staff_reported_errors(filters)
+    return {"success": True, "message": "Lấy danh sách lỗi nhân viên báo cáo thành công.", "data": data}
+
+
+@router.get("/ai/suggested-faqs")
+def ai_suggested_faqs(
+    filters: dict = Depends(_analytics_filters),
+    service: AnalyticsService = Depends(get_analytics_service),
+):
+    data = service.get_suggested_faqs(filters)
+    return {"success": True, "message": "Lấy danh sách đề xuất FAQ thành công.", "data": data}
 

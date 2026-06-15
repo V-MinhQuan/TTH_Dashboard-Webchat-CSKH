@@ -140,7 +140,7 @@ export function PerformanceAnalysis({ filters, onFiltersChange, onNavigate }: Pe
 
       {/* Charts */}
       <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "20px", marginBottom: "20px" }}>
-        <ChartCard title="Hiệu suất xử lý theo thời gian" onOpenBuilder={() => onNavigate("chartbuilder")}>
+        <ChartCard title="Hiệu suất xử lý theo thời gian" onOpenBuilder={() => onNavigate("chartbuilder")} defaultChartType="area" supportedChartTypes={["area"]}>
           <ResponsiveContainer width="100%" height={220}>
             <AreaChart data={performanceTrend}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" />
@@ -154,7 +154,7 @@ export function PerformanceAnalysis({ filters, onFiltersChange, onNavigate }: Pe
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title="Số lượng hội thoại theo giờ" onOpenBuilder={() => onNavigate("chartbuilder")}>
+        <ChartCard title="Số lượng hội thoại theo giờ" onOpenBuilder={() => onNavigate("chartbuilder")} defaultChartType="bar" supportedChartTypes={["bar"]}>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={processingVolume}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" />

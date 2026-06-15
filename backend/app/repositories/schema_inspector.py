@@ -12,6 +12,7 @@ OPTIONAL_ANALYTICS_COLUMNS = (
     "issueType",
     "issueReason",
     "issueConfidence",
+    "standardizedQuestion",
 )
 
 

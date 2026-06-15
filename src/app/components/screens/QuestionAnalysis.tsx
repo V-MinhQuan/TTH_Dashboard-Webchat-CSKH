@@ -44,7 +44,7 @@ export function QuestionAnalysis({ filters, onFiltersChange, onNavigate }: Quest
 
       {/* Charts */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginBottom: "24px" }}>
-        <ChartCard title="Câu hỏi nhiều nhất theo chủ đề" onOpenBuilder={() => onNavigate("chartbuilder")}>
+        <ChartCard title="Câu hỏi nhiều nhất theo chủ đề" onOpenBuilder={() => onNavigate("chartbuilder")} defaultChartType="hbar" supportedChartTypes={["hbar"]}>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={topQuestions.slice(0, 6)} layout="vertical">
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" />
@@ -57,7 +57,7 @@ export function QuestionAnalysis({ filters, onFiltersChange, onNavigate }: Quest
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title="Xu hướng câu hỏi theo chủ đề" onOpenBuilder={() => onNavigate("chartbuilder")}>
+        <ChartCard title="Xu hướng câu hỏi theo chủ đề" onOpenBuilder={() => onNavigate("chartbuilder")} defaultChartType="line" supportedChartTypes={["line"]}>
           <ResponsiveContainer width="100%" height={220}>
             <LineChart data={questionTrend}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" />

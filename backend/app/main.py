@@ -6,6 +6,8 @@ from app.core.exceptions import register_exception_handlers
 from app.core.logging import configure_logging
 from app.routers import analytics, conversations, dashboard, health, sentiment
 from app.routers.legacy import router as legacy_router
+import asyncio
+from app.worker.ai_analytics_worker import start_analytics_worker
 
 configure_logging()
 settings = get_settings()
@@ -45,4 +47,8 @@ def root():
         "apiBase": "/api",
         "migrationStatus": "parallel_run_candidate",
     }
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(start_analytics_worker())
 

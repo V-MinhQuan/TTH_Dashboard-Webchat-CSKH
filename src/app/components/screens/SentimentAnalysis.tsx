@@ -156,6 +156,18 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
           queryParams.set("startDate", dates.startDate);
           queryParams.set("endDate", dates.endDate);
         }
+        if (filters.channel && filters.channel !== "Tất cả") {
+          queryParams.set("channel", filters.channel);
+        }
+        if (filters.topic && filters.topic !== "Tất cả") {
+          queryParams.set("topic", filters.topic);
+        }
+        if (filters.conversationStatus && filters.conversationStatus !== "Tất cả") {
+          queryParams.set("conversationStatus", filters.conversationStatus);
+        }
+        if (filters.aiStatus && filters.aiStatus !== "Tất cả") {
+          queryParams.set("aiStatus", filters.aiStatus);
+        }
 
         const [sumRes, trendRes, topicRes, kwRes, convRes] = await Promise.all([
           fetchApiJson<any>(buildApiUrl("/api/analytics/sentiment-summary", queryParams.toString())),

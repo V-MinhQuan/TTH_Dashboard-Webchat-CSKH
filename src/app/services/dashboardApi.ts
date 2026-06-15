@@ -161,16 +161,16 @@ export async function getDashboardKpi(params?: {
   if (params?.endDate) {
     url.searchParams.append("endDate", params.endDate);
   }
-  if (params?.channel) {
+  if (params?.channel && params.channel !== "Tất cả") {
     url.searchParams.append("channel", params.channel);
   }
-  if (params?.topic) {
+  if (params?.topic && params.topic !== "Tất cả") {
     url.searchParams.append("topic", params.topic);
   }
-  if (params?.conversationStatus) {
+  if (params?.conversationStatus && params.conversationStatus !== "Tất cả") {
     url.searchParams.append("conversationStatus", params.conversationStatus);
   }
-  if (params?.aiStatus) {
+  if (params?.aiStatus && params.aiStatus !== "Tất cả") {
     url.searchParams.append("aiStatus", params.aiStatus);
   }
 
@@ -199,16 +199,16 @@ export async function getChannelAnalytics(params?: {
   if (params?.endDate) {
     url.searchParams.append("endDate", params.endDate);
   }
-  if (params?.channel) {
+  if (params?.channel && params.channel !== "Tất cả") {
     url.searchParams.append("channel", params.channel);
   }
-  if (params?.topic) {
+  if (params?.topic && params.topic !== "Tất cả") {
     url.searchParams.append("topic", params.topic);
   }
-  if (params?.conversationStatus) {
+  if (params?.conversationStatus && params.conversationStatus !== "Tất cả") {
     url.searchParams.append("conversationStatus", params.conversationStatus);
   }
-  if (params?.aiStatus) {
+  if (params?.aiStatus && params.aiStatus !== "Tất cả") {
     url.searchParams.append("aiStatus", params.aiStatus);
   }
 

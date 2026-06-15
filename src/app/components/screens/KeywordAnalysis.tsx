@@ -52,129 +52,44 @@ type KeywordTrendResponse = {
   data: any[];
 };
 
-const missingFaqsData: Record<string, { question: string; source: string; added?: boolean }[]> = {
-  toeic: [
-    { question: "Lệ phí thi TOEIC cho người đi làm là bao nhiêu?", source: "Phát hiện từ 34 hội thoại khách hỏi" },
-    { question: "Có được mang nước vào phòng thi TOEIC không?", source: "AI không trả lời được 12 lần" },
-    { question: "Đăng ký thi TOEIC online trước bao nhiêu ngày?", source: "Phát hiện từ 22 hội thoại" },
-    { question: "Mất CMT/CCCD thì dùng hộ chiếu đi thi TOEIC được không?", source: "AI không chắc chắn (8 lần)" },
-    { question: "Thời gian nhận kết quả thi TOEIC Online và Offline khác nhau như thế nào?", source: "Phát hiện từ 18 hội thoại" },
-    { question: "Thi thử TOEIC miễn phí tại FLIC vào thứ mấy?", source: "Nhân viên đề xuất" },
-    { question: "Cách gia hạn chứng chỉ TOEIC hết hạn?", source: "AI không trả lời được 5 lần" },
-    { question: "Quy trình phúc khảo điểm thi TOEIC?", source: "Phát hiện từ 14 hội thoại" },
-  ],
-  vstep: [
-    { question: "Bằng VSTEP B1 có thời hạn bao lâu?", source: "Phát hiện từ 45 hội thoại khách hỏi" },
-    { question: "Lịch thi VSTEP tháng 6/2026 tại FLIC?", source: "AI không trả lời được 28 lần" },
-    { question: "Hồ sơ đăng ký thi VSTEP cần những giấy tờ gì?", source: "Phát hiện từ 19 hội thoại" },
-    { question: "Cấu trúc đề thi nói VSTEP gồm mấy phần?", source: "AI không chắc chắn (12 lần)" },
-    { question: "Có được sử dụng tai nghe chống ồn trong phòng thi VSTEP không?", source: "AI không trả lời được 6 lần" },
-    { question: "Bao lâu sau khi thi VSTEP thì nhận được chứng chỉ giấy?", source: "Phát hiện từ 15 hội thoại" },
-  ],
-  tinhoc: [
-    { question: "Chứng chỉ tin học cơ bản có bắt buộc cho đầu ra đại học không?", source: "Phát hiện từ 16 hội thoại" },
-    { question: "Lệ phí thi chứng chỉ MOS Excel là bao nhiêu?", source: "AI không trả lời được 12 lần" },
-    { question: "Có được bảo lưu kết quả thi MOS nếu trượt 1 môn không?", source: "Phát hiện từ 9 hội thoại" },
-    { question: "Tài khoản học IC3 trực tuyến tại FLIC đăng nhập ở đâu?", source: "AI không chắc chắn (15 lần)" },
-    { question: "Đăng ký thi MOS tại FLIC được giảm giá bao nhiêu?", source: "Nhân viên đề xuất" },
-  ],
-  chuandaura: [
-    { question: "Quy đổi chứng chỉ IELTS sang chuẩn đầu ra của trường như thế nào?", source: "Phát hiện từ 52 hội thoại khách hỏi" },
-    { question: "Chứng chỉ TOEIC do IIG cấp có được công nhận chuẩn đầu ra không?", source: "AI không trả lời được 23 lần" },
-    { question: "Học sinh hệ chất lượng cao cần chuẩn đầu ra tiếng Anh gì?", source: "Phát hiện từ 18 hội thoại" },
-    { question: "Hồ sơ xét miễn chuẩn đầu ra nộp cho ai?", source: "AI không chắc chắn (11 lần)" },
-    { question: "Khi nào là hạn cuối xét chuẩn đầu ra tốt nghiệp đợt 1?", source: "Phát hiện từ 25 hội thoại" },
-    { question: "Chứng chỉ Tin học văn phòng của trường có được xét đầu ra không?", source: "AI không trả lời được 9 lần" },
-    { question: "Quy trình nộp chứng chỉ tiếng Anh quốc tế trực tuyến?", source: "Phát hiện từ 12 hội thoại" },
-    { question: "Lệ phí xét chuẩn đầu ra ngoại ngữ là bao nhiêu?", source: "AI không chắc chắn (6 lần)" },
-    { question: "Trường hợp chứng chỉ hết hạn trong thời gian xét tốt nghiệp?", source: "Nhân viên đề xuất" },
-  ],
+type SuggestedFaqItem = {
+  question: string;
+  suggestedAnswer: string;
+  topic: string;
+  freq: number;
+  priority: string;
 };
 
+type SuggestedFaqResponse = {
+  success: boolean;
+  message?: string;
+  data: SuggestedFaqItem[];
+};
 
-const topicGroups: KeywordGroup[] = [
-  {
-    id: "toeic",
-    name: "TOEIC",
-    color: NAVY,
-    totalQuestions: 2847,
-    changeRate: 12,
-    aiFailed: 215,
-    faqNeeded: 8,
-    keywords: [
-      { word: "lệ phí", count: 847, trend: 12 },
-      { word: "lịch thi", count: 634, trend: 34 },
-      { word: "điểm thi", count: 541, trend: 8 },
-      { word: "chứng chỉ", count: 412, trend: 3 },
-      { word: "đăng ký thi", count: 389, trend: 22 },
-    ],
-  },
-  {
-    id: "vstep",
-    name: "VSTEP",
-    color: "#1565C0",
-    totalQuestions: 1923,
-    changeRate: 28,
-    aiFailed: 142,
-    faqNeeded: 6,
-    keywords: [
-      { word: "lịch thi", count: 634, trend: 28 },
-      { word: "hồ sơ", count: 412, trend: 11 },
-      { word: "cấp chứng chỉ", count: 378, trend: 19 },
-      { word: "ôn tập", count: 301, trend: 7 },
-      { word: "kết quả thi", count: 267, trend: -3 },
-    ],
-  },
-  {
-    id: "tinhoc",
-    name: "Tin học / MOS / IC3",
-    color: "#42A5F5",
-    totalQuestions: 1456,
-    changeRate: 6,
-    aiFailed: 98,
-    faqNeeded: 5,
-    keywords: [
-      { word: "CNTT Cơ bản", count: 412, trend: 6 },
-      { word: "CNTT Nâng cao", count: 334, trend: 18 },
-      { word: "MOS", count: 289, trend: 12 },
-      { word: "IC3", count: 256, trend: 9 },
-      { word: "quên mật khẩu khóa học", count: 167, trend: 31 },
-    ],
-  },
-  {
-    id: "chuandaura",
-    name: "Chuẩn đầu ra / Chứng chỉ",
-    color: "#0288D1",
-    totalQuestions: 1834,
-    changeRate: 17,
-    aiFailed: 176,
-    faqNeeded: 9,
-    keywords: [
-      { word: "điều kiện chuẩn đầu ra", count: 523, trend: 17 },
-      { word: "chứng chỉ hợp lệ", count: 445, trend: -12 },
-      { word: "thời hạn chứng chỉ", count: 389, trend: 9 },
-      { word: "quy đổi điểm", count: 312, trend: 6 },
-    ],
-  },
+type MissingFaqItem = {
+  question: string;
+  source: string;
+  added?: boolean;
+  suggestedAnswer?: string;
+};
+
+function mapTopicToGroupId(value: string): string | null {
+  if (!value) return null;
+  const t = value.toLowerCase();
+  if (t.includes("toeic")) return "toeic";
+  if (t.includes("vstep")) return "vstep";
+  if (t.includes("tin học") || t.includes("mos") || t.includes("ic3") || t.includes("cntt") || t.includes("sát hạch")) return "tinhoc";
+  if (t.includes("chuẩn đầu ra") || t.includes("chứng chỉ")) return "chuandaura";
+  return null;
+}
+
+
+const topicGroupMeta: Pick<KeywordGroup, "id" | "name" | "color">[] = [
+  { id: "toeic", name: "TOEIC", color: NAVY },
+  { id: "vstep", name: "VSTEP", color: "#1565C0" },
+  { id: "tinhoc", name: "Tin học / MOS / IC3", color: "#42A5F5" },
+  { id: "chuandaura", name: "Chuẩn đầu ra / Chứng chỉ", color: "#0288D1" },
 ];
-
-const trendData = [
-  { date: "T1", TOEIC: 2200, VSTEP: 1400, "Tin học": 1100, "Chuẩn đầu ra": 1400 },
-  { date: "T2", TOEIC: 2450, VSTEP: 1550, "Tin học": 1200, "Chuẩn đầu ra": 1560 },
-  { date: "T3", TOEIC: 2600, VSTEP: 1700, "Tin học": 1350, "Chuẩn đầu ra": 1680 },
-  { date: "T4", TOEIC: 2750, VSTEP: 1820, "Tin học": 1390, "Chuẩn đầu ra": 1760 },
-  { date: "T5", TOEIC: 2847, VSTEP: 1923, "Tin học": 1456, "Chuẩn đầu ra": 1834 },
-];
-
-const heatmapData = [
-  { topic: "TOEIC", lệ_phí: 2, lịch_thi: 3, đăng_ký: 1, kết_quả: 4, chứng_chỉ: 2 },
-  { topic: "VSTEP", lệ_phí: 1, lịch_thi: 4, đăng_ký: 3, kết_quả: 3, chứng_chỉ: 4 },
-  { topic: "Tin học", lệ_phí: 1, lịch_thi: 2, đăng_ký: 2, kết_quả: 1, chứng_chỉ: 3 },
-  { topic: "Chuẩn đầu ra", lệ_phí: 3, lịch_thi: 1, đăng_ký: 4, kết_quả: 2, chứng_chỉ: 5 },
-];
-
-const heatmapCols = ["lệ_phí", "lịch_thi", "đăng_ký", "kết_quả", "chứng_chỉ"];
-const heatmapLabels: Record<string, string> = { lệ_phí: "Lệ phí", lịch_thi: "Lịch thi", đăng_ký: "Đăng ký", kết_quả: "Kết quả", chứng_chỉ: "Chứng chỉ" };
 
 function heatColor(val: number) {
   if (val >= 5) return "#003865";
@@ -195,50 +110,6 @@ function normalizeFaqText(value: string) {
     .toLowerCase()
     .replace(/\s+/g, " ")
     .trim();
-}
-
-function generateFaqSuggestions(groups: KeywordGroup[]) {
-  const templates: Record<string, (keyword: string, count: number, aiFailed: number) => string> = {
-    toeic: (keyword, count, aiFailed) => `Câu hỏi về ${keyword} trong TOEIC đang được khách hàng tìm nhiều (${count.toLocaleString("vi-VN")} hội thoại, ${aiFailed} lần AI thất bại)`,
-    vstep: (keyword, count, aiFailed) => `Câu hỏi về ${keyword} trong VSTEP cần được giải đáp rõ hơn (${count.toLocaleString("vi-VN")} hội thoại, ${aiFailed} lần AI thất bại)`,
-    tinhoc: (keyword, count, aiFailed) => `Câu hỏi về ${keyword} trong bộ môn Tin học / MOS / IC3 cần thêm FAQ (${count.toLocaleString("vi-VN")} hội thoại, ${aiFailed} lần AI thất bại)`,
-    chuandaura: (keyword, count, aiFailed) => `Câu hỏi về ${keyword} trong Chuẩn đầu ra cần được cập nhật FAQ (${count.toLocaleString("vi-VN")} hội thoại, ${aiFailed} lần AI thất bại)`,
-  };
-
-  return groups.reduce<Record<string, { question: string; source: string; added?: boolean }[]>>((acc, group) => {
-    const baseItems = (group.keywords || [])
-      .slice(0, 5)
-      .map((kw) => ({
-        question: templates[group.id]?.(kw.word, kw.count, group.aiFailed) || `Câu hỏi về ${kw.word} trong ${group.name}`,
-        source: `Phát hiện từ ${kw.count.toLocaleString("vi-VN")} hội thoại · AI thất bại ${group.aiFailed} lần`,
-        added: false,
-      }));
-
-    const unique = baseItems.filter((item, index, arr) => (
-      arr.findIndex((candidate) => normalizeFaqText(candidate.question) === normalizeFaqText(item.question)) === index
-    ));
-
-    acc[group.id] = [...(missingFaqsData[group.id] || []), ...unique].slice(0, 8);
-    return acc;
-  }, {});
-}
-
-function mergeFaqSuggestions(existing: Record<string, { question: string; source: string; added?: boolean }[]>, groups: KeywordGroup[]) {
-  const generated = generateFaqSuggestions(groups);
-
-  return Object.keys(generated).reduce<Record<string, { question: string; source: string; added?: boolean }[]>>((acc, groupId) => {
-    const kept = (existing[groupId] || []).filter((item) => !item.added);
-    const map = new Map(kept.map((item) => [normalizeFaqText(item.question), item]));
-
-    const merged = [...kept];
-
-    generated[groupId].forEach((item) => {
-      if (!map.has(normalizeFaqText(item.question))) merged.push(item);
-    });
-
-    acc[groupId] = merged.slice(0, 8);
-    return acc;
-  }, {});
 }
 
 interface Props {
@@ -341,7 +212,7 @@ function getTrendGranularity(filters: FilterValues) {
 
 function mapApiGroups(apiGroups: any[]): KeywordGroup[] {
   return apiGroups.map((apiGroup: any) => {
-    const group = topicGroups.find(g => g.id === apiGroup.id);
+    const group = topicGroupMeta.find(g => g.id === apiGroup.id);
     return {
       id: apiGroup.id,
       name: apiGroup.name || group?.name || apiGroup.id,
@@ -349,7 +220,7 @@ function mapApiGroups(apiGroups: any[]): KeywordGroup[] {
       totalQuestions: apiGroup.totalQuestions || 0,
       changeRate: apiGroup.changeRate || 0,
       aiFailed: apiGroup.aiFailed || 0,
-      faqNeeded: group?.faqNeeded || 0,
+      faqNeeded: apiGroup.faqNeeded || 0,
       keywords: (apiGroup.keywords || []).map((k: any) => ({
         word: k.word,
         count: k.count || 0,
@@ -465,23 +336,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
   const { user } = useAuth();
   // appliedFilters chỉ cập nhật khi bấm "Áp dụng", không re-fetch khi thay đổi bộ lọc chưa áp dụng
   const [appliedFilters, setAppliedFilters] = useState<FilterValues>(filters);
-  const [missingFaqs, setMissingFaqs] = useState<Record<string, { question: string; source: string; added?: boolean }[]>>(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("flic_missing_faqs");
-      if (saved) {
-        try {
-          return JSON.parse(saved);
-        } catch (e) {
-          console.error(e);
-        }
-      }
-    }
-    return missingFaqsData;
-  });
-
-  useEffect(() => {
-    localStorage.setItem("flic_missing_faqs", JSON.stringify(missingFaqs));
-  }, [missingFaqs]);
+  const [missingFaqs, setMissingFaqs] = useState<Record<string, MissingFaqItem[]>>({});
 
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [composingIndex, setComposingIndex] = useState<number | null>(null);
@@ -564,16 +419,10 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
     setAppliedFilters(filters);
   }, [filters]);
 
-  useEffect(() => {
-    if (groups) {
-      setMissingFaqs((prev) => mergeFaqSuggestions(prev, groups));
-    }
-  }, [groups]);
+  // API fetching now handles suggestions
   const [heatmapRows, setHeatmapRows] = useState<any[]>([]);
   const [trendRows, setTrendRows] = useState<any[]>([]);
-  const [heatmapColsDyn, setHeatmapColsDyn] = useState<{key:string; label:string}[]>(
-    heatmapCols.map(k => ({ key: k, label: heatmapLabels[k] }))
-  );
+  const [heatmapColsDyn, setHeatmapColsDyn] = useState<{key:string; label:string}[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -586,10 +435,11 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
         setLoading(true);
         setLoadError(null);
 
-        const [groupsJson, hJson, tJson] = await Promise.all([
+        const [groupsJson, hJson, tJson, faqsJson] = await Promise.all([
           fetchApiJson<KeywordGroupsResponse>(buildApiUrl("/api/admin/crm-keywords/groups", params)),
           fetchApiJson<KeywordHeatmapResponse>(buildApiUrl("/api/admin/crm-keywords/heatmap", params)),
           fetchApiJson<KeywordTrendResponse>(buildApiUrl("/api/admin/crm-keywords/trends", trendParams)),
+          fetchApiJson<SuggestedFaqResponse>(buildApiUrl("/api/analytics/ai/suggested-faqs", params)),
         ]);
 
         if (!groupsJson.success || !Array.isArray(groupsJson.data)) {
@@ -601,19 +451,50 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
         if (!tJson.success || !Array.isArray(tJson.data)) {
           throw new Error(tJson.message || "Không thể tải dữ liệu xu hướng Keywords.");
         }
+        if (!faqsJson.success || !Array.isArray(faqsJson.data)) {
+          throw new Error(faqsJson.message || "Không thể tải câu hỏi đề xuất FAQ từ database.");
+        }
 
         if (cancelled) return;
 
         const nextData = {
           groups: mapApiGroups(groupsJson.data),
           heatmapRows: hJson.data,
-          heatmapCols: hJson.columns || heatmapCols.map(k => ({ key: k, label: heatmapLabels[k] })),
           trendRows: mapTrendRows(tJson.data),
         };
 
+        setMissingFaqs(prev => {
+          const next: Record<string, MissingFaqItem[]> = {
+            toeic: [],
+            vstep: [],
+            tinhoc: [],
+            chuandaura: [],
+          };
+
+          faqsJson.data.forEach(item => {
+            const groupId = mapTopicToGroupId(`${item.topic || ""} ${item.question || ""} ${item.suggestedAnswer || ""}`);
+            if (!groupId || !item.question?.trim()) return;
+
+            const normalizedNew = normalizeFaqText(item.question);
+            const wasAdded = prev[groupId]?.some(e => normalizeFaqText(e.question) === normalizedNew && e.added) || false;
+
+            next[groupId].push({
+              question: item.question.trim(),
+              source: `Phát hiện từ ${item.freq} hội thoại`,
+              suggestedAnswer: item.suggestedAnswer || "",
+              added: wasAdded,
+            });
+          });
+
+          return next;
+        });
         setGroups(nextData.groups);
         setHeatmapRows(nextData.heatmapRows);
-        setHeatmapColsDyn(nextData.heatmapCols);
+        if (hJson.columns && Array.isArray(hJson.columns)) {
+          setHeatmapColsDyn(hJson.columns);
+        } else {
+          setHeatmapColsDyn([]);
+        }
         setTrendRows(nextData.trendRows);
       } catch (err: any) {
         if (cancelled) return;
@@ -683,42 +564,9 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
       (normalizedGroupName === normalizedTopic || normalizedGroupName.includes(normalizedTopic) || (tokenCoverage >= 2 && normalizedTopic.split(" ").length >= 2));
   });
 
-  // Trạng thái hội thoại và trạng thái AI đã được backend query theo bộ lọc.
-  const scaleFactor = 1.0;
-
-  // Apply scaling to groups
-  const finalGroups = filteredGroups.map(g => ({
-    ...g,
-    totalQuestions: Math.round(g.totalQuestions * scaleFactor),
-    keywords: g.keywords.map(k => ({
-      ...k,
-      count: Math.round(k.count * scaleFactor)
-    }))
-  }));
-
-  // Apply scaling to trendRows
-  const finalTrendRows = trendRows.map(row => ({
-    ...row,
-    TOEIC: Math.round(row.TOEIC * scaleFactor),
-    VSTEP: Math.round(row.VSTEP * scaleFactor),
-    "Tin học": Math.round(row["Tin học"] * scaleFactor),
-    "Chuẩn đầu ra": Math.round(row["Chuẩn đầu ra"] * scaleFactor),
-  }));
-
-  // Apply scaling to heatmapRows
-  const finalHeatmapRows = heatmapRows.map((row: any) => {
-    const newRow = { ...row };
-    heatmapColsDyn.forEach(col => {
-      const originalVal = row[`${col.key}_raw`] !== undefined ? row[`${col.key}_raw`] : row[col.key];
-      const scaledRaw = Math.round(originalVal * scaleFactor);
-      newRow[`${col.key}_raw`] = scaledRaw;
-      
-      // Keep normalized score in range 1-5
-      const origScore = row[col.key] || 1;
-      newRow[col.key] = scaledRaw === 0 ? 1 : Math.max(1, Math.min(5, Math.ceil(origScore * (scaleFactor > 0 ? Math.sqrt(scaleFactor) : 0))));
-    });
-    return newRow;
-  });
+  const finalGroups = filteredGroups;
+  const finalTrendRows = trendRows;
+  const finalHeatmapRows = heatmapRows;
 
   const barData = finalGroups.map((g) => ({ name: g.name.split(" / ")[0], "Hội thoại": g.totalQuestions, "AI thất bại": g.aiFailed }));
   const donutData = finalGroups.map((g) => ({ name: g.name.split(" / ")[0], value: g.totalQuestions }));
@@ -916,24 +764,28 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
             </div>
             <div style={{ padding: "14px 18px" }}>
               <div style={{ display: "flex", flexDirection: "column", gap: "9px" }}>
-                {group.keywords.map((kw, i) => (
-                  <div key={i} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                    <span style={{ width: "18px", fontSize: "11px", color: "rgba(0,56,101,0.35)", fontWeight: 700, flexShrink: 0 }}>#{i + 1}</span>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "3px" }}>
-                        <span style={{ fontSize: "12px", color: NAVY, fontWeight: 500 }}>{kw.word}</span>
-                        <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                          {kw.trend > 0 ? <TrendingUp size={11} style={{ color: "#228A61" }} /> : <TrendingDown size={11} style={{ color: ORANGE }} />}
-                          <span style={{ fontSize: "11px", fontWeight: 600, color: kw.trend > 0 ? "#228A61" : ORANGE }}>{Math.abs(kw.trend)}%</span>
-                          <span style={{ fontSize: "11px", color: "rgba(0,56,101,0.45)", marginLeft: "5px" }}>{kw.count.toLocaleString("vi-VN")}</span>
+                {group.keywords.map((kw, i) => {
+                  const maxCount = group.keywords[0]?.count || 0;
+                  const widthPct = maxCount > 0 ? (kw.count / maxCount) * 100 : 0;
+                  return (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                      <span style={{ width: "18px", fontSize: "11px", color: "rgba(0,56,101,0.35)", fontWeight: 700, flexShrink: 0 }}>#{i + 1}</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "3px" }}>
+                          <span style={{ fontSize: "12px", color: NAVY, fontWeight: 500 }}>{kw.word}</span>
+                          <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                            {kw.trend > 0 ? <TrendingUp size={11} style={{ color: "#228A61" }} /> : <TrendingDown size={11} style={{ color: ORANGE }} />}
+                            <span style={{ fontSize: "11px", fontWeight: 600, color: kw.trend > 0 ? "#228A61" : ORANGE }}>{Math.abs(kw.trend)}%</span>
+                            <span style={{ fontSize: "11px", color: "rgba(0,56,101,0.45)", marginLeft: "5px" }}>{kw.count.toLocaleString("vi-VN")}</span>
+                          </div>
+                        </div>
+                        <div style={{ height: "5px", backgroundColor: "#f1f5f9", borderRadius: "3px", overflow: "hidden" }}>
+                          <div style={{ height: "100%", width: `${widthPct}%`, backgroundColor: group.color, borderRadius: "3px", opacity: 0.75 }} />
                         </div>
                       </div>
-                      <div style={{ height: "5px", backgroundColor: "#f1f5f9", borderRadius: "3px", overflow: "hidden" }}>
-                        <div style={{ height: "100%", width: `${(kw.count / group.keywords[0].count) * 100}%`, backgroundColor: group.color, borderRadius: "3px", opacity: 0.75 }} />
-                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -980,7 +832,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
                         </div>
                         <div>
                           {composingIndex !== index && (
-                            <button onClick={() => { setComposingIndex(index); setComposeAnswer(""); }} style={{ padding: "5px 12px", borderRadius: "8px", border: `1px solid ${CTA}`, background: "#fff", color: CTA, cursor: "pointer", fontSize: "11px", fontWeight: 600 }}>Soạn câu trả lời</button>
+                            <button onClick={() => { setComposingIndex(index); setComposeAnswer(item.suggestedAnswer || ""); }} style={{ padding: "5px 12px", borderRadius: "8px", border: `1px solid ${CTA}`, background: "#fff", color: CTA, cursor: "pointer", fontSize: "11px", fontWeight: 600 }}>Soạn câu trả lời</button>
                           )}
                         </div>
                       </div>

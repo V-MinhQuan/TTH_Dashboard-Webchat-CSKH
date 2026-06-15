@@ -350,6 +350,19 @@ export function SheetChatbot() {
     loadRows();
   }, [loadRows]);
 
+  useEffect(() => {
+    const autoEditQ = localStorage.getItem("edit_chatbot_question");
+    if (autoEditQ && rows.length > 0 && !isLoading) {
+      setSearch(autoEditQ);
+      localStorage.removeItem("edit_chatbot_question");
+      const rowToEdit = rows.find(r => r.question.toLowerCase().includes(autoEditQ.toLowerCase()) || autoEditQ.toLowerCase().includes(r.question.toLowerCase()));
+      if (rowToEdit) {
+        setEditingRow(rowToEdit);
+        setShowAddModal(true);
+      }
+    }
+  }, [rows, isLoading]);
+
   const filtered = rows.filter(r => {
     const matchSearch = r.question.toLowerCase().includes(search.toLowerCase()) ||
       r.topic.toLowerCase().includes(search.toLowerCase()) ||

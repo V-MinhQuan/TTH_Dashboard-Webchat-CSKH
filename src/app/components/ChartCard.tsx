@@ -174,12 +174,13 @@ interface ChartCardProps {
   children?: React.ReactNode | ((props: any) => React.ReactNode);
   useDefaultChart?: boolean;
   defaultChartType?: string;
+  supportedChartTypes?: string[];
   onOpenBuilder?: () => void;
   data?: any;
   showToolbarActions?: boolean;
 }
 
-export function ChartCard({ title, children, useDefaultChart, defaultChartType = "bar", onOpenBuilder, data, showToolbarActions = true }: ChartCardProps) {
+export function ChartCard({ title, children, useDefaultChart, defaultChartType = "bar", supportedChartTypes, onOpenBuilder, data, showToolbarActions = true }: ChartCardProps) {
   const [chartType, setChartType] = useState(defaultChartType);
   const [chartTitle, setChartTitle] = useState(title);
   const [isEdited, setIsEdited] = useState(false);
@@ -481,6 +482,10 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
                       <button
                         key={ct.id}
                         onClick={() => {
+                          if (supportedChartTypes && !supportedChartTypes.includes(ct.id)) {
+                            toast.error(`Dữ liệu không phù hợp với biểu đồ ${ct.label.toLowerCase()}`);
+                            return;
+                          }
                           setChartType(ct.id);
                           setChartTypeOpen(false);
                           toast.success(`Đã đổi loại biểu đồ: ${ct.label}`);

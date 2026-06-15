@@ -206,9 +206,10 @@ class AnalyticsRepository:
                 SELECT
                   a.id,
                   a.messageId,
-                  m.TextContent AS textContent,
+                  cmsg.TextContent AS textContent,
+                  m.TextContent AS aiAnswer,
                   a.conversationId,
-                  a.customerId,
+                  c.CustomerId AS customerId,
                   a.source,
                   a.sentimentLabel,
                   a.sentimentScore,
@@ -227,6 +228,17 @@ class AnalyticsRepository:
                 FROM dbo.WebChat_MessageAnalytics a
                 LEFT JOIN dbo.WebChat_MessageLogs m
                   ON m.id_webchat_messagelogs = a.messageId
+                LEFT JOIN dbo.WebChat_Conversations c
+                  ON c.Id = a.conversationId
+                OUTER APPLY (
+                  SELECT TOP 1 cmsg.TextContent
+                  FROM dbo.WebChat_MessageLogs cmsg
+                  WHERE cmsg.Source = c.Source
+                    AND cmsg.SenderId = c.CustomerId
+                    AND cmsg.FromHost = 0
+                    AND cmsg.SentAt <= m.SentAt
+                  ORDER BY cmsg.SentAt DESC
+                ) cmsg
                 {data_where}
                 ORDER BY a.messageAt DESC
                 OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
@@ -242,6 +254,390 @@ class AnalyticsRepository:
             },
             "optionalColumns": columns,
         }
+
+    def get_ai_quality_metrics(self, filters: Dict[str, Any]) -> Dict[str, Any]:
+        with self._connection_factory() as conn:
+            columns = inspect_message_analytics_columns(conn)
+            where, params = self._build_read_where(filters, columns)
+            if not columns.get("issueFlag"):
+                return {"row": {}, "optionalColumns": columns}
+
+            row = execute_one(
+                conn,
+                f"""
+                SELECT
+                  COUNT(*) AS total,
+                  SUM(CASE WHEN a.issueFlag = 1 THEN 1 ELSE 0 END) AS failure_count,
+                  SUM(CASE WHEN a.issueType = N'AI có nguy cơ tự tạo thông tin' THEN 1 ELSE 0 END) AS hallucination_count,
+                  AVG(a.issueConfidence) AS avg_confidence
+                FROM dbo.WebChat_MessageAnalytics a
+                {where}
+                """,
+                params,
+            )
+        return {"row": row, "optionalColumns": columns}
+
+    def get_staff_activity_metrics(self, filters: Dict[str, Any]) -> Dict[str, Any]:
+        with self._connection_factory() as conn:
+            columns = inspect_message_analytics_columns(conn)
+            where, params = self._build_read_where(filters, columns)
+
+            row = execute_one(
+                conn,
+                f"""
+                SELECT
+                  SUM(CASE WHEN a.needStaffReview = 1 AND a.issueFlag = 1 THEN 1 ELSE 0 END) AS reported_errors,
+                  SUM(CASE WHEN a.needStaffReview = 1 THEN 1 ELSE 0 END) AS pending_review
+                FROM dbo.WebChat_MessageAnalytics a
+                {where}
+                """,
+                params,
+            )
+        return {"row": row, "optionalColumns": columns}
+
+    def get_ai_failure_trend(self, filters: Dict[str, Any]) -> Dict[str, Any]:
+        with self._connection_factory() as conn:
+            columns = inspect_message_analytics_columns(conn)
+            where, params = self._build_read_where(filters, columns)
+            if not columns.get("issueFlag"):
+                return {"rows": [], "optionalColumns": columns}
+
+            rows = execute_all(
+                conn,
+                f"""
+                SELECT
+                  CONVERT(date, a.messageAt) AS date,
+                  SUM(CASE WHEN a.issueFlag = 1 THEN 1 ELSE 0 END) AS failure,
+                  SUM(CASE WHEN a.issueType = N'AI có nguy cơ tự tạo thông tin' THEN 1 ELSE 0 END) AS hallucination,
+                  SUM(CASE WHEN a.issueType = N'AI không chắc chắn' THEN 1 ELSE 0 END) AS uncertain
+                FROM dbo.WebChat_MessageAnalytics a
+                {where}
+                GROUP BY CONVERT(date, a.messageAt)
+                ORDER BY date ASC
+                """,
+                params,
+            )
+        return {"rows": rows, "optionalColumns": columns}
+
+    def get_ai_failure_by_topic(self, filters: Dict[str, Any]) -> Dict[str, Any]:
+        with self._connection_factory() as conn:
+            columns = inspect_message_analytics_columns(conn)
+            where, params = self._build_read_where(filters, columns)
+            if not columns.get("issueFlag"):
+                return {"rows": [], "optionalColumns": columns}
+
+            rows = execute_all(
+                conn,
+                f"""
+                SELECT
+                  a.detectedTopics,
+                  SUM(CASE WHEN a.issueType = N'Không tìm thấy dữ liệu' THEN 1 ELSE 0 END) AS thieuDL,
+                  SUM(CASE WHEN a.issueType = N'Không hiểu intent' THEN 1 ELSE 0 END) AS khongHieu,
+                  SUM(CASE WHEN a.issueType = N'AI không chắc chắn' THEN 1 ELSE 0 END) AS khongChac,
+                  SUM(CASE WHEN a.issueType = N'Câu hỏi ngoài phạm vi' THEN 1 ELSE 0 END) AS ngoaiPhamVi,
+                  SUM(CASE WHEN a.issueType = N'AI có nguy cơ tự tạo thông tin' THEN 1 ELSE 0 END) AS hallucination
+                FROM dbo.WebChat_MessageAnalytics a
+                {where + " AND" if where else "WHERE"} a.issueFlag = 1
+                GROUP BY a.detectedTopics
+                """,
+                params,
+            )
+        return {"rows": rows, "optionalColumns": columns}
+
+    def get_failed_conversations(self, filters: Dict[str, Any]) -> Dict[str, Any]:
+        pagination = normalize_pagination(
+            page=int(filters.get("page") or 1),
+            page_size=int(filters.get("pageSize") or 20),
+        )
+        with self._connection_factory() as conn:
+            columns = inspect_message_analytics_columns(conn)
+            base_filters = dict(filters)
+            base_filters["issueFlag"] = True # Force filter for AI failed ones
+            where, params = self._build_read_where(base_filters, columns)
+
+            # Since we add condition to where directly, need to check if where exists
+            condition_str = "a.issueFlag = 1"
+            if where:
+                where += f" AND {condition_str}"
+            else:
+                where = f"WHERE {condition_str}"
+
+            issue_flag_expr = "a.issueFlag" if columns.get("issueFlag") else "CAST(NULL AS BIT)"
+            issue_type_expr = "a.issueType" if columns.get("issueType") else "CAST(NULL AS NVARCHAR(100))"
+            issue_reason_expr = "a.issueReason" if columns.get("issueReason") else "CAST(NULL AS NVARCHAR(1000))"
+            issue_conf_expr = "a.issueConfidence" if columns.get("issueConfidence") else "CAST(NULL AS FLOAT)"
+
+            total_row = execute_one(
+                conn,
+                f"""
+                SELECT COUNT(*) AS total
+                FROM dbo.WebChat_MessageAnalytics a
+                LEFT JOIN dbo.WebChat_MessageLogs m
+                  ON m.id_webchat_messagelogs = a.messageId
+                {where}
+                """,
+                params,
+            )
+            records = execute_all(
+                conn,
+                f"""
+                SELECT
+                  a.id,
+                  a.messageId,
+                  cmsg.TextContent AS textContent,
+                  m.TextContent AS aiAnswer,
+                  a.conversationId,
+                  c.CustomerId AS customerId,
+                  a.source,
+                  a.sentimentLabel,
+                  a.sentimentScore,
+                  a.sentimentReason,
+                  a.satisfactionScore,
+                  a.satisfactionLevel,
+                  a.satisfactionReason,
+                  a.needStaffReview,
+                  {issue_flag_expr} AS issueFlag,
+                  {issue_type_expr} AS issueType,
+                  {issue_reason_expr} AS issueReason,
+                  {issue_conf_expr} AS issueConfidence,
+                  a.detectedTopics,
+                  a.matchedNegativeKeywords,
+                  a.messageAt
+                FROM dbo.WebChat_MessageAnalytics a
+                LEFT JOIN dbo.WebChat_MessageLogs m
+                  ON m.id_webchat_messagelogs = a.messageId
+                LEFT JOIN dbo.WebChat_Conversations c
+                  ON c.Id = a.conversationId
+                OUTER APPLY (
+                  SELECT TOP 1 cmsg.TextContent
+                  FROM dbo.WebChat_MessageLogs cmsg
+                  WHERE cmsg.Source = c.Source
+                    AND cmsg.SenderId = c.CustomerId
+                    AND cmsg.FromHost = 0
+                    AND cmsg.SentAt <= m.SentAt
+                  ORDER BY cmsg.SentAt DESC
+                ) cmsg
+                {where}
+                ORDER BY a.messageAt DESC
+                OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
+                """,
+                [*params, pagination.offset, pagination.page_size],
+            )
+        return {
+            "records": records,
+            "pagination": {
+                "page": pagination.page,
+                "pageSize": pagination.page_size,
+                "total": int(total_row.get("total") or 0),
+            },
+            "optionalColumns": columns,
+        }
+
+    def get_staff_reported_errors(self, filters: Dict[str, Any]) -> Dict[str, Any]:
+        pagination = normalize_pagination(
+            page=int(filters.get("page") or 1),
+            page_size=int(filters.get("pageSize") or 20),
+        )
+        with self._connection_factory() as conn:
+            columns = inspect_message_analytics_columns(conn)
+            where, params = self._build_read_where(filters, columns)
+
+            condition_str = "a.needStaffReview = 1 AND a.issueFlag = 1"
+            if where:
+                where += f" AND {condition_str}"
+            else:
+                where = f"WHERE {condition_str}"
+
+            issue_flag_expr = "a.issueFlag" if columns.get("issueFlag") else "CAST(NULL AS BIT)"
+            issue_type_expr = "a.issueType" if columns.get("issueType") else "CAST(NULL AS NVARCHAR(100))"
+            issue_reason_expr = "a.issueReason" if columns.get("issueReason") else "CAST(NULL AS NVARCHAR(1000))"
+            issue_conf_expr = "a.issueConfidence" if columns.get("issueConfidence") else "CAST(NULL AS FLOAT)"
+
+            total_row = execute_one(
+                conn,
+                f"""
+                SELECT COUNT(*) AS total
+                FROM dbo.WebChat_MessageAnalytics a
+                LEFT JOIN dbo.WebChat_MessageLogs m
+                  ON m.id_webchat_messagelogs = a.messageId
+                {where}
+                """,
+                params,
+            )
+            records = execute_all(
+                conn,
+                f"""
+                SELECT
+                  a.id,
+                  a.messageId,
+                  cmsg.TextContent AS textContent,
+                  m.TextContent AS aiAnswer,
+                  a.conversationId,
+                  c.CustomerId AS customerId,
+                  a.source,
+                  a.sentimentLabel,
+                  a.sentimentScore,
+                  a.sentimentReason,
+                  a.satisfactionScore,
+                  a.satisfactionLevel,
+                  a.satisfactionReason,
+                  a.needStaffReview,
+                  {issue_flag_expr} AS issueFlag,
+                  {issue_type_expr} AS issueType,
+                  {issue_reason_expr} AS issueReason,
+                  {issue_conf_expr} AS issueConfidence,
+                  a.detectedTopics,
+                  a.matchedNegativeKeywords,
+                  a.messageAt
+                FROM dbo.WebChat_MessageAnalytics a
+                LEFT JOIN dbo.WebChat_MessageLogs m
+                  ON m.id_webchat_messagelogs = a.messageId
+                LEFT JOIN dbo.WebChat_Conversations c
+                  ON c.Id = a.conversationId
+                OUTER APPLY (
+                  SELECT TOP 1 cmsg.TextContent
+                  FROM dbo.WebChat_MessageLogs cmsg
+                  WHERE cmsg.Source = c.Source
+                    AND cmsg.SenderId = c.CustomerId
+                    AND cmsg.FromHost = 0
+                    AND cmsg.SentAt <= m.SentAt
+                  ORDER BY cmsg.SentAt DESC
+                ) cmsg
+                {where}
+                ORDER BY a.messageAt DESC
+                OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
+                """,
+                [*params, pagination.offset, pagination.page_size],
+            )
+        return {
+            "records": records,
+            "pagination": {
+                "page": pagination.page,
+                "pageSize": pagination.page_size,
+                "total": int(total_row.get("total") or 0),
+            },
+            "optionalColumns": columns,
+        }
+
+    def get_suggested_faqs(self, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
+        with self._connection_factory() as conn:
+            columns = inspect_message_analytics_columns(conn)
+            where, params = self._build_read_where(filters, columns)
+            if not columns.get("issueFlag"):
+                return []
+
+            standardized_question_expr = (
+                "NULLIF(LTRIM(RTRIM(a.standardizedQuestion)), '')"
+                if columns.get("standardizedQuestion")
+                else "CAST(NULL AS NVARCHAR(MAX))"
+            )
+            extra_join = ""
+            extra_conditions = ["a.issueFlag = 1"]
+            conversation_status = filters.get("conversationStatus")
+            if conversation_status and conversation_status != "Tất cả":
+                extra_join = """
+                    LEFT JOIN dbo.WebChat_ConversationStatus s
+                      ON c.CustomerId = s.CustomerId
+                     AND c.Source = s.Source
+                """
+                closed_sql = "(s.NoResponseNeeded = 1 AND (s.MarkedAt IS NULL OR c.LastCustomerMessageAt <= s.MarkedAt))"
+                active_sql = "(s.NoResponseNeeded IS NULL OR s.NoResponseNeeded = 0 OR c.LastCustomerMessageAt > s.MarkedAt)"
+                if conversation_status == "Chờ xử lý":
+                    extra_conditions.append(f"c.CustomerId IS NOT NULL AND {active_sql} AND (c.LastHostMessageAt IS NULL OR c.LastCustomerMessageAt > c.LastHostMessageAt)")
+                elif conversation_status == "Đang xử lý":
+                    extra_conditions.append(f"c.CustomerId IS NOT NULL AND {active_sql} AND c.LastHostMessageAt IS NOT NULL AND c.LastCustomerMessageAt <= c.LastHostMessageAt")
+                elif conversation_status == "Hoàn thành":
+                    extra_conditions.append(f"c.CustomerId IS NOT NULL AND {closed_sql}")
+
+            ai_status = filters.get("aiStatus")
+            if ai_status and ai_status != "Tất cả":
+                if ai_status == "AI trả lời thành công":
+                    extra_conditions.append("a.issueFlag = 0")
+                elif ai_status == "AI trả lời thất bại":
+                    extra_conditions.append("a.issueFlag = 1")
+                elif ai_status == "Không tìm thấy dữ liệu":
+                    extra_conditions.append("a.issueType = N'Không tìm thấy dữ liệu'" if columns.get("issueType") else "1 = 0")
+                elif ai_status in ("AI không chắc chắn", "AI trả lời không chắc chắn"):
+                    extra_conditions.append("a.issueType = N'AI không chắc chắn'" if columns.get("issueType") else "1 = 0")
+
+            condition_str = " AND ".join(f"({condition})" for condition in extra_conditions)
+            if where:
+                where += f" AND {condition_str}"
+            else:
+                where = f"WHERE {condition_str}"
+
+            rows = execute_all(
+                conn,
+                f"""
+                WITH ValidMessages AS (
+                    SELECT
+                      a.id,
+                      a.messageId,
+                      a.detectedTopics,
+                      a.messageAt,
+                      {standardized_question_expr} AS StandardizedQuestion,
+                      NULLIF(LTRIM(RTRIM(cmsg.TextContent)), '') AS RawQuestion
+                    FROM dbo.WebChat_MessageAnalytics a
+                    LEFT JOIN dbo.WebChat_Conversations c ON c.Id = a.conversationId
+                    {extra_join}
+                    OUTER APPLY (
+                        SELECT TOP 1 m.TextContent
+                        FROM dbo.WebChat_MessageLogs m
+                        WHERE m.Source = c.Source AND m.SenderId = c.CustomerId AND m.FromHost = 0 AND m.SentAt <= a.messageAt
+                        ORDER BY m.SentAt DESC
+                    ) cmsg
+                    {where}
+                ),
+                FilteredMessages AS (
+                    SELECT *
+                    FROM ValidMessages a
+                    WHERE a.StandardizedQuestion IS NOT NULL
+                       OR (
+                         a.RawQuestion IS NOT NULL
+                         AND (
+                           a.RawQuestion LIKE N'%?%'
+                           OR LOWER(a.RawQuestion) LIKE N'%phải không%'
+                           OR LOWER(a.RawQuestion) LIKE N'%đúng không%'
+                           OR LOWER(a.RawQuestion) LIKE N'%làm sao%'
+                           OR LOWER(a.RawQuestion) LIKE N'%như thế nào%'
+                           OR LOWER(a.RawQuestion) LIKE N'%tại sao%'
+                           OR LOWER(a.RawQuestion) LIKE N'%thế nào%'
+                           OR LOWER(a.RawQuestion) LIKE N'%sao %'
+                           OR LOWER(a.RawQuestion) LIKE N'%vậy ạ%'
+                           OR LOWER(a.RawQuestion) LIKE N'%khi nào%'
+                           OR LOWER(a.RawQuestion) LIKE N'%bao giờ%'
+                           OR LOWER(a.RawQuestion) LIKE N'%bao nhiêu%'
+                           OR LOWER(a.RawQuestion) LIKE N'%ở đâu%'
+                           OR LOWER(a.RawQuestion) LIKE N'%được không%'
+                           OR LOWER(a.RawQuestion) LIKE N'%hay không%'
+                           OR LOWER(a.RawQuestion) LIKE N'%là gì%'
+                           OR LOWER(a.RawQuestion) LIKE N'%cần những gì%'
+                           OR LOWER(a.RawQuestion) LIKE N'%có % không%'
+                         )
+                       )
+                ),
+                TopTopics AS (
+                    SELECT TOP 20
+                      a.detectedTopics,
+                      COUNT(*) AS freq,
+                      MAX(a.id) AS sample_id
+                    FROM FilteredMessages a
+                    GROUP BY a.detectedTopics
+                    ORDER BY freq DESC
+                )
+                SELECT
+                  t.detectedTopics,
+                  t.freq,
+                  ISNULL(fm.StandardizedQuestion, fm.RawQuestion) AS question,
+                  mlog.TextContent AS suggestedAnswer
+                FROM TopTopics t
+                JOIN FilteredMessages fm ON fm.id = t.sample_id
+                LEFT JOIN dbo.WebChat_MessageLogs mlog ON mlog.id_webchat_messagelogs = fm.messageId
+                ORDER BY t.freq DESC
+                """,
+                params,
+            )
+        return rows
 
     def _build_read_where(self, filters: Dict[str, Any], columns: Dict[str, bool]) -> Tuple[str, List[Any]]:
         conditions: List[str] = []
