@@ -1,4 +1,3 @@
-from functools import lru_cache
 from typing import List
 
 from pydantic import AliasChoices, Field
@@ -33,6 +32,12 @@ class Settings(BaseSettings):
         validation_alias="CORS_ORIGINS",
     )
 
+    smtp_server: str = Field(default="smtp.gmail.com", validation_alias="SMTP_SERVER")
+    smtp_port: int = Field(default=587, validation_alias="SMTP_PORT")
+    smtp_username: str = Field(default="", validation_alias="SMTP_USERNAME")
+    smtp_password: str = Field(default="", validation_alias="SMTP_PASSWORD")
+    smtp_sender: str = Field(default="", validation_alias="SMTP_SENDER")
+
     model_config = SettingsConfigDict(
         env_file=(".env", "backend/.env"),
         env_file_encoding="utf-8",
@@ -47,7 +52,14 @@ class Settings(BaseSettings):
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
 
-@lru_cache
+# Not using lru_cache so env changes are picked up without restarting the process
+_settings: Settings | None = None
+
+
 def get_settings() -> Settings:
-    return Settings()
+    global _settings
+    if _settings is None:
+        _settings = Settings()
+    return _settings
+
 

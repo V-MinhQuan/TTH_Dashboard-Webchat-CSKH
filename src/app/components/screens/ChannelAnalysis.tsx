@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { getChannelAnalytics } from "../../services/dashboardApi";
 import { ChannelAnalyticsData, ChannelSummary } from "../../types/dashboard";
 import { EmptyState } from "../common/EmptyState";
+import { useSettings } from "../../context/SettingsContext";
 
 const NAVY = "#003BB9";
 const ORANGE = "#D73C01";
@@ -549,15 +550,25 @@ export function ChannelAnalysis({ filters, onFiltersChange, onNavigate }: Channe
     setAppliedFilters(newFilters);
   };
 
-  const channelData = data?.channels || [];
+  const { settings } = useSettings();
+
+  const isSourceEnabled = useCallback((channelName: string) => {
+    if (channelName.includes("Zalo Business") && !settings.dataSourceZaloBiz) return false;
+    if (channelName.includes("Facebook") && !settings.dataSourceFb) return false;
+    if (channelName.includes("Zalo OA") && !settings.dataSourceZalo) return false;
+    if (channelName.includes("Widget") && !settings.dataSourceWidget) return false;
+    return true;
+  }, [settings]);
+
+  const channelData = (data?.channels || []).filter((item: any) => isSourceEnabled(item.channel || ""));
   const channelTrend = data?.trend || [];
-  const channelStatusData = data?.statusByChannel || [];
+  const channelStatusData = (data?.statusByChannel || []).filter((item: any) => isSourceEnabled(item.channel || ""));
   const heatmapData = data?.heatmap || [];
 
   const availableChannels = useMemo(() => {
-    const channels = data?.channelsList?.length ? data.channelsList : channelData.map((item) => item.channel);
-    return channels.filter((item, index, arr) => arr.indexOf(item) === index);
-  }, [data, channelData]);
+    const channels = data?.channelsList?.length ? data.channelsList : channelData.map((item: any) => item.channel);
+    return channels.filter((item: string, index: number, arr: string[]) => arr.indexOf(item) === index).filter(isSourceEnabled);
+  }, [data, channelData, isSourceEnabled]);
 
   const availableTopics = useMemo(() => {
     const topics = data?.topics || [];

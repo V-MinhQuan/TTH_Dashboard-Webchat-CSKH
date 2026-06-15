@@ -4,6 +4,7 @@ import {
   X, Check, ChevronDown, BarChart, LineChart, PieChart, AreaChart,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useSettings } from "../context/SettingsContext";
 import {
   BarChart as ReBarChart, Bar, LineChart as ReLineChart, Line,
   PieChart as RePieChart, Pie, Cell, AreaChart as ReAreaChart, Area,
@@ -31,7 +32,6 @@ const chartTypes = [
 ];
 
 const topics = ["TOEIC", "VSTEP", "Chuẩn đầu ra", "MOS/IC3", "Tin học cơ sở"];
-const channels = ["Tất cả", "Zalo OA", "Zalo Business", "Chat Widget", "Facebook"];
 
 const baseData = [
   { name: "TOEIC", hoidthoai: 420, ai_ok: 360, ai_fail: 60, sentiment: 72 },
@@ -185,6 +185,13 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
   const [isEdited, setIsEdited] = useState(false);
   const [filterActive, setFilterActive] = useState(false);
   const [chartData, setChartData] = useState(data || baseData);
+  const { settings } = useSettings();
+
+  const channels = ["Tất cả"];
+  if (settings.dataSourceZalo) channels.push("Zalo OA");
+  if (settings.dataSourceZaloBiz) channels.push("Zalo Business");
+  if (settings.dataSourceWidget) channels.push("Chat Widget");
+  if (settings.dataSourceFb) channels.push("Facebook");
 
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
   const [dataModalOpen, setDataModalOpen] = useState(false);

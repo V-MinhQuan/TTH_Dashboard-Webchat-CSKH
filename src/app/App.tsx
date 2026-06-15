@@ -5,6 +5,7 @@ import { Header } from "./components/Header";
 import { defaultFilterValues, FilterValues } from "./components/FilterPanel";
 
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { SettingsProvider } from "./context/SettingsContext";
 import { LoginScreen } from "./components/screens/Login";
 
 const AIChatWidget = lazy(() => import("./components/AIChatWidget").then((m) => ({ default: m.AIChatWidget })));
@@ -220,7 +221,9 @@ function MainApp() {
 export default function App() {
   return (
     <AuthProvider>
-      <MainApp />
+      <SettingsProvider>
+        <MainApp />
+      </SettingsProvider>
     </AuthProvider>
   );
 }

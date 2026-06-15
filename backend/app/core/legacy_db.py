@@ -20,7 +20,7 @@ DB_SERVER = os.getenv("DB_SERVER", "14.225.192.252")
 DB_PORT = int(os.getenv("DB_PORT", "1433"))
 DB_DATABASE = os.getenv("DB_DATABASE")
 
-print("Đang cấu hình kết nối Database với:")
+print("[DB] Configuring connection:")
 print({
     "server": DB_SERVER,
     "port": DB_PORT,
@@ -46,6 +46,6 @@ def get_db_connection():
         )
         return conn
     except Exception as e:
-        print("=== KẾT NỐI DATABASE THẤT BẠI ===")
-        print(f"Chi tiết lỗi: {str(e)}")
+        print("=== DB CONNECTION FAILED ===")
+        print(f"Error: {str(e)}")
         raise RuntimeError(f"Database connection failed: {str(e)}")

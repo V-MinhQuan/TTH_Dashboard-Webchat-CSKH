@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Filter, Download } from "lucide-react";
 import { toast } from "sonner";
+import { useSettings } from "../context/SettingsContext";
 
 const NAVY   = "#003865";
 const ORANGE  = "#D73C01";
@@ -32,7 +33,6 @@ interface FilterPanelProps {
 }
 
 const dateRanges = ["30 ngày qua", "7 ngày qua", "Hôm nay", "Tháng này", "Quý này", "Tùy chỉnh"];
-const channels = ["Tất cả", "Zalo OA", "Zalo Business", "Chat Widget", "Facebook"];
 const topics = ["Tất cả", "TOEIC", "VSTEP", "Chuẩn đầu ra", "Tin học", "Tra cứu điểm", "Lịch thi", "Khác"];
 const conversationStatuses = ["Tất cả", "Chờ xử lý", "Đang xử lý", "Hoàn thành"];
 const aiStatuses = ["Tất cả", "AI trả lời thành công", "AI trả lời thất bại", "Không tìm thấy dữ liệu"];
@@ -41,6 +41,13 @@ export function FilterPanel({ filters, onFiltersChange }: FilterPanelProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const [localFilters, setLocalFilters] = useState<FilterValues>(filters);
   const [exporting, setExporting] = useState(false);
+  const { settings } = useSettings();
+
+  const channels = ["Tất cả"];
+  if (settings.dataSourceZalo) channels.push("Zalo OA");
+  if (settings.dataSourceZaloBiz) channels.push("Zalo Business");
+  if (settings.dataSourceWidget) channels.push("Chat Widget");
+  if (settings.dataSourceFb) channels.push("Facebook");
 
   useEffect(() => {
     setLocalFilters(filters);

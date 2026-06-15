@@ -1,12 +1,193 @@
-import { useState, useEffect } from "react";
-import { Bell, Database, Users, Save, ChevronRight, User, MessageSquare, Eye, ArrowLeft, Shield, Sliders, Globe, X } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Bell, Database, Users, Save, ChevronRight, User, MessageSquare, Eye, ArrowLeft, Shield, Sliders, Globe, X, TrendingUp, TrendingDown, MessageCircle, Bot, BarChart2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../../context/AuthContext";
+import { useSettings } from "../../context/SettingsContext";
 import { UserManagement } from "./UserManagement";
+import { getDashboardKpi, getChannelAnalytics } from "../../services/dashboardApi";
+import { DashboardKpiData, ChannelAnalyticsData } from "../../types/dashboard";
 
 const NAVY = "#003865";
 const ORANGE = "#D73C01";
 const CTA = "#D73C01";
+
+// --- Shared styles (defined outside component to avoid re-creation on render) ---
+const fieldStyle: React.CSSProperties = {
+  padding: "9px 12px",
+  borderRadius: "8px",
+  border: "1.5px solid rgba(0,56,101,0.12)",
+  fontSize: "13px",
+  color: NAVY,
+  outline: "none",
+};
+
+// Defined outside Settings to prevent new references on each render (which causes focus loss)
+function SectionTitle({ title }: { title: string }) {
+  return <h2 style={{ fontSize: "18px", fontWeight: 700, color: NAVY, marginBottom: "4px" }}>{title}</h2>;
+}
+
+function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+  return (
+    <div style={{ padding: "20px", borderRadius: "12px", border: "1px solid rgba(0,56,101,0.08)", backgroundColor: "#f8fafc", ...style }}>
+      {children}
+    </div>
+  );
+}
+
+function WeeklyReportModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+  const [kpi, setKpi] = useState<DashboardKpiData | null>(null);
+  const [channels, setChannels] = useState<any[]>([]);
+  const [topics, setTopics] = useState<{ topic: string; count: number; pct: number }[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setLoading(true);
+      Promise.all([getDashboardKpi(), getChannelAnalytics()])
+        .then(([kpiData, channelData]) => {
+          setKpi(kpiData);
+          setChannels(channelData.channels || []);
+          
+          // Calculate top topics from heatmap
+          const topicMap: Record<string, number> = {};
+          (channelData.heatmap || []).forEach(cell => {
+            topicMap[cell.topic] = (topicMap[cell.topic] || 0) + cell.value;
+          });
+          const sortedTopics = Object.entries(topicMap)
+            .map(([topic, count]) => ({ topic, count }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 5);
+            
+          const maxCount = sortedTopics.length > 0 ? sortedTopics[0].count : 1;
+          setTopics(sortedTopics.map(t => ({ ...t, pct: Math.round((t.count / maxCount) * 100) })));
+        })
+        .catch(err => {
+          console.error("Failed to fetch report data:", err);
+        })
+        .finally(() => setLoading(false));
+    }
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+  const today = new Date();
+  const weekStart = new Date(today); weekStart.setDate(today.getDate() - 7);
+  const fmt = (d: Date) => d.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" });
+
+  const totalConvs = kpi?.totalConversations || 0;
+  const aiFails = kpi?.aiFailures || 0;
+  const aiSuccess = Math.max(0, totalConvs - aiFails);
+  const unresolved = kpi?.statusSummary?.pending || 0;
+
+  return (
+    <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
+      <div style={{ background: "#fff", borderRadius: "20px", width: "100%", maxWidth: "620px", maxHeight: "88vh", overflowY: "auto", boxShadow: "0 24px 80px rgba(0,56,101,0.22)" }}>
+        {/* Header */}
+        <div style={{ background: "linear-gradient(135deg, #003865 0%, #1565C0 100%)", padding: "28px 32px", borderRadius: "20px 20px 0 0", position: "relative" }}>
+          <button onClick={onClose} style={{ position: "absolute", top: "16px", right: "16px", background: "rgba(255,255,255,0.15)", border: "none", borderRadius: "8px", width: "32px", height: "32px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#fff" }}>
+            <X size={16} />
+          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "8px" }}>
+            <div style={{ background: "rgba(255,255,255,0.15)", borderRadius: "10px", padding: "8px" }}>
+              <BarChart2 size={20} color="#fff" />
+            </div>
+            <div>
+              <div style={{ fontSize: "11px", color: "rgba(255,255,255,0.65)", letterSpacing: "0.08em", marginBottom: "2px" }}>BÁO CÁO TỔNG HỢP TUẦN</div>
+              <div style={{ fontSize: "18px", fontWeight: 700, color: "#fff" }}>FLIC AI Ops — Dashboard CSKH</div>
+            </div>
+          </div>
+          <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.6)" }}>Kỳ báo cáo: {fmt(weekStart)} — {fmt(today)}</div>
+        </div>
+
+        {loading ? (
+          <div style={{ padding: "60px", textAlign: "center", color: "rgba(0,56,101,0.5)", fontSize: "13px" }}>
+            Đang tải dữ liệu báo cáo...
+          </div>
+        ) : (
+          <div style={{ padding: "28px 32px", display: "flex", flexDirection: "column", gap: "20px" }}>
+            {/* KPI Summary */}
+            <div>
+              <div style={{ fontSize: "12px", fontWeight: 700, color: "rgba(0,56,101,0.45)", letterSpacing: "0.07em", marginBottom: "12px" }}>TỔNG QUAN TUẦN</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "12px" }}>
+                {[
+                  { icon: MessageCircle, label: "Tổng hội thoại", value: totalConvs.toLocaleString("vi-VN"), color: "#003865" },
+                  { icon: Bot, label: "AI trả lời thành công", value: aiSuccess.toLocaleString("vi-VN"), color: "#228A61" },
+                  { icon: X, label: "AI trả lời thất bại", value: aiFails.toLocaleString("vi-VN"), color: "#D73C01" },
+                  { icon: MessageSquare, label: "Hội thoại chờ xử lý", value: unresolved.toLocaleString("vi-VN"), color: "#E5A850" },
+                ].map(({ icon: Icon, label, value, color }) => (
+                  <div key={label} style={{ background: "#f8fafc", borderRadius: "12px", padding: "14px 16px", border: "1px solid rgba(0,56,101,0.07)" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+                      <Icon size={15} color={color} />
+                    </div>
+                    <div style={{ fontSize: "22px", fontWeight: 700, color, marginBottom: "2px" }}>{value}</div>
+                    <div style={{ fontSize: "11px", color: "rgba(0,56,101,0.5)" }}>{label}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Channel breakdown */}
+            <div>
+              <div style={{ fontSize: "12px", fontWeight: 700, color: "rgba(0,56,101,0.45)", letterSpacing: "0.07em", marginBottom: "12px" }}>PHÂN BỔ THEO KÊNH</div>
+              <div style={{ background: "#f8fafc", borderRadius: "12px", border: "1px solid rgba(0,56,101,0.07)", overflow: "hidden" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+                  <thead>
+                    <tr style={{ background: "rgba(0,56,101,0.04)" }}>
+                      {["Kênh", "Hội thoại", "AI thành công", "Chờ xử lý"].map(h => (
+                        <th key={h} style={{ padding: "10px 14px", textAlign: h === "Kênh" ? "left" : "center", fontSize: "11px", fontWeight: 600, color: "rgba(0,56,101,0.5)" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {channels.map((ch) => {
+                      const colorMap: Record<string, string> = { "Zalo OA": "#00AEEF", "Facebook": "#1877F2", "Zalo Business": "#0068FF", "Chat Widget": "#003865" };
+                      return (
+                        <tr key={ch.channel} style={{ borderTop: "1px solid rgba(0,56,101,0.05)" }}>
+                          <td style={{ padding: "10px 14px" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                              <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: colorMap[ch.channel] || "#003865" }} />
+                              <span style={{ fontWeight: 600, color: "#003865" }}>{ch.channel}</span>
+                            </div>
+                          </td>
+                          <td style={{ padding: "10px 14px", textAlign: "center", fontWeight: 600, color: "#003865" }}>{ch.total.toLocaleString("vi-VN")}</td>
+                          <td style={{ padding: "10px 14px", textAlign: "center", color: "#228A61", fontWeight: 600 }}>{ch.ai_ok.toLocaleString("vi-VN")}</td>
+                          <td style={{ padding: "10px 14px", textAlign: "center", color: "#D73C01", fontWeight: 600 }}>{ch.unresolved.toLocaleString("vi-VN")}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Top topics */}
+            {topics.length > 0 && (
+              <div>
+                <div style={{ fontSize: "12px", fontWeight: 700, color: "rgba(0,56,101,0.45)", letterSpacing: "0.07em", marginBottom: "12px" }}>TOP CHỦ ĐỀ NỔI BẬT</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                  {topics.map(({ topic, count, pct }) => (
+                    <div key={topic} style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                      <div style={{ fontSize: "12px", color: "#003865", fontWeight: 500, width: "110px", flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={topic}>{topic}</div>
+                      <div style={{ flex: 1, height: "6px", borderRadius: "4px", background: "#e2e8f0", overflow: "hidden" }}>
+                        <div style={{ width: `${pct}%`, height: "100%", borderRadius: "4px", background: "linear-gradient(90deg, #003865, #1565C0)" }} />
+                      </div>
+                      <div style={{ fontSize: "12px", fontWeight: 600, color: "#003865", width: "36px", textAlign: "right" }}>{count}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Footer note */}
+            <div style={{ background: "#f0f4fa", borderRadius: "10px", padding: "14px 16px", fontSize: "12px", color: "rgba(0,56,101,0.6)", lineHeight: 1.6 }}>
+              📧 Báo cáo này được gửi tự động mỗi thứ Hai lúc 8:00 sáng tới email của Quản lý CSKH.
+              Để thay đổi cài đặt, vào <strong>Cài đặt → Thông báo</strong>.
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function PasscodeModal({ isOpen, onClose, onConfirm }: { isOpen: boolean; onClose: () => void; onConfirm: () => void }) {
   const [passcode, setPasscode] = useState("");
@@ -32,56 +213,36 @@ function PasscodeModal({ isOpen, onClose, onConfirm }: { isOpen: boolean; onClos
   );
 }
 
-function OtpModal({ isOpen, onClose, onConfirm }: { isOpen: boolean; onClose: () => void; onConfirm: () => void }) {
+function OtpModal({ isOpen, onClose, onConfirm }: { isOpen: boolean; onClose: () => void; onConfirm: (otp: string) => void }) {
   const [otp, setOtp] = useState("");
-  const [step, setStep] = useState<"otp" | "newpw">("otp");
-  const [newPw, setNewPw] = useState("");
-  const [confirmPw, setConfirmPw] = useState("");
 
   if (!isOpen) return null;
 
-  const handleReset = () => { setOtp(""); setStep("otp"); setNewPw(""); setConfirmPw(""); };
+  const handleReset = () => { setOtp(""); };
 
   return (
     <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
       <div style={{ background: "#fff", padding: "28px", borderRadius: "16px", width: "100%", maxWidth: "360px", boxShadow: "0 10px 25px rgba(0,0,0,0.1)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-          <h3 style={{ margin: 0, color: "#003865", fontSize: "16px" }}>{step === "otp" ? "Nhập mã OTP" : "Đặt mật khẩu mới"}</h3>
+          <h3 style={{ margin: 0, color: "#003865", fontSize: "16px" }}>Nhập mã OTP</h3>
           <button onClick={() => { onClose(); handleReset(); }} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(0,56,101,0.4)" }}><X size={18} /></button>
         </div>
-        {step === "otp" ? (
-          <>
-            <div style={{ padding: "14px", backgroundColor: "#f0f4fa", borderRadius: "10px", marginBottom: "16px", fontSize: "13px", color: "#003865", lineHeight: 1.5 }}>
-              📧 Mã OTP đã được gửi đến email của bạn. Vui lòng kiểm tra và nhập mã bên dưới.
-            </div>
-            <input
-              type="text"
-              placeholder="Nhập mã OTP"
-              value={otp}
-              onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-              style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid #cbd5e1", marginBottom: "16px", boxSizing: "border-box", textAlign: "center", fontSize: "18px", letterSpacing: "4px" }}
-            />
-            <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end" }}>
-              <button onClick={() => { onClose(); handleReset(); }} style={{ padding: "8px 16px", borderRadius: "8px", background: "#f1f5f9", border: "none", color: "#475569", cursor: "pointer", fontWeight: 600, fontSize: "13px" }}>Hủy</button>
-              <button onClick={() => { if (otp.length < 4) { toast.error("Vui lòng nhập đầy đủ mã OTP"); return; } setStep("newpw"); }} style={{ padding: "8px 16px", borderRadius: "8px", background: "#003865", border: "none", color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: "13px" }}>Xác nhận</button>
-            </div>
-          </>
-        ) : (
-          <>
-            <div style={{ marginBottom: "12px" }}>
-              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#003865", marginBottom: "6px" }}>Mật khẩu mới</label>
-              <input type="password" placeholder="••••••••" value={newPw} onChange={(e) => setNewPw(e.target.value)} style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid #cbd5e1", boxSizing: "border-box" }} />
-            </div>
-            <div style={{ marginBottom: "20px" }}>
-              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#003865", marginBottom: "6px" }}>Xác nhận mật khẩu mới</label>
-              <input type="password" placeholder="••••••••" value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid #cbd5e1", boxSizing: "border-box" }} />
-            </div>
-            <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end" }}>
-              <button onClick={() => { onClose(); handleReset(); }} style={{ padding: "8px 16px", borderRadius: "8px", background: "#f1f5f9", border: "none", color: "#475569", cursor: "pointer", fontWeight: 600, fontSize: "13px" }}>Hủy</button>
-              <button onClick={() => { if (!newPw || newPw !== confirmPw) { toast.error("Mật khẩu xác nhận không khớp"); return; } onConfirm(); handleReset(); }} style={{ padding: "8px 16px", borderRadius: "8px", background: "#D73C01", border: "none", color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: "13px" }}>Đổi mật khẩu</button>
-            </div>
-          </>
-        )}
+        <>
+          <div style={{ padding: "14px", backgroundColor: "#f0f4fa", borderRadius: "10px", marginBottom: "16px", fontSize: "13px", color: "#003865", lineHeight: 1.5 }}>
+            📧 Mã OTP đã được gửi đến email của bạn. Vui lòng kiểm tra và nhập mã bên dưới.
+          </div>
+          <input
+            type="text"
+            placeholder="Nhập mã OTP"
+            value={otp}
+            onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid #cbd5e1", marginBottom: "16px", boxSizing: "border-box", textAlign: "center", fontSize: "18px", letterSpacing: "4px" }}
+          />
+          <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end" }}>
+            <button onClick={() => { onClose(); handleReset(); }} style={{ padding: "8px 16px", borderRadius: "8px", background: "#f1f5f9", border: "none", color: "#475569", cursor: "pointer", fontWeight: 600, fontSize: "13px" }}>Hủy</button>
+            <button onClick={() => { if (otp.length < 4) { toast.error("Vui lòng nhập đầy đủ mã OTP"); return; } onConfirm(otp); handleReset(); }} style={{ padding: "8px 16px", borderRadius: "8px", background: "#003865", border: "none", color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: "13px" }}>Xác nhận</button>
+          </div>
+        </>
       </div>
     </div>
   );
@@ -120,49 +281,148 @@ export function Settings({ defaultSection = "notifications" }: { defaultSection?
   const [showOtpModal, setShowOtpModal] = useState(false);
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
 
+  // Profile fields state
+  const [profileData, setProfileData] = useState({ name: "", email: "", phone: "" });
+  const [loadingProfile, setLoadingProfile] = useState(false);
+  const [requestingOtp, setRequestingOtp] = useState(false);
+
+  // Password fields state
+  const [currentPw, setCurrentPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [showWeeklyPreview, setShowWeeklyPreview] = useState(false);
+
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+
+  // Load User Profile from backend DB
+  useEffect(() => {
+    if (user?.username) {
+      setLoadingProfile(true);
+      fetch(`${API_BASE_URL}/api/settings/profile?username=${user.username}`)
+        .then(res => res.json())
+        .then(resJson => {
+          if (resJson.success) {
+            setProfileData({
+              name: resJson.data.name || "",
+              email: resJson.data.email || "",
+              phone: resJson.data.phone || "",
+            });
+          }
+        })
+        .catch(err => console.error("Error loading profile", err))
+        .finally(() => setLoadingProfile(false));
+    }
+  }, [user]);
+
   useEffect(() => {
     setActiveSection(defaultSection);
   }, [defaultSection]);
 
-  const [settings, setSettings] = useState({
-    emailNotif: true, slackNotif: false, aiFailAlert: true, weeklyReport: true,
-    autoEscalate: true, hallucinationDetect: true, autoFAQ: false,
-    compactView: false, language: "vi", exportFormat: "xlsx", dataRetention: "90",
-    showAiFailed: true, sortBy: "newest", pageSize: "20",
-    channelZaloOA: true, channelZaloBiz: false, channelFacebook: true, channelWidget: false,
-    alertFailRate: 15, alertResponseTime: 30, alertUncertainRate: 25,
-    dataSourceZalo: true, dataSourceFb: true, dataSourceWidget: true, dataSyncInterval: "5",
-  });
+  const { settings, updateSetting: update } = useSettings();
 
-  const update = (key: string, value: any) => setSettings({ ...settings, [key]: value });
+  const handleSaveProfile = async () => {
+    if (!profileData.name.trim()) {
+      toast.error("Vui lòng nhập họ tên");
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/settings/profile`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: user?.username,
+          name: profileData.name,
+          email: profileData.email,
+          phone: profileData.phone
+        })
+      });
+      const resJson = await res.json();
+      if (res.ok && resJson.success) {
+        toast.success("Cập nhật thông tin tài khoản thành công!");
+      } else {
+        toast.error(resJson.detail || "Cập nhật thất bại.");
+      }
+    } catch (err) {
+      toast.error("Không thể kết nối đến máy chủ.");
+    }
+  };
+
+  const handleRequestOtp = async () => {
+    if (!currentPw || !newPw || !confirmPw) {
+      toast.error("Vui lòng nhập đầy đủ các trường mật khẩu");
+      return;
+    }
+    if (newPw !== confirmPw) {
+      toast.error("Mật khẩu xác nhận không khớp");
+      return;
+    }
+    if (newPw.length < 6) {
+      toast.error("Mật khẩu mới phải có ít nhất 6 ký tự");
+      return;
+    }
+    setRequestingOtp(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/settings/profile/change-password/request`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: user?.username,
+          currentPassword: currentPw
+        })
+      });
+      const resJson = await res.json();
+      console.log("[OTP Request Response]", res.status, resJson);
+      if (res.ok && resJson.success) {
+        toast.success(resJson.message || "Mã OTP đã được gửi đến email của bạn!");
+        setShowOtpModal(true);
+      } else {
+        const errMsg = resJson.detail || resJson.message || "Không thể yêu cầu đổi mật khẩu. Vui lòng kiểm tra lại mật khẩu hiện tại.";
+        console.error("[OTP Request Failed]", errMsg);
+        toast.error(errMsg);
+      }
+    } catch (err) {
+      console.error("[OTP Request Error]", err);
+      toast.error("Không thể kết nối đến máy chủ.");
+    } finally {
+      setRequestingOtp(false);
+    }
+  };
+
+  const handleConfirmPasswordChange = async (otpCode: string) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/settings/profile/change-password/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: user?.username,
+          otp: otpCode,
+          newPassword: newPw
+        })
+      });
+      const resJson = await res.json();
+      if (res.ok && resJson.success) {
+        toast.success("Đổi mật khẩu thành công!");
+        setShowOtpModal(false);
+        setCurrentPw("");
+        setNewPw("");
+        setConfirmPw("");
+      } else {
+        console.error("[OTP Confirm Failed]", resJson);
+        toast.error(resJson.detail || "Mã OTP không chính xác hoặc đã hết hạn.");
+      }
+    } catch (err) {
+      console.error("[OTP Confirm Error]", err);
+      toast.error("Không thể kết nối đến máy chủ.");
+    }
+  };
 
   const handleSave = () => {
     if (activeSection === "profile") {
-      setPendingAction(() => () => toast.success("Đã lưu cài đặt thành công"));
-      setShowPasscodeModal(true);
+      handleSaveProfile();
     } else {
       toast.success("Đã lưu cài đặt thành công");
     }
   };
-
-  const fieldStyle = {
-    padding: "9px 12px",
-    borderRadius: "8px",
-    border: "1.5px solid rgba(0,56,101,0.12)",
-    fontSize: "13px",
-    color: NAVY,
-    outline: "none",
-  };
-
-  const SectionTitle = ({ title }: { title: string }) => (
-    <h2 style={{ fontSize: "18px", fontWeight: 700, color: NAVY, marginBottom: "4px" }}>{title}</h2>
-  );
-
-  const Card = ({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) => (
-    <div style={{ padding: "20px", borderRadius: "12px", border: "1px solid rgba(0,56,101,0.08)", backgroundColor: "#f8fafc", ...style }}>
-      {children}
-    </div>
-  );
 
   const renderSection = () => {
     if (role === "staff" && !staffSections.find((s) => s.id === activeSection)) {
@@ -190,39 +450,51 @@ export function Settings({ defaultSection = "notifications" }: { defaultSection?
           <SectionTitle title={role === "manager" ? "Thông tin người dùng" : "Thông tin cá nhân"} />
           <Card>
             <h3 style={{ fontSize: "14px", fontWeight: 600, color: NAVY, marginBottom: "16px" }}>Thông tin tài khoản</h3>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-              <div>
-                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "8px" }}>Họ và tên</label>
-                <input type="text" defaultValue={user ? user.name : (role === "manager" ? "Admin FLIC" : "Nhân viên CSKH")} style={{ ...fieldStyle, width: "100%", boxSizing: "border-box" }} />
+            {loadingProfile ? (
+              <div style={{ fontSize: "13px", color: "rgba(0,56,101,0.5)" }}>Đang tải thông tin tài khoản từ database...</div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                <div>
+                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "8px" }}>Họ và tên</label>
+                  <input type="text" value={profileData.name} onChange={e => setProfileData({ ...profileData, name: e.target.value })} style={{ ...fieldStyle, width: "100%", boxSizing: "border-box" }} />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "8px" }}>Email</label>
+                  <input type="text" value={profileData.email} onChange={e => setProfileData({ ...profileData, email: e.target.value })} style={{ ...fieldStyle, width: "100%", boxSizing: "border-box" }} />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "8px" }}>Số điện thoại</label>
+                  <input type="text" value={profileData.phone} onChange={e => setProfileData({ ...profileData, phone: e.target.value })} style={{ ...fieldStyle, width: "100%", boxSizing: "border-box" }} />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "8px" }}>Vai trò</label>
+                  <input type="text" readOnly value={role === "manager" ? "Quản lý CSKH" : "Nhân viên"} style={{ ...fieldStyle, width: "100%", boxSizing: "border-box", backgroundColor: "#f1f5f9" }} />
+                </div>
               </div>
-              <div>
-                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "8px" }}>Email</label>
-                <input type="text" defaultValue={user ? user.email : (role === "manager" ? "admin@flic.edu.vn" : "staff@flic.edu.vn")} style={{ ...fieldStyle, width: "100%", boxSizing: "border-box" }} />
-              </div>
-              <div>
-                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "8px" }}>Số điện thoại</label>
-                <input type="text" defaultValue="0123456789" style={{ ...fieldStyle, width: "100%", boxSizing: "border-box" }} />
-              </div>
-              <div>
-                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "8px" }}>Vai trò</label>
-                <input type="text" readOnly value={role === "manager" ? "Quản lý CSKH" : "Nhân viên"} style={{ ...fieldStyle, width: "100%", boxSizing: "border-box", backgroundColor: "#f1f5f9" }} />
-              </div>
-            </div>
-            <button onClick={handleSave} style={{ marginTop: "16px", padding: "8px 16px", borderRadius: "8px", backgroundColor: NAVY, color: "#fff", border: "none", cursor: "pointer", fontWeight: 600, fontSize: "13px" }}>Lưu thông tin</button>
+            )}
+            <button onClick={handleSaveProfile} style={{ marginTop: "16px", padding: "8px 16px", borderRadius: "8px", backgroundColor: NAVY, color: "#fff", border: "none", cursor: "pointer", fontWeight: 600, fontSize: "13px" }}>Lưu thông tin</button>
           </Card>
           <Card>
             <h3 style={{ fontSize: "14px", fontWeight: 600, color: NAVY, marginBottom: "16px" }}>Đổi mật khẩu</h3>
             <div style={{ display: "flex", flexDirection: "column", gap: "12px", maxWidth: "400px" }}>
-              {["Mật khẩu hiện tại", "Mật khẩu mới", "Xác nhận mật khẩu mới"].map((label) => (
-                <div key={label}>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "rgba(0,56,101,0.5)", marginBottom: "4px" }}>{label}</label>
-                  <input type="password" placeholder="••••••••" style={{ ...fieldStyle, width: "100%", boxSizing: "border-box" }} />
-                </div>
-              ))}
-              <button onClick={() => {
-                setShowOtpModal(true);
-              }} style={{ padding: "8px 16px", borderRadius: "8px", backgroundColor: "#fff", border: "1px solid rgba(0,56,101,0.15)", color: NAVY, cursor: "pointer", fontWeight: 600, fontSize: "13px", alignSelf: "flex-start" }}>
-                Đổi mật khẩu
+              <div>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "rgba(0,56,101,0.5)", marginBottom: "4px" }}>Mật khẩu hiện tại</label>
+                <input type="password" placeholder="••••••••" value={currentPw} onChange={e => setCurrentPw(e.target.value)} style={{ ...fieldStyle, width: "100%", boxSizing: "border-box" }} />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "rgba(0,56,101,0.5)", marginBottom: "4px" }}>Mật khẩu mới</label>
+                <input type="password" placeholder="••••••••" value={newPw} onChange={e => setNewPw(e.target.value)} style={{ ...fieldStyle, width: "100%", boxSizing: "border-box" }} />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "rgba(0,56,101,0.5)", marginBottom: "4px" }}>Xác nhận mật khẩu mới</label>
+                <input type="password" placeholder="••••••••" value={confirmPw} onChange={e => setConfirmPw(e.target.value)} style={{ ...fieldStyle, width: "100%", boxSizing: "border-box" }} />
+              </div>
+              <button
+                onClick={handleRequestOtp}
+                disabled={requestingOtp}
+                style={{ padding: "8px 16px", borderRadius: "8px", backgroundColor: requestingOtp ? "#e2e8f0" : "#fff", border: "1px solid rgba(0,56,101,0.15)", color: NAVY, cursor: requestingOtp ? "not-allowed" : "pointer", fontWeight: 600, fontSize: "13px", alignSelf: "flex-start", transition: "all 0.15s" }}
+              >
+                {requestingOtp ? "Đang gửi OTP..." : "Đổi mật khẩu"}
               </button>
             </div>
           </Card>
@@ -238,27 +510,35 @@ export function Settings({ defaultSection = "notifications" }: { defaultSection?
       const notifItems = role === "manager"
         ? [
             { label: "Thông báo qua Email", desc: "Nhận cảnh báo và báo cáo qua email", key: "emailNotif" },
-            { label: "Thông báo qua Slack", desc: "Kết nối Slack workspace để nhận alert", key: "slackNotif" },
             { label: "Cảnh báo AI thất bại", desc: "Thông báo ngay khi tỷ lệ AI thất bại vượt ngưỡng", key: "aiFailAlert" },
-            { label: "Báo cáo tuần tự động", desc: "Gửi báo cáo tổng hợp mỗi thứ Hai", key: "weeklyReport" },
+            { label: "Báo cáo tuần tự động", desc: "Gửi báo cáo tổng hợp mỗi thứ Hai", key: "weeklyReport", hasPreview: true },
           ]
         : [
             { label: "Thông báo hội thoại mới", desc: "Nhận thông báo khi có hội thoại mới được phân công", key: "emailNotif" },
             { label: "Cảnh báo AI thất bại", desc: "Thông báo khi AI trả lời không đúng trong kênh phụ trách", key: "aiFailAlert" },
-            { label: "Báo cáo hiệu suất tuần", desc: "Nhận tóm tắt hiệu suất cá nhân mỗi tuần", key: "weeklyReport" },
+            { label: "Báo cáo hiệu suất tuần", desc: "Nhận tóm tắt hiệu suất cá nhân mỗi tuần", key: "weeklyReport", hasPreview: true },
           ];
       return (
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
           <SectionTitle title="Thông báo" />
-          {notifItems.map(({ label, desc, key }) => (
+          {notifItems.map(({ label, desc, key, hasPreview }: any) => (
             <div key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", borderRadius: "12px", border: "1px solid rgba(0,56,101,0.08)", backgroundColor: "#f8fafc" }}>
               <div>
                 <div style={{ fontWeight: 600, fontSize: "14px", color: NAVY }}>{label}</div>
                 <div style={{ fontSize: "12px", color: "rgba(0,56,101,0.5)", marginTop: "2px" }}>{desc}</div>
+                {hasPreview && (
+                  <button
+                    onClick={() => setShowWeeklyPreview(true)}
+                    style={{ marginTop: "8px", fontSize: "11px", fontWeight: 600, color: "#1565C0", background: "rgba(21,101,192,0.08)", border: "none", borderRadius: "6px", padding: "4px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px" }}
+                  >
+                    <Eye size={12} /> Xem mẫu báo cáo
+                  </button>
+                )}
               </div>
               <Toggle value={(settings as any)[key]} onChange={(v) => update(key, v)} />
             </div>
           ))}
+          <WeeklyReportModal isOpen={showWeeklyPreview} onClose={() => setShowWeeklyPreview(false)} />
         </div>
       );
     }
@@ -271,6 +551,7 @@ export function Settings({ defaultSection = "notifications" }: { defaultSection?
             <h3 style={{ fontSize: "14px", fontWeight: 600, color: NAVY, marginBottom: "16px" }}>Kết nối nguồn dữ liệu</h3>
             {[
               { key: "dataSourceZalo", label: "Zalo OA", desc: "Đồng bộ hội thoại từ Zalo Official Account" },
+              { key: "dataSourceZaloBiz", label: "Zalo Business", desc: "Đồng bộ hội thoại từ Zalo Business" },
               { key: "dataSourceFb", label: "Facebook Messenger", desc: "Đồng bộ hội thoại từ Facebook Fanpage" },
               { key: "dataSourceWidget", label: "Chat Widget", desc: "Đồng bộ hội thoại từ widget nhúng trên website" },
             ].map(({ key, label, desc }) => (
@@ -322,10 +603,10 @@ export function Settings({ defaultSection = "notifications" }: { defaultSection?
 
     if (activeSection === "channel_config" && role === "manager") {
       const channels = [
-        { key: "channelZaloOA", label: "Zalo OA", desc: "Kênh Zalo Official Account chính" },
-        { key: "channelZaloBiz", label: "Zalo Business", desc: "Kênh Zalo Business doanh nghiệp" },
-        { key: "channelFacebook", label: "Facebook", desc: "Kênh Facebook Fanpage" },
-        { key: "channelWidget", label: "Chat Widget", desc: "Kênh widget nhúng trên website" },
+        { key: "dataSourceZalo", label: "Zalo OA", desc: "Kênh Zalo Official Account chính" },
+        { key: "dataSourceZaloBiz", label: "Zalo Business", desc: "Kênh Zalo Business doanh nghiệp" },
+        { key: "dataSourceFb", label: "Facebook", desc: "Kênh Facebook Fanpage" },
+        { key: "dataSourceWidget", label: "Chat Widget", desc: "Kênh widget nhúng trên website" },
       ];
       return (
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
@@ -342,27 +623,6 @@ export function Settings({ defaultSection = "notifications" }: { defaultSection?
               </div>
             ))}
           </Card>
-          <Card>
-            <h3 style={{ fontSize: "14px", fontWeight: 600, color: NAVY, marginBottom: "16px" }}>Phân công nhân viên</h3>
-            <div style={{ fontSize: "13px", color: "rgba(0,56,101,0.6)", lineHeight: 1.7 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
-                <span>Zalo OA</span>
-                <select style={{ ...fieldStyle, fontSize: "12px" }}>
-                  <option>Nhân viên A (NV-001)</option>
-                  <option>Nhân viên B (NV-002)</option>
-                  <option>Tự động phân công</option>
-                </select>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span>Facebook</span>
-                <select style={{ ...fieldStyle, fontSize: "12px" }}>
-                  <option>Nhân viên B (NV-002)</option>
-                  <option>Nhân viên A (NV-001)</option>
-                  <option>Tự động phân công</option>
-                </select>
-              </div>
-            </div>
-          </Card>
         </div>
       );
     }
@@ -371,10 +631,10 @@ export function Settings({ defaultSection = "notifications" }: { defaultSection?
 
     if (activeSection === "channels" && role === "staff") {
       const channelList = [
-        { key: "channelZaloOA", label: "Zalo OA" },
-        { key: "channelZaloBiz", label: "Zalo Business" },
-        { key: "channelFacebook", label: "Facebook" },
-        { key: "channelWidget", label: "Chat Widget" },
+        { key: "dataSourceZalo", label: "Zalo OA" },
+        { key: "dataSourceZaloBiz", label: "Zalo Business" },
+        { key: "dataSourceFb", label: "Facebook" },
+        { key: "dataSourceWidget", label: "Chat Widget" },
       ];
       return (
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
@@ -484,9 +744,8 @@ export function Settings({ defaultSection = "notifications" }: { defaultSection?
       <OtpModal
         isOpen={showOtpModal}
         onClose={() => setShowOtpModal(false)}
-        onConfirm={() => {
-          toast.success("Đã đổi mật khẩu thành công");
-          setShowOtpModal(false);
+        onConfirm={(otpCode: string) => {
+          handleConfirmPasswordChange(otpCode);
         }}
       />
     </div>
