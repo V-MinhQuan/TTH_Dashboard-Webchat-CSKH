@@ -8,6 +8,12 @@ from app.utils.date_filters import build_date_filter
 from app.utils.pagination import normalize_pagination
 
 
+_STATUS_EXPR = (
+    "CASE WHEN latestStatus.NoResponseNeeded = 1 "
+    "AND (c.LastCustomerMessageAt IS NULL OR c.LastCustomerMessageAt <= latestStatus.MarkedAt) THEN 'closed' "
+    "WHEN latestStatus.NoResponseNeeded = 0 THEN 'open' ELSE 'new' END"
+)
+
 class AnalyticsRepository:
     def __init__(self, connection_factory: Callable = get_connection):
         self._connection_factory = connection_factory

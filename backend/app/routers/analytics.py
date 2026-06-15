@@ -5,6 +5,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import JSONResponse
 
+from app.schemas.analytics import CustomChartRequest
 from app.services.analytics_service import AnalyticsService
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
@@ -236,6 +237,7 @@ def ai_suggested_faqs(
     return {"success": True, "message": "Lấy danh sách đề xuất FAQ thành công.", "data": data}
 
 
+@router.post("/custom-chart")
 def custom_chart(
     request: CustomChartRequest,
     service: AnalyticsService = Depends(get_analytics_service),
