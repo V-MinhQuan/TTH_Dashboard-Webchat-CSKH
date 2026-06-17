@@ -40,6 +40,7 @@ interface Props {
   loading: boolean;
   error: string;
   invalidMessages: string[];
+  configured?: boolean;
   showLegend: boolean;
   showDataLabels: boolean;
   showGrid: boolean;
@@ -50,6 +51,8 @@ interface Props {
 const numberFormat = new Intl.NumberFormat("vi-VN", {
   maximumFractionDigits: 2,
 });
+const chartFontFamily = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+const legendStyle = { fontSize: 12, fontFamily: chartFontFamily };
 
 export function ChartPreview({
   chartType,
@@ -58,15 +61,26 @@ export function ChartPreview({
   loading,
   error,
   invalidMessages,
+  configured = true,
   showLegend,
   showDataLabels,
   showGrid,
   showTooltip,
   palette,
 }: Props) {
+  if (!configured) {
+    return (
+      <PreviewState
+        status="not-configured"
+        title={CHART_BUILDER_LABELS.notConfiguredChart}
+        messages={["Hãy chọn bộ dữ liệu, chiều phân tích và chỉ số để tạo biểu đồ."]}
+      />
+    );
+  }
   if (invalidMessages.length) {
     return (
       <PreviewState
+        status="invalid"
         title={CHART_BUILDER_LABELS.invalidChart}
         messages={invalidMessages}
         invalid
@@ -74,11 +88,18 @@ export function ChartPreview({
     );
   }
   if (loading) {
-    return <PreviewState title={CHART_BUILDER_LABELS.loadingChart} loading />;
+    return (
+      <PreviewState
+        status="loading"
+        title={CHART_BUILDER_LABELS.loadingChart}
+        loading
+      />
+    );
   }
   if (error) {
     return (
       <PreviewState
+        status="api-error"
         title={CHART_BUILDER_LABELS.chartError}
         messages={[error, "Vui lòng kiểm tra cấu hình và thử lại."]}
         error
@@ -86,20 +107,31 @@ export function ChartPreview({
     );
   }
   if (!data?.rows.length) {
-    return <PreviewState title={CHART_BUILDER_LABELS.emptyChart} />;
+    return (
+      <PreviewState
+        status="no-data"
+        title={CHART_BUILDER_LABELS.emptyChart}
+      />
+    );
   }
 
-  const dimensionKey = groupBy || data.dimensionKeys?.[0] || "";
+  const dimensionKeys = [
+    ...new Set([groupBy, ...(data.dimensionKeys || [])].filter(Boolean)),
+  ];
+  const chartRows = normalizeChartRows(data.rows, dimensionKeys);
+  const chartSeries = normalizeChartSeries(data.series);
+  const dimensionKey = groupBy || dimensionKeys[0] || "";
   const common = {
-    data: data.rows,
+    data: chartRows,
     margin: { top: 24, right: 24, bottom: 24, left: 0 },
   };
   const tooltip = (
     <Tooltip
-      formatter={(value: number | string, name: string) => [
-        formatValue(value, data.series.find((item) => item.key === name)),
-        data.series.find((item) => item.key === name)?.label || name,
+      formatter={(value: unknown, name: string) => [
+        formatValue(value, chartSeries.find((item) => item.key === name)),
+        safeText(chartSeries.find((item) => item.key === name)?.label || name),
       ]}
+      labelFormatter={(label) => formatDimensionValue(label)}
       labelStyle={{ color: "#003865", fontWeight: 700 }}
       contentStyle={{
         border: "1px solid rgba(0,56,101,.1)",
@@ -110,21 +142,22 @@ export function ChartPreview({
   );
 
   if (chartType === "pie" || chartType === "donut") {
-    const metric = data.series[0];
+    const metric = chartSeries[0];
     if (!metric || !dimensionKey) {
       return (
         <PreviewState
+          status="invalid"
           title={CHART_BUILDER_LABELS.invalidChart}
           messages={["Biểu đồ hình tròn hoặc hình khuyên cần một chiều phân tích và một chỉ số."]}
           invalid
         />
       );
     }
-    return (
+    return withChartBody(
       <ResponsiveContainer width="100%" height="100%" minHeight={430}>
         <PieChart>
           <Pie
-            data={data.rows}
+            data={chartRows}
             dataKey={metric.key}
             nameKey={dimensionKey}
             cx="50%"
@@ -133,36 +166,42 @@ export function ChartPreview({
             outerRadius={138}
             paddingAngle={2}
             label={showDataLabels
-              ? ({ name, value }) => `${name}: ${numberFormat.format(Number(value))}`
+              ? ({ name, value }) => `${formatDimensionValue(name)}: ${formatValue(value, metric)}`
               : false}
           >
-            {data.rows.map((row, index) => (
+            {chartRows.map((row, index) => (
               <Cell
-                key={`${String(row[dimensionKey])}-${index}`}
+                key={`${formatDimensionValue(row[dimensionKey])}-${index}`}
                 fill={palette[index % palette.length] || metric.color}
               />
             ))}
           </Pie>
           {showTooltip && tooltip}
-          {showLegend && <Legend wrapperStyle={{ fontSize: 11 }} />}
+          {showLegend && (
+            <Legend
+              wrapperStyle={legendStyle}
+              formatter={(value) => safeText(value)}
+            />
+          )}
         </PieChart>
       </ResponsiveContainer>
     );
   }
 
   if (chartType === "scatter") {
-    if (data.series.length < 2) {
+    if (chartSeries.length < 2) {
       return (
         <PreviewState
+          status="invalid"
           title={CHART_BUILDER_LABELS.invalidChart}
           messages={["Biểu đồ phân tán cần ít nhất hai chỉ số số."]}
           invalid
         />
       );
     }
-    const xSeries = data.series[0];
-    const ySeries = data.series[1];
-    return (
+    const xSeries = chartSeries[0];
+    const ySeries = chartSeries[1];
+    return withChartBody(
       <ResponsiveContainer width="100%" height="100%" minHeight={430}>
         <ScatterChart {...common}>
           {showGrid && (
@@ -174,21 +213,26 @@ export function ChartPreview({
           <XAxis
             type="number"
             dataKey={xSeries.key}
-            name={xSeries.label}
+            name={safeText(xSeries.label)}
             tick={tickStyle}
           />
           <YAxis
             type="number"
             dataKey={ySeries.key}
-            name={ySeries.label}
+            name={safeText(ySeries.label)}
             tick={tickStyle}
           />
           <ZAxis range={[55, 150]} />
           {showTooltip && tooltip}
-          {showLegend && <Legend wrapperStyle={{ fontSize: 11 }} />}
+          {showLegend && (
+            <Legend
+              wrapperStyle={legendStyle}
+              formatter={(value) => safeText(value)}
+            />
+          )}
           <Scatter
-            name={`${xSeries.label} / ${ySeries.label}`}
-            data={data.rows}
+            name={`${safeText(xSeries.label)} / ${safeText(ySeries.label)}`}
+            data={chartRows}
             fill={ySeries.color}
           />
         </ScatterChart>
@@ -200,25 +244,31 @@ export function ChartPreview({
     if (!dimensionKey) {
       return (
         <PreviewState
+          status="invalid"
           title={CHART_BUILDER_LABELS.invalidChart}
           messages={["Biểu đồ radar cần một chiều phân tích."]}
           invalid
         />
       );
     }
-    return (
+    return withChartBody(
       <ResponsiveContainer width="100%" height="100%" minHeight={430}>
-        <RadarChart data={data.rows} outerRadius="72%">
+        <RadarChart data={chartRows} outerRadius="72%">
           {showGrid && <PolarGrid stroke="rgba(0,56,101,0.13)" />}
           <PolarAngleAxis dataKey={dimensionKey} tick={tickStyle} />
           <PolarRadiusAxis tick={tickStyle} />
           {showTooltip && tooltip}
-          {showLegend && <Legend wrapperStyle={{ fontSize: 11 }} />}
-          {data.series.map((series) => (
+          {showLegend && (
+            <Legend
+              wrapperStyle={legendStyle}
+              formatter={(value) => safeText(value)}
+            />
+          )}
+          {chartSeries.map((series) => (
             <Radar
               key={series.key}
               dataKey={series.key}
-              name={series.label}
+              name={safeText(series.label)}
               stroke={series.color}
               fill={series.color}
               fillOpacity={0.16}
@@ -230,10 +280,10 @@ export function ChartPreview({
   }
 
   if (chartType === "horizontal_bar") {
-    const hasRightAxis = data.series.some(
+    const hasRightAxis = chartSeries.some(
       (series) => series.axisGroup === "right",
     );
-    return (
+    return withChartBody(
       <ResponsiveContainer width="100%" height="100%" minHeight={430}>
         <BarChart {...common} layout="vertical">
           {showGrid && (
@@ -248,9 +298,9 @@ export function ChartPreview({
             type="number"
             tick={tickStyle}
             label={axisLabel(
-              data.series
+              chartSeries
                 .filter((series) => series.axisGroup !== "right")
-                .map((series) => series.label)
+                .map((series) => safeText(series.label))
                 .join(", "),
               "insideBottom",
             )}
@@ -262,9 +312,9 @@ export function ChartPreview({
               orientation="top"
               tick={tickStyle}
               label={axisLabel(
-                data.series
+                chartSeries
                   .filter((series) => series.axisGroup === "right")
-                  .map((series) => series.label)
+                  .map((series) => safeText(series.label))
                   .join(", "),
                 "insideTop",
               )}
@@ -277,12 +327,17 @@ export function ChartPreview({
             width={110}
           />
           {showTooltip && tooltip}
-          {showLegend && <Legend wrapperStyle={{ fontSize: 11 }} />}
-          {data.series.map((series) => (
+          {showLegend && (
+            <Legend
+              wrapperStyle={legendStyle}
+              formatter={(value) => safeText(value)}
+            />
+          )}
+          {chartSeries.map((series) => (
             <Bar
               key={series.key}
               dataKey={series.key}
-              name={series.label}
+              name={safeText(series.label)}
               xAxisId={series.axisGroup || "left"}
               fill={series.color}
               radius={[0, 5, 5, 0]}
@@ -296,13 +351,18 @@ export function ChartPreview({
   }
 
   if (chartType === "combo") {
-    return (
+    return withChartBody(
       <ResponsiveContainer width="100%" height="100%" minHeight={430}>
         <ComposedChart {...common}>
-          {renderGridAndAxes(dimensionKey, showGrid, data.series)}
+          {renderGridAndAxes(dimensionKey, showGrid, chartSeries)}
           {showTooltip && tooltip}
-          {showLegend && <Legend wrapperStyle={{ fontSize: 11 }} />}
-          {data.series.map((series, index) => renderComboSeries(
+          {showLegend && (
+            <Legend
+              wrapperStyle={legendStyle}
+              formatter={(value) => safeText(value)}
+            />
+          )}
+          {chartSeries.map((series, index) => renderComboSeries(
             series,
             index === 0 ? "bar" : "line",
             showDataLabels,
@@ -313,17 +373,22 @@ export function ChartPreview({
   }
 
   if (chartType === "line") {
-    return (
+    return withChartBody(
       <ResponsiveContainer width="100%" height="100%" minHeight={430}>
         <LineChart {...common}>
-          {renderGridAndAxes(dimensionKey, showGrid, data.series)}
+          {renderGridAndAxes(dimensionKey, showGrid, chartSeries)}
           {showTooltip && tooltip}
-          {showLegend && <Legend wrapperStyle={{ fontSize: 11 }} />}
-          {data.series.map((series) => (
+          {showLegend && (
+            <Legend
+              wrapperStyle={legendStyle}
+              formatter={(value) => safeText(value)}
+            />
+          )}
+          {chartSeries.map((series) => (
             <Line
               key={series.key}
               dataKey={series.key}
-              name={series.label}
+              name={safeText(series.label)}
               yAxisId={series.axisGroup || "left"}
               stroke={series.color}
               strokeWidth={2.4}
@@ -339,17 +404,22 @@ export function ChartPreview({
   }
 
   if (chartType === "area") {
-    return (
+    return withChartBody(
       <ResponsiveContainer width="100%" height="100%" minHeight={430}>
         <AreaChart {...common}>
-          {renderGridAndAxes(dimensionKey, showGrid, data.series)}
+          {renderGridAndAxes(dimensionKey, showGrid, chartSeries)}
           {showTooltip && tooltip}
-          {showLegend && <Legend wrapperStyle={{ fontSize: 11 }} />}
-          {data.series.map((series) => (
+          {showLegend && (
+            <Legend
+              wrapperStyle={legendStyle}
+              formatter={(value) => safeText(value)}
+            />
+          )}
+          {chartSeries.map((series) => (
             <Area
               key={series.key}
               dataKey={series.key}
-              name={series.label}
+              name={safeText(series.label)}
               yAxisId={series.axisGroup || "left"}
               stroke={series.color}
               fill={series.color}
@@ -364,17 +434,22 @@ export function ChartPreview({
     );
   }
 
-  return (
+  return withChartBody(
     <ResponsiveContainer width="100%" height="100%" minHeight={430}>
       <BarChart {...common}>
-        {renderGridAndAxes(dimensionKey, showGrid, data.series)}
+        {renderGridAndAxes(dimensionKey, showGrid, chartSeries)}
         {showTooltip && tooltip}
-        {showLegend && <Legend wrapperStyle={{ fontSize: 11 }} />}
-        {data.series.map((series) => (
+        {showLegend && (
+          <Legend
+          wrapperStyle={legendStyle}
+            formatter={(value) => safeText(value)}
+          />
+        )}
+        {chartSeries.map((series) => (
           <Bar
             key={series.key}
             dataKey={series.key}
-            name={series.label}
+            name={safeText(series.label)}
             yAxisId={series.axisGroup || "left"}
             fill={series.color}
             radius={chartType === "stacked_bar" ? 0 : [5, 5, 0, 0]}
@@ -494,18 +569,22 @@ function DataLabel({ dataKey }: { dataKey: string }) {
     <LabelList
       dataKey={dataKey}
       position="top"
-      fontSize={9}
+      fontSize={11}
+      fontFamily={chartFontFamily}
       fill="#475569"
-      formatter={(value: number) => numberFormat.format(value)}
+      formatter={(value: unknown) => formatValue(value)}
     />
   );
 }
 
 function formatValue(
-  value: number | string,
+  value: unknown,
   series?: ChartSeries,
 ) {
-  if (typeof value !== "number") return value;
+  if (value === null || value === undefined || value === "") {
+    return "Không xác định";
+  }
+  if (typeof value !== "number") return safeText(value);
   if (series?.numberFormat === "percent") {
     return `${numberFormat.format(value)}%`;
   }
@@ -515,13 +594,23 @@ function formatValue(
   return numberFormat.format(value);
 }
 
+type PreviewStatus =
+  | "not-configured"
+  | "invalid"
+  | "loading"
+  | "has-data"
+  | "no-data"
+  | "api-error";
+
 function PreviewState({
+  status,
   title,
   messages = [],
   loading = false,
   error = false,
   invalid = false,
 }: {
+  status: PreviewStatus;
   title: string;
   messages?: string[];
   loading?: boolean;
@@ -530,6 +619,8 @@ function PreviewState({
 }) {
   return (
     <div
+      className="chart-builder-preview-state"
+      data-preview-state={status}
       style={{
         height: 430,
         display: "grid",
@@ -554,7 +645,73 @@ function PreviewState({
   );
 }
 
-const tickStyle = { fontSize: 10, fill: "#64748b" };
+function withChartBody(children: React.ReactElement) {
+  return (
+    <div className="chart-builder-chart-body" data-preview-state="has-data">
+      {children}
+    </div>
+  );
+}
+
+function normalizeChartRows(
+  rows: ChartDataResponse["rows"],
+  dimensionKeys: string[],
+) {
+  return rows.map((row) => {
+    const next = { ...row };
+    for (const key of dimensionKeys) {
+      next[key] = formatDimensionValue(row[key]);
+    }
+    return next;
+  });
+}
+
+function normalizeChartSeries(series: ChartSeries[]) {
+  return series.map((item) => ({
+    ...item,
+    label: safeText(item.label),
+  }));
+}
+
+function formatDimensionValue(value: unknown): string {
+  if (value === true || value === "true" || value === "True") {
+    return "Không cần phản hồi";
+  }
+  if (value === false || value === "false" || value === "False") {
+    return "Cần phản hồi";
+  }
+  if (value === null || value === undefined || value === "") {
+    return "Không xác định";
+  }
+  if (Array.isArray(value)) {
+    const values = value.map((item) => safeText(item)).filter(Boolean);
+    return values.length ? values.join(", ") : "Không xác định";
+  }
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return "Không xác định";
+    }
+  }
+  return String(value);
+}
+
+function safeText(value: unknown): string {
+  if (typeof value === "boolean" || value === null || value === undefined) {
+    return formatDimensionValue(value);
+  }
+  if (typeof value === "object") {
+    return formatDimensionValue(value);
+  }
+  return String(value);
+}
+
+const tickStyle = {
+  fontSize: 12,
+  fill: "#64748b",
+  fontFamily: chartFontFamily,
+};
 
 function axisLabel(
   value: string,
@@ -567,6 +724,7 @@ function axisLabel(
     position,
     angle,
     fill: "#64748b",
-    fontSize: 9,
+    fontSize: 11,
+    fontFamily: chartFontFamily,
   } as const;
 }

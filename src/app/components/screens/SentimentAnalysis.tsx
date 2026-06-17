@@ -20,7 +20,7 @@ import {
 import { ChartCard } from "../ChartCard";
 import { FilterPanel, FilterValues } from "../FilterPanel";
 import { toast } from "sonner";
-import { fetchApiJson, buildApiUrl } from "../../services/dashboardApi";
+import { fetchApiJson, buildApiUrl, formatChannelParam } from "../../services/dashboardApi";
 
 const NAVY = "#003865";
 const ORANGE = "#D73C01";
@@ -71,7 +71,7 @@ function getDatesFromRange(range: string, customFrom?: string, customTo?: string
     const end = new Date(today.getFullYear(), today.getMonth(), 0);
     return { startDate: formatDateStr(start), endDate: formatDateStr(end) };
   }
-  if (range === "Tùy chọn" && customFrom && customTo) {
+  if (range === "Tùy chỉnh" && customFrom && customTo) {
     return { startDate: customFrom, endDate: customTo };
   }
   return {};
@@ -158,7 +158,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
           queryParams.set("endDate", dates.endDate);
         }
         if (filters.channel && filters.channel !== "Tất cả") {
-          queryParams.set("channel", filters.channel);
+          queryParams.set("channel", formatChannelParam(filters.channel));
         }
         if (filters.topic && filters.topic !== "Tất cả") {
           queryParams.set("topic", filters.topic);
@@ -171,11 +171,11 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
         }
 
         const [sumRes, trendRes, topicRes, kwRes, convRes] = await Promise.all([
-          fetchApiJson<any>(buildApiUrl("/api/analytics/sentiment-summary", queryParams.toString())),
-          fetchApiJson<any>(buildApiUrl("/api/analytics/sentiment-trend", queryParams.toString())),
-          fetchApiJson<any>(buildApiUrl("/api/analytics/topics", queryParams.toString())),
-          fetchApiJson<any>(buildApiUrl("/api/analytics/negative-keywords", queryParams.toString())),
-          fetchApiJson<any>(buildApiUrl("/api/analytics/negative-conversations", queryParams.toString()))
+          fetchApiJson<any>(buildApiUrl("/api/analytics/sentiment-summary", queryParams)),
+          fetchApiJson<any>(buildApiUrl("/api/analytics/sentiment-trend", queryParams)),
+          fetchApiJson<any>(buildApiUrl("/api/analytics/topics", queryParams)),
+          fetchApiJson<any>(buildApiUrl("/api/analytics/negative-keywords", queryParams)),
+          fetchApiJson<any>(buildApiUrl("/api/analytics/negative-conversations", queryParams))
         ]);
 
         if (sumRes.success) {

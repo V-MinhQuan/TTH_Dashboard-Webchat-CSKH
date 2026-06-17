@@ -158,6 +158,71 @@ test.describe('Chart Builder – Security Regression', () => {
     expect([400, 422]).toContain(response.status());
   });
 
+  test('boolean dimension with nullHandling label is rejected before SQL execution', async ({ request }) => {
+    const response = await postPreview(request, {
+      version: 2,
+      mode: 'custom',
+      datasetId: 'conversations',
+      chartType: 'stacked_bar',
+      dimensions: [{ fieldId: 'channel', alias: 'channel', nullHandling: 'label' }],
+      metrics: [{ fieldId: 'conversation_id', aggregation: 'count_distinct', alias: 'n' }],
+      series: { fieldId: 'no_response_needed', alias: 'no_response_needed', nullHandling: 'label' },
+      filters: [],
+      sort: [],
+      limit: 100,
+    });
+    const text = await response.text();
+    expect([400, 422]).toContain(response.status());
+    expect(text).toContain('Chỉ trường văn bản');
+    expect(text).not.toContain('SELECT ');
+    expect(text).not.toContain('WebChat_');
+  });
+
+  test('custom date filter rejects from date after to date with 4xx', async ({ request }) => {
+    const response = await postPreview(request, {
+      version: 2,
+      mode: 'custom',
+      datasetId: 'conversations',
+      chartType: 'bar',
+      dimensions: [{ fieldId: 'channel', alias: 'channel', nullHandling: 'label' }],
+      metrics: [{ fieldId: 'conversation_id', aggregation: 'count_distinct', alias: 'n' }],
+      filters: [
+        {
+          fieldId: 'last_message_at',
+          operator: 'between',
+          value: '2026-06-12',
+          valueTo: '2026-06-01',
+        },
+      ],
+      sort: [],
+      limit: 100,
+    });
+    const text = await response.text();
+    expect([400, 422]).toContain(response.status());
+    expect(text).toContain('Ngày bắt đầu');
+    expect(text).not.toContain('SELECT ');
+    expect(text).not.toContain('WebChat_');
+  });
+
+  test('overlong text filter is rejected with 4xx and does not leak SQL', async ({ request }) => {
+    const response = await postPreview(request, {
+      version: 2,
+      mode: 'custom',
+      datasetId: 'conversations',
+      chartType: 'bar',
+      dimensions: [{ fieldId: 'channel', alias: 'channel', nullHandling: 'label' }],
+      metrics: [{ fieldId: 'conversation_id', aggregation: 'count_distinct', alias: 'n' }],
+      filters: [{ fieldId: 'channel', operator: 'contains', value: 'x'.repeat(501) }],
+      sort: [],
+      limit: 100,
+    });
+    const text = await response.text();
+    expect([400, 422]).toContain(response.status());
+    expect(text).toContain('quá dài');
+    expect(text).not.toContain('SELECT ');
+    expect(text).not.toContain('WebChat_');
+  });
+
   test('UI does not call port 5173 for API requests (no port 5173 API calls)', async ({ page }) => {
     await withCatalogMock(page);
     const port5173ApiCalls: string[] = [];

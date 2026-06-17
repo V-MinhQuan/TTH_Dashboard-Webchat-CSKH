@@ -12,6 +12,7 @@ BOOLEAN_FILTERS = ("eq", "neq", "is_null", "is_not_null")
 DATE_GRAINS = ("day", "week", "month", "quarter", "year")
 NUMBER_AGGREGATIONS = ("sum", "avg", "min", "max")
 COUNT_AGGREGATIONS = ("count", "count_distinct")
+KNOWN_CHANNELS_SQL = "(N'ZaloBusiness', N'Facebook', N'ZaloOA', N'ChatWidget')"
 
 
 @dataclass(frozen=True)
@@ -519,6 +520,7 @@ DATASETS = _mapping(
             default_date_field="last_message_at",
             default_dimension="channel",
             default_metric="conversation_id",
+            base_conditions=(f"c.Source IN {KNOWN_CHANNELS_SQL}",),
         ),
         "messages": DatasetDefinition(
             id="messages",

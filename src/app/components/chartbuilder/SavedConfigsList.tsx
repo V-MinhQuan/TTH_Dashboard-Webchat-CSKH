@@ -19,7 +19,7 @@ export function SavedConfigsList({
 }: Props) {
   return (
     <section className={`chart-builder-saved-configs${embedded ? " is-embedded" : ""}`}>
-      <div className="chart-builder-saved-configs-title">CẤU HÌNH ĐÃ LƯU</div>
+      <div className="chart-builder-saved-configs-title">Cấu hình đã lưu</div>
       {loading && <div className="chart-builder-saved-state">Đang tải...</div>}
       {!loading && !configs.length && <div className="chart-builder-saved-state">Chưa có cấu hình nào.</div>}
       <div className="chart-builder-saved-list">

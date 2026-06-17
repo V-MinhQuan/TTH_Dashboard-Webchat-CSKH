@@ -24,8 +24,44 @@ def _parse_filter_datetime(value, is_end=False):
     return dt
 
 
+def _normalized_source_expr(source_column):
+    return f"LOWER(LTRIM(RTRIM({source_column})))"
+
+
+def _message_customer_expr(alias="m"):
+    return f"CASE WHEN {alias}.FromHost = 1 THEN {alias}.ReceiverId ELSE {alias}.SenderId END"
+
+
+def _analytics_issue_condition(alias="ai", issue_group="any"):
+    message_id_match = f"a.messageId = {alias}.id_webchat_messageLogs"
+    same_conversation_match = f"""
+        (
+          CAST(a.customerId AS NVARCHAR(255)) = CAST({_message_customer_expr(alias)} AS NVARCHAR(255))
+          AND LOWER(LTRIM(RTRIM(a.source))) = {_normalized_source_expr(f'{alias}.Source')}
+          AND ABS(DATEDIFF(SECOND, a.messageAt, {alias}.SentAt)) <= 2
+        )
+    """
+
+    if issue_group == "no_data":
+        issue_filter = "a.issueType = N'Không tìm thấy dữ liệu'"
+    elif issue_group == "uncertain":
+        issue_filter = "a.issueType IN (N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin')"
+    else:
+        issue_filter = "a.issueFlag = 1"
+
+    return f"""
+        EXISTS (
+          SELECT 1
+          FROM WebChat_MessageAnalytics a
+          WHERE a.issueFlag = 1
+            AND ({message_id_match} OR {same_conversation_match})
+            AND {issue_filter}
+        )
+    """
+
+
 def _ai_no_data_condition(alias="ai"):
-    return f"""(
+    keyword_condition = f"""(
         {alias}.TextContent LIKE N'%không tìm thấy%'
         OR {alias}.TextContent LIKE N'%chưa có%'
         OR {alias}.TextContent LIKE N'%chưa hỗ trợ%'
@@ -34,17 +70,28 @@ def _ai_no_data_condition(alias="ai"):
         OR {alias}.TextContent LIKE N'%Không thể tiếp nhận thông tin%'
         OR {alias}.TextContent LIKE N'%Không thể xác nhận trực tiếp%'
     )"""
+    analytics_no_data = _analytics_issue_condition(alias, "no_data")
+    analytics_uncertain = _analytics_issue_condition(alias, "uncertain")
+    return f"({analytics_no_data} OR ({keyword_condition} AND NOT {analytics_uncertain}))"
 
 
 def _ai_uncertain_condition(alias="ai"):
-    return f"""(
+    keyword_condition = f"""(
         {alias}.TextContent LIKE N'%chưa hiểu%'
         OR {alias}.TextContent LIKE N'%chưa rõ%'
         OR {alias}.TextContent LIKE N'%không chắc chắn%'
         OR {alias}.TextContent LIKE N'%chưa có thông tin cụ thể%'
         OR {alias}.TextContent LIKE N'%độ tin cậy%'
         OR {alias}.TextContent LIKE N'%chưa xác nhận%'
+        OR {alias}.TextContent LIKE N'%có vẻ như%'
+        OR {alias}.TextContent LIKE N'%chắc là%'
+        OR {alias}.TextContent LIKE N'%có lẽ%'
+        OR {alias}.TextContent LIKE N'%hình như%'
+        OR {alias}.TextContent LIKE N'%tôi đoán%'
     )"""
+    analytics_no_data = _analytics_issue_condition(alias, "no_data")
+    analytics_uncertain = _analytics_issue_condition(alias, "uncertain")
+    return f"({analytics_uncertain} OR ({keyword_condition} AND NOT {analytics_no_data}))"
 
 
 def _ai_failure_condition(alias="ai"):

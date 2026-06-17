@@ -1,6 +1,9 @@
 import type {
   CatalogDatasetMeta,
+  CatalogFieldMeta,
   ChartBuilderState,
+  DimensionSelection,
+  NullHandling,
 } from "../../types/chartBuilder";
 
 export interface ChartValidationResult {
@@ -59,6 +62,12 @@ export function validateChartConfiguration(
 
   const dimensionCount = state.dimensions.length;
   const metricCount = state.metrics.length;
+  const metricFields = state.metrics
+    .map((metric) => fields.get(metric.fieldId))
+    .filter((field): field is CatalogFieldMeta => Boolean(field));
+  const numericMetricCount = metricFields.filter(
+    (field) => field.dataType === "number",
+  ).length;
   const requiresDimension = [
     "bar",
     "stacked_bar",
@@ -80,15 +89,96 @@ export function validateChartConfiguration(
   if (["pie", "donut"].includes(state.chartType) && metricCount > 1) {
     messages.push("Biểu đồ hình tròn hoặc hình khuyên chỉ dùng một chỉ số.");
   }
-  if (state.chartType === "scatter" && metricCount < 2) {
-    messages.push("Biểu đồ phân tán cần ít nhất hai chỉ số đo lường.");
+  if (state.chartType === "scatter" && numericMetricCount < 2) {
+    messages.push("Biểu đồ phân tán cần ít nhất hai chỉ số số.");
   }
   if (state.chartType === "combo" && metricCount < 2) {
     messages.push("Biểu đồ kết hợp cần ít nhất hai chỉ số đo lường.");
   }
 
+  for (const dimension of [
+    ...state.dimensions,
+    ...(state.series ? [state.series] : []),
+  ]) {
+    const field = fields.get(dimension.fieldId);
+    if (
+      field
+      && dimension.nullHandling === "label"
+      && !canUseNullLabel(field)
+    ) {
+      messages.push("Chỉ trường văn bản mới được gán nhãn cho giá trị rỗng.");
+    }
+  }
+
   return {
     valid: messages.length === 0,
     messages: [...new Set(messages)],
+  };
+}
+
+export function canUseNullLabel(
+  field: Pick<CatalogFieldMeta, "dataType"> | null | undefined,
+) {
+  return field?.dataType === "string";
+}
+
+export function defaultNullHandlingForField(
+  field: Pick<CatalogFieldMeta, "dataType"> | null | undefined,
+): NullHandling {
+  return canUseNullLabel(field) ? "label" : "include";
+}
+
+export function normalizeDimensionSelectionForField(
+  selection: DimensionSelection,
+  field: Pick<CatalogFieldMeta, "dataType" | "dateGrains"> | null | undefined,
+): DimensionSelection {
+  const nextNullHandling = (
+    selection.nullHandling === "label" && !canUseNullLabel(field)
+      ? "include"
+      : selection.nullHandling || defaultNullHandlingForField(field)
+  );
+  return {
+    ...selection,
+    dateGrain: field?.dataType === "date"
+      ? selection.dateGrain || null
+      : null,
+    nullHandling: nextNullHandling,
+  };
+}
+
+export function buildDimensionSelectionForField(
+  field: Pick<CatalogFieldMeta, "id" | "dataType" | "dateGrains">,
+): DimensionSelection {
+  return normalizeDimensionSelectionForField(
+    {
+      fieldId: field.id,
+      alias: field.id,
+      dateGrain: field.dataType === "date" ? "month" : null,
+      nullHandling: defaultNullHandlingForField(field),
+    },
+    field,
+  );
+}
+
+export function normalizeChartBuilderState(
+  state: ChartBuilderState,
+  dataset: CatalogDatasetMeta | null,
+): ChartBuilderState {
+  if (!dataset) return state;
+  const fields = new Map(dataset.fields.map((field) => [field.id, field]));
+  return {
+    ...state,
+    dimensions: state.dimensions.map((dimension) => (
+      normalizeDimensionSelectionForField(
+        dimension,
+        fields.get(dimension.fieldId),
+      )
+    )),
+    series: state.series
+      ? normalizeDimensionSelectionForField(
+        state.series,
+        fields.get(state.series.fieldId),
+      )
+      : null,
   };
 }

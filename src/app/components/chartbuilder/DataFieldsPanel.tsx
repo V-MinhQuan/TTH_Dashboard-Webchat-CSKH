@@ -108,7 +108,7 @@ export function DataFieldsPanel({
     >
       <div className="chart-builder-panel-header">
         <div>
-          <h2>TRƯỜNG DỮ LIỆU</h2>
+          <h2>Trường dữ liệu</h2>
           <p>Kéo thả hoặc nhấn để chọn trường</p>
         </div>
         {onClose && (
@@ -189,7 +189,7 @@ export function DataFieldsPanel({
             {recentFields.length > 0 && (
               <section className="chart-builder-recent-fields">
                 <div className="chart-builder-saved-configs-title">
-                  DÙNG GẦN ĐÂY
+                  Dùng gần đây
                 </div>
                 <div>
                   {recentFields.map((field) => (

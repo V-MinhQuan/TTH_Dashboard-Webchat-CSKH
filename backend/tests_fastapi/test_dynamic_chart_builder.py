@@ -14,7 +14,11 @@ from pydantic import ValidationError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.config.chart_builder_catalog import get_dataset_catalog
+from app.config.chart_builder_catalog import (
+    DatasetDefinition,
+    FieldDefinition,
+    get_dataset_catalog,
+)
 from app.main import app
 from app.repositories import chart_builder_repository as repository_module
 from app.repositories.chart_builder_repository import ChartBuilderRepository
@@ -70,6 +74,41 @@ def test_conversation_identifier_is_count_distinct_metric_with_business_label():
         assert field.default_aggregation == "count_distinct"
         assert set(field.aggregations) == {"count", "count_distinct"}
         assert "sum" not in field.aggregations
+
+
+def test_conversation_channel_dataset_scopes_to_known_operating_channels():
+    compiler = ChartQueryCompiler(get_dataset_catalog())
+    request = CustomChartRequest.model_validate(
+        {
+            "version": 2,
+            "mode": "custom",
+            "datasetId": "conversations",
+            "chartType": "bar",
+            "dimensions": [
+                {
+                    "fieldId": "channel",
+                    "alias": "channel",
+                    "nullHandling": "label",
+                }
+            ],
+            "metrics": [
+                {
+                    "fieldId": "conversation_id",
+                    "aggregation": "count_distinct",
+                    "alias": "n",
+                }
+            ],
+            "filters": [],
+            "sort": [{"fieldId": "n", "direction": "desc"}],
+            "limit": 100,
+        }
+    )
+
+    compiled = compiler.compile(request)
+
+    assert "c.Source IN" in compiled.sql
+    assert "ZaloBusiness" in compiled.sql
+    assert "ChatWidget" in compiled.sql
 
 
 @pytest.mark.parametrize("field_id", ["topic", "keyword"])
@@ -276,6 +315,157 @@ def test_type_aware_filter_validation_rejects_contains_on_number():
 def test_schema_rejects_incompatible_scatter_before_query_compilation():
     with pytest.raises(ValidationError, match="ít nhất hai chỉ số"):
         custom_request(chartType="scatter")
+
+
+def test_compiler_rejects_boolean_dimension_null_label():
+    compiler = ChartQueryCompiler(get_dataset_catalog())
+    request = CustomChartRequest.model_validate(
+        {
+            "version": 2,
+            "mode": "custom",
+            "datasetId": "conversations",
+            "chartType": "stacked_bar",
+            "dimensions": [
+                {
+                    "fieldId": "channel",
+                    "alias": "channel",
+                    "nullHandling": "label",
+                }
+            ],
+            "metrics": [
+                {
+                    "fieldId": "conversation_id",
+                    "aggregation": "count_distinct",
+                    "alias": "n",
+                }
+            ],
+            "series": {
+                "fieldId": "no_response_needed",
+                "alias": "no_response_needed",
+                "nullHandling": "label",
+            },
+            "filters": [],
+            "sort": [],
+            "limit": 100,
+        }
+    )
+
+    with pytest.raises(ValueError, match="Chỉ trường văn bản"):
+        compiler.compile(request)
+
+
+def test_service_does_not_execute_sql_when_custom_validation_fails():
+    repository = MagicMock(spec=ChartBuilderRepository)
+    service = ChartBuilderService(repository=repository)
+    request = custom_request(
+        filters=[
+            {
+                "fieldId": "message_at",
+                "operator": "between",
+                "value": "2026-06-12",
+                "valueTo": "2026-06-01",
+            }
+        ]
+    )
+
+    with pytest.raises(ValueError, match="Ngày bắt đầu"):
+        service.get_chart_data(request)
+
+    repository.execute_custom_query.assert_not_called()
+
+
+def test_compiler_rejects_overlong_text_filter_before_query_execution():
+    repository = MagicMock(spec=ChartBuilderRepository)
+    service = ChartBuilderService(repository=repository)
+    request = custom_request(
+        filters=[
+            {
+                "fieldId": "channel",
+                "operator": "contains",
+                "value": "x" * 501,
+            }
+        ]
+    )
+
+    with pytest.raises(ValueError, match="quá dài"):
+        service.get_chart_data(request)
+
+    repository.execute_custom_query.assert_not_called()
+
+
+def test_scatter_requires_two_numeric_metric_fields_not_just_two_metrics():
+    catalog = {
+        "toy": DatasetDefinition(
+            id="toy",
+            label="Toy",
+            description="Toy dataset",
+            root_sql="dbo.Toy t",
+            root_alias="t",
+            fields={
+                "category": FieldDefinition(
+                    id="category",
+                    label="Category",
+                    expression="t.Category",
+                    data_type="string",
+                    semantic_type="category",
+                    roles=("dimension",),
+                ),
+                "text_metric": FieldDefinition(
+                    id="text_metric",
+                    label="Text metric",
+                    expression="t.TextValue",
+                    data_type="string",
+                    semantic_type="text",
+                    roles=("metric",),
+                    aggregations=("count",),
+                    default_aggregation="count",
+                ),
+                "number_metric": FieldDefinition(
+                    id="number_metric",
+                    label="Number metric",
+                    expression="t.NumberValue",
+                    data_type="number",
+                    semantic_type="number",
+                    roles=("metric",),
+                    aggregations=("sum",),
+                    default_aggregation="sum",
+                ),
+            },
+            relations={},
+            required_objects={},
+            default_date_field=None,
+            default_dimension="category",
+            default_metric="number_metric",
+        )
+    }
+    compiler = ChartQueryCompiler(catalog)
+    request = CustomChartRequest.model_validate(
+        {
+            "version": 2,
+            "mode": "custom",
+            "datasetId": "toy",
+            "chartType": "scatter",
+            "dimensions": [],
+            "metrics": [
+                {
+                    "fieldId": "text_metric",
+                    "aggregation": "count",
+                    "alias": "text_count",
+                },
+                {
+                    "fieldId": "number_metric",
+                    "aggregation": "sum",
+                    "alias": "number_sum",
+                },
+            ],
+            "filters": [],
+            "sort": [],
+            "limit": 100,
+        }
+    )
+
+    with pytest.raises(ValueError, match="hai chỉ số số"):
+        compiler.compile(request)
 
 
 def test_version_1_saved_config_is_normalized_without_rewriting():
@@ -569,6 +759,51 @@ def test_catalog_and_preview_endpoints(dynamic_client):
     assert preview_response.status_code == 200
     assert preview_response.json()["data"]["execution"]["rowCount"] == 0
     assert "Số lượng hội thoại" in catalog_response.content.decode("utf-8")
+
+
+def test_preview_endpoint_rejects_boolean_null_label_before_repository_call():
+    repository = MagicMock(spec=ChartBuilderRepository)
+    service = ChartBuilderService(repository=repository)
+    app.dependency_overrides[get_chart_builder_service] = lambda: service
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/chart-builder/preview",
+                json={
+                    "version": 2,
+                    "mode": "custom",
+                    "datasetId": "conversations",
+                    "chartType": "stacked_bar",
+                    "dimensions": [
+                        {
+                            "fieldId": "channel",
+                            "alias": "channel",
+                            "nullHandling": "label",
+                        }
+                    ],
+                    "metrics": [
+                        {
+                            "fieldId": "conversation_id",
+                            "aggregation": "count_distinct",
+                            "alias": "n",
+                        }
+                    ],
+                    "series": {
+                        "fieldId": "no_response_needed",
+                        "alias": "no_response_needed",
+                        "nullHandling": "label",
+                    },
+                    "filters": [],
+                    "sort": [],
+                    "limit": 100,
+                },
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 400
+    assert "Chỉ trường văn bản" in response.json()["message"]
+    repository.execute_custom_query.assert_not_called()
 
 
 def test_catalog_returns_safe_500_when_sql_server_is_disconnected():

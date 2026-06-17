@@ -68,6 +68,14 @@ export interface PriorityConversation {
   isOvertime: boolean;
 }
 
+export interface DailyTrend {
+  date: string;
+  total: number;
+  processed?: number;
+  unprocessed?: number;
+  [key: string]: string | number | undefined;
+}
+
 export interface DashboardKpiData {
   totalConversations: number;
   totalMessages: number;
@@ -82,6 +90,7 @@ export interface DashboardKpiData {
   urgentAlerts: UrgentAlert[];
   topQuestions: TopQuestion[];
   priorityConversations: PriorityConversation[];
+  dailyTrends: DailyTrend[];
 }
 
 export interface ChannelSummary {

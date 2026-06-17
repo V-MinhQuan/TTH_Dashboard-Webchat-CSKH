@@ -18,6 +18,7 @@ import {
   DIMENSION_GUIDANCE,
   FILTER_OPERATOR_LABELS,
 } from "./chartBuilderLabels";
+import { buildDimensionSelectionForField } from "./chartBuilderValidation";
 
 interface Props {
   dataset: CatalogDatasetMeta | null;
@@ -119,13 +120,12 @@ export function ChartSettingsPanel({
                 value={primaryDimension?.fieldId || ""}
                 onChange={(event) => {
                   const fieldId = event.target.value;
+                  const field = dimensionFields.find(
+                    (item) => item.id === fieldId,
+                  );
                   onChange({
-                    dimensions: fieldId
-                      ? [{
-                        fieldId,
-                        alias: fieldId,
-                        nullHandling: "include",
-                      }]
+                    dimensions: field
+                      ? [buildDimensionSelectionForField(field)]
                       : [],
                   });
                 }}
@@ -207,15 +207,16 @@ export function ChartSettingsPanel({
               <span>Phân nhóm chuỗi dữ liệu</span>
               <select
                 value={state.series?.fieldId || ""}
-                onChange={(event) => onChange({
-                  series: event.target.value
-                    ? {
-                      fieldId: event.target.value,
-                      alias: event.target.value,
-                      nullHandling: "label",
-                    }
-                    : null,
-                })}
+                onChange={(event) => {
+                  const field = seriesFields.find(
+                    (item) => item.id === event.target.value,
+                  );
+                  onChange({
+                    series: field
+                      ? buildDimensionSelectionForField(field)
+                      : null,
+                  });
+                }}
               >
                 <option value="">Không phân nhóm</option>
                 {seriesFields.map((field) => (

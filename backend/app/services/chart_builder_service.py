@@ -242,6 +242,9 @@ class ChartBuilderService:
                 )
             return rows, series
 
+        series_field = self.catalog[request.dataset_id].fields.get(
+            request.series.field_id
+        ) if request.series else None
         grouped_rows: Dict[tuple[Any, ...], Dict[str, Any]] = {}
         dynamic_series: Dict[str, Dict[str, Any]] = {}
         for row in rows:
@@ -256,20 +259,20 @@ class ChartBuilderService:
                 },
             )
             raw_series_value = row.get(compiled.series_alias)
-            series_value = (
-                "Không xác định"
-                if raw_series_value is None or raw_series_value == ""
-                else str(raw_series_value)
+            series_key_value = self._series_display_key(raw_series_value)
+            series_label_value = self._dimension_display_value(
+                raw_series_value,
+                series_field.data_type if series_field else None,
             )
             for metric_index, metric_alias in enumerate(compiled.metric_aliases):
                 selection = metric_selections[metric_alias]
-                output_key = self._series_key(metric_alias, series_value)
+                output_key = self._series_key(metric_alias, series_key_value)
                 output_row[output_key] = row.get(metric_alias)
                 if output_key not in dynamic_series:
                     label = selection.label or metric_alias
                     dynamic_series[output_key] = self._series_payload(
                         output_key,
-                        f"{label} - {series_value}",
+                        f"{label} - {series_label_value}",
                         selection,
                         len(dynamic_series) + metric_index,
                     )
@@ -520,6 +523,26 @@ class ChartBuilderService:
             for character in series_value.lower()
         ).strip("_")
         return f"{metric_alias}__{normalized or 'unknown'}"[:120]
+
+    @staticmethod
+    def _dimension_display_value(
+        value: Any,
+        data_type: str | None = None,
+    ) -> str:
+        if data_type == "boolean":
+            if value is True:
+                return "Không cần phản hồi"
+            if value is False:
+                return "Cần phản hồi"
+        if value is None or value == "":
+            return "Không xác định"
+        return str(value)
+
+    @staticmethod
+    def _series_display_key(value: Any) -> str:
+        if value is None or value == "":
+            return "unknown"
+        return str(value)
 
     @staticmethod
     def _format_saved_config(row: Dict[str, Any]) -> Dict[str, Any]:

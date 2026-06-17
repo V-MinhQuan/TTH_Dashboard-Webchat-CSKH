@@ -26,7 +26,7 @@
   {
     "id": 4,
     "word": "chứng chỉ",
-    "groupId": "toeic",
+    "groupId": "chuandaura",
     "status": "active",
     "createdAt": "2026-06-03T04:00:00.000Z",
     "updatedAt": "2026-06-03T04:00:00.000Z"
@@ -121,7 +121,7 @@
   },
   {
     "id": 16,
-    "word": "điều kiện chuẩn đầu ra",
+    "word": "chuẩn đầu ra",
     "groupId": "chuandaura",
     "status": "active",
     "createdAt": "2026-06-03T04:00:00.000Z",
@@ -129,7 +129,7 @@
   },
   {
     "id": 17,
-    "word": "chứng chỉ hợp lệ",
+    "word": "đầu ra",
     "groupId": "chuandaura",
     "status": "active",
     "createdAt": "2026-06-03T04:00:00.000Z",
@@ -145,7 +145,7 @@
   },
   {
     "id": 19,
-    "word": "quy đổi điểm",
+    "word": "xét tốt nghiệp",
     "groupId": "chuandaura",
     "status": "active",
     "createdAt": "2026-06-03T04:00:00.000Z",

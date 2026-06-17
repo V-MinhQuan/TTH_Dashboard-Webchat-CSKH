@@ -9,7 +9,11 @@ import {
   themePalettes,
 } from "../chartbuilder/ChartSettingsPanel";
 import { CHART_BUILDER_LABELS } from "../chartbuilder/chartBuilderLabels";
-import { validateChartConfiguration } from "../chartbuilder/chartBuilderValidation";
+import {
+  buildDimensionSelectionForField,
+  normalizeChartBuilderState,
+  validateChartConfiguration,
+} from "../chartbuilder/chartBuilderValidation";
 import { ChartToolbar } from "../chartbuilder/ChartToolbar";
 import {
   ChartFieldDragData,
@@ -171,7 +175,6 @@ export function ChartBuilder({
           setState((current) => configureForDataset(
             current,
             firstAvailable,
-            globalFilters,
           ));
         }
       })
@@ -239,7 +242,10 @@ export function ChartBuilder({
   const updateState = (changes: Partial<ChartBuilderState>) => {
     setLegacyConfig(null);
     setState((current) => {
-      const next = { ...current, ...changes };
+      const next = normalizeChartBuilderState(
+        { ...current, ...changes },
+        selectedDataset,
+      );
       if (changes.metrics || changes.dimensions || changes.series !== undefined) {
         const nextMetrics = changes.metrics || next.metrics;
         const metricAliases = new Set(
@@ -280,7 +286,6 @@ export function ChartBuilder({
     setState((current) => configureForDataset(
       current,
       dataset,
-      globalFilters,
     ));
     setDataError("");
   };
@@ -299,12 +304,11 @@ export function ChartBuilder({
     setLegacyConfig(null);
     setState((current) => reconcileSelectedOutputs({
       ...current,
-      dimensions: [{
-        fieldId: field.fieldId,
-        alias: field.fieldId,
-        dateGrain: field.dataType === "date" ? "month" : null,
-        nullHandling: field.dataType === "string" ? "label" : "include",
-      }],
+      dimensions: [buildDimensionSelectionForField({
+        id: field.fieldId,
+        dataType: field.dataType,
+        dateGrains: [],
+      })],
       chartType: field.dataType === "date" ? "line" : current.chartType,
     }));
   };
@@ -344,11 +348,11 @@ export function ChartBuilder({
   const addSeriesField = (field: ChartFieldDragData) => {
     if (!field.roles.includes("series")) return;
     updateState({
-      series: {
-        fieldId: field.fieldId,
-        alias: field.fieldId,
-        nullHandling: "label",
-      },
+      series: buildDimensionSelectionForField({
+        id: field.fieldId,
+        dataType: field.dataType,
+        dateGrains: [],
+      }),
     });
   };
 
@@ -411,7 +415,7 @@ export function ChartBuilder({
         return;
       }
       setLegacyConfig(null);
-      setState(normalizeCustomConfig(saved.config));
+      setState(normalizeCustomConfig(saved.config, dataset));
     } else {
       setLegacyConfig({
         ...saved.config,
@@ -461,7 +465,7 @@ export function ChartBuilder({
     setLegacyConfig(null);
     setState(
       firstAvailable
-        ? configureForDataset(emptyState, firstAvailable, globalFilters)
+        ? configureForDataset(emptyState, firstAvailable)
         : emptyState,
     );
     setData(null);
@@ -607,6 +611,7 @@ export function ChartBuilder({
                   data={data}
                   loading={loadingData}
                   error={dataError}
+                  configured={Boolean(legacyConfig || selectedDataset)}
                   invalidMessages={
                     legacyConfig || customValidation.valid
                       ? []
@@ -654,7 +659,6 @@ export function ChartBuilder({
 function configureForDataset(
   current: ChartBuilderState,
   dataset: CatalogDatasetMeta,
-  globalFilters: FilterValues,
 ): ChartBuilderState {
   const dimensionField = dataset.fields.find(
     (field) => field.id === dataset.defaultDimension && field.available,
@@ -678,19 +682,12 @@ function configureForDataset(
     datasetId: dataset.id,
     chartType,
     dimensions: dimensionField
-      ? [{
-        fieldId: dimensionField.id,
-        alias: dimensionField.id,
-        dateGrain: dimensionField.dataType === "date" ? "month" : null,
-        nullHandling: dimensionField.dataType === "string"
-          ? "label"
-          : "include",
-      }]
+      ? [buildDimensionSelectionForField(dimensionField)]
       : [],
     metrics: metric ? [metric] : [],
     series: null,
     tooltipFields: [],
-    filters: globalFiltersToDynamic(dataset, globalFilters),
+    filters: [],
     sort: metric?.alias
       ? [{ fieldId: metric.alias, direction: "desc" }]
       : [],
@@ -762,8 +759,9 @@ function hasFilterValue(value: unknown) {
 
 function normalizeCustomConfig(
   config: ChartBuilderState,
+  dataset: CatalogDatasetMeta | null,
 ): ChartBuilderState {
-  return {
+  return normalizeChartBuilderState({
     ...emptyState,
     ...config,
     dimensions: config.dimensions || [],
@@ -776,49 +774,7 @@ function normalizeCustomConfig(
       ...emptyState.chartSettings,
       ...(config.chartSettings || {}),
     },
-  };
-}
-
-function globalFiltersToDynamic(
-  dataset: CatalogDatasetMeta,
-  filters: FilterValues,
-): FilterSelection[] {
-  const result: FilterSelection[] = [];
-  const dateField = dataset.fields.find(
-    (field) => (
-      field.id === dataset.defaultDateField
-      && field.available
-      && field.roles.includes("filter")
-    ),
-  );
-  const channelField = dataset.fields.find(
-    (field) => (
-      field.semanticType === "channel"
-      && field.available
-      && field.roles.includes("filter")
-    ),
-  );
-  const fromDate = filters.customDateFrom || calculateFromDate(filters.dateRange);
-  const toDate = filters.customDateTo || (
-    fromDate ? formatDate(new Date()) : undefined
-  );
-  if (dateField && fromDate && toDate) {
-    result.push({
-      fieldId: dateField.id,
-      operator: "between",
-      value: fromDate,
-      valueTo: toDate,
-    });
-  }
-  const channel = globalChannelToDb(filters.channel);
-  if (channelField && channel) {
-    result.push({
-      fieldId: channelField.id,
-      operator: "eq",
-      value: channel,
-    });
-  }
-  return result;
+  }, dataset);
 }
 
 function dynamicFiltersToGlobal(
@@ -874,31 +830,6 @@ function reconcileSelectedOutputs(
   };
 }
 
-function calculateFromDate(dateRange: string) {
-  const today = new Date();
-  const from = new Date(today);
-  if (dateRange.includes("7")) from.setDate(today.getDate() - 6);
-  else if (dateRange.includes("30")) from.setDate(today.getDate() - 29);
-  else if (dateRange === "Hôm nay") from.setDate(today.getDate());
-  else if (dateRange === "Tháng này") from.setDate(1);
-  else if (dateRange === "Quý này") {
-    from.setMonth(Math.floor(today.getMonth() / 3) * 3, 1);
-  } else {
-    return undefined;
-  }
-  return formatDate(from);
-}
-
-function globalChannelToDb(value: string) {
-  const channels: Record<string, string> = {
-    "Zalo Business": "ZaloBusiness",
-    "Zalo OA": "ZaloOA",
-    "Chat Widget": "ChatWidget",
-    Facebook: "Facebook",
-  };
-  return channels[value] || "";
-}
-
 function dbChannelToGlobal(value: string) {
   const channels: Record<string, string> = {
     ZaloBusiness: "Zalo Business",
@@ -907,13 +838,6 @@ function dbChannelToGlobal(value: string) {
     Facebook: "Facebook",
   };
   return channels[value] || "Tất cả";
-}
-
-function formatDate(value: Date) {
-  const year = value.getFullYear();
-  const month = String(value.getMonth() + 1).padStart(2, "0");
-  const day = String(value.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
 }
 
 function userFacingError(error: unknown, fallback: string) {

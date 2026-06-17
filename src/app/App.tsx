@@ -8,7 +8,8 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import { SettingsProvider } from "./context/SettingsContext";
 import { LoginScreen } from "./components/screens/Login";
 
-const AIChatWidget = lazy(() => import("./components/AIChatWidget").then((m) => ({ default: m.AIChatWidget })));
+// AI Chat Widget tạm ẩn chờ phát triển sau
+// const AIChatWidget = lazy(() => import("./components/AIChatWidget").then((m) => ({ default: m.AIChatWidget })));
 const Overview = lazy(() => import("./components/screens/Overview").then((m) => ({ default: m.Overview })));
 const ChannelAnalysis = lazy(() => import("./components/screens/ChannelAnalysis").then((m) => ({ default: m.ChannelAnalysis })));
 const QuestionAnalysis = lazy(() => import("./components/screens/QuestionAnalysis").then((m) => ({ default: m.QuestionAnalysis })));
@@ -120,8 +121,8 @@ function MainApp() {
         return <QuestionAnalysis {...baseProps} />;
       case "keyword":
         return <KeywordAnalysis {...baseProps} />;
-      case "performance":
-        return <PerformanceAnalysis {...baseProps} />;
+      // case "performance": // Tạm ẩn trang Hiệu suất
+      //   return <PerformanceAnalysis {...baseProps} />;
       case "conversation":
         return <MyWorkspace />;
       case "todo":
@@ -197,11 +198,13 @@ function MainApp() {
         </main>
       </div>
 
+      {/* 
       <div className="print-hidden">
         <Suspense fallback={null}>
           <AIChatWidget />
         </Suspense>
-      </div>
+      </div> 
+      */}
 
       <Toaster
         position="bottom-right"

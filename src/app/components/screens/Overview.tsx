@@ -196,8 +196,8 @@ function AlertCard({ alert, alertTypeIcon, onClose, isFlagged, onFlag }: AlertCa
         >
           <Flag size={9} /> {isFlagged ? "Bỏ đánh dấu" : "Đánh dấu"}
         </button>
-        <button 
-          onClick={handleClose} 
+        <button
+          onClick={handleClose}
           disabled={isProcessing}
           style={{ padding: "3px 8px", borderRadius: "6px", border: "none", background: "#003BB9", color: "#fff", cursor: isProcessing ? "not-allowed" : "pointer", fontSize: "10px", fontWeight: 600, display: "flex", alignItems: "center", gap: "2px", opacity: isProcessing ? 0.6 : 1 }}
         >
@@ -349,22 +349,34 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
 
   // Lọc tổng số theo kênh đang bật
   if (kpiData) {
-    totalConversations = 0;
-    totalMessages = 0;
-    if (settings.dataSourceZaloBiz) {
+    const hasSourceBreakdown = Object.values(kpiData.sourceSummary).some((value) => value > 0);
+    const hasMessageBreakdown = Object.values(kpiData.messageSummary).some((value) => value > 0);
+
+    if (hasSourceBreakdown) totalConversations = 0;
+    if (hasMessageBreakdown) totalMessages = 0;
+
+    if (settings.dataSourceZaloBiz && hasSourceBreakdown) {
       totalConversations += kpiData.sourceSummary.ZaloBusiness || 0;
+    }
+    if (settings.dataSourceZaloBiz && hasMessageBreakdown) {
       totalMessages += kpiData.messageSummary.ZaloBusiness || 0;
     }
-    if (settings.dataSourceFb) {
+    if (settings.dataSourceFb && hasSourceBreakdown) {
       totalConversations += kpiData.sourceSummary.Facebook || 0;
+    }
+    if (settings.dataSourceFb && hasMessageBreakdown) {
       totalMessages += kpiData.messageSummary.Facebook || 0;
     }
-    if (settings.dataSourceZalo) {
+    if (settings.dataSourceZalo && hasSourceBreakdown) {
       totalConversations += kpiData.sourceSummary.ZaloOA || 0;
+    }
+    if (settings.dataSourceZalo && hasMessageBreakdown) {
       totalMessages += kpiData.messageSummary.ZaloOA || 0;
     }
-    if (settings.dataSourceWidget) {
+    if (settings.dataSourceWidget && hasSourceBreakdown) {
       totalConversations += kpiData.sourceSummary.ChatWidget || 0;
+    }
+    if (settings.dataSourceWidget && hasMessageBreakdown) {
       totalMessages += kpiData.messageSummary.ChatWidget || 0;
     }
   }
@@ -645,661 +657,661 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
       </div>
 
       <div style={{ backgroundColor: "#f4f6fa" }}>
-      {/* Label đầu trang */}
-      <div style={{ marginBottom: "16px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <div style={{ width: "4px", height: "22px", borderRadius: "2px", background: `linear-gradient(180deg, ${ORANGE}, #ED5206)` }} />
-          <h2 style={{ fontSize: "16px", fontWeight: 700, color: "#003BB9", margin: 0 }}>Tổng quan hệ thống</h2>
-        </div>
-        <p style={{ fontSize: "12px", color: "rgba(0,59,185,0.5)", marginLeft: "14px", marginTop: "4px" }}>Theo dõi hoạt động WebChat CSKH và chất lượng chatbot AI</p>
-      </div>
-
-      {/* Live Indicator & Làm mới thủ công */}
-      <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "18px", justifyContent: "space-between" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-            <div style={{ width: "7px", height: "7px", borderRadius: "50%", backgroundColor: "#228A61", animation: "glowPulse 2s ease-in-out infinite" }} />
-            <span style={{ fontSize: "12px", color: "#228A61", fontWeight: 600 }}>Trực tiếp</span>
+        {/* Label đầu trang */}
+        <div style={{ marginBottom: "16px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <div style={{ width: "4px", height: "22px", borderRadius: "2px", background: `linear-gradient(180deg, ${ORANGE}, #ED5206)` }} />
+            <h2 style={{ fontSize: "16px", fontWeight: 700, color: "#003BB9", margin: 0 }}>Tổng quan hệ thống</h2>
           </div>
-          <span style={{ fontSize: "12px", color: "rgba(0,59,185,0.5)" }}>Cập nhật gần nhất: {lastUpdatedTime} hôm nay</span>
-          <span style={{ fontSize: "11px", color: "rgba(0,59,185,0.35)" }}>· Tự động cập nhật mỗi 30 phút</span>
-          <span style={{ fontSize: "11px", color: "rgba(0,59,185,0.35)" }}>
-          </span>
-          {isScreenRefreshing && (
-            <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-              <RefreshCw size={12} style={{ color: ORANGE, animation: "spin 1s linear infinite" }} />
-              <span style={{ fontSize: "11px", color: ORANGE, fontWeight: 600 }}>Đang cập nhật...</span>
+          <p style={{ fontSize: "12px", color: "rgba(0,59,185,0.5)", marginLeft: "14px", marginTop: "4px" }}>Theo dõi hoạt động WebChat CSKH và chất lượng chatbot AI</p>
+        </div>
+
+        {/* Live Indicator & Làm mới thủ công */}
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "18px", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <div style={{ width: "7px", height: "7px", borderRadius: "50%", backgroundColor: "#228A61", animation: "glowPulse 2s ease-in-out infinite" }} />
+              <span style={{ fontSize: "12px", color: "#228A61", fontWeight: 600 }}>Trực tiếp</span>
             </div>
-          )}
-        </div>
-        <button
-          onClick={handleManualRefresh}
-          disabled={isScreenRefreshing}
-          style={{ padding: "6px 14px", borderRadius: "8px", border: "1px solid rgba(0,59,185,0.12)", background: "#fff", color: "#003BB9", cursor: isScreenRefreshing ? "not-allowed" : "pointer", fontSize: "12px", fontWeight: 500, display: "flex", alignItems: "center", gap: "6px", opacity: isScreenRefreshing ? 0.6 : 1, flexShrink: 0 }}
-        >
-          <RefreshCw size={12} style={{ animation: isScreenRefreshing ? "spin 1s linear infinite" : "none" }} /> Làm mới
-        </button>
-      </div>
-
-      {/* KPI Cards Grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "12px", marginBottom: "20px" }}>
-        {kpiList.map((kpi) => (
-          <KpiCard
-            key={kpi.title}
-            title={kpi.title}
-            value={kpi.value}
-            icon={kpi.icon}
-            change={kpi.change}
-            isWarning={kpi.isWarning}
-          />
-        ))}
-      </div>
-
-      {/* Cần xử lý ngay (Hội thoại khẩn cấp) */}
-      <div style={{ marginBottom: "24px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
-          <div style={{ width: "4px", height: "18px", borderRadius: "2px", background: `linear-gradient(180deg, ${ORANGE}, #ED5206)` }} />
-          <h2 style={{ color: "#003BB9", fontSize: "15px", fontWeight: 700, margin: 0 }}>Cảnh báo khẩn cấp cần xử lý ngay</h2>
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-          {/* Cột 1: Hội thoại chờ phản hồi quá 10 giờ */}
-          <div style={{ backgroundColor: "#FDFEFE", borderRadius: "16px", border: "1px solid rgba(0,59,185,0.07)", boxShadow: "0 2px 10px rgba(0,59,185,0.03)", padding: "16px" }}>
-            <h3 style={{ color: "#D73C01", fontSize: "13px", fontWeight: 700, display: "flex", alignItems: "center", gap: "6px", marginTop: 0, marginBottom: "12px", borderBottom: "1px solid rgba(215,60,1,0.1)", paddingBottom: "8px" }}>
-              <Clock size={14} />
-              Hội thoại chờ quá 10 giờ
-              <span style={{ fontSize: "10px", backgroundColor: "#FFF4EE", color: "#D73C01", border: "1px solid #FBCBB8", borderRadius: "20px", padding: "1px 6px", fontWeight: 700, marginLeft: "auto" }}>
-                {overtimeAlerts.length}
-              </span>
-            </h3>
-            <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxHeight: "360px", overflowY: "auto", paddingRight: "4px" }}>
-              {overtimeAlerts.length === 0 ? (
-                <div style={{ padding: "24px", textAlign: "center", color: "rgba(0,59,185,0.4)", fontSize: "11px", border: "1px dashed rgba(0,59,185,0.15)", borderRadius: "10px", background: "#fcfcfc" }}>
-                  Không có cuộc hội thoại nào chờ phản hồi quá 10 giờ
-                </div>
-              ) : (
-                overtimeAlerts.map((alert) => (
-                  <AlertCard key={alert.id} alert={alert} alertTypeIcon={alertTypeIcon} onClose={handleCloseConversation} isFlagged={flaggedAlertIds.has(String(alert.id))} onFlag={handleFlagAlert} />
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* Cột 2: AI trả lời không chắc chắn */}
-          <div style={{ backgroundColor: "#FDFEFE", borderRadius: "16px", border: "1px solid rgba(0,59,185,0.07)", boxShadow: "0 2px 10px rgba(0,59,185,0.03)", padding: "16px" }}>
-            <h3 style={{ color: "#B7791F", fontSize: "13px", fontWeight: 700, display: "flex", alignItems: "center", gap: "6px", marginTop: 0, marginBottom: "12px", borderBottom: "1px solid rgba(183,121,31,0.1)", paddingBottom: "8px" }}>
-              <AlertTriangle size={14} />
-              AI trả lời không chắc chắn
-              <span style={{ fontSize: "10px", backgroundColor: "#FFF7E6", color: "#B7791F", border: "1px solid #FADFA8", borderRadius: "20px", padding: "1px 6px", fontWeight: 700, marginLeft: "auto" }}>
-                {aiAlerts.length}
-              </span>
-            </h3>
-            <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxHeight: "360px", overflowY: "auto", paddingRight: "4px" }}>
-              {aiAlerts.length === 0 ? (
-                <div style={{ padding: "24px", textAlign: "center", color: "rgba(0,59,185,0.4)", fontSize: "11px", border: "1px dashed rgba(0,59,185,0.15)", borderRadius: "10px", background: "#fcfcfc" }}>
-                  Không có cảnh báo AI trả lời không chắc chắn
-                </div>
-              ) : (
-                aiAlerts.map((alert) => (
-                  <AlertCard key={alert.id} alert={alert} alertTypeIcon={alertTypeIcon} onClose={handleCloseConversation} isFlagged={flaggedAlertIds.has(String(alert.id))} onFlag={handleFlagAlert} />
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Row biểu đồ 1: Đường xu hướng và Phân bổ kênh nguồn */}
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "20px", marginBottom: "24px" }}>
-        <ChartCard
-          title="Lượng hội thoại theo thời gian"
-          onOpenBuilder={() => onNavigate("chartbuilder")}
-          data={dailyTrends}
-          defaultChartType="line"
-        >
-          {({ chartType, chartData, editValues }: any) => {
-            const valueKey =
-              editValues.values === "AI trả lời thành công"
-                ? "ai_ok"
-                : editValues.values === "AI trả lời thất bại"
-                  ? "ai_fail"
-                  : "total";
-
-            const nameKey = "date";
-
-            let sortedData = [...chartData];
-            if (editValues.sort === "Tăng dần") {
-              sortedData.sort((a, b) => (a[valueKey] || 0) - (b[valueKey] || 0));
-            } else if (editValues.sort === "Giảm dần") {
-              sortedData.sort((a, b) => (b[valueKey] || 0) - (a[valueKey] || 0));
-            } else if (editValues.sort === "A-Z") {
-              sortedData.sort((a, b) => String(a[nameKey] || "").localeCompare(String(b[nameKey] || "")));
-            }
-
-            const renderChart = () => {
-              if (chartType === "donut" || chartType === "pie") {
-                const pieData = sortedData
-                  .filter((d) => d[valueKey] !== null)
-                  .map((d) => ({ name: d[nameKey], value: d[valueKey] }));
-                const COLORS = ["#003BB9", "#D73C01", "rgba(0,59,185,0.6)", "#ED5206", "rgba(0,59,185,0.3)"];
-                return (
-                  <PieChart id="pie-chart-trend">
-                    <Pie
-                      data={pieData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={chartType === "donut" ? 50 : 0}
-                      outerRadius={80}
-                      dataKey="value"
-                      label={editValues.dataLabels}
-                    >
-                      {pieData.map((entry, i) => (
-                        <Cell key={`pie-cell-${i}`} fill={COLORS[i % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <ChartTooltip />
-                    {editValues.legend && <Legend iconSize={10} />}
-                  </PieChart>
-                );
-              }
-
-              if (chartType === "bar") {
-                return (
-                  <BarChart id="bar-chart-trend" data={sortedData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,59,185,0.06)" />
-                    <XAxis dataKey={nameKey} tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
-                    <YAxis tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
-                    <ChartTooltip />
-                    {editValues.legend && <Legend iconSize={10} />}
-                    <Bar
-                      dataKey={valueKey}
-                      name={
-                        valueKey === "total"
-                          ? "Thực tế"
-                          : valueKey === "ai_ok"
-                            ? "AI trả lời thành công"
-                            : "AI trả lời thất bại"
-                      }
-                      fill="#003BB9"
-                      radius={[4, 4, 0, 0]}
-                      label={editValues.dataLabels ? { position: "top", fontSize: 10 } : undefined}
-                    />
-
-                  </BarChart>
-                );
-              }
-
-              if (chartType === "hbar") {
-                return (
-                  <BarChart id="hbar-chart-trend" data={sortedData} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,59,185,0.06)" />
-                    <XAxis type="number" tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
-                    <YAxis dataKey={nameKey} type="category" tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} width={40} />
-                    <ChartTooltip />
-                    {editValues.legend && <Legend iconSize={10} />}
-                    <Bar
-                      dataKey={valueKey}
-                      name={
-                        valueKey === "total"
-                          ? "Thực tế"
-                          : valueKey === "ai_ok"
-                            ? "AI trả lời thành công"
-                            : "AI trả lời thất bại"
-                      }
-                      fill="#003BB9"
-                      radius={[0, 4, 4, 0]}
-                      label={editValues.dataLabels ? { position: "right", fontSize: 10 } : undefined}
-                    />
-
-                  </BarChart>
-                );
-              }
-
-              if (chartType === "area") {
-                return (
-                  <AreaChart id="area-chart-trend" data={sortedData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,59,185,0.06)" />
-                    <XAxis dataKey={nameKey} tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
-                    <YAxis tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
-                    <ChartTooltip />
-                    {editValues.legend && <Legend iconSize={10} />}
-                    <Area
-                      type="monotone"
-                      dataKey={valueKey}
-                      name={
-                        valueKey === "total"
-                          ? "Thực tế"
-                          : valueKey === "ai_ok"
-                            ? "AI trả lời thành công"
-                            : "AI trả lời thất bại"
-                      }
-                      stroke="#003BB9"
-                      fill="rgba(0,59,185,0.2)"
-                      strokeWidth={2}
-                      label={editValues.dataLabels}
-                    />
-
-                  </AreaChart>
-                );
-              }
-
-              // Default: line chart
-              return (
-                <LineChart data={sortedData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,59,185,0.06)" />
-                  <XAxis dataKey={nameKey} tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
-                  <YAxis tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
-                  <ChartTooltip />
-                  {editValues.legend && <Legend iconSize={10} />}
-                  <Line
-                    type="monotone"
-                    dataKey={valueKey}
-                    name={
-                      valueKey === "total"
-                        ? "Thực tế"
-                        : valueKey === "ai_ok"
-                          ? "AI trả lời thành công"
-                          : "AI trả lời thất bại"
-                    }
-                    stroke="#003BB9"
-                    strokeWidth={2}
-                    dot={{ r: 2 }}
-                    connectNulls={false}
-                    label={editValues.dataLabels}
-                  />
-
-                </LineChart>
-              );
-            };
-
-            return (
-              <ResponsiveContainer width="100%" height={220}>
-                {renderChart()}
-              </ResponsiveContainer>
-            );
-          }}
-        </ChartCard>
-
-        <ChartCard
-          title="Phân bổ theo kênh nguồn"
-          onOpenBuilder={() => onNavigate("chartbuilder")}
-          data={kpiData?.sourceSummary || {}}
-          defaultChartType="donut"
-        >
-          {({ chartType, chartData, editValues }: any) => {
-            const normalizedData: Record<string, number> = {
-              ZaloOA: 0,
-              ZaloBusiness: 0,
-              Facebook: 0,
-              ChatWidget: 0,
-            };
-
-            Object.entries(chartData || {}).forEach(([key, value]) => {
-              const k = key.toLowerCase().trim();
-              const val = typeof value === "number" ? value : 0;
-              if (k === "zalooa" || k === "zalo") {
-                normalizedData.ZaloOA += val;
-              } else if (k === "zalobusiness" || k === "zalobiz") {
-                normalizedData.ZaloBusiness += val;
-              } else if (k === "facebook" || k === "fb" || k === "messenger") {
-                normalizedData.Facebook += val;
-              } else if (k === "chatwidget" || k === "website" || k === "web") {
-                normalizedData.ChatWidget += val;
-              }
-            });
-
-            let listData = Object.entries(normalizedData)
-              .map(([name, value]) => ({
-                name,
-                value,
-                colorKey: name,
-              }))
-              .filter((item) => item.value > 0);
-
-            const total = listData.reduce((acc, curr) => acc + curr.value, 0);
-
-            if (total === 0) {
-              return (
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    height: "220px",
-                    color: "rgba(0,59,185,0.4)",
-                    fontSize: "13px",
-                  }}
-                >
-                  Không có dữ liệu kênh nguồn
-                </div>
-              );
-            }
-
-            if (editValues.sort === "Tăng dần") {
-              listData.sort((a, b) => a.value - b.value);
-            } else if (editValues.sort === "Giảm dần") {
-              listData.sort((a, b) => b.value - a.value);
-            } else if (editValues.sort === "A-Z") {
-              listData.sort((a, b) => a.name.localeCompare(b.name));
-            }
-
-            const SOURCE_COLORS: Record<string, string> = {
-              ZaloOA: "#00B2FE",
-              ZaloBusiness: "#085fb6ff",
-              Facebook: "#1877F2",
-              ChatWidget: ORANGE,
-            };
-
-            const renderSourceChart = () => {
-              if (chartType === "donut" || chartType === "pie") {
-                return (
-                  <PieChart>
-                    <Pie
-                      data={listData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={chartType === "donut" ? 50 : 0}
-                      outerRadius={80}
-                      dataKey="value"
-                      nameKey="name"
-                      label={editValues.dataLabels}
-                    >
-                      {listData.map((entry) => (
-                        <Cell
-                          key={`cell-source-${entry.colorKey}`}
-                          fill={SOURCE_COLORS[entry.colorKey] || "#003BB9"}
-                        />
-                      ))}
-                    </Pie>
-                    <ChartTooltip
-                      formatter={(value: number) => [
-                        `${value.toLocaleString("vi-VN")} hội thoại (${((value / total) * 100).toFixed(1)}%)`,
-                        "Số lượng",
-                      ]}
-                      contentStyle={{
-                        borderRadius: "8px",
-                        border: "1px solid rgba(0,59,185,0.08)",
-                        fontFamily: "sans-serif",
-                        fontSize: "12px",
-                      }}
-                    />
-                    {editValues.legend && (
-                      <Legend
-                        iconSize={8}
-                        iconType="circle"
-                        layout="horizontal"
-                        verticalAlign="bottom"
-                        formatter={(value) => (
-                          <span style={{ fontSize: "11px", color: "#003BB9", fontWeight: 500 }}>{value}</span>
-                        )}
-                      />
-                    )}
-                  </PieChart>
-                );
-              }
-
-              if (chartType === "bar") {
-                return (
-                  <BarChart data={listData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,59,185,0.06)" />
-                    <XAxis dataKey="name" tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
-                    <YAxis tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
-                    <ChartTooltip />
-                    {editValues.legend && <Legend iconSize={10} />}
-                    <Bar
-                      dataKey="value"
-                      name="Số hội thoại"
-                      fill="#003BB9"
-                      radius={[4, 4, 0, 0]}
-                      label={editValues.dataLabels ? { position: "top", fontSize: 10 } : undefined}
-                    >
-                      {listData.map((entry) => (
-                        <Cell
-                          key={`cell-source-bar-${entry.colorKey}`}
-                          fill={SOURCE_COLORS[entry.colorKey] || "#003BB9"}
-                        />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                );
-              }
-
-              if (chartType === "hbar") {
-                return (
-                  <BarChart data={listData} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,59,185,0.06)" />
-                    <XAxis type="number" tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
-                    <YAxis dataKey="name" type="category" tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} width={80} />
-                    <ChartTooltip />
-                    {editValues.legend && <Legend iconSize={10} />}
-                    <Bar
-                      dataKey="value"
-                      name="Số hội thoại"
-                      fill="#003BB9"
-                      radius={[0, 4, 4, 0]}
-                      label={editValues.dataLabels ? { position: "right", fontSize: 10 } : undefined}
-                    >
-                      {listData.map((entry) => (
-                        <Cell
-                          key={`cell-source-hbar-${entry.colorKey}`}
-                          fill={SOURCE_COLORS[entry.colorKey] || "#003BB9"}
-                        />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                );
-              }
-
-              if (chartType === "area") {
-                return (
-                  <AreaChart data={listData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,59,185,0.06)" />
-                    <XAxis dataKey="name" tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
-                    <YAxis tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
-                    <ChartTooltip />
-                    {editValues.legend && <Legend iconSize={10} />}
-                    <Area
-                      type="monotone"
-                      dataKey="value"
-                      name="Số hội thoại"
-                      stroke="#003BB9"
-                      fill="rgba(0,59,185,0.2)"
-                      strokeWidth={2}
-                      label={editValues.dataLabels}
-                    />
-                  </AreaChart>
-                );
-              }
-
-              return (
-                <LineChart data={listData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,59,185,0.06)" />
-                  <XAxis dataKey="name" tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
-                  <YAxis tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
-                  <ChartTooltip />
-                  {editValues.legend && <Legend iconSize={10} />}
-                  <Line
-                    type="monotone"
-                    dataKey="value"
-                    name="Số hội thoại"
-                    stroke="#003BB9"
-                    strokeWidth={2}
-                    dot={{ r: 3 }}
-                    label={editValues.dataLabels}
-                  />
-                </LineChart>
-              );
-            };
-
-            return (
-              <ResponsiveContainer width="100%" height={220}>
-                {renderSourceChart()}
-              </ResponsiveContainer>
-            );
-          }}
-        </ChartCard>
-      </div>
-
-
-
-      {/* Bảng thống kê theo kênh nguồn bên dưới */}
-      <div style={{ backgroundColor: "#fff", borderRadius: "16px", border: "1px solid rgba(0,59,185,0.07)", boxShadow: "0 2px 10px rgba(0,59,185,0.05)", overflow: "hidden", marginBottom: "24px" }}>
-        <div style={{ padding: "16px 22px", borderBottom: "1px solid rgba(0,59,185,0.06)" }}>
-          <h3 style={{ color: "#003BB9", fontSize: "14px", fontWeight: 700, margin: 0 }}>
-            Thống kê theo kênh
-          </h3>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)" }}>
-          {sourceStats.map((ch, i) => (
-            <div key={ch.name} style={{ padding: "18px 22px", borderRight: i < 3 ? "1px solid rgba(0,59,185,0.06)" : "none" }}>
-              {/* Tên Kênh */}
-              <div style={{ fontSize: "11px", color: "rgba(0,59,185,0.5)", fontWeight: 500, marginBottom: "6px" }}>{ch.name}</div>
-
-              {/* Khối Hội thoại */}
-              <div style={{ marginBottom: "12px" }}>
-                <div style={{ fontSize: "22px", fontWeight: 700, color: "#003BB9", lineHeight: 1.1 }}>{viNum(ch.hoiday)}</div>
-                <div style={{ fontSize: "11px", color: "rgba(0,59,185,0.4)", marginTop: "2px" }}>hội thoại</div>
+            <span style={{ fontSize: "12px", color: "rgba(0,59,185,0.5)" }}>Cập nhật gần nhất: {lastUpdatedTime} hôm nay</span>
+            <span style={{ fontSize: "11px", color: "rgba(0,59,185,0.35)" }}>· Tự động cập nhật mỗi 30 phút</span>
+            <span style={{ fontSize: "11px", color: "rgba(0,59,185,0.35)" }}>
+            </span>
+            {isScreenRefreshing && (
+              <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                <RefreshCw size={12} style={{ color: ORANGE, animation: "spin 1s linear infinite" }} />
+                <span style={{ fontSize: "11px", color: ORANGE, fontWeight: 600 }}>Đang cập nhật...</span>
               </div>
-
-              {/* Khối Tin nhắn */}
-              <div>
-                <div style={{ fontSize: "15px", fontWeight: 700, color: "#334155", lineHeight: 1.1 }}>{viNum(ch.tinnan)}</div>
-                <div style={{ fontSize: "11px", color: "rgba(0,59,185,0.4)", marginTop: "2px" }}>tin nhắn</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Câu hỏi nổi bật (Top Questions) */}
-      <div style={{ backgroundColor: "#fff", borderRadius: "16px", border: "1px solid rgba(0,59,185,0.07)", boxShadow: "0 2px 10px rgba(0,59,185,0.05)", overflow: "hidden", marginBottom: "24px" }}>
-        <div style={{ padding: "16px 22px", borderBottom: "1px solid rgba(0,59,185,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h3 style={{ color: "#003BB9", fontSize: "14px", fontWeight: 700, margin: 0 }}>Câu hỏi nổi bật từ khách hàng</h3>
-          <button onClick={() => onNavigate("question")} style={{ fontSize: "12px", color: "#003BB9", border: "1px solid rgba(0,59,185,0.2)", background: "#f8fafc", padding: "5px 12px", borderRadius: "8px", cursor: "pointer", fontWeight: 500 }}>
-            Xem toàn bộ
+            )}
+          </div>
+          <button
+            onClick={handleManualRefresh}
+            disabled={isScreenRefreshing}
+            style={{ padding: "6px 14px", borderRadius: "8px", border: "1px solid rgba(0,59,185,0.12)", background: "#fff", color: "#003BB9", cursor: isScreenRefreshing ? "not-allowed" : "pointer", fontSize: "12px", fontWeight: 500, display: "flex", alignItems: "center", gap: "6px", opacity: isScreenRefreshing ? 0.6 : 1, flexShrink: 0 }}
+          >
+            <RefreshCw size={12} style={{ animation: isScreenRefreshing ? "spin 1s linear infinite" : "none" }} /> Làm mới
           </button>
         </div>
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
-            <thead>
-              <tr style={{ backgroundColor: "#f8fafc" }}>
-                {["#", "Câu hỏi", "Chủ đề", "Số lần", "Kênh phổ biến", "Xu hướng", "Hành động"].map(h => (
-                  <th key={h} style={{ padding: "10px 16px", textAlign: "left", fontWeight: 600, color: "rgba(0,59,185,0.5)", fontSize: "11px", letterSpacing: "0.04em", borderBottom: "1px solid rgba(0,59,185,0.06)" }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {topQuestions.map((q, i) => (
-                <tr key={i} style={{ borderBottom: "1px solid rgba(0,59,185,0.04)" }}
-                  onMouseEnter={(e) => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "#f8fafc"}
-                  onMouseLeave={(e) => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "transparent"}
-                >
-                  <td style={{ padding: "12px 16px", color: "rgba(0,59,185,0.3)", fontWeight: 700, fontSize: "12px" }}>#{i + 1}</td>
-                  <td style={{ padding: "12px 16px", color: "#003BB9", maxWidth: "280px" }}>{q.question}</td>
-                  <td style={{ padding: "12px 16px" }}>
-                    <span style={{ fontSize: "11px", padding: "2px 7px", borderRadius: "20px", backgroundColor: "#eff6ff", color: "#3b82f6" }}>{q.topic}</span>
-                  </td>
-                  <td style={{ padding: "12px 16px", fontWeight: 600, color: "#003BB9" }}>{q.count}</td>
-                  <td style={{ padding: "12px 16px", color: "rgba(0,59,185,0.6)", fontSize: "12px" }}>{q.channel}</td>
-                  <td style={{ padding: "12px 16px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                      {q.trend >= 0 ? (
-                        <>
-                          <TrendingUp size={12} style={{ color: "#228A61" }} />
-                          <span style={{ fontSize: "12px", fontWeight: 600, color: "#228A61" }}>+{q.trend}%</span>
-                        </>
-                      ) : (
-                        <>
-                          <TrendingDown size={12} style={{ color: ORANGE }} />
-                          <span style={{ fontSize: "12px", fontWeight: 600, color: ORANGE }}>{q.trend}%</span>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                  <td style={{ padding: "12px 16px" }}>
-                    <div style={{ display: "flex", gap: "6px" }}>
-                      <button onClick={() => onNavigate("question")} style={{ padding: "4px 9px", borderRadius: "7px", border: "1px solid rgba(0,59,185,0.2)", background: "#f8fafc", color: "#003BB9", cursor: "pointer", fontSize: "11px", display: "flex", alignItems: "center", gap: "3px" }}>
-                        <Eye size={10} /> Chi tiết
-                      </button>
-                      <button onClick={() => toast.success("Đã thêm vào FAQ đề xuất")} style={{ padding: "4px 9px", borderRadius: "7px", border: "1px solid rgba(0,59,185,0.15)", background: "#fff", color: "rgba(0,59,185,0.65)", cursor: "pointer", fontSize: "11px", display: "flex", alignItems: "center", gap: "3px" }}>
-                        <Plus size={10} /> Thêm FAQ
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
 
-      {/* Hội thoại ưu tiên xử lý (Hiển thị tĩnh để giữ giao diện đẹp) */}
-      <div style={{ backgroundColor: "#fff", borderRadius: "16px", border: "1px solid rgba(0,59,185,0.07)", boxShadow: "0 2px 10px rgba(0,59,185,0.05)", overflow: "hidden" }}>
-        <div style={{ padding: "16px 22px", borderBottom: "1px solid rgba(0,59,185,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h3 style={{ color: "#003BB9", fontSize: "14px", fontWeight: 700, margin: 0 }}>Hội thoại ưu tiên xử lý</h3>
-          {/* Nút Quản lý hội thoại đã ẩn */}
+        {/* KPI Cards Grid */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "12px", marginBottom: "20px" }}>
+          {kpiList.map((kpi) => (
+            <KpiCard
+              key={kpi.title}
+              title={kpi.title}
+              value={kpi.value}
+              icon={kpi.icon}
+              change={kpi.change}
+              isWarning={kpi.isWarning}
+            />
+          ))}
         </div>
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
-            <thead>
-              <tr style={{ backgroundColor: "#f8fafc" }}>
-                {["ID", "Khách hàng", "Kênh", "Chủ đề", "Thời gian chờ", "Trạng thái", "Ưu tiên", "Hành động"].map(h => (
-                  <th key={h} style={{ padding: "10px 16px", textAlign: "left", fontWeight: 600, color: "rgba(0,59,185,0.5)", fontSize: "11px", letterSpacing: "0.04em", borderBottom: "1px solid rgba(0,59,185,0.06)" }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {priorityConversations.map((conv) => {
-                const ss = statusColors[conv.status] || { bg: "#f1f5f9", color: "#64748b" };
-                const pc = priorityColors[conv.priority];
+
+        {/* Cần xử lý ngay (Hội thoại khẩn cấp) */}
+        <div style={{ marginBottom: "24px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
+            <div style={{ width: "4px", height: "18px", borderRadius: "2px", background: `linear-gradient(180deg, ${ORANGE}, #ED5206)` }} />
+            <h2 style={{ color: "#003BB9", fontSize: "15px", fontWeight: 700, margin: 0 }}>Cảnh báo khẩn cấp cần xử lý ngay</h2>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+            {/* Cột 1: Hội thoại chờ phản hồi quá 10 giờ */}
+            <div style={{ backgroundColor: "#FDFEFE", borderRadius: "16px", border: "1px solid rgba(0,59,185,0.07)", boxShadow: "0 2px 10px rgba(0,59,185,0.03)", padding: "16px" }}>
+              <h3 style={{ color: "#D73C01", fontSize: "13px", fontWeight: 700, display: "flex", alignItems: "center", gap: "6px", marginTop: 0, marginBottom: "12px", borderBottom: "1px solid rgba(215,60,1,0.1)", paddingBottom: "8px" }}>
+                <Clock size={14} />
+                Hội thoại chờ quá 10 giờ
+                <span style={{ fontSize: "10px", backgroundColor: "#FFF4EE", color: "#D73C01", border: "1px solid #FBCBB8", borderRadius: "20px", padding: "1px 6px", fontWeight: 700, marginLeft: "auto" }}>
+                  {overtimeAlerts.length}
+                </span>
+              </h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxHeight: "360px", overflowY: "auto", paddingRight: "4px" }}>
+                {overtimeAlerts.length === 0 ? (
+                  <div style={{ padding: "24px", textAlign: "center", color: "rgba(0,59,185,0.4)", fontSize: "11px", border: "1px dashed rgba(0,59,185,0.15)", borderRadius: "10px", background: "#fcfcfc" }}>
+                    Không có cuộc hội thoại nào chờ phản hồi quá 10 giờ
+                  </div>
+                ) : (
+                  overtimeAlerts.map((alert) => (
+                    <AlertCard key={alert.id} alert={alert} alertTypeIcon={alertTypeIcon} onClose={handleCloseConversation} isFlagged={flaggedAlertIds.has(String(alert.id))} onFlag={handleFlagAlert} />
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Cột 2: AI trả lời không chắc chắn */}
+            <div style={{ backgroundColor: "#FDFEFE", borderRadius: "16px", border: "1px solid rgba(0,59,185,0.07)", boxShadow: "0 2px 10px rgba(0,59,185,0.03)", padding: "16px" }}>
+              <h3 style={{ color: "#B7791F", fontSize: "13px", fontWeight: 700, display: "flex", alignItems: "center", gap: "6px", marginTop: 0, marginBottom: "12px", borderBottom: "1px solid rgba(183,121,31,0.1)", paddingBottom: "8px" }}>
+                <AlertTriangle size={14} />
+                AI trả lời không chắc chắn
+                <span style={{ fontSize: "10px", backgroundColor: "#FFF7E6", color: "#B7791F", border: "1px solid #FADFA8", borderRadius: "20px", padding: "1px 6px", fontWeight: 700, marginLeft: "auto" }}>
+                  {aiAlerts.length}
+                </span>
+              </h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxHeight: "360px", overflowY: "auto", paddingRight: "4px" }}>
+                {aiAlerts.length === 0 ? (
+                  <div style={{ padding: "24px", textAlign: "center", color: "rgba(0,59,185,0.4)", fontSize: "11px", border: "1px dashed rgba(0,59,185,0.15)", borderRadius: "10px", background: "#fcfcfc" }}>
+                    Không có cảnh báo AI trả lời không chắc chắn
+                  </div>
+                ) : (
+                  aiAlerts.map((alert) => (
+                    <AlertCard key={alert.id} alert={alert} alertTypeIcon={alertTypeIcon} onClose={handleCloseConversation} isFlagged={flaggedAlertIds.has(String(alert.id))} onFlag={handleFlagAlert} />
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Row biểu đồ 1: Đường xu hướng và Phân bổ kênh nguồn */}
+        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "20px", marginBottom: "24px" }}>
+          <ChartCard
+            title="Số lượng hội thoại theo thời gian"
+            onOpenBuilder={() => onNavigate("chartbuilder")}
+            data={dailyTrends}
+            defaultChartType="line"
+          >
+            {({ chartType, chartData, editValues }: any) => {
+              const valueKey =
+                editValues.values === "AI trả lời thành công"
+                  ? "ai_ok"
+                  : editValues.values === "AI trả lời thất bại"
+                    ? "ai_fail"
+                    : "total";
+
+              const nameKey = "date";
+
+              let sortedData = [...chartData];
+              if (editValues.sort === "Tăng dần") {
+                sortedData.sort((a, b) => (a[valueKey] || 0) - (b[valueKey] || 0));
+              } else if (editValues.sort === "Giảm dần") {
+                sortedData.sort((a, b) => (b[valueKey] || 0) - (a[valueKey] || 0));
+              } else if (editValues.sort === "A-Z") {
+                sortedData.sort((a, b) => String(a[nameKey] || "").localeCompare(String(b[nameKey] || "")));
+              }
+
+              const renderChart = () => {
+                if (chartType === "donut" || chartType === "pie") {
+                  const pieData = sortedData
+                    .filter((d) => d[valueKey] !== null)
+                    .map((d) => ({ name: d[nameKey], value: d[valueKey] }));
+                  const COLORS = ["#003BB9", "#D73C01", "rgba(0,59,185,0.6)", "#ED5206", "rgba(0,59,185,0.3)"];
+                  return (
+                    <PieChart id="pie-chart-trend">
+                      <Pie
+                        data={pieData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={chartType === "donut" ? 50 : 0}
+                        outerRadius={80}
+                        dataKey="value"
+                        label={editValues.dataLabels}
+                      >
+                        {pieData.map((entry, i) => (
+                          <Cell key={`pie-cell-${i}`} fill={COLORS[i % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <ChartTooltip />
+                      {editValues.legend && <Legend iconSize={10} />}
+                    </PieChart>
+                  );
+                }
+
+                if (chartType === "bar") {
+                  return (
+                    <BarChart id="bar-chart-trend" data={sortedData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,59,185,0.06)" />
+                      <XAxis dataKey={nameKey} tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
+                      <YAxis tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
+                      <ChartTooltip />
+                      {editValues.legend && <Legend iconSize={10} />}
+                      <Bar
+                        dataKey={valueKey}
+                        name={
+                          valueKey === "total"
+                            ? "Thực tế"
+                            : valueKey === "ai_ok"
+                              ? "AI trả lời thành công"
+                              : "AI trả lời thất bại"
+                        }
+                        fill="#003BB9"
+                        radius={[4, 4, 0, 0]}
+                        label={editValues.dataLabels ? { position: "top", fontSize: 10 } : undefined}
+                      />
+
+                    </BarChart>
+                  );
+                }
+
+                if (chartType === "hbar") {
+                  return (
+                    <BarChart id="hbar-chart-trend" data={sortedData} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,59,185,0.06)" />
+                      <XAxis type="number" tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
+                      <YAxis dataKey={nameKey} type="category" tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} width={40} />
+                      <ChartTooltip />
+                      {editValues.legend && <Legend iconSize={10} />}
+                      <Bar
+                        dataKey={valueKey}
+                        name={
+                          valueKey === "total"
+                            ? "Thực tế"
+                            : valueKey === "ai_ok"
+                              ? "AI trả lời thành công"
+                              : "AI trả lời thất bại"
+                        }
+                        fill="#003BB9"
+                        radius={[0, 4, 4, 0]}
+                        label={editValues.dataLabels ? { position: "right", fontSize: 10 } : undefined}
+                      />
+
+                    </BarChart>
+                  );
+                }
+
+                if (chartType === "area") {
+                  return (
+                    <AreaChart id="area-chart-trend" data={sortedData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,59,185,0.06)" />
+                      <XAxis dataKey={nameKey} tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
+                      <YAxis tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
+                      <ChartTooltip />
+                      {editValues.legend && <Legend iconSize={10} />}
+                      <Area
+                        type="monotone"
+                        dataKey={valueKey}
+                        name={
+                          valueKey === "total"
+                            ? "Thực tế"
+                            : valueKey === "ai_ok"
+                              ? "AI trả lời thành công"
+                              : "AI trả lời thất bại"
+                        }
+                        stroke="#003BB9"
+                        fill="rgba(0,59,185,0.2)"
+                        strokeWidth={2}
+                        label={editValues.dataLabels}
+                      />
+
+                    </AreaChart>
+                  );
+                }
+
+                // Default: line chart
                 return (
-                  <tr key={conv.id} style={{ borderBottom: "1px solid rgba(0,59,185,0.04)" }}
+                  <LineChart data={sortedData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,59,185,0.06)" />
+                    <XAxis dataKey={nameKey} tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
+                    <YAxis tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
+                    <ChartTooltip />
+                    {editValues.legend && <Legend iconSize={10} />}
+                    <Line
+                      type="monotone"
+                      dataKey={valueKey}
+                      name={
+                        valueKey === "total"
+                          ? "Thực tế"
+                          : valueKey === "ai_ok"
+                            ? "AI trả lời thành công"
+                            : "AI trả lời thất bại"
+                      }
+                      stroke="#003BB9"
+                      strokeWidth={2}
+                      dot={{ r: 2 }}
+                      connectNulls={false}
+                      label={editValues.dataLabels}
+                    />
+
+                  </LineChart>
+                );
+              };
+
+              return (
+                <ResponsiveContainer width="100%" height={220}>
+                  {renderChart()}
+                </ResponsiveContainer>
+              );
+            }}
+          </ChartCard>
+
+          <ChartCard
+            title="Phân bổ theo kênh nguồn"
+            onOpenBuilder={() => onNavigate("chartbuilder")}
+            data={kpiData?.sourceSummary || {}}
+            defaultChartType="donut"
+          >
+            {({ chartType, chartData, editValues }: any) => {
+              const normalizedData: Record<string, number> = {
+                ZaloOA: 0,
+                ZaloBusiness: 0,
+                Facebook: 0,
+                ChatWidget: 0,
+              };
+
+              Object.entries(chartData || {}).forEach(([key, value]) => {
+                const k = key.toLowerCase().trim();
+                const val = typeof value === "number" ? value : 0;
+                if (k === "zalooa" || k === "zalo") {
+                  normalizedData.ZaloOA += val;
+                } else if (k === "zalobusiness" || k === "zalobiz") {
+                  normalizedData.ZaloBusiness += val;
+                } else if (k === "facebook" || k === "fb" || k === "messenger") {
+                  normalizedData.Facebook += val;
+                } else if (k === "chatwidget" || k === "website" || k === "web") {
+                  normalizedData.ChatWidget += val;
+                }
+              });
+
+              let listData = Object.entries(normalizedData)
+                .map(([name, value]) => ({
+                  name,
+                  value,
+                  colorKey: name,
+                }))
+                .filter((item) => item.value > 0);
+
+              const total = listData.reduce((acc, curr) => acc + curr.value, 0);
+
+              if (total === 0) {
+                return (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      height: "220px",
+                      color: "rgba(0,59,185,0.4)",
+                      fontSize: "13px",
+                    }}
+                  >
+                    Không có dữ liệu kênh nguồn
+                  </div>
+                );
+              }
+
+              if (editValues.sort === "Tăng dần") {
+                listData.sort((a, b) => a.value - b.value);
+              } else if (editValues.sort === "Giảm dần") {
+                listData.sort((a, b) => b.value - a.value);
+              } else if (editValues.sort === "A-Z") {
+                listData.sort((a, b) => a.name.localeCompare(b.name));
+              }
+
+              const SOURCE_COLORS: Record<string, string> = {
+                ZaloOA: "#00B2FE",
+                ZaloBusiness: "#085fb6ff",
+                Facebook: "#1877F2",
+                ChatWidget: ORANGE,
+              };
+
+              const renderSourceChart = () => {
+                if (chartType === "donut" || chartType === "pie") {
+                  return (
+                    <PieChart>
+                      <Pie
+                        data={listData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={chartType === "donut" ? 50 : 0}
+                        outerRadius={80}
+                        dataKey="value"
+                        nameKey="name"
+                        label={editValues.dataLabels}
+                      >
+                        {listData.map((entry) => (
+                          <Cell
+                            key={`cell-source-${entry.colorKey}`}
+                            fill={SOURCE_COLORS[entry.colorKey] || "#003BB9"}
+                          />
+                        ))}
+                      </Pie>
+                      <ChartTooltip
+                        formatter={(value: number) => [
+                          `${value.toLocaleString("vi-VN")} hội thoại (${((value / total) * 100).toFixed(1)}%)`,
+                          "Số lượng",
+                        ]}
+                        contentStyle={{
+                          borderRadius: "8px",
+                          border: "1px solid rgba(0,59,185,0.08)",
+                          fontFamily: "sans-serif",
+                          fontSize: "12px",
+                        }}
+                      />
+                      {editValues.legend && (
+                        <Legend
+                          iconSize={8}
+                          iconType="circle"
+                          layout="horizontal"
+                          verticalAlign="bottom"
+                          formatter={(value) => (
+                            <span style={{ fontSize: "11px", color: "#003BB9", fontWeight: 500 }}>{value}</span>
+                          )}
+                        />
+                      )}
+                    </PieChart>
+                  );
+                }
+
+                if (chartType === "bar") {
+                  return (
+                    <BarChart data={listData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,59,185,0.06)" />
+                      <XAxis dataKey="name" tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
+                      <YAxis tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
+                      <ChartTooltip />
+                      {editValues.legend && <Legend iconSize={10} />}
+                      <Bar
+                        dataKey="value"
+                        name="Số hội thoại"
+                        fill="#003BB9"
+                        radius={[4, 4, 0, 0]}
+                        label={editValues.dataLabels ? { position: "top", fontSize: 10 } : undefined}
+                      >
+                        {listData.map((entry) => (
+                          <Cell
+                            key={`cell-source-bar-${entry.colorKey}`}
+                            fill={SOURCE_COLORS[entry.colorKey] || "#003BB9"}
+                          />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  );
+                }
+
+                if (chartType === "hbar") {
+                  return (
+                    <BarChart data={listData} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,59,185,0.06)" />
+                      <XAxis type="number" tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
+                      <YAxis dataKey="name" type="category" tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} width={80} />
+                      <ChartTooltip />
+                      {editValues.legend && <Legend iconSize={10} />}
+                      <Bar
+                        dataKey="value"
+                        name="Số hội thoại"
+                        fill="#003BB9"
+                        radius={[0, 4, 4, 0]}
+                        label={editValues.dataLabels ? { position: "right", fontSize: 10 } : undefined}
+                      >
+                        {listData.map((entry) => (
+                          <Cell
+                            key={`cell-source-hbar-${entry.colorKey}`}
+                            fill={SOURCE_COLORS[entry.colorKey] || "#003BB9"}
+                          />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  );
+                }
+
+                if (chartType === "area") {
+                  return (
+                    <AreaChart data={listData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,59,185,0.06)" />
+                      <XAxis dataKey="name" tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
+                      <YAxis tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
+                      <ChartTooltip />
+                      {editValues.legend && <Legend iconSize={10} />}
+                      <Area
+                        type="monotone"
+                        dataKey="value"
+                        name="Số hội thoại"
+                        stroke="#003BB9"
+                        fill="rgba(0,59,185,0.2)"
+                        strokeWidth={2}
+                        label={editValues.dataLabels}
+                      />
+                    </AreaChart>
+                  );
+                }
+
+                return (
+                  <LineChart data={listData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,59,185,0.06)" />
+                    <XAxis dataKey="name" tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
+                    <YAxis tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
+                    <ChartTooltip />
+                    {editValues.legend && <Legend iconSize={10} />}
+                    <Line
+                      type="monotone"
+                      dataKey="value"
+                      name="Số hội thoại"
+                      stroke="#003BB9"
+                      strokeWidth={2}
+                      dot={{ r: 3 }}
+                      label={editValues.dataLabels}
+                    />
+                  </LineChart>
+                );
+              };
+
+              return (
+                <ResponsiveContainer width="100%" height={220}>
+                  {renderSourceChart()}
+                </ResponsiveContainer>
+              );
+            }}
+          </ChartCard>
+        </div>
+
+
+
+        {/* Bảng thống kê theo kênh nguồn bên dưới */}
+        <div style={{ backgroundColor: "#fff", borderRadius: "16px", border: "1px solid rgba(0,59,185,0.07)", boxShadow: "0 2px 10px rgba(0,59,185,0.05)", overflow: "hidden", marginBottom: "24px" }}>
+          <div style={{ padding: "16px 22px", borderBottom: "1px solid rgba(0,59,185,0.06)" }}>
+            <h3 style={{ color: "#003BB9", fontSize: "14px", fontWeight: 700, margin: 0 }}>
+              Thống kê theo kênh
+            </h3>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)" }}>
+            {sourceStats.map((ch, i) => (
+              <div key={ch.name} style={{ padding: "18px 22px", borderRight: i < 3 ? "1px solid rgba(0,59,185,0.06)" : "none" }}>
+                {/* Tên Kênh */}
+                <div style={{ fontSize: "11px", color: "rgba(0,59,185,0.5)", fontWeight: 500, marginBottom: "6px" }}>{ch.name}</div>
+
+                {/* Khối Hội thoại */}
+                <div style={{ marginBottom: "12px" }}>
+                  <div style={{ fontSize: "22px", fontWeight: 700, color: "#003BB9", lineHeight: 1.1 }}>{viNum(ch.hoiday)}</div>
+                  <div style={{ fontSize: "11px", color: "rgba(0,59,185,0.4)", marginTop: "2px" }}>hội thoại</div>
+                </div>
+
+                {/* Khối Tin nhắn */}
+                <div>
+                  <div style={{ fontSize: "15px", fontWeight: 700, color: "#334155", lineHeight: 1.1 }}>{viNum(ch.tinnan)}</div>
+                  <div style={{ fontSize: "11px", color: "rgba(0,59,185,0.4)", marginTop: "2px" }}>tin nhắn</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Câu hỏi nổi bật (Top Questions) */}
+        <div style={{ backgroundColor: "#fff", borderRadius: "16px", border: "1px solid rgba(0,59,185,0.07)", boxShadow: "0 2px 10px rgba(0,59,185,0.05)", overflow: "hidden", marginBottom: "24px" }}>
+          <div style={{ padding: "16px 22px", borderBottom: "1px solid rgba(0,59,185,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <h3 style={{ color: "#003BB9", fontSize: "14px", fontWeight: 700, margin: 0 }}>Câu hỏi nổi bật từ khách hàng</h3>
+            <button onClick={() => onNavigate("question")} style={{ fontSize: "12px", color: "#003BB9", border: "1px solid rgba(0,59,185,0.2)", background: "#f8fafc", padding: "5px 12px", borderRadius: "8px", cursor: "pointer", fontWeight: 500 }}>
+              Xem toàn bộ
+            </button>
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+              <thead>
+                <tr style={{ backgroundColor: "#f8fafc" }}>
+                  {["#", "Câu hỏi", "Chủ đề", "Số lần", "Kênh phổ biến", "Xu hướng", "Hành động"].map(h => (
+                    <th key={h} style={{ padding: "10px 16px", textAlign: "left", fontWeight: 600, color: "rgba(0,59,185,0.5)", fontSize: "11px", letterSpacing: "0.04em", borderBottom: "1px solid rgba(0,59,185,0.06)" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {topQuestions.map((q, i) => (
+                  <tr key={i} style={{ borderBottom: "1px solid rgba(0,59,185,0.04)" }}
                     onMouseEnter={(e) => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "#f8fafc"}
                     onMouseLeave={(e) => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "transparent"}
                   >
-                    <td style={{ padding: "12px 16px", color: "rgba(0,59,185,0.4)", fontFamily: "monospace", fontSize: "12px" }}>{conv.id}</td>
-                    <td style={{ padding: "12px 16px", color: "#003BB9", fontWeight: 500 }}>{conv.customer}</td>
+                    <td style={{ padding: "12px 16px", color: "rgba(0,59,185,0.3)", fontWeight: 700, fontSize: "12px" }}>#{i + 1}</td>
+                    <td style={{ padding: "12px 16px", color: "#003BB9", maxWidth: "280px" }}>{q.question}</td>
                     <td style={{ padding: "12px 16px" }}>
-                      <span style={{ fontSize: "11px", padding: "2px 7px", borderRadius: "20px", backgroundColor: "#eff6ff", color: "#3b82f6" }}>{conv.channel}</span>
+                      <span style={{ fontSize: "11px", padding: "2px 7px", borderRadius: "20px", backgroundColor: "#eff6ff", color: "#3b82f6" }}>{q.topic}</span>
                     </td>
-                    <td style={{ padding: "12px 16px", color: "#003BB9" }}>{conv.topic}</td>
-                    <td style={{ padding: "12px 16px", color: conv.isOvertime ? ORANGE : "rgba(0,59,185,0.7)", fontWeight: conv.isOvertime ? 700 : 400, whiteSpace: "nowrap" }}>
-                      {conv.isOvertime && <span style={{ marginRight: "4px" }}>⚠</span>}{conv.wait}
-                    </td>
+                    <td style={{ padding: "12px 16px", fontWeight: 600, color: "#003BB9" }}>{q.count}</td>
+                    <td style={{ padding: "12px 16px", color: "rgba(0,59,185,0.6)", fontSize: "12px" }}>{q.channel}</td>
                     <td style={{ padding: "12px 16px" }}>
-                      <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "20px", backgroundColor: ss.bg, color: ss.color, fontWeight: 500, whiteSpace: "nowrap" }}>{conv.status}</span>
-                    </td>
-                    <td style={{ padding: "12px 16px" }}>
-                      <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "20px", backgroundColor: pc.bg, color: pc.color, fontWeight: 600, border: `1px solid ${pc.border}` }}>{conv.priority}</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                        {q.trend >= 0 ? (
+                          <>
+                            <TrendingUp size={12} style={{ color: "#228A61" }} />
+                            <span style={{ fontSize: "12px", fontWeight: 600, color: "#228A61" }}>+{q.trend}%</span>
+                          </>
+                        ) : (
+                          <>
+                            <TrendingDown size={12} style={{ color: ORANGE }} />
+                            <span style={{ fontSize: "12px", fontWeight: 600, color: ORANGE }}>{q.trend}%</span>
+                          </>
+                        )}
+                      </div>
                     </td>
                     <td style={{ padding: "12px 16px" }}>
                       <div style={{ display: "flex", gap: "6px" }}>
-                        <button 
-                          onClick={async () => {
-                            try {
-                              if (conv.customerId && conv.source) {
-                                await handleCloseConversation(conv.customerId, conv.source);
-                                toast.success("Đã đánh dấu xử lý thành công.");
-                              } else {
-                                toast.error("Không tìm thấy thông tin hội thoại để xử lý.");
-                              }
-                            } catch (err: any) {
-                              toast.error(err.message || "Lỗi khi xử lý hội thoại.");
-                            }
-                          }} 
-                          style={{ padding: "4px 9px", borderRadius: "7px", border: "none", background: "#003BB9", color: "#fff", cursor: "pointer", fontSize: "11px", fontWeight: 600, display: "flex", alignItems: "center", gap: "3px" }}
-                        >
-                          <CheckCircle size={10} /> Xử lý
+                        <button onClick={() => onNavigate("question")} style={{ padding: "4px 9px", borderRadius: "7px", border: "1px solid rgba(0,59,185,0.2)", background: "#f8fafc", color: "#003BB9", cursor: "pointer", fontSize: "11px", display: "flex", alignItems: "center", gap: "3px" }}>
+                          <Eye size={10} /> Chi tiết
+                        </button>
+                        <button onClick={() => toast.success("Đã thêm vào FAQ đề xuất")} style={{ padding: "4px 9px", borderRadius: "7px", border: "1px solid rgba(0,59,185,0.15)", background: "#fff", color: "rgba(0,59,185,0.65)", cursor: "pointer", fontSize: "11px", display: "flex", alignItems: "center", gap: "3px" }}>
+                          <Plus size={10} /> Thêm FAQ
                         </button>
                       </div>
                     </td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+
+        {/* Hội thoại ưu tiên xử lý (Hiển thị tĩnh để giữ giao diện đẹp) */}
+        <div style={{ backgroundColor: "#fff", borderRadius: "16px", border: "1px solid rgba(0,59,185,0.07)", boxShadow: "0 2px 10px rgba(0,59,185,0.05)", overflow: "hidden" }}>
+          <div style={{ padding: "16px 22px", borderBottom: "1px solid rgba(0,59,185,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <h3 style={{ color: "#003BB9", fontSize: "14px", fontWeight: 700, margin: 0 }}>Hội thoại ưu tiên xử lý</h3>
+            {/* Nút Quản lý hội thoại đã ẩn */}
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+              <thead>
+                <tr style={{ backgroundColor: "#f8fafc" }}>
+                  {["ID", "Khách hàng", "Kênh", "Chủ đề", "Thời gian chờ", "Trạng thái", "Ưu tiên", "Hành động"].map(h => (
+                    <th key={h} style={{ padding: "10px 16px", textAlign: "left", fontWeight: 600, color: "rgba(0,59,185,0.5)", fontSize: "11px", letterSpacing: "0.04em", borderBottom: "1px solid rgba(0,59,185,0.06)" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {priorityConversations.map((conv) => {
+                  const ss = statusColors[conv.status] || { bg: "#f1f5f9", color: "#64748b" };
+                  const pc = priorityColors[conv.priority];
+                  return (
+                    <tr key={conv.id} style={{ borderBottom: "1px solid rgba(0,59,185,0.04)" }}
+                      onMouseEnter={(e) => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "#f8fafc"}
+                      onMouseLeave={(e) => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "transparent"}
+                    >
+                      <td style={{ padding: "12px 16px", color: "rgba(0,59,185,0.4)", fontFamily: "monospace", fontSize: "12px" }}>{conv.id}</td>
+                      <td style={{ padding: "12px 16px", color: "#003BB9", fontWeight: 500 }}>{conv.customer}</td>
+                      <td style={{ padding: "12px 16px" }}>
+                        <span style={{ fontSize: "11px", padding: "2px 7px", borderRadius: "20px", backgroundColor: "#eff6ff", color: "#3b82f6" }}>{conv.channel}</span>
+                      </td>
+                      <td style={{ padding: "12px 16px", color: "#003BB9" }}>{conv.topic}</td>
+                      <td style={{ padding: "12px 16px", color: conv.isOvertime ? ORANGE : "rgba(0,59,185,0.7)", fontWeight: conv.isOvertime ? 700 : 400, whiteSpace: "nowrap" }}>
+                        {conv.isOvertime && <span style={{ marginRight: "4px" }}>⚠</span>}{conv.wait}
+                      </td>
+                      <td style={{ padding: "12px 16px" }}>
+                        <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "20px", backgroundColor: ss.bg, color: ss.color, fontWeight: 500, whiteSpace: "nowrap" }}>{conv.status}</span>
+                      </td>
+                      <td style={{ padding: "12px 16px" }}>
+                        <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "20px", backgroundColor: pc.bg, color: pc.color, fontWeight: 600, border: `1px solid ${pc.border}` }}>{conv.priority}</span>
+                      </td>
+                      <td style={{ padding: "12px 16px" }}>
+                        <div style={{ display: "flex", gap: "6px" }}>
+                          <button
+                            onClick={async () => {
+                              try {
+                                if (conv.customerId && conv.source) {
+                                  await handleCloseConversation(conv.customerId, conv.source);
+                                  toast.success("Đã đánh dấu xử lý thành công.");
+                                } else {
+                                  toast.error("Không tìm thấy thông tin hội thoại để xử lý.");
+                                }
+                              } catch (err: any) {
+                                toast.error(err.message || "Lỗi khi xử lý hội thoại.");
+                              }
+                            }}
+                            style={{ padding: "4px 9px", borderRadius: "7px", border: "none", background: "#003BB9", color: "#fff", cursor: "pointer", fontSize: "11px", fontWeight: 600, display: "flex", alignItems: "center", gap: "3px" }}
+                          >
+                            <CheckCircle size={10} /> Xử lý
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
   );

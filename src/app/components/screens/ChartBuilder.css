@@ -42,7 +42,6 @@
   color: var(--cb-navy);
   font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.1em;
 }
 .chart-builder-panel-header p {
   margin: 5px 0 0;
@@ -82,7 +81,6 @@
 .chart-builder-saved-configs-title {
   font-size: 10px;
   font-weight: 800;
-  letter-spacing: 0.09em;
   color: rgba(0, 56, 101, 0.58);
 }
 
@@ -290,7 +288,6 @@
   color: rgba(0, 56, 101, 0.46);
   font-size: 9px;
   font-weight: 800;
-  letter-spacing: 0.1em;
 }
 
 .chart-builder-title-block input {
@@ -352,7 +349,6 @@
   color: rgba(0, 56, 101, 0.53);
   font-size: 9px;
   font-weight: 800;
-  letter-spacing: 0.06em;
 }
 
 .chart-builder-drop-zone-content {
@@ -454,6 +450,12 @@
   background: #fff;
 }
 
+.chart-builder-chart-body {
+  width: 100%;
+  height: 100%;
+  min-height: 430px;
+}
+
 .chart-builder-export-title {
   margin-bottom: 4px;
   color: var(--cb-navy);
@@ -472,8 +474,6 @@
   color: rgba(0, 56, 101, 0.58);
   font-size: 10px;
   font-weight: 800;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
 }
 
 .chart-builder-chart-type-grid {
@@ -1009,4 +1009,94 @@
   .chart-builder-drop-zone-row.is-dynamic {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+
+.chart-builder-shell,
+.chart-builder-shell button,
+.chart-builder-shell input,
+.chart-builder-shell select,
+.chart-builder-shell textarea {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.chart-builder-shell * {
+  letter-spacing: 0;
+}
+
+.chart-builder-panel-header h2 {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.chart-builder-panel-header p,
+.chart-builder-source-selector > p,
+.chart-builder-preview-header p,
+.chart-builder-saved-state,
+.chart-builder-recommendation,
+.chart-builder-truncated-note,
+.chart-builder-legacy-notice,
+.chart-builder-legacy-banner {
+  font-size: 12px;
+}
+
+.chart-builder-source-selector label > span,
+.chart-builder-saved-configs-title,
+.chart-builder-title-block > span,
+.chart-builder-drop-zone-label,
+.chart-builder-field-legend,
+.chart-builder-settings-section h3,
+.chart-builder-control,
+.chart-builder-chart-type-grid button,
+.chart-builder-field-chip,
+.chart-builder-drop-hint,
+.chart-builder-color-control,
+.chart-builder-add-series select,
+.chart-builder-series-empty,
+.chart-builder-saved-item-description,
+.chart-builder-saved-actions button {
+  font-size: 12px;
+  text-transform: none;
+}
+
+.chart-builder-source-selector label > span,
+.chart-builder-saved-configs-title,
+.chart-builder-title-block > span,
+.chart-builder-drop-zone-label,
+.chart-builder-field-legend,
+.chart-builder-settings-section h3 {
+  font-weight: 650;
+}
+
+.chart-builder-source-selector select,
+.chart-builder-control select,
+.chart-builder-control input,
+.chart-builder-field-search input {
+  font-size: 13px;
+}
+
+.chart-builder-toolbar .chart-builder-back-button,
+.chart-builder-toolbar .chart-builder-secondary-button,
+.chart-builder-toolbar .chart-builder-primary-button,
+.chart-builder-toolbar .chart-builder-icon-button {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.chart-builder-title-block input,
+.chart-builder-preview-header h1,
+.chart-builder-export-title {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.chart-builder-field-item,
+.chart-builder-field-copy strong,
+.chart-builder-series-heading,
+.chart-builder-toggle-setting,
+.chart-builder-saved-item-name {
+  font-size: 13px;
+}
+
+.chart-builder-field-copy small {
+  font-size: 11px;
 }

@@ -586,6 +586,7 @@ export function ChannelAnalysis({ filters, onFiltersChange, onNavigate }: Channe
 
   const visibleChannels = heatmapChannelFilter === "Tất cả" ? availableChannels : [heatmapChannelFilter];
   const visibleTopics = heatmapTopicFilter === "Tất cả" ? availableTopics : [heatmapTopicFilter];
+  const heatmapMinWidth = Math.max(720, 168 + visibleTopics.length * 112);
   const hasAnyConversation = channelData.some((ch) => ch.total > 0 || ch.ai_ok > 0 || ch.ai_fail > 0);
 
   const nonDataState = loading ? <ChannelLoadingState /> : loadError ? <ChannelErrorState message={loadError} onRetry={loadChannelData} /> : null;
@@ -745,12 +746,12 @@ export function ChannelAnalysis({ filters, onFiltersChange, onNavigate }: Channe
               </div>
             </div>
             <div style={{ padding: "20px", overflowX: "auto" }}>
-              <table style={{ borderCollapse: "collapse", fontSize: "12px" }}>
+              <table style={{ width: "100%", minWidth: `${heatmapMinWidth}px`, tableLayout: "fixed", borderCollapse: "collapse", fontSize: "12px" }}>
                 <thead>
                   <tr>
-                    <th style={{ padding: "8px 16px", textAlign: "left", color: "rgba(0,56,101,0.5)", fontSize: "10px", fontWeight: 600, letterSpacing: "0.04em", minWidth: "110px" }}>KÊNH / CHỦ ĐỀ</th>
+                    <th style={{ width: "168px", padding: "8px 16px", textAlign: "left", color: "rgba(0,56,101,0.5)", fontSize: "10px", fontWeight: 600, letterSpacing: "0.04em" }}>KÊNH / CHỦ ĐỀ</th>
                     {visibleTopics.map((t) => (
-                      <th key={t} style={{ padding: "8px 12px", textAlign: "center", color: "rgba(0,56,101,0.6)", fontSize: "10px", fontWeight: 600, whiteSpace: "nowrap" }}>{t}</th>
+                      <th key={t} style={{ padding: "8px 8px", textAlign: "center", color: "rgba(0,56,101,0.6)", fontSize: "10px", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t}</th>
                     ))}
                   </tr>
                 </thead>
@@ -769,11 +770,12 @@ export function ChannelAnalysis({ filters, onFiltersChange, onNavigate }: Channe
                         const bg = getHeatColor(val);
                         const textColor = getHeatTextColor(val);
                         return (
-                          <td key={`${ch}-${topicName}`} style={{ padding: "4px 6px", textAlign: "center" }}>
+                          <td key={`${ch}-${topicName}`} style={{ padding: "5px 6px", textAlign: "center" }}>
                             <div
                               style={{
-                                width: "48px",
-                                height: "36px",
+                                width: "100%",
+                                minWidth: "64px",
+                                height: "40px",
                                 borderRadius: "8px",
                                 backgroundColor: bg,
                                 display: "flex",
@@ -819,7 +821,7 @@ export function ChannelAnalysis({ filters, onFiltersChange, onNavigate }: Channe
 
           <div style={{ backgroundColor: "#fff", borderRadius: "20px", border: "1px solid rgba(0,56,101,0.08)", boxShadow: "0 2px 12px rgba(0,56,101,0.06)", overflow: "hidden" }}>
             <div style={{ padding: "16px 20px", borderBottom: "1px solid rgba(0,56,101,0.06)" }}>
-              <h3 style={{ color: NAVY, fontSize: "14px", fontWeight: 700, margin: 0 }}>Chi tiết tồn đọng theo kênh</h3>
+              <h3 style={{ color: NAVY, fontSize: "14px", fontWeight: 700, margin: 0 }}>Chi tiết dữ liệu theo kênh</h3>
               <p style={{ fontSize: "11px", color: "rgba(0,56,101,0.45)", margin: "2px 0 0" }}>Các vấn đề cần chú ý và xử lý</p>
             </div>
             <div style={{ overflowX: "auto" }}>

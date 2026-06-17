@@ -20,10 +20,10 @@ import {
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import flicLogo from "../../imports/435df5554caef6f0afbf.jpg";
 
-const NAVY      = "#003865";
+const NAVY = "#003865";
 const SIDEBAR_BG = "#EBF2FF";
 /* Active nav item: keep orange as the CTA identity per brand spec */
-const ACTIVE_BG  = "#D73C01";
+const ACTIVE_BG = "#D73C01";
 
 interface SidebarProps {
   activeScreen: string;
@@ -39,20 +39,20 @@ export function Sidebar({ activeScreen, onNavigate, collapsed, onToggleCollapse 
   const managerMenuItems = [
     { id: "overview", label: "Tổng quan", icon: LayoutDashboard },
     { id: "channel", label: "Kênh", icon: Globe },
-    { id: "aiinsights", label: "Phân tích AI", icon: Bot },
-    { id: "keyword", label: "Keywords", icon: Hash },
-    { id: "sentiment", label: "Cảm xúc", icon: Heart },
-    { id: "performance", label: "Hiệu suất", icon: TrendingUp },
+    { id: "aiinsights", label: "Hiệu suất AI", icon: Bot },
+    { id: "keyword", label: "Từ khóa nổi bật", icon: Hash },
+    { id: "sentiment", label: "Phân tích cảm xúc", icon: Heart },
+    // { id: "performance", label: "Hiệu suất", icon: TrendingUp }, // Tạm ẩn
     { id: "chartbuilder", label: "Biểu đồ", icon: BarChart2 },
-    { id: "chatbot_sheet", label: "Sheet Chatbot", icon: FileText },
+    { id: "chatbot_sheet", label: "Thư viện phản hồi", icon: FileText },
     { id: "settings", label: "Cài đặt", icon: Settings },
   ];
 
   const staffMenuItems = [
     { id: "overview", label: "Tổng quan", icon: LayoutDashboard },
-    { id: "aiinsights", label: "Phân tích AI", icon: Bot },
-    { id: "sentiment", label: "Cảm xúc", icon: Heart },
-    { id: "chatbot_sheet", label: "Sheet Chatbot", icon: FileText },
+    { id: "aiinsights", label: "Hiệu suất AI", icon: Bot },
+    { id: "sentiment", label: "Phân tích cảm xúc", icon: Heart },
+    { id: "chatbot_sheet", label: "Thư viện phản hồi", icon: FileText },
     { id: "profile", label: "Hồ sơ", icon: User },
   ];
 
@@ -123,8 +123,8 @@ export function Sidebar({ activeScreen, onNavigate, collapsed, onToggleCollapse 
                 backgroundColor: isActive
                   ? ACTIVE_BG
                   : isHovered
-                  ? "rgba(0,56,101,0.08)"
-                  : "transparent",
+                    ? "rgba(0,56,101,0.08)"
+                    : "transparent",
                 color: isActive ? "#fff" : NAVY,
                 transition: "all 0.15s ease",
                 cursor: "pointer",

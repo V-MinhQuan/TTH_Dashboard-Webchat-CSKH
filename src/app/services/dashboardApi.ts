@@ -4,17 +4,133 @@ import { DashboardKpiData, ChannelAnalyticsData, APIResponse } from "../types/da
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:5000";
 
 const configuredTimeout = Number(import.meta.env.VITE_API_TIMEOUT_MS);
-const API_TIMEOUT_MS = Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? configuredTimeout : 5000;
+const API_TIMEOUT_MS = Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? configuredTimeout : 15000;
 const configuredCacheTtl = Number(import.meta.env.VITE_API_CACHE_TTL_MS);
 const API_CACHE_TTL_MS = Number.isFinite(configuredCacheTtl) && configuredCacheTtl > 0 ? configuredCacheTtl : 120000;
-const API_CACHE_PREFIX = "flic_api_cache:";
+const API_CACHE_PREFIX = "flic_api_cache:v4:";
 
 type CacheEntry<T> = {
   savedAt: number;
   value: T;
 };
 
+type DashboardKpiPayload = Partial<DashboardKpiData> & Record<string, any>;
+
 const inFlightGetRequests = new Map<string, Promise<any>>();
+
+const DEFAULT_STATUS_SUMMARY = {
+  new: 0,
+  open: 0,
+  pending: 0,
+  closed: 0,
+  unknown: 0,
+};
+
+const DEFAULT_CHANNEL_SUMMARY = {
+  ZaloOA: 0,
+  ZaloBusiness: 0,
+  Facebook: 0,
+  ChatWidget: 0,
+  other: 0,
+};
+
+const DEFAULT_TRENDS = {
+  totalConversations: 0,
+  totalMessages: 0,
+  activeConversations: 0,
+  closedConversations: 0,
+  aiFailures: 0,
+};
+
+function toNumber(value: unknown): number {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+function normalizeSourceKey(key: string): keyof typeof DEFAULT_CHANNEL_SUMMARY {
+  const normalized = key.toLowerCase().replace(/[\s_-]+/g, "");
+  if (normalized === "zalooa" || normalized === "zalo") return "ZaloOA";
+  if (normalized === "zalobusiness" || normalized === "zalobiz") return "ZaloBusiness";
+  if (normalized === "facebook" || normalized === "fb" || normalized === "messenger") return "Facebook";
+  if (normalized === "chatwidget" || normalized === "website" || normalized === "web") return "ChatWidget";
+  return "other";
+}
+
+export function formatChannelParam(channel: string): string {
+  if (channel === "Zalo Business") return "ZaloBusiness";
+  if (channel === "Zalo OA") return "ZaloOA";
+  if (channel === "Chat Widget") return "ChatWidget";
+  if (channel === "Facebook") return "Facebook";
+  return channel;
+}
+
+function normalizeChannelSummary(value: unknown) {
+  const summary = { ...DEFAULT_CHANNEL_SUMMARY };
+  if (!value || typeof value !== "object") return summary;
+
+  Object.entries(value as Record<string, unknown>).forEach(([key, rawValue]) => {
+    const sourceKey = normalizeSourceKey(key);
+    summary[sourceKey] += toNumber(rawValue);
+  });
+
+  return summary;
+}
+
+function normalizeStatusSummary(value: unknown) {
+  const summary = { ...DEFAULT_STATUS_SUMMARY };
+  if (!value || typeof value !== "object") return summary;
+
+  Object.entries(value as Record<string, unknown>).forEach(([key, rawValue]) => {
+    const statusKey = key.toLowerCase().trim();
+    if (statusKey in summary) {
+      summary[statusKey as keyof typeof summary] = toNumber(rawValue);
+    }
+  });
+
+  return summary;
+}
+
+function normalizeDashboardKpiData(value: DashboardKpiPayload | null | undefined): DashboardKpiData {
+  const raw: DashboardKpiPayload = value && typeof value === "object" ? value : {};
+  const rawDateRange = raw.dateRange && typeof raw.dateRange === "object" ? raw.dateRange : {};
+  const rawTrends = raw.trends && typeof raw.trends === "object" ? raw.trends : {};
+
+  return {
+    ...raw,
+    totalConversations: toNumber(raw.totalConversations),
+    totalMessages: toNumber(raw.totalMessages),
+    newCustomers: toNumber(raw.newCustomers),
+    aiFailures: toNumber(raw.aiFailures ?? raw.aiFailedCount),
+    statusSummary: normalizeStatusSummary(raw.statusSummary),
+    sourceSummary: normalizeChannelSummary(raw.sourceSummary),
+    messageSummary: normalizeChannelSummary(raw.messageSummary),
+    dateRange: {
+      startDate: String(rawDateRange.startDate || ""),
+      endDate: String(rawDateRange.endDate || ""),
+    },
+    trends: {
+      ...DEFAULT_TRENDS,
+      totalConversations: toNumber(rawTrends.totalConversations),
+      totalMessages: toNumber(rawTrends.totalMessages),
+      activeConversations: toNumber(rawTrends.activeConversations ?? rawTrends.pendingConversations),
+      closedConversations: toNumber(rawTrends.closedConversations ?? rawTrends.completedConversations),
+      aiFailures: toNumber(rawTrends.aiFailures ?? rawTrends.aiFailedCount),
+    },
+    averageResponseTimeMinutes: toNumber(raw.averageResponseTimeMinutes),
+    urgentAlerts: Array.isArray(raw.urgentAlerts) ? raw.urgentAlerts : [],
+    topQuestions: Array.isArray(raw.topQuestions) ? raw.topQuestions : [],
+    priorityConversations: Array.isArray(raw.priorityConversations) ? raw.priorityConversations : [],
+    dailyTrends: Array.isArray(raw.dailyTrends)
+      ? raw.dailyTrends
+      : Array.isArray(raw.trendData)
+        ? raw.trendData
+        : [],
+  };
+}
 
 function getCacheStorage() {
   if (typeof window === "undefined") return null;
@@ -99,7 +215,8 @@ export async function fetchApiJson<T>(
   }
 
   const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs || API_TIMEOUT_MS);
+  const timeoutValue = timeoutMs || API_TIMEOUT_MS;
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutValue);
 
   const request = fetch(url, {
     ...fetchOptions,
@@ -115,9 +232,8 @@ export async function fetchApiJson<T>(
       if (!response.ok || payload?.success === false) {
         throw new Error(payload?.message || payload?.detail || `API trả về lỗi ${response.status}.`);
       }
-
       if (useCache) writeCache(cacheKey, payload);
-      return payload as T;
+      return payload;
     })
     .catch((err: any) => {
       if (useCache) {
@@ -126,7 +242,7 @@ export async function fetchApiJson<T>(
       }
 
       if (err?.name === "AbortError") {
-        throw new Error("Quá thời gian tải dữ liệu 5 giây. Vui lòng thử lại hoặc kiểm tra kết nối backend.");
+        throw new Error(`Quá thời gian tải dữ liệu ${Math.round(timeoutValue / 1000)} giây. Vui lòng thử lại hoặc kiểm tra kết nối backend.`);
       }
 
       throw err;
@@ -139,6 +255,7 @@ export async function fetchApiJson<T>(
   if (useCache) inFlightGetRequests.set(cacheKey, request);
   return request;
 }
+
 
 /**
  * Gọi API lấy dữ liệu KPI của Dashboard
@@ -162,7 +279,7 @@ export async function getDashboardKpi(params?: {
     url.searchParams.append("endDate", params.endDate);
   }
   if (params?.channel && params.channel !== "Tất cả") {
-    url.searchParams.append("channel", params.channel);
+    url.searchParams.append("channel", formatChannelParam(params.channel));
   }
   if (params?.topic && params.topic !== "Tất cả") {
     url.searchParams.append("topic", params.topic);
@@ -174,13 +291,13 @@ export async function getDashboardKpi(params?: {
     url.searchParams.append("aiStatus", params.aiStatus);
   }
 
-  const resJson = await fetchApiJson<APIResponse<DashboardKpiData>>(url);
+  const resJson = await fetchApiJson<APIResponse<DashboardKpiPayload>>(url);
 
   if (!resJson.success) {
     throw new Error(resJson.message || "Không thể tải dữ liệu Dashboard. Vui lòng kiểm tra lại cấu hình hoặc kết nối.");
   }
 
-  return resJson.data;
+  return normalizeDashboardKpiData(resJson.data);
 }
 
 export async function getChannelAnalytics(params?: {
@@ -200,7 +317,7 @@ export async function getChannelAnalytics(params?: {
     url.searchParams.append("endDate", params.endDate);
   }
   if (params?.channel && params.channel !== "Tất cả") {
-    url.searchParams.append("channel", params.channel);
+    url.searchParams.append("channel", formatChannelParam(params.channel));
   }
   if (params?.topic && params.topic !== "Tất cả") {
     url.searchParams.append("topic", params.topic);

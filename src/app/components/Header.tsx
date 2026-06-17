@@ -1,7 +1,9 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback, type ReactNode } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useSettings } from "../context/SettingsContext";
-import { Search, Bell, ChevronDown, User, LogOut, ChevronRight, X, Key, Settings, HelpCircle } from "lucide-react";
+import { Bell, ChevronDown, User, LogOut, X, Settings, HelpCircle } from "lucide-react";
+import { getDashboardKpi } from "../services/dashboardApi";
+import { getSheetChatbotRows } from "../services/sheetChatbotApi";
 import { toast } from "sonner";
 
 const NAVY   = "#003865";
@@ -28,40 +30,33 @@ const screenLabels: Record<string, string> = {
   personalinfo: "Thông tin cá nhân",
 };
 
-const adminNotifications = [
-  {
-    date: "Hôm nay",
-    items: [
-      { id: 1, text: "Có 12 lỗi AI mới cần xem xét", type: "alert", time: "5 phút trước", status: "pending", targetScreen: "aiinsights" },
-      { id: 2, text: "5 FAQ đang chờ duyệt", type: "warning", time: "20 phút trước", status: "pending", targetScreen: "faq" },
-      { id: 3, text: "3 dữ liệu Sheet Chatbot cần kiểm tra", type: "info", time: "1 giờ trước", status: "pending", targetScreen: "chatbot_sheet" },
-    ],
-  },
-  {
-    date: "Hôm qua",
-    items: [
-      { id: 4, text: "Có cập nhật người dùng mới trong Cài đặt", type: "success", time: "14:30", status: "completed", targetScreen: "settings" },
-      { id: 5, text: "Kiểm tra hội thoại HT-2451", type: "info", time: "09:15", status: "completed", targetScreen: "conversation" },
-    ],
-  },
-];
+type NotificationStatus = "pending" | "completed";
+type NotificationType = "alert" | "warning" | "info" | "success";
 
-const staffNotifications = [
-  {
-    date: "Hôm nay",
-    items: [
-      { id: 1, text: "Bạn có 4 hội thoại mới được phân công", type: "alert", time: "10 phút trước", status: "pending", targetScreen: "conversation" },
-      { id: 2, text: "2 FAQ của bạn cần chỉnh sửa", type: "warning", time: "30 phút trước", status: "pending", targetScreen: "faq" },
-      { id: 3, text: "1 dòng Sheet Chatbot của bạn đã được duyệt", type: "success", time: "1 giờ trước", status: "completed", targetScreen: "chatbot_sheet" },
-    ],
-  },
-  {
-    date: "Hôm qua",
-    items: [
-      { id: 4, text: "Có hội thoại AI trả lời sai cần bạn kiểm tra", type: "warning", time: "16:00", status: "completed", targetScreen: "conversation" },
-    ],
-  },
-];
+interface SystemNotification {
+  id: string;
+  text: string;
+  type: NotificationType;
+  time: string;
+  status: NotificationStatus;
+  targetScreen: string;
+}
+
+interface NotificationGroup {
+  date: string;
+  items: SystemNotification[];
+}
+
+function formatApiDate(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function getLast30DayRange() {
+  const end = new Date();
+  const start = new Date(end);
+  start.setDate(start.getDate() - 30);
+  return { startDate: formatApiDate(start), endDate: formatApiDate(end) };
+}
 
 interface HeaderProps {
   activeScreen: string;
@@ -73,11 +68,13 @@ export function Header({ activeScreen, onNavigate }: HeaderProps) {
   const { settings } = useSettings();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showAvatar, setShowAvatar] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [showOtpModal, setShowOtpModal] = useState(false);
   const [showNewPasswordModal, setShowNewPasswordModal] = useState(false);
   const [otpCode, setOtpCode] = useState("");
+  const [notificationsGroups, setNotificationsGroups] = useState<NotificationGroup[]>([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(true);
+  const [notificationsError, setNotificationsError] = useState<string | null>(null);
   const notifRef = useRef<HTMLDivElement>(null);
   const avatarRef = useRef<HTMLDivElement>(null);
 
@@ -97,27 +94,109 @@ export function Header({ activeScreen, onNavigate }: HeaderProps) {
     success: "#228A61",
   };
 
-  let notificationsGroups = role === "manager" ? adminNotifications : staffNotifications;
+  const loadNotifications = useCallback(async () => {
+    setNotificationsLoading(true);
+    setNotificationsError(null);
 
-  // Filter based on notification settings
-  notificationsGroups = notificationsGroups.map(group => {
-    return {
-      ...group,
-      items: group.items.filter(n => {
-        if ((n.text.includes("AI") || n.text.includes("AI trả lời sai")) && !(settings as any).aiFailAlert) {
-          return false;
-        }
-        if (n.text.includes("hội thoại mới được phân công") && !(settings as any).emailNotif) {
-          return false;
-        }
-        return true;
-      })
+    try {
+      const range = getLast30DayRange();
+      const [kpiData, sheetData] = await Promise.all([
+        getDashboardKpi(range).catch((error) => {
+          console.warn("Không thể tải KPI cho thông báo hệ thống", error);
+          return null;
+        }),
+        getSheetChatbotRows({ pageSize: 1, role }).catch((error) => {
+          console.warn("Không thể tải Sheet Chatbot cho thông báo hệ thống", error);
+          return null;
+        }),
+      ]);
+
+      if (!kpiData && !sheetData) {
+        throw new Error("Không API thông báo nào phản hồi thành công");
+      }
+
+      const items: SystemNotification[] = [];
+      const overtimeCount = kpiData?.urgentAlerts.filter((alert) => alert.type === "overtime").length ?? 0;
+      const aiFailures = Number(kpiData?.aiFailures || 0);
+      const pendingManager = Number(sheetData?.stats?.pendingManager || 0);
+      const needsEdit = Number(sheetData?.stats?.needsEdit || 0);
+
+      if (overtimeCount > 0) {
+        const id = `dashboard:overtime:${overtimeCount}`;
+        items.push({
+          id,
+          text: `${overtimeCount} hội thoại đang chờ quá 10 giờ`,
+          type: "alert",
+          time: "Cập nhật theo dữ liệu Dashboard",
+          status: "pending",
+          targetScreen: "overview",
+        });
+      }
+
+      if (settings.aiFailAlert && aiFailures > 0) {
+        const id = `dashboard:ai-failures:${aiFailures}`;
+        items.push({
+          id,
+          text: `${aiFailures} phản hồi AI cần kiểm tra trong 30 ngày qua`,
+          type: "warning",
+          time: "Cập nhật theo dữ liệu Dashboard",
+          status: "pending",
+          targetScreen: "aiinsights",
+        });
+      }
+
+      if (pendingManager > 0) {
+        const id = `sheet-chatbot:pending:${pendingManager}`;
+        items.push({
+          id,
+          text: `${pendingManager} dòng Sheet Chatbot chờ quản lý duyệt`,
+          type: "info",
+          time: "Cập nhật theo Sheet Chatbot",
+          status: "pending",
+          targetScreen: "chatbot_sheet",
+        });
+      }
+
+      if (needsEdit > 0) {
+        const id = `sheet-chatbot:needs-edit:${needsEdit}`;
+        items.push({
+          id,
+          text: `${needsEdit} dòng Sheet Chatbot cần chỉnh sửa`,
+          type: "warning",
+          time: "Cập nhật theo Sheet Chatbot",
+          status: "pending",
+          targetScreen: "chatbot_sheet",
+        });
+      }
+
+      setNotificationsGroups(items.length ? [{ date: "Dữ liệu hệ thống", items }] : []);
+    } catch (error) {
+      console.error("Không thể tải thông báo hệ thống", error);
+      setNotificationsError("Không thể tải thông báo hệ thống");
+      setNotificationsGroups([]);
+    } finally {
+      setNotificationsLoading(false);
+    }
+  }, [role, settings.aiFailAlert]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      if (cancelled) return;
+      await loadNotifications();
     };
-  }).filter(group => group.items.length > 0);
 
-  const unreadCount = notificationsGroups.reduce((acc, group) => acc + group.items.filter(n => n.status !== "completed").length, 0);
+    load();
+    const intervalId = window.setInterval(load, 5 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [loadNotifications]);
 
-  const dropdownItem = (onClick: () => void, icon: React.ReactNode, label: string, danger = false) => (
+  const pendingWorkCount = notificationsGroups.reduce((acc, group) => acc + group.items.filter(n => n.status !== "completed").length, 0);
+
+  const dropdownItem = (onClick: () => void, icon: ReactNode, label: string, danger = false) => (
     <div
       onClick={onClick}
       style={{ padding: "10px 16px", display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", fontSize: "13px", color: danger ? RED_TEXT : NAVY, transition: "background 0.15s" }}
@@ -158,26 +237,9 @@ export function Header({ activeScreen, onNavigate }: HeaderProps) {
     >
       {/* Breadcrumb */}
       <div style={{ flex: 1, display: "flex", alignItems: "center", gap: "8px" }}>
-        <span style={{ color: "rgba(0,56,101,0.4)", fontSize: "13px" }}>FLIC AI Ops</span>
-        <ChevronRight size={14} style={{ color: "rgba(0,56,101,0.3)" }} />
-        <span style={{ color: NAVY, fontSize: "14px", fontWeight: 600 }}>
+        <span style={{ color: NAVY, fontSize: "14px", fontWeight: 700 }}>
           {screenLabels[activeScreen] || "Tổng quan"}
         </span>
-      </div>
-
-      {/* Global Search */}
-      <div
-        style={{ display: "flex", alignItems: "center", gap: "8px", backgroundColor: "#f4f6fa", borderRadius: "10px", padding: "8px 14px", width: "240px", border: "1.5px solid transparent", transition: "border-color 0.2s" }}
-        onFocus={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = CTA; }}
-        onBlur={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = "transparent"; }}
-      >
-        <Search size={15} style={{ color: "rgba(0,56,101,0.4)", flexShrink: 0 }} />
-        <input
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Tìm kiếm hội thoại, từ khóa..."
-          style={{ border: "none", outline: "none", background: "transparent", fontSize: "13px", color: NAVY, width: "100%" }}
-        />
       </div>
 
       {/* Notifications */}
@@ -187,17 +249,39 @@ export function Header({ activeScreen, onNavigate }: HeaderProps) {
           style={{ width: "36px", height: "36px", borderRadius: "10px", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: showNotifications ? "#fff3ef" : "#f4f6fa", color: showNotifications ? CTA : NAVY, transition: "all 0.2s", position: "relative" }}
         >
           <Bell size={16} />
-          {unreadCount > 0 && <span style={{ position: "absolute", top: "6px", right: "6px", width: "8px", height: "8px", backgroundColor: ORANGE, borderRadius: "50%", border: "2px solid #fff" }} />}
+          {pendingWorkCount > 0 && <span style={{ position: "absolute", top: "6px", right: "6px", width: "8px", height: "8px", backgroundColor: ORANGE, borderRadius: "50%", border: "2px solid #fff" }} />}
         </button>
 
         {showNotifications && (
           <div style={{ position: "absolute", top: "calc(100% + 8px)", right: 0, width: "360px", backgroundColor: "#fff", borderRadius: "16px", boxShadow: "0 8px 32px rgba(0,56,101,0.15)", border: "1px solid rgba(0,56,101,0.08)", overflow: "hidden", zIndex: 100 }}>
             <div style={{ padding: "16px 20px", borderBottom: "1px solid rgba(0,56,101,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontWeight: 700, color: NAVY, fontSize: "14px" }}>Thông báo</span>
-              <span style={{ fontSize: "11px", color: CTA, cursor: "pointer", fontWeight: 600 }}>Đánh dấu tất cả đã đọc</span>
+              <div>
+                <div style={{ fontWeight: 700, color: NAVY, fontSize: "14px" }}>Thông báo hệ thống</div>
+                <div style={{ fontSize: "11px", color: "rgba(0,56,101,0.45)", marginTop: "3px" }}>
+                  {pendingWorkCount > 0 ? `${pendingWorkCount} công việc cần xử lý` : "Không có công việc cần xử lý"}
+                </div>
+              </div>
             </div>
             <div style={{ maxHeight: "360px", overflowY: "auto" }}>
-              {notificationsGroups.map(group => (
+              {notificationsLoading && (
+                <div style={{ padding: "28px 20px", textAlign: "center", color: "rgba(0,56,101,0.45)", fontSize: "13px" }}>
+                  Đang tải thông báo...
+                </div>
+              )}
+
+              {!notificationsLoading && notificationsError && (
+                <div style={{ padding: "20px", color: RED_TEXT, fontSize: "13px", lineHeight: 1.5 }}>
+                  {notificationsError}. Vui lòng kiểm tra kết nối API.
+                </div>
+              )}
+
+              {!notificationsLoading && !notificationsError && notificationsGroups.length === 0 && (
+                <div style={{ padding: "28px 20px", textAlign: "center", color: "rgba(0,56,101,0.45)", fontSize: "13px" }}>
+                  Không có thông báo cần xử lý
+                </div>
+              )}
+
+              {!notificationsLoading && !notificationsError && notificationsGroups.map(group => (
                 <div key={group.date}>
                   <div style={{ padding: "8px 20px", backgroundColor: "#f8fafc", fontSize: "11px", fontWeight: 600, color: "rgba(0,56,101,0.5)", borderBottom: "1px solid rgba(0,56,101,0.04)" }}>
                     {group.date.toUpperCase()}

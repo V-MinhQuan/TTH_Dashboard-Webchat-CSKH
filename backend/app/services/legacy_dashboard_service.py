@@ -83,6 +83,12 @@ def normalize_source_key(source: str = '') -> str:
         return 'ChatWidget'
     return 'other'
 
+def channel_to_source_key(channel: str = ''):
+    if not channel or channel == 'Tất cả':
+        return None
+    key = normalize_source_key(channel)
+    return None if key == 'other' else key
+
 def format_wait_time(mins: int) -> str:
     if mins <= 0:
         return 'Vừa xong'
@@ -160,7 +166,7 @@ class DashboardService:
             'message_counts': lambda: self.repository.get_message_counts_filtered(start_date, end_date, channel, conversation_status, topic, ai_status),
             'trends': lambda: self._cached_repo_call('trends_base', start_date, end_date, lambda: self.repository.get_trends(start_date, end_date)),
             'urgent_alerts': lambda: self._cached_repo_call('urgent_alerts_base', start_date, end_date, lambda: self.repository.get_urgent_alerts_data(start_date, end_date)),
-            'overtime_alerts': lambda: self._cached_repo_call('urgent_overtime_all', None, None, lambda: self.repository.get_urgent_alerts_data(None, None)),
+            'overtime_alerts': lambda: self._cached_repo_call('urgent_overtime_all', None, None, lambda: self.repository.get_urgent_alerts_data(None, None, include_ai=False)),
             'top_questions': lambda: self._cached_repo_call('top_questions_base', start_date, end_date, lambda: self.repository.get_top_questions_data(start_date, end_date)),
             'priority_conversations': lambda: self.repository.get_priority_conversations_data(start_date, end_date, channel, conversation_status, topic, ai_status),
             'daily_conversations': lambda: self.repository.get_daily_conversation_summary(start_date, end_date, channel, conversation_status, topic, ai_status),
@@ -199,14 +205,7 @@ class DashboardService:
 
         overall_min_date = None
         overall_max_date = None
-        source_filter = None
-        if channel and channel != 'Tất cả':
-            source_filter = {
-                'Zalo OA': 'ZaloOA',
-                'Zalo Business': 'ZaloBusiness',
-                'Facebook': 'Facebook',
-                'Chat Widget': 'ChatWidget',
-            }.get(channel)
+        source_filter = channel_to_source_key(channel)
 
         for item in raw_message_counts:
             source = normalize_source_key(item.get('source'))
@@ -1021,8 +1020,20 @@ class DashboardService:
         topic = filters.get('topic')
         conversation_status = filters.get('conversationStatus')
         ai_status = filters.get('aiStatus')
+        selected_source = channel_to_source_key(channel)
 
-        with ThreadPoolExecutor(max_workers=3) as executor:
+        with ThreadPoolExecutor(max_workers=4 if not selected_source else 3) as executor:
+            source_totals_future = None
+            if not selected_source:
+                source_totals_future = executor.submit(
+                    self.repository.get_conversation_summary,
+                    start_date,
+                    end_date,
+                    channel,
+                    conversation_status,
+                    topic,
+                    ai_status,
+                )
             conversation_stats_future = executor.submit(
                 self.repository.get_channel_conversation_stats,
                 start_date,
@@ -1053,6 +1064,7 @@ class DashboardService:
             conversation_stats = conversation_stats_future.result() or []
             ai_summary = ai_summary_future.result() or []
             topic_stats = topic_stats_future.result() or []
+            source_totals = source_totals_future.result() if source_totals_future else {}
 
         all_channel_defs = [
             ('Zalo Business', 'ZaloBusiness'),
@@ -1060,15 +1072,6 @@ class DashboardService:
             ('Zalo OA', 'ZaloOA'),
             ('Chat Widget', 'ChatWidget'),
         ]
-        selected_source = None
-        if channel and channel != 'Tất cả':
-            selected_source = {
-                'Zalo OA': 'ZaloOA',
-                'Zalo Business': 'ZaloBusiness',
-                'Facebook': 'Facebook',
-                'Chat Widget': 'ChatWidget',
-            }.get(channel)
-
         visible_channel_defs = [item for item in all_channel_defs if not selected_source or item[1] == selected_source]
         channels_map = {
             channel_name: {
@@ -1098,12 +1101,13 @@ class DashboardService:
             channels_map[c_name]['total'] += total
             if status in ('pending', 'open'):
                 channels_map[c_name]['unresolved'] += total
-
+            
+            # Record average response time properly
             avg_response = row.get('avg_response_minutes')
             if avg_response is not None:
                 channels_map[c_name]['_response_total'] += float(avg_response) * total
                 channels_map[c_name]['_response_count'] += total
-
+                
             date_str = row.get('date_str') or 'unknown'
             if not trend_map[date_str]['date']:
                 trend_map[date_str]['date'] = date_str
@@ -1117,6 +1121,25 @@ class DashboardService:
                 status_map[c_name]['Đang xử lý'] += total
             else:
                 status_map[c_name]['Hoàn thành'] += total
+
+        source_summary = source_totals.get('sourceSummary', {})
+        unresolved_summary = source_totals.get('unresolvedSummary', {})
+        for c_name in channels_map:
+            source_key_for_map = {
+                'Zalo OA': 'ZaloOA',
+                'Zalo Business': 'ZaloBusiness',
+                'Facebook': 'Facebook',
+                'Chat Widget': 'ChatWidget'
+            }.get(c_name)
+            
+            if source_key_for_map and not selected_source:
+                # Use accurate de-duplicated totals from conversation summary.
+                channels_map[c_name]['total'] = source_summary.get(source_key_for_map) or 0
+                channels_map[c_name]['unresolved'] = unresolved_summary.get(source_key_for_map) or 0
+                
+                # Assign status map accurately based on the unresolved amount
+                status_map[c_name]['Chờ xử lý'] = channels_map[c_name]['unresolved']
+                status_map[c_name]['Hoàn thành'] = channels_map[c_name]['total'] - channels_map[c_name]['unresolved']
 
         for row in ai_summary:
             c_name = format_channel(row.get('source'))

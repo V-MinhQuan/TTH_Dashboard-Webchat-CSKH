@@ -38,6 +38,8 @@ DATE_GRAIN_SQL = {
     "year": "DATEFROMPARTS(YEAR({expression}), 1, 1)",
 }
 
+TEXT_FILTER_MAX_LENGTH = 500
+
 
 @dataclass(frozen=True)
 class CompiledChartQuery:
@@ -82,6 +84,14 @@ class ChartQueryCompiler:
         dimensions = [self._compile_dimension(dataset, item) for item in request.dimensions]
         series = self._compile_dimension(dataset, request.series, required_role="series") if request.series else None
         metrics = [self._compile_metric(dataset, item) for item in request.metrics]
+        if request.chart_type.value == "scatter":
+            numeric_metric_count = sum(
+                1 for _, field, _ in metrics if field.data_type == "number"
+            )
+            if numeric_metric_count < 2:
+                raise ValueError(
+                    "Biểu đồ phân tán cần ít nhất hai chỉ số số"
+                )
 
         relation_ids = set(dataset.base_relation_ids)
         for _, field, _ in [*dimensions, *metrics, *([series] if series else [])]:
@@ -237,6 +247,14 @@ class ChartQueryCompiler:
                 raise ValueError("Bộ lọc 'between' cần giá trị bắt đầu và kết thúc")
             start_value = self._coerce_value(field, selection.value)
             end_value = self._coerce_value(field, selection.value_to)
+            if start_value > end_value:
+                if field.data_type == "date":
+                    raise ValueError(
+                        "Ngày bắt đầu phải trước hoặc bằng ngày kết thúc"
+                    )
+                raise ValueError(
+                    "Giá trị bắt đầu phải nhỏ hơn hoặc bằng giá trị kết thúc"
+                )
             if (
                 field.data_type == "date"
                 and isinstance(start_value, date)
@@ -255,7 +273,7 @@ class ChartQueryCompiler:
                 field,
             )
         if operator in ("contains", "starts_with"):
-            value = str(selection.value or "")
+            value = self._coerce_value(field, selection.value)
             if not value:
                 raise ValueError(f"Bộ lọc '{operator}' cần một giá trị")
             escaped = self._escape_like(value)
@@ -352,7 +370,12 @@ class ChartQueryCompiler:
                     raise ValueError(
                         f"Giá trị ngày không hợp lệ cho trường '{field.id}'"
                     ) from exc
-        return str(value)[:500]
+        coerced = str(value)
+        if len(coerced) > TEXT_FILTER_MAX_LENGTH:
+            raise ValueError(
+                f"Giá trị lọc văn bản quá dài cho trường '{field.id}'"
+            )
+        return coerced
 
     @staticmethod
     def _escape_like(value: str) -> str:

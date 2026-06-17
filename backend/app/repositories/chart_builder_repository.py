@@ -174,9 +174,9 @@ class ChartBuilderRepository:
                     AND COL_LENGTH('dbo.WebChat_MessageAnalytics', 'detectedKeywords') IS NOT NULL
                     AND COL_LENGTH('dbo.WebChat_MessageAnalytics', 'satisfactionScore') IS NOT NULL
                     THEN 1 ELSE 0 END AS analytics,
-                  CASE WHEN OBJECT_ID(N'dbo.WebChat_Conversations', N'U') IS NOT NULL
-                    AND COL_LENGTH('dbo.WebChat_Conversations', 'LastMessageAt') IS NOT NULL
-                    AND COL_LENGTH('dbo.WebChat_Conversations', 'Source') IS NOT NULL
+                  CASE WHEN OBJECT_ID(N'dbo.WebChat_MessageLogs', N'U') IS NOT NULL
+                    AND COL_LENGTH('dbo.WebChat_MessageLogs', 'SentAt') IS NOT NULL
+                    AND COL_LENGTH('dbo.WebChat_MessageLogs', 'Source') IS NOT NULL
                     THEN 1 ELSE 0 END AS conversations
                 """,
             )
@@ -342,18 +342,23 @@ class ChartBuilderRepository:
     def _conversation_volume_query(self, request: ChartDataRequest) -> Tuple[str, Sequence[Any]]:
         where, params = self._conversation_filters(request)
         if request.group_by == "date":
-            select_dimension = "CONVERT(varchar(10), CONVERT(date, c.LastMessageAt), 23) AS [date]"
-            group_dimension = "CONVERT(date, c.LastMessageAt)"
+            select_dimension = "CONVERT(varchar(10), CONVERT(date, m.SentAt), 23) AS [date]"
         else:
-            select_dimension = "COALESCE(NULLIF(LTRIM(RTRIM(c.Source)), ''), N'Không xác định') AS channel"
-            group_dimension = "COALESCE(NULLIF(LTRIM(RTRIM(c.Source)), ''), N'Không xác định')"
+            select_dimension = "COALESCE(NULLIF(LTRIM(RTRIM(m.Source)), ''), N'Không xác định') AS channel"
         return (
             f"""
-            SELECT {select_dimension}, COUNT(*) AS total_conversations
-            FROM dbo.WebChat_Conversations c
-            {where}
-            GROUP BY {group_dimension}
-            ORDER BY {group_dimension}
+            WITH scoped AS (
+              SELECT DISTINCT
+                CAST(CASE WHEN m.FromHost = 1 THEN m.ReceiverId ELSE m.SenderId END AS NVARCHAR(255)) AS customer_id,
+                m.Source AS source_key,
+                {select_dimension}
+              FROM dbo.WebChat_MessageLogs m
+              {where}
+            )
+            SELECT {request.group_by if request.group_by == 'date' else 'channel'}, COUNT(*) AS total_conversations
+            FROM scoped
+            GROUP BY {request.group_by if request.group_by == 'date' else 'channel'}
+            ORDER BY {request.group_by if request.group_by == 'date' else 'channel'}
             """,
             params,
         )
@@ -396,10 +401,7 @@ class ChartBuilderRepository:
             conditions.append("a.messageAt < DATEADD(day, 1, ?)")
             params.append(filters.to_date)
         if filters.channel:
-            conditions.append(
-                "EXISTS (SELECT 1 FROM dbo.WebChat_Conversations c "
-                "WHERE c.Id = a.conversationId AND c.Source = ?)"
-            )
+            conditions.append("a.source = ?")
             params.append(filters.channel)
         if include_topic and filters.topic:
             conditions.append("a.detectedTopics LIKE ?")
@@ -412,13 +414,13 @@ class ChartBuilderRepository:
         params: List[Any] = []
         filters = request.filters
         if filters.from_date:
-            conditions.append("c.LastMessageAt >= ?")
+            conditions.append("m.SentAt >= ?")
             params.append(filters.from_date)
         if filters.to_date:
-            conditions.append("c.LastMessageAt < DATEADD(day, 1, ?)")
+            conditions.append("m.SentAt < DATEADD(day, 1, ?)")
             params.append(filters.to_date)
         if filters.channel:
-            conditions.append("c.Source = ?")
+            conditions.append("m.Source = ?")
             params.append(filters.channel)
         return ChartBuilderRepository._where(conditions), tuple(params)
 

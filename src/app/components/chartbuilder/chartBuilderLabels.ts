@@ -21,6 +21,7 @@ export const CHART_BUILDER_LABELS = {
   save: "Lưu biểu đồ",
   searchPlaceholder: "Tìm trường dữ liệu...",
   loadingCatalog: "Đang tải bộ dữ liệu...",
+  notConfiguredChart: "Chưa cấu hình biểu đồ.",
   loadingChart: "Đang tạo biểu đồ...",
   emptyChart: "Không tìm thấy dữ liệu phù hợp với bộ lọc hiện tại.",
   invalidChart: "Cấu hình biểu đồ chưa hợp lệ.",

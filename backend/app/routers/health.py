@@ -21,6 +21,8 @@ def health(
     db = check_database_health()
     ml = sentiment_service.get_ml_health()
     return {
+        "success": True,
+        "message": "Backend is running successfully.",
         "status": "ok",
         "service": "flic-fastapi-backend",
         "database": db["status"],

@@ -4,6 +4,51 @@ import pymssql
 from app.core.legacy_db import get_db_connection
 
 class ConversationRepository:
+    def _normalized_source_expr(self, source_column):
+        return f"LOWER(LTRIM(RTRIM({source_column})))"
+
+    def _source_key_case_expr(self, source_column):
+        normalized_source = self._normalized_source_expr(source_column)
+        return f"""
+            CASE
+              WHEN {normalized_source} IN ('zalooa', 'zalo') THEN 'ZaloOA'
+              WHEN {normalized_source} IN ('zalobusiness', 'zalobiz') THEN 'ZaloBusiness'
+              WHEN {normalized_source} IN ('facebook', 'fb', 'messenger') THEN 'Facebook'
+              WHEN {normalized_source} IN ('chatwidget', 'website', 'web') THEN 'ChatWidget'
+              ELSE 'other'
+            END
+        """
+
+    def _message_customer_expr(self, message_alias="m"):
+        return f"CASE WHEN {message_alias}.FromHost = 1 THEN {message_alias}.ReceiverId ELSE {message_alias}.SenderId END"
+
+    def _analytics_issue_condition(self, alias="ai", issue_group="any"):
+        message_id_match = f"a.messageId = {alias}.id_webchat_messageLogs"
+        same_conversation_match = f"""
+            (
+              CAST(a.customerId AS NVARCHAR(255)) = CAST({self._message_customer_expr(alias)} AS NVARCHAR(255))
+              AND LOWER(LTRIM(RTRIM(a.source))) = {self._normalized_source_expr(f'{alias}.Source')}
+              AND ABS(DATEDIFF(SECOND, a.messageAt, {alias}.SentAt)) <= 2
+            )
+        """
+
+        if issue_group == "no_data":
+            issue_filter = "a.issueType = N'Không tìm thấy dữ liệu'"
+        elif issue_group == "uncertain":
+            issue_filter = "a.issueType IN (N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin')"
+        else:
+            issue_filter = "a.issueFlag = 1"
+
+        return f"""
+            EXISTS (
+              SELECT 1
+              FROM WebChat_MessageAnalytics a
+              WHERE a.issueFlag = 1
+                AND ({message_id_match} OR {same_conversation_match})
+                AND {issue_filter}
+            )
+        """
+
     def _append_date_and_channel_filters(self, conditions, params, date_column, source_column, start_date=None, end_date=None, channel=None):
         if start_date:
             conditions.append(f"{date_column} >= %s")
@@ -25,7 +70,7 @@ class ConversationRepository:
 
         if channel_values:
             placeholders = ", ".join(["%s"] * len(channel_values))
-            conditions.append(f"LOWER({source_column}) IN ({placeholders})")
+            conditions.append(f"{self._normalized_source_expr(source_column)} IN ({placeholders})")
             params.extend(channel_values)
 
     def _status_filter_value(self, conversation_status=None):
@@ -48,7 +93,7 @@ class ConversationRepository:
             END
         """
 
-    def _ai_no_data_condition(self, alias="ai"):
+    def _ai_no_data_keyword_condition(self, alias="ai"):
         return f"""(
             {alias}.TextContent LIKE N'%không tìm thấy%'
             OR {alias}.TextContent LIKE N'%chưa có%'
@@ -59,7 +104,7 @@ class ConversationRepository:
             OR {alias}.TextContent LIKE N'%Không thể xác nhận trực tiếp%'
         )"""
 
-    def _ai_uncertain_condition(self, alias="ai"):
+    def _ai_uncertain_keyword_condition(self, alias="ai"):
         return f"""(
             {alias}.TextContent LIKE N'%chưa hiểu%'
             OR {alias}.TextContent LIKE N'%chưa rõ%'
@@ -67,7 +112,24 @@ class ConversationRepository:
             OR {alias}.TextContent LIKE N'%chưa có thông tin cụ thể%'
             OR {alias}.TextContent LIKE N'%độ tin cậy%'
             OR {alias}.TextContent LIKE N'%chưa xác nhận%'
+            OR {alias}.TextContent LIKE N'%có vẻ như%'
+            OR {alias}.TextContent LIKE N'%chắc là%'
+            OR {alias}.TextContent LIKE N'%có lẽ%'
+            OR {alias}.TextContent LIKE N'%hình như%'
+            OR {alias}.TextContent LIKE N'%tôi đoán%'
         )"""
+
+    def _ai_no_data_condition(self, alias="ai"):
+        keyword_condition = self._ai_no_data_keyword_condition(alias)
+        analytics_no_data = self._analytics_issue_condition(alias, "no_data")
+        analytics_uncertain = self._analytics_issue_condition(alias, "uncertain")
+        return f"({analytics_no_data} OR ({keyword_condition} AND NOT {analytics_uncertain}))"
+
+    def _ai_uncertain_condition(self, alias="ai"):
+        keyword_condition = self._ai_uncertain_keyword_condition(alias)
+        analytics_no_data = self._analytics_issue_condition(alias, "no_data")
+        analytics_uncertain = self._analytics_issue_condition(alias, "uncertain")
+        return f"({analytics_uncertain} OR ({keyword_condition} AND NOT {analytics_no_data}))"
 
     def _ai_failure_condition(self, alias="ai"):
         return f"({self._ai_no_data_condition(alias)} OR {self._ai_uncertain_condition(alias)})"
@@ -82,6 +144,17 @@ class ConversationRepository:
             return f"{ai_message_sql} AND {self._ai_no_data_condition(alias)}"
         if ai_status in ("AI không chắc chắn", "AI trả lời không chắc chắn"):
             return f"{ai_message_sql} AND {self._ai_uncertain_condition(alias)}"
+        return None
+
+    def _ai_classified_filter_sql(self, ai_status=None):
+        if ai_status == "AI trả lời thành công":
+            return "is_no_data = 0 AND is_uncertain = 0"
+        if ai_status == "AI trả lời thất bại":
+            return "(is_no_data = 1 OR is_uncertain = 1)"
+        if ai_status == "Không tìm thấy dữ liệu":
+            return "is_no_data = 1"
+        if ai_status in ("AI không chắc chắn", "AI trả lời không chắc chắn"):
+            return "is_uncertain = 1"
         return None
 
     def _topic_condition(self, text_column, topic=None):
@@ -159,7 +232,7 @@ class ConversationRepository:
         topic_sql = self._topic_condition("topic_msg.TextContent", topic)
         if topic_sql:
             exists_conditions = [
-                f"topic_msg.Source = {conversation_alias}.Source",
+                f"{self._normalized_source_expr('topic_msg.Source')} = {self._normalized_source_expr(f'{conversation_alias}.Source')}",
                 f"""(
                     (topic_msg.FromHost = 1 AND topic_msg.ReceiverId = {conversation_alias}.CustomerId)
                     OR (topic_msg.FromHost = 0 AND topic_msg.SenderId = {conversation_alias}.CustomerId)
@@ -184,7 +257,7 @@ class ConversationRepository:
         ai_sql = self._ai_status_condition(ai_status, "ai_msg")
         if ai_sql:
             exists_conditions = [
-                f"ai_msg.Source = {conversation_alias}.Source",
+                f"{self._normalized_source_expr('ai_msg.Source')} = {self._normalized_source_expr(f'{conversation_alias}.Source')}",
                 f"ai_msg.ReceiverId = {conversation_alias}.CustomerId",
                 ai_sql,
             ]
@@ -241,8 +314,8 @@ class ConversationRepository:
                   FROM WebChat_Conversations status_conv
                   LEFT JOIN WebChat_ConversationStatus status_meta
                     ON status_conv.CustomerId = status_meta.CustomerId
-                   AND status_conv.Source = status_meta.Source
-                  WHERE status_conv.Source = {message_alias}.Source
+                   AND {self._normalized_source_expr('status_conv.Source')} = {self._normalized_source_expr('status_meta.Source')}
+                  WHERE {self._normalized_source_expr('status_conv.Source')} = {self._normalized_source_expr(f'{message_alias}.Source')}
                     AND status_conv.CustomerId = CASE
                       WHEN {message_alias}.FromHost = 1 THEN {message_alias}.ReceiverId
                       ELSE {message_alias}.SenderId
@@ -257,54 +330,113 @@ class ConversationRepository:
         try:
             conditions = []
             params = []
-            self._append_conversation_scope_filters(
+            self._append_message_scope_filters(
                 conditions,
                 params,
                 start_date,
                 end_date,
                 channel,
-                conversation_status,
+                None,
                 topic,
                 ai_status,
+                "m",
             )
+            conditions.extend([
+                "m.Source IS NOT NULL",
+                """(
+                    (m.FromHost = 1 AND m.ReceiverId IS NOT NULL)
+                    OR (m.FromHost = 0 AND m.SenderId IS NOT NULL)
+                )""",
+            ])
 
             where_sql = "WHERE " + " AND ".join(conditions) if conditions else ""
+            status_filter = self._status_filter_value(conversation_status)
+            classified_where = "WHERE status = %s" if status_filter else ""
+            if status_filter:
+                params.append(status_filter)
 
             query = f"""
-                WITH filtered AS (
+                WITH scoped_messages AS (
                   SELECT
-                    c.Id,
-                    c.CustomerId,
-                    c.Source,
-                    c.LastCustomerMessageAt,
-                    c.LastHostMessageAt,
+                    CAST(CASE WHEN m.FromHost = 1 THEN m.ReceiverId ELSE m.SenderId END AS NVARCHAR(255)) AS customer_id,
                     CASE
-                      WHEN s.NoResponseNeeded = 1 AND (s.MarkedAt IS NULL OR c.LastCustomerMessageAt <= s.MarkedAt) THEN 'closed'
-                      WHEN c.LastHostMessageAt IS NULL OR c.LastCustomerMessageAt > c.LastHostMessageAt THEN 'pending'
-                      ELSE 'open'
-                    END AS status
-                  FROM WebChat_Conversations c
-                  LEFT JOIN WebChat_ConversationStatus s
-                    ON c.CustomerId = s.CustomerId AND c.Source = s.Source
+                      WHEN LOWER(LTRIM(RTRIM(m.Source))) IN ('zalooa', 'zalo') THEN 'ZaloOA'
+                      WHEN LOWER(LTRIM(RTRIM(m.Source))) IN ('zalobusiness', 'zalobiz') THEN 'ZaloBusiness'
+                      WHEN LOWER(LTRIM(RTRIM(m.Source))) IN ('facebook', 'fb', 'messenger') THEN 'Facebook'
+                      WHEN LOWER(LTRIM(RTRIM(m.Source))) IN ('chatwidget', 'website', 'web') THEN 'ChatWidget'
+                      ELSE 'other'
+                    END AS source_key,
+                    m.FromHost,
+                    m.SentAt
+                  FROM WebChat_MessageLogs m
                   {where_sql}
+                ),
+                latest AS (
+                  SELECT
+                    customer_id,
+                    source_key,
+                    MAX(CASE WHEN FromHost = 0 THEN SentAt END) AS last_customer_at,
+                    MAX(CASE WHEN FromHost = 1 THEN SentAt END) AS last_host_at
+                  FROM scoped_messages
+                  GROUP BY customer_id, source_key
+                ),
+                latest_status AS (
+                  SELECT
+                    CAST(status_meta.CustomerId AS NVARCHAR(255)) AS customer_id,
+                    CASE
+                      WHEN LOWER(LTRIM(RTRIM(status_meta.Source))) IN ('zalooa', 'zalo') THEN 'ZaloOA'
+                      WHEN LOWER(LTRIM(RTRIM(status_meta.Source))) IN ('zalobusiness', 'zalobiz') THEN 'ZaloBusiness'
+                      WHEN LOWER(LTRIM(RTRIM(status_meta.Source))) IN ('facebook', 'fb', 'messenger') THEN 'Facebook'
+                      WHEN LOWER(LTRIM(RTRIM(status_meta.Source))) IN ('chatwidget', 'website', 'web') THEN 'ChatWidget'
+                      ELSE 'other'
+                    END AS source_key,
+                    status_meta.NoResponseNeeded AS no_response,
+                    status_meta.MarkedAt AS marked_at,
+                    ROW_NUMBER() OVER (
+                      PARTITION BY CAST(status_meta.CustomerId AS NVARCHAR(255)), LOWER(LTRIM(RTRIM(status_meta.Source)))
+                      ORDER BY CASE WHEN status_meta.MarkedAt IS NULL THEN 0 ELSE 1 END DESC, status_meta.MarkedAt DESC
+                    ) AS rn
+                  FROM WebChat_ConversationStatus status_meta
+                ),
+                classified AS (
+                  SELECT
+                    l.source_key,
+                    l.customer_id,
+                    CASE
+                      WHEN s.no_response = 1 AND (s.marked_at IS NULL OR l.last_customer_at <= s.marked_at) THEN 'closed'
+                      WHEN l.last_host_at IS NULL OR l.last_customer_at > l.last_host_at THEN 'pending'
+                      ELSE 'open'
+                    END AS status,
+                    CASE
+                      WHEN l.last_host_at IS NOT NULL AND l.last_customer_at IS NOT NULL AND l.last_host_at >= l.last_customer_at
+                      THEN DATEDIFF(MINUTE, l.last_customer_at, l.last_host_at)
+                      ELSE NULL
+                    END AS response_minutes
+                  FROM latest l
+                  LEFT JOIN latest_status s
+                    ON s.customer_id = l.customer_id
+                   AND s.source_key = l.source_key
+                   AND s.rn = 1
                 )
                 SELECT
                   COUNT(*) AS total_conversations,
-                  COUNT(DISTINCT CustomerId) AS new_customers,
+                  COUNT(DISTINCT customer_id) AS new_customers,
                   SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) AS open_count,
                   SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending_count,
                   SUM(CASE WHEN status = 'closed' THEN 1 ELSE 0 END) AS closed_count,
                   SUM(CASE WHEN status NOT IN ('open', 'pending', 'closed') THEN 1 ELSE 0 END) AS unknown_count,
-                  SUM(CASE WHEN LOWER(Source) IN ('zalooa', 'zalo') THEN 1 ELSE 0 END) AS zalooa_count,
-                  SUM(CASE WHEN LOWER(Source) IN ('zalobusiness', 'zalobiz') THEN 1 ELSE 0 END) AS zalobusiness_count,
-                  SUM(CASE WHEN LOWER(Source) IN ('facebook', 'fb', 'messenger') THEN 1 ELSE 0 END) AS facebook_count,
-                  SUM(CASE WHEN LOWER(Source) IN ('chatwidget', 'website', 'web') THEN 1 ELSE 0 END) AS chatwidget_count,
-                  AVG(CASE
-                    WHEN LastHostMessageAt IS NOT NULL AND LastCustomerMessageAt IS NOT NULL AND LastHostMessageAt >= LastCustomerMessageAt
-                    THEN DATEDIFF(MINUTE, LastCustomerMessageAt, LastHostMessageAt)
-                    ELSE NULL
-                  END) AS avg_response_minutes
-                FROM filtered
+                  SUM(CASE WHEN source_key = 'ZaloOA' THEN 1 ELSE 0 END) AS zalooa_count,
+                  SUM(CASE WHEN source_key = 'ZaloBusiness' THEN 1 ELSE 0 END) AS zalobusiness_count,
+                  SUM(CASE WHEN source_key = 'Facebook' THEN 1 ELSE 0 END) AS facebook_count,
+                  SUM(CASE WHEN source_key = 'ChatWidget' THEN 1 ELSE 0 END) AS chatwidget_count,
+                  SUM(CASE WHEN source_key = 'other' THEN 1 ELSE 0 END) AS other_count,
+                  SUM(CASE WHEN source_key = 'ZaloOA' AND status IN ('pending', 'open') THEN 1 ELSE 0 END) AS zalooa_unresolved,
+                  SUM(CASE WHEN source_key = 'ZaloBusiness' AND status IN ('pending', 'open') THEN 1 ELSE 0 END) AS zalobusiness_unresolved,
+                  SUM(CASE WHEN source_key = 'Facebook' AND status IN ('pending', 'open') THEN 1 ELSE 0 END) AS facebook_unresolved,
+                  SUM(CASE WHEN source_key = 'ChatWidget' AND status IN ('pending', 'open') THEN 1 ELSE 0 END) AS chatwidget_unresolved,
+                  AVG(response_minutes) AS avg_response_minutes
+                FROM classified
+                {classified_where}
             """
 
             with conn.cursor(as_dict=True) as cursor:
@@ -325,9 +457,121 @@ class ConversationRepository:
                         "ZaloBusiness": row.get("zalobusiness_count") or 0,
                         "Facebook": row.get("facebook_count") or 0,
                         "ChatWidget": row.get("chatwidget_count") or 0,
+                        "other": row.get("other_count") or 0,
+                    },
+                    "unresolvedSummary": {
+                        "ZaloOA": row.get("zalooa_unresolved") or 0,
+                        "ZaloBusiness": row.get("zalobusiness_unresolved") or 0,
+                        "Facebook": row.get("facebook_unresolved") or 0,
+                        "ChatWidget": row.get("chatwidget_unresolved") or 0,
                     },
                     "averageResponseTimeMinutes": int(round(row.get("avg_response_minutes") or 0)),
                 }
+        finally:
+            conn.close()
+
+    def get_ai_daily_stats(self, start_date=None, end_date=None, channel=None, conversation_status=None, topic=None, ai_status=None):
+        conn = get_db_connection()
+        try:
+            conditions = [
+                "m.FromHost = 1",
+                "m.HostDisplayName = 'AI Assistant'",
+            ]
+            params = []
+            self._append_message_scope_filters(
+                conditions,
+                params,
+                start_date,
+                end_date,
+                channel,
+                conversation_status,
+                topic,
+                None,
+                "m",
+            )
+
+            where_sql = "WHERE " + " AND ".join(conditions) if conditions else ""
+            no_data_keyword_sql = self._ai_no_data_keyword_condition("m")
+            uncertain_keyword_sql = self._ai_uncertain_keyword_condition("m")
+            source_case = self._source_key_case_expr("m.Source")
+            analytics_source_case = self._source_key_case_expr("a.source")
+            ai_filter_sql = self._ai_classified_filter_sql(ai_status)
+            classified_where = f"WHERE {ai_filter_sql}" if ai_filter_sql else ""
+
+            query = f"""
+                WITH scoped AS (
+                  SELECT
+                    m.id_webchat_messageLogs AS message_id,
+                    CAST({self._message_customer_expr("m")} AS NVARCHAR(255)) AS customer_id,
+                    {source_case} AS source_key,
+                    m.SentAt AS sent_at,
+                    CONVERT(VARCHAR(10), m.SentAt, 120) AS date_str,
+                    CASE WHEN {no_data_keyword_sql} THEN 1 ELSE 0 END AS keyword_no_data,
+                    CASE WHEN {uncertain_keyword_sql} THEN 1 ELSE 0 END AS keyword_uncertain
+                  FROM WebChat_MessageLogs m
+                  {where_sql}
+                ),
+                analytics_issues AS (
+                  SELECT
+                    CAST(a.messageId AS BIGINT) AS message_id,
+                    CAST(a.customerId AS NVARCHAR(255)) AS customer_id,
+                    {analytics_source_case} AS source_key,
+                    a.messageAt AS message_at,
+                    a.issueType AS issue_type
+                  FROM WebChat_MessageAnalytics a
+                  WHERE a.issueFlag = 1
+                ),
+                flagged AS (
+                  SELECT
+                    s.message_id,
+                    s.date_str,
+                    s.keyword_no_data,
+                    s.keyword_uncertain,
+                    MAX(CASE WHEN direct_issue.issue_type = N'Không tìm thấy dữ liệu' OR context_issue.issue_type = N'Không tìm thấy dữ liệu' THEN 1 ELSE 0 END) AS analytics_no_data,
+                    MAX(CASE WHEN direct_issue.issue_type IN (N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin') OR context_issue.issue_type IN (N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin') THEN 1 ELSE 0 END) AS analytics_uncertain
+                  FROM scoped s
+                  LEFT JOIN analytics_issues direct_issue
+                    ON direct_issue.message_id = s.message_id
+                  LEFT JOIN analytics_issues context_issue
+                    ON context_issue.customer_id = s.customer_id
+                   AND context_issue.source_key = s.source_key
+                   AND context_issue.message_at >= DATEADD(SECOND, -2, s.sent_at)
+                   AND context_issue.message_at <= DATEADD(SECOND, 2, s.sent_at)
+                  GROUP BY s.message_id, s.date_str, s.keyword_no_data, s.keyword_uncertain
+                ),
+                classified AS (
+                  SELECT
+                    date_str,
+                    CASE
+                      WHEN analytics_no_data = 1 OR (keyword_no_data = 1 AND analytics_uncertain = 0) THEN 1
+                      ELSE 0
+                    END AS is_no_data,
+                    CASE
+                      WHEN analytics_uncertain = 1 OR (keyword_uncertain = 1 AND analytics_no_data = 0) THEN 1
+                      ELSE 0
+                    END AS is_uncertain
+                  FROM flagged
+                ),
+                filtered AS (
+                  SELECT
+                    date_str,
+                    is_no_data,
+                    is_uncertain,
+                    CASE WHEN is_no_data = 1 OR is_uncertain = 1 THEN 1 ELSE 0 END AS is_fail
+                  FROM classified
+                  {classified_where}
+                )
+                SELECT
+                  date_str,
+                  SUM(CASE WHEN is_fail = 1 THEN 1 ELSE 0 END) AS ai_fail,
+                  SUM(CASE WHEN is_fail = 0 THEN 1 ELSE 0 END) AS ai_ok
+                FROM filtered
+                GROUP BY date_str
+            """
+
+            with conn.cursor(as_dict=True) as cursor:
+                cursor.execute(query, tuple(params))
+                return cursor.fetchall()
         finally:
             conn.close()
 
@@ -336,32 +580,80 @@ class ConversationRepository:
         try:
             conditions = []
             params = []
-            self._append_conversation_scope_filters(
+            self._append_message_scope_filters(
                 conditions,
                 params,
                 start_date,
                 end_date,
                 channel,
-                conversation_status,
+                None,
                 topic,
                 ai_status,
+                "m",
             )
+            conditions.extend([
+                "m.Source IS NOT NULL",
+                """(
+                    (m.FromHost = 1 AND m.ReceiverId IS NOT NULL)
+                    OR (m.FromHost = 0 AND m.SenderId IS NOT NULL)
+                )""",
+            ])
 
             where_sql = "WHERE " + " AND ".join(conditions) if conditions else ""
+            status_filter = self._status_filter_value(conversation_status)
+            filtered_where = "WHERE status = %s" if status_filter else ""
+            if status_filter:
+                params.append(status_filter)
+
+            source_case = self._source_key_case_expr("m.Source")
+            status_source_case = self._source_key_case_expr("status_meta.Source")
 
             query = f"""
-                WITH filtered AS (
+                WITH scoped_messages AS (
                   SELECT
-                    CONVERT(VARCHAR(10), c.LastCustomerMessageAt, 120) AS date_str,
+                    CONVERT(VARCHAR(10), m.SentAt, 120) AS date_str,
+                    CAST(CASE WHEN m.FromHost = 1 THEN m.ReceiverId ELSE m.SenderId END AS NVARCHAR(255)) AS customer_id,
+                    {source_case} AS source_key,
+                    m.FromHost,
+                    m.SentAt
+                  FROM WebChat_MessageLogs m
+                  {where_sql}
+                ),
+                latest AS (
+                  SELECT
+                    date_str,
+                    customer_id,
+                    source_key,
+                    MAX(CASE WHEN FromHost = 0 THEN SentAt END) AS last_customer_at,
+                    MAX(CASE WHEN FromHost = 1 THEN SentAt END) AS last_host_at
+                  FROM scoped_messages
+                  GROUP BY date_str, customer_id, source_key
+                ),
+                latest_status AS (
+                  SELECT
+                    CAST(status_meta.CustomerId AS NVARCHAR(255)) AS customer_id,
+                    {status_source_case} AS source_key,
+                    status_meta.NoResponseNeeded AS no_response,
+                    status_meta.MarkedAt AS marked_at,
+                    ROW_NUMBER() OVER (
+                      PARTITION BY CAST(status_meta.CustomerId AS NVARCHAR(255)), {status_source_case}
+                      ORDER BY CASE WHEN status_meta.MarkedAt IS NULL THEN 0 ELSE 1 END DESC, status_meta.MarkedAt DESC
+                    ) AS rn
+                  FROM WebChat_ConversationStatus status_meta
+                ),
+                filtered AS (
+                  SELECT
+                    l.date_str,
                     CASE
-                      WHEN s.NoResponseNeeded = 1 AND (s.MarkedAt IS NULL OR c.LastCustomerMessageAt <= s.MarkedAt) THEN 'closed'
-                      WHEN c.LastHostMessageAt IS NULL OR c.LastCustomerMessageAt > c.LastHostMessageAt THEN 'pending'
+                      WHEN s.no_response = 1 AND (s.marked_at IS NULL OR l.last_customer_at <= s.marked_at) THEN 'closed'
+                      WHEN l.last_host_at IS NULL OR l.last_customer_at > l.last_host_at THEN 'pending'
                       ELSE 'open'
                     END AS status
-                  FROM WebChat_Conversations c
-                  LEFT JOIN WebChat_ConversationStatus s
-                    ON c.CustomerId = s.CustomerId AND c.Source = s.Source
-                  {where_sql}
+                  FROM latest l
+                  LEFT JOIN latest_status s
+                    ON s.customer_id = l.customer_id
+                   AND s.source_key = l.source_key
+                   AND s.rn = 1
                 )
                 SELECT
                   date_str,
@@ -369,6 +661,7 @@ class ConversationRepository:
                   SUM(CASE WHEN status = 'closed' THEN 1 ELSE 0 END) AS processed,
                   SUM(CASE WHEN status <> 'closed' THEN 1 ELSE 0 END) AS unprocessed
                 FROM filtered
+                {filtered_where}
                 GROUP BY date_str
                 ORDER BY date_str
             """
@@ -420,21 +713,11 @@ class ConversationRepository:
         finally:
             conn.close()
 
-    def get_ai_daily_stats(self, start_date=None, end_date=None, channel=None, conversation_status=None, topic=None, ai_status=None):
+
+    def get_channel_conversation_stats(self, start_date=None, end_date=None, channel=None, conversation_status=None, topic=None, ai_status=None):
         conn = get_db_connection()
         try:
-            failure_sql = self._ai_failure_condition("m")
-            query = f"""
-                SELECT
-                  CONVERT(VARCHAR(10), m.SentAt, 120) AS date_str,
-                  SUM(CASE WHEN {failure_sql} THEN 1 ELSE 0 END) AS ai_fail,
-                  SUM(CASE WHEN NOT {failure_sql} THEN 1 ELSE 0 END) AS ai_ok
-                FROM WebChat_MessageLogs m
-            """
-            conditions = [
-                "m.FromHost = 1",
-                "m.HostDisplayName = 'AI Assistant'",
-            ]
+            conditions = []
             params = []
             self._append_message_scope_filters(
                 conditions,
@@ -442,60 +725,80 @@ class ConversationRepository:
                 start_date,
                 end_date,
                 channel,
-                conversation_status,
+                None,
                 topic,
                 ai_status,
                 "m",
             )
-
-            if conditions:
-                query += " WHERE " + " AND ".join(conditions)
-
-            query += " GROUP BY CONVERT(VARCHAR(10), m.SentAt, 120)"
-
-            with conn.cursor(as_dict=True) as cursor:
-                cursor.execute(query, tuple(params))
-                return cursor.fetchall()
-        finally:
-            conn.close()
-
-    def get_channel_conversation_stats(self, start_date=None, end_date=None, channel=None, conversation_status=None, topic=None, ai_status=None):
-        conn = get_db_connection()
-        try:
-            conditions = []
-            params = []
-            self._append_conversation_scope_filters(
-                conditions,
-                params,
-                start_date,
-                end_date,
-                channel,
-                conversation_status,
-                topic,
-                ai_status,
-            )
+            conditions.extend([
+                "m.Source IS NOT NULL",
+                """(
+                    (m.FromHost = 1 AND m.ReceiverId IS NOT NULL)
+                    OR (m.FromHost = 0 AND m.SenderId IS NOT NULL)
+                )""",
+            ])
 
             where_sql = "WHERE " + " AND ".join(conditions) if conditions else ""
+            status_filter = self._status_filter_value(conversation_status)
+            filtered_where = "WHERE status = %s" if status_filter else ""
+            if status_filter:
+                params.append(status_filter)
+
+            source_case = self._source_key_case_expr("m.Source")
+            status_source_case = self._source_key_case_expr("status_meta.Source")
 
             query = f"""
-                WITH filtered AS (
+                WITH scoped_messages AS (
                   SELECT
-                    c.Source AS source,
-                    CONVERT(VARCHAR(10), COALESCE(c.LastMessageAt, c.LastCustomerMessageAt), 120) AS date_str,
+                    CONVERT(VARCHAR(10), m.SentAt, 120) AS date_str,
+                    CAST(CASE WHEN m.FromHost = 1 THEN m.ReceiverId ELSE m.SenderId END AS NVARCHAR(255)) AS customer_id,
+                    {source_case} AS source_key,
+                    m.FromHost,
+                    m.SentAt
+                  FROM WebChat_MessageLogs m
+                  {where_sql}
+                ),
+                latest AS (
+                  SELECT
+                    date_str,
+                    customer_id,
+                    source_key,
+                    MAX(CASE WHEN FromHost = 0 THEN SentAt END) AS last_customer_at,
+                    MAX(CASE WHEN FromHost = 1 THEN SentAt END) AS last_host_at
+                  FROM scoped_messages
+                  GROUP BY date_str, customer_id, source_key
+                ),
+                latest_status AS (
+                  SELECT
+                    CAST(status_meta.CustomerId AS NVARCHAR(255)) AS customer_id,
+                    {status_source_case} AS source_key,
+                    status_meta.NoResponseNeeded AS no_response,
+                    status_meta.MarkedAt AS marked_at,
+                    ROW_NUMBER() OVER (
+                      PARTITION BY CAST(status_meta.CustomerId AS NVARCHAR(255)), {status_source_case}
+                      ORDER BY CASE WHEN status_meta.MarkedAt IS NULL THEN 0 ELSE 1 END DESC, status_meta.MarkedAt DESC
+                    ) AS rn
+                  FROM WebChat_ConversationStatus status_meta
+                ),
+                filtered AS (
+                  SELECT
+                    l.source_key AS source,
+                    l.date_str,
                     CASE
-                      WHEN s.NoResponseNeeded = 1 AND (s.MarkedAt IS NULL OR c.LastCustomerMessageAt <= s.MarkedAt) THEN 'closed'
-                      WHEN c.LastHostMessageAt IS NULL OR c.LastCustomerMessageAt > c.LastHostMessageAt THEN 'pending'
+                      WHEN s.no_response = 1 AND (s.marked_at IS NULL OR l.last_customer_at <= s.marked_at) THEN 'closed'
+                      WHEN l.last_host_at IS NULL OR l.last_customer_at > l.last_host_at THEN 'pending'
                       ELSE 'open'
                     END AS status,
                     CASE
-                      WHEN c.LastHostMessageAt IS NOT NULL AND c.LastCustomerMessageAt IS NOT NULL AND c.LastHostMessageAt >= c.LastCustomerMessageAt
-                      THEN DATEDIFF(MINUTE, c.LastCustomerMessageAt, c.LastHostMessageAt)
+                      WHEN l.last_host_at IS NOT NULL AND l.last_customer_at IS NOT NULL AND l.last_host_at >= l.last_customer_at
+                      THEN DATEDIFF(MINUTE, l.last_customer_at, l.last_host_at)
                       ELSE NULL
                     END AS response_minutes
-                  FROM WebChat_Conversations c
-                  LEFT JOIN WebChat_ConversationStatus s
-                    ON c.CustomerId = s.CustomerId AND c.Source = s.Source
-                  {where_sql}
+                  FROM latest l
+                  LEFT JOIN latest_status s
+                    ON s.customer_id = l.customer_id
+                   AND s.source_key = l.source_key
+                   AND s.rn = 1
                 )
                 SELECT
                   source,
@@ -504,6 +807,7 @@ class ConversationRepository:
                   COUNT(*) AS total,
                   AVG(response_minutes) AS avg_response_minutes
                 FROM filtered
+                {filtered_where}
                 GROUP BY source, date_str, status
                 ORDER BY date_str
             """
@@ -517,14 +821,6 @@ class ConversationRepository:
     def get_channel_ai_summary(self, start_date=None, end_date=None, channel=None, conversation_status=None, topic=None, ai_status=None):
         conn = get_db_connection()
         try:
-            failure_sql = self._ai_failure_condition("m")
-            query = f"""
-                SELECT
-                  m.Source AS source,
-                  SUM(CASE WHEN {failure_sql} THEN 1 ELSE 0 END) AS ai_fail,
-                  SUM(CASE WHEN NOT {failure_sql} THEN 1 ELSE 0 END) AS ai_ok
-                FROM WebChat_MessageLogs m
-            """
             conditions = [
                 "m.FromHost = 1",
                 "m.HostDisplayName = 'AI Assistant'",
@@ -540,12 +836,88 @@ class ConversationRepository:
                 channel,
                 conversation_status,
                 topic,
-                ai_status,
+                None,
                 "m",
             )
 
-            query += " WHERE " + " AND ".join(conditions)
-            query += " GROUP BY m.Source"
+            where_sql = "WHERE " + " AND ".join(conditions)
+            no_data_keyword_sql = self._ai_no_data_keyword_condition("m")
+            uncertain_keyword_sql = self._ai_uncertain_keyword_condition("m")
+            source_case = self._source_key_case_expr("m.Source")
+            analytics_source_case = self._source_key_case_expr("a.source")
+            ai_filter_sql = self._ai_classified_filter_sql(ai_status)
+            classified_where = f"WHERE {ai_filter_sql}" if ai_filter_sql else ""
+
+            query = f"""
+                WITH scoped AS (
+                  SELECT
+                    m.id_webchat_messageLogs AS message_id,
+                    CAST({self._message_customer_expr("m")} AS NVARCHAR(255)) AS customer_id,
+                    {source_case} AS source,
+                    {source_case} AS source_key,
+                    m.SentAt AS sent_at,
+                    CASE WHEN {no_data_keyword_sql} THEN 1 ELSE 0 END AS keyword_no_data,
+                    CASE WHEN {uncertain_keyword_sql} THEN 1 ELSE 0 END AS keyword_uncertain
+                  FROM WebChat_MessageLogs m
+                  {where_sql}
+                ),
+                analytics_issues AS (
+                  SELECT
+                    CAST(a.messageId AS BIGINT) AS message_id,
+                    CAST(a.customerId AS NVARCHAR(255)) AS customer_id,
+                    {analytics_source_case} AS source_key,
+                    a.messageAt AS message_at,
+                    a.issueType AS issue_type
+                  FROM WebChat_MessageAnalytics a
+                  WHERE a.issueFlag = 1
+                ),
+                flagged AS (
+                  SELECT
+                    s.message_id,
+                    s.source,
+                    s.keyword_no_data,
+                    s.keyword_uncertain,
+                    MAX(CASE WHEN direct_issue.issue_type = N'Không tìm thấy dữ liệu' OR context_issue.issue_type = N'Không tìm thấy dữ liệu' THEN 1 ELSE 0 END) AS analytics_no_data,
+                    MAX(CASE WHEN direct_issue.issue_type IN (N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin') OR context_issue.issue_type IN (N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin') THEN 1 ELSE 0 END) AS analytics_uncertain
+                  FROM scoped s
+                  LEFT JOIN analytics_issues direct_issue
+                    ON direct_issue.message_id = s.message_id
+                  LEFT JOIN analytics_issues context_issue
+                    ON context_issue.customer_id = s.customer_id
+                   AND context_issue.source_key = s.source_key
+                   AND context_issue.message_at >= DATEADD(SECOND, -2, s.sent_at)
+                   AND context_issue.message_at <= DATEADD(SECOND, 2, s.sent_at)
+                  GROUP BY s.message_id, s.source, s.keyword_no_data, s.keyword_uncertain
+                ),
+                classified AS (
+                  SELECT
+                    source,
+                    CASE
+                      WHEN analytics_no_data = 1 OR (keyword_no_data = 1 AND analytics_uncertain = 0) THEN 1
+                      ELSE 0
+                    END AS is_no_data,
+                    CASE
+                      WHEN analytics_uncertain = 1 OR (keyword_uncertain = 1 AND analytics_no_data = 0) THEN 1
+                      ELSE 0
+                    END AS is_uncertain
+                  FROM flagged
+                ),
+                filtered AS (
+                  SELECT
+                    source,
+                    is_no_data,
+                    is_uncertain,
+                    CASE WHEN is_no_data = 1 OR is_uncertain = 1 THEN 1 ELSE 0 END AS is_fail
+                  FROM classified
+                  {classified_where}
+                )
+                SELECT
+                  source,
+                  SUM(CASE WHEN is_fail = 1 THEN 1 ELSE 0 END) AS ai_fail,
+                  SUM(CASE WHEN is_fail = 0 THEN 1 ELSE 0 END) AS ai_ok
+                FROM filtered
+                GROUP BY source
+            """
 
             with conn.cursor(as_dict=True) as cursor:
                 cursor.execute(query, tuple(params))
@@ -557,13 +929,6 @@ class ConversationRepository:
         ai_status_filter = None if ai_status == "Tất cả" else ai_status
         if ai_status_filter == "AI trả lời thành công":
             return []
-        failure_ai_statuses = (
-            "AI trả lời thất bại",
-            "Không tìm thấy dữ liệu",
-            "AI không chắc chắn",
-            "AI trả lời không chắc chắn",
-        )
-        scoped_ai_status = ai_status_filter if ai_status_filter in failure_ai_statuses else None
 
         conn = get_db_connection()
         try:
@@ -579,26 +944,12 @@ class ConversationRepository:
                   ELSE N'Khác'
                 END
             """.format(topic_text=topic_text)
-            query = f"""
-                SELECT
-                  m.Source AS source,
-                  {topic_case} AS topic,
-                  COUNT(*) AS value
-                FROM WebChat_MessageLogs m
-                OUTER APPLY (
-                  SELECT TOP 1 customer.TextContent
-                  FROM WebChat_MessageLogs customer
-                  WHERE customer.FromHost = 0
-                    AND customer.Source = m.Source
-                    AND customer.SenderId = m.ReceiverId
-                    AND customer.SentAt <= m.SentAt
-                  ORDER BY customer.SentAt DESC
-                ) customer_msg
-            """
             conditions = [
                 "m.TextContent IS NOT NULL",
                 "m.TextContent != ''",
                 "m.Source IS NOT NULL",
+                "m.FromHost = 1",
+                "m.HostDisplayName = 'AI Assistant'",
             ]
             params = []
 
@@ -610,25 +961,101 @@ class ConversationRepository:
                 channel,
                 conversation_status,
                 None,
-                scoped_ai_status,
+                None,
                 "m",
             )
-
-            if not scoped_ai_status:
-                conditions.extend([
-                    "m.FromHost = 1",
-                    "m.HostDisplayName = 'AI Assistant'",
-                    self._ai_failure_condition("m"),
-                ])
 
             topic_sql = self._topic_condition(topic_text, topic)
             if topic_sql:
                 conditions.append(topic_sql)
 
-            if conditions:
-                query += " WHERE " + " AND ".join(conditions)
+            where_sql = "WHERE " + " AND ".join(conditions)
+            no_data_keyword_sql = self._ai_no_data_keyword_condition("m")
+            uncertain_keyword_sql = self._ai_uncertain_keyword_condition("m")
+            source_case = self._source_key_case_expr("m.Source")
+            analytics_source_case = self._source_key_case_expr("a.source")
+            ai_filter_sql = self._ai_classified_filter_sql(ai_status_filter) or "(is_no_data = 1 OR is_uncertain = 1)"
 
-            query += f" GROUP BY m.Source, {topic_case}"
+            query = f"""
+                WITH scoped AS (
+                  SELECT
+                    m.id_webchat_messageLogs AS message_id,
+                    CAST({self._message_customer_expr("m")} AS NVARCHAR(255)) AS customer_id,
+                    {source_case} AS source,
+                    {source_case} AS source_key,
+                    m.SentAt AS sent_at,
+                    {topic_case} AS topic,
+                    CASE WHEN {no_data_keyword_sql} THEN 1 ELSE 0 END AS keyword_no_data,
+                    CASE WHEN {uncertain_keyword_sql} THEN 1 ELSE 0 END AS keyword_uncertain
+                  FROM WebChat_MessageLogs m
+                  OUTER APPLY (
+                    SELECT TOP 1 customer.TextContent
+                    FROM WebChat_MessageLogs customer
+                    WHERE customer.FromHost = 0
+                      AND customer.Source = m.Source
+                      AND customer.SenderId = m.ReceiverId
+                      AND customer.SentAt <= m.SentAt
+                    ORDER BY customer.SentAt DESC
+                  ) customer_msg
+                  {where_sql}
+                ),
+                analytics_issues AS (
+                  SELECT
+                    CAST(a.messageId AS BIGINT) AS message_id,
+                    CAST(a.customerId AS NVARCHAR(255)) AS customer_id,
+                    {analytics_source_case} AS source_key,
+                    a.messageAt AS message_at,
+                    a.issueType AS issue_type
+                  FROM WebChat_MessageAnalytics a
+                  WHERE a.issueFlag = 1
+                ),
+                flagged AS (
+                  SELECT
+                    s.message_id,
+                    s.source,
+                    s.topic,
+                    s.keyword_no_data,
+                    s.keyword_uncertain,
+                    MAX(CASE WHEN direct_issue.issue_type = N'Không tìm thấy dữ liệu' OR context_issue.issue_type = N'Không tìm thấy dữ liệu' THEN 1 ELSE 0 END) AS analytics_no_data,
+                    MAX(CASE WHEN direct_issue.issue_type IN (N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin') OR context_issue.issue_type IN (N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin') THEN 1 ELSE 0 END) AS analytics_uncertain
+                  FROM scoped s
+                  LEFT JOIN analytics_issues direct_issue
+                    ON direct_issue.message_id = s.message_id
+                  LEFT JOIN analytics_issues context_issue
+                    ON context_issue.customer_id = s.customer_id
+                   AND context_issue.source_key = s.source_key
+                   AND context_issue.message_at >= DATEADD(SECOND, -2, s.sent_at)
+                   AND context_issue.message_at <= DATEADD(SECOND, 2, s.sent_at)
+                  GROUP BY s.message_id, s.source, s.topic, s.keyword_no_data, s.keyword_uncertain
+                ),
+                classified AS (
+                  SELECT
+                    source,
+                    topic,
+                    CASE
+                      WHEN analytics_no_data = 1 OR (keyword_no_data = 1 AND analytics_uncertain = 0) THEN 1
+                      ELSE 0
+                    END AS is_no_data,
+                    CASE
+                      WHEN analytics_uncertain = 1 OR (keyword_uncertain = 1 AND analytics_no_data = 0) THEN 1
+                      ELSE 0
+                    END AS is_uncertain
+                  FROM flagged
+                ),
+                filtered AS (
+                  SELECT
+                    source,
+                    topic
+                  FROM classified
+                  WHERE {ai_filter_sql}
+                )
+                SELECT
+                  source,
+                  topic,
+                  COUNT(*) AS value
+                FROM filtered
+                GROUP BY source, topic
+            """
 
             with conn.cursor(as_dict=True) as cursor:
                 cursor.execute(query, tuple(params))
@@ -767,6 +1194,20 @@ class ConversationRepository:
                     OR TextContent LIKE N'%Trợ lý AI%'
                     OR TextContent LIKE N'%Không thể tiếp nhận thông tin%'
                     OR TextContent LIKE N'%Không thể xác nhận trực tiếp%'
+                    OR TextContent LIKE N'%không chắc chắn%'
+                    OR TextContent LIKE N'%chưa có thông tin cụ thể%'
+                    OR TextContent LIKE N'%độ tin cậy%'
+                    OR TextContent LIKE N'%chưa xác nhận%'
+                    OR TextContent LIKE N'%có vẻ như%'
+                    OR TextContent LIKE N'%chắc là%'
+                    OR TextContent LIKE N'%có lẽ%'
+                    OR TextContent LIKE N'%hình như%'
+                    OR TextContent LIKE N'%tôi đoán%'
+                    OR EXISTS (
+                        SELECT 1 FROM WebChat_MessageAnalytics ma
+                        WHERE ma.messageId = WebChat_MessageLogs.id_webchat_messageLogs
+                          AND ma.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin')
+                    )
                   )
             """
             conditions = []
@@ -885,6 +1326,20 @@ class ConversationRepository:
                       OR TextContent LIKE N'%Trợ lý AI%'
                       OR TextContent LIKE N'%Không thể tiếp nhận thông tin%'
                       OR TextContent LIKE N'%Không thể xác nhận trực tiếp%'
+                      OR TextContent LIKE N'%không chắc chắn%'
+                      OR TextContent LIKE N'%chưa có thông tin cụ thể%'
+                      OR TextContent LIKE N'%độ tin cậy%'
+                      OR TextContent LIKE N'%chưa xác nhận%'
+                      OR TextContent LIKE N'%có vẻ như%'
+                      OR TextContent LIKE N'%chắc là%'
+                      OR TextContent LIKE N'%có lẽ%'
+                      OR TextContent LIKE N'%hình như%'
+                      OR TextContent LIKE N'%tôi đoán%'
+                      OR EXISTS (
+                          SELECT 1 FROM WebChat_MessageAnalytics ma
+                          WHERE ma.messageId = WebChat_MessageLogs.id_webchat_messageLogs
+                            AND ma.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin')
+                      )
                     )
                     AND SentAt >= %s AND SentAt <= %s
                 ) combined
@@ -931,105 +1386,243 @@ class ConversationRepository:
         finally:
             conn.close()
 
-    def get_urgent_alerts_data(self, start_date=None, end_date=None):
+    def get_urgent_alerts_data(self, start_date=None, end_date=None, include_overtime=True, include_ai=True):
         conn = get_db_connection()
         try:
-            # Query dùng CTE giống Express backend
-            query = """
-                DECLARE @dbNow DATETIME;
-                SET @dbNow = GETDATE();
-
-                WITH LatestAI AS (
-                  SELECT ReceiverId, Source, TextContent,
-                         ROW_NUMBER() OVER (PARTITION BY ReceiverId, Source ORDER BY SentAt DESC) as rn
-                  FROM WebChat_MessageLogs
-                  WHERE FromHost = 1 AND HostDisplayName = 'AI Assistant'
-                ),
-                LatestCust AS (
-                  SELECT SenderId, Source, TextContent,
-                         ROW_NUMBER() OVER (PARTITION BY SenderId, Source ORDER BY SentAt DESC) as rn
-                  FROM WebChat_MessageLogs
-                  WHERE FromHost = 0
-                )
-                SELECT TOP 100
-                  c.Id AS id,
-                  c.CustomerId AS customer_id,
-                  c.Source AS source,
-                  c.LastCustomerMessageAt AS last_customer_msg_at,
-                  c.LastHostMessageAt AS last_host_msg_at,
-                  u.DisplayName AS customer_name,
-                  cust.TextContent AS last_cust_text,
-                  ai.TextContent AS last_ai_text,
-                  CASE 
-                    WHEN (c.LastHostMessageAt IS NULL OR c.LastCustomerMessageAt > c.LastHostMessageAt) 
-                         AND DATEDIFF(MINUTE, c.LastCustomerMessageAt, @dbNow) > 600 
-                         THEN 'overtime'
-                         
-                    WHEN ai.TextContent LIKE N'%không tìm thấy%' OR ai.TextContent LIKE N'%chưa hiểu%' 
-                         OR ai.TextContent LIKE N'%chưa có%' OR ai.TextContent LIKE N'%không thể%' 
-                         OR ai.TextContent LIKE N'%chưa hỗ trợ%' 
-                         OR ai.TextContent LIKE N'%Trợ lý AI%'
-                         OR ai.TextContent LIKE N'%Không thể tiếp nhận thông tin%'
-                         OR ai.TextContent LIKE N'%Không thể xác nhận trực tiếp%'
-                         THEN 'ai_no_data'
-                         
-                    WHEN ai.TextContent LIKE N'%chắc chắn%' OR ai.TextContent LIKE N'%chưa có thông tin cụ thể%' 
-                         OR ai.TextContent LIKE N'%chưa rõ%' OR ai.TextContent LIKE N'%độ tin cậy%' 
-                         OR ai.TextContent LIKE N'%chưa xác nhận%' 
-                         THEN 'ai_uncertain'
-                         
-                    ELSE 'none'
-                  END AS alert_type,
-                  DATEDIFF(MINUTE, c.LastCustomerMessageAt, @dbNow) AS wait_mins
-                FROM WebChat_Conversations c
-                LEFT JOIN WebChat_Messagelogs_User_Info u ON c.CustomerId = u.SenderId AND c.Source = u.Source
-                LEFT JOIN WebChat_ConversationStatus s ON c.CustomerId = s.CustomerId AND c.Source = s.Source
-                LEFT JOIN LatestCust cust ON c.CustomerId = cust.SenderId AND c.Source = cust.Source AND cust.rn = 1
-                LEFT JOIN LatestAI ai ON c.CustomerId = ai.ReceiverId AND c.Source = ai.Source AND ai.rn = 1
-            """
-            conditions = [
-                "(s.NoResponseNeeded IS NULL OR s.NoResponseNeeded = 0 OR c.LastCustomerMessageAt > s.MarkedAt)",
-                "c.LastMessageId > 0",
-                """(
-                  ((c.LastHostMessageAt IS NULL OR c.LastCustomerMessageAt > c.LastHostMessageAt) 
-                       AND DATEDIFF(MINUTE, c.LastCustomerMessageAt, @dbNow) > 600)
-                  OR (ai.TextContent LIKE N'%không tìm thấy%' OR ai.TextContent LIKE N'%chưa hiểu%' 
-                       OR ai.TextContent LIKE N'%chưa có%' OR ai.TextContent LIKE N'%không thể%' 
-                       OR ai.TextContent LIKE N'%chưa hỗ trợ%'
-                       OR ai.TextContent LIKE N'%Trợ lý AI%'
-                       OR ai.TextContent LIKE N'%Không thể tiếp nhận thông tin%'
-                       OR ai.TextContent LIKE N'%Không thể xác nhận trực tiếp%')
-                  OR (ai.TextContent LIKE N'%chắc chắn%' OR ai.TextContent LIKE N'%chưa có thông tin cụ thể%' 
-                       OR ai.TextContent LIKE N'%chưa rõ%' OR ai.TextContent LIKE N'%độ tin cậy%' 
-                       OR ai.TextContent LIKE N'%chưa xác nhận%')
-                )"""
-            ]
-            params = []
-            
-            if start_date:
-                conditions.append("c.LastCustomerMessageAt >= %s")
-                params.append(start_date)
-                
-            if end_date:
-                conditions.append("c.LastCustomerMessageAt <= %s")
-                params.append(f"{end_date} 23:59:59.999")
-                
-            if conditions:
-                query += " WHERE " + " AND ".join(conditions)
-                
-            query += """
-                ORDER BY
-                  CASE
-                    WHEN (c.LastHostMessageAt IS NULL OR c.LastCustomerMessageAt > c.LastHostMessageAt)
-                         AND DATEDIFF(MINUTE, c.LastCustomerMessageAt, @dbNow) > 600
-                    THEN 0 ELSE 1
-                  END,
-                  c.LastCustomerMessageAt DESC
-            """
-            
+            rows = []
             with conn.cursor(as_dict=True) as cursor:
-                cursor.execute(query, tuple(params))
-                return cursor.fetchall()
+                if include_overtime:
+                    overtime_query = """
+                        DECLARE @dbNow DATETIME;
+                        SET @dbNow = GETDATE();
+
+                        WITH LatestAI AS (
+                          SELECT ReceiverId, Source, TextContent,
+                                 ROW_NUMBER() OVER (PARTITION BY ReceiverId, Source ORDER BY SentAt DESC) as rn
+                          FROM WebChat_MessageLogs
+                          WHERE FromHost = 1 AND HostDisplayName = 'AI Assistant'
+                        ),
+                        LatestCust AS (
+                          SELECT SenderId, Source, TextContent,
+                                 ROW_NUMBER() OVER (PARTITION BY SenderId, Source ORDER BY SentAt DESC) as rn
+                          FROM WebChat_MessageLogs
+                          WHERE FromHost = 0
+                        )
+                        SELECT TOP 100
+                          c.Id AS id,
+                          c.CustomerId AS customer_id,
+                          c.Source AS source,
+                          c.LastCustomerMessageAt AS last_customer_msg_at,
+                          c.LastHostMessageAt AS last_host_msg_at,
+                          u.DisplayName AS customer_name,
+                          cust.TextContent AS last_cust_text,
+                          ai.TextContent AS last_ai_text,
+                          'overtime' AS alert_type,
+                          DATEDIFF(MINUTE, c.LastCustomerMessageAt, @dbNow) AS wait_mins
+                        FROM WebChat_Conversations c
+                        LEFT JOIN WebChat_Messagelogs_User_Info u
+                          ON c.CustomerId = u.SenderId
+                         AND c.Source = u.Source
+                        LEFT JOIN WebChat_ConversationStatus s
+                          ON c.CustomerId = s.CustomerId
+                         AND c.Source = s.Source
+                        LEFT JOIN LatestCust cust
+                          ON c.CustomerId = cust.SenderId
+                         AND c.Source = cust.Source
+                         AND cust.rn = 1
+                        LEFT JOIN LatestAI ai
+                          ON c.CustomerId = ai.ReceiverId
+                         AND c.Source = ai.Source
+                         AND ai.rn = 1
+                    """
+                    overtime_conditions = [
+                        "(s.NoResponseNeeded IS NULL OR s.NoResponseNeeded = 0 OR c.LastCustomerMessageAt > s.MarkedAt)",
+                        "c.LastMessageId > 0",
+                        "(c.LastHostMessageAt IS NULL OR c.LastCustomerMessageAt > c.LastHostMessageAt)",
+                        "DATEDIFF(MINUTE, c.LastCustomerMessageAt, @dbNow) > 600",
+                    ]
+                    overtime_params = []
+
+                    if start_date:
+                        overtime_conditions.append("c.LastCustomerMessageAt >= %s")
+                        overtime_params.append(start_date)
+
+                    if end_date:
+                        overtime_conditions.append("c.LastCustomerMessageAt <= %s")
+                        overtime_params.append(f"{end_date} 23:59:59.999")
+
+                    overtime_query += " WHERE " + " AND ".join(overtime_conditions)
+                    overtime_query += " ORDER BY c.LastCustomerMessageAt DESC"
+
+                    cursor.execute(overtime_query, tuple(overtime_params))
+                    rows.extend(cursor.fetchall())
+
+                if include_ai:
+                    ai_conditions = [
+                        "m.FromHost = 1",
+                        "m.HostDisplayName = 'AI Assistant'",
+                        "m.Source IS NOT NULL",
+                        "m.TextContent IS NOT NULL",
+                        "m.TextContent != ''",
+                        "(c.Id IS NULL OR s.NoResponseNeeded IS NULL OR s.NoResponseNeeded = 0 OR c.LastCustomerMessageAt > s.MarkedAt)",
+                    ]
+                    ai_params = []
+
+                    if start_date:
+                        ai_conditions.append("m.SentAt >= %s")
+                        ai_params.append(start_date)
+
+                    if end_date:
+                        ai_conditions.append("m.SentAt <= %s")
+                        ai_params.append(f"{end_date} 23:59:59.999")
+
+                    where_sql = "WHERE " + " AND ".join(ai_conditions)
+                    no_data_keyword_sql = self._ai_no_data_keyword_condition("m")
+                    uncertain_keyword_sql = self._ai_uncertain_keyword_condition("m")
+                    source_case = self._source_key_case_expr("m.Source")
+                    analytics_source_case = self._source_key_case_expr("a.source")
+
+                    ai_query = f"""
+                        DECLARE @dbNow DATETIME;
+                        SET @dbNow = GETDATE();
+
+                        WITH scoped AS (
+                          SELECT
+                            'ai-' + CAST(m.id_webchat_messageLogs AS VARCHAR(30)) AS id,
+                            m.id_webchat_messageLogs AS message_id,
+                            CAST({self._message_customer_expr("m")} AS NVARCHAR(255)) AS customer_id,
+                            m.Source AS source,
+                            {source_case} AS source_key,
+                            m.SentAt AS ai_sent_at,
+                            cust.SentAt AS last_customer_msg_at,
+                            m.SentAt AS last_host_msg_at,
+                            u.DisplayName AS customer_name,
+                            cust.TextContent AS last_cust_text,
+                            m.TextContent AS last_ai_text,
+                            DATEDIFF(MINUTE, COALESCE(c.LastCustomerMessageAt, cust.SentAt, m.SentAt), @dbNow) AS wait_mins,
+                            CASE WHEN {no_data_keyword_sql} THEN 1 ELSE 0 END AS keyword_no_data,
+                            CASE WHEN {uncertain_keyword_sql} THEN 1 ELSE 0 END AS keyword_uncertain
+                          FROM WebChat_MessageLogs m
+                          OUTER APPLY (
+                            SELECT TOP 1 customer.SentAt, customer.TextContent
+                            FROM WebChat_MessageLogs customer
+                            WHERE customer.FromHost = 0
+                              AND {self._normalized_source_expr('customer.Source')} = {self._normalized_source_expr('m.Source')}
+                              AND customer.SenderId = m.ReceiverId
+                              AND customer.SentAt <= m.SentAt
+                            ORDER BY customer.SentAt DESC
+                          ) cust
+                          LEFT JOIN WebChat_Conversations c
+                            ON c.CustomerId = m.ReceiverId
+                           AND {self._normalized_source_expr('c.Source')} = {self._normalized_source_expr('m.Source')}
+                          LEFT JOIN WebChat_ConversationStatus s
+                            ON c.CustomerId = s.CustomerId
+                           AND {self._normalized_source_expr('c.Source')} = {self._normalized_source_expr('s.Source')}
+                          LEFT JOIN WebChat_Messagelogs_User_Info u
+                            ON u.SenderId = m.ReceiverId
+                           AND {self._normalized_source_expr('u.Source')} = {self._normalized_source_expr('m.Source')}
+                          {where_sql}
+                        ),
+                        analytics_issues AS (
+                          SELECT
+                            CAST(a.messageId AS BIGINT) AS message_id,
+                            CAST(a.customerId AS NVARCHAR(255)) AS customer_id,
+                            {analytics_source_case} AS source_key,
+                            a.messageAt AS message_at,
+                            a.issueType AS issue_type
+                          FROM WebChat_MessageAnalytics a
+                          WHERE a.issueFlag = 1
+                        ),
+                        flagged AS (
+                          SELECT
+                            s.id,
+                            s.message_id,
+                            s.customer_id,
+                            s.source,
+                            s.source_key,
+                            s.ai_sent_at,
+                            s.last_customer_msg_at,
+                            s.last_host_msg_at,
+                            s.customer_name,
+                            s.last_cust_text,
+                            s.last_ai_text,
+                            s.wait_mins,
+                            s.keyword_no_data,
+                            s.keyword_uncertain,
+                            MAX(CASE WHEN direct_issue.issue_type = N'Không tìm thấy dữ liệu' OR context_issue.issue_type = N'Không tìm thấy dữ liệu' THEN 1 ELSE 0 END) AS analytics_no_data,
+                            MAX(CASE WHEN direct_issue.issue_type IN (N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin') OR context_issue.issue_type IN (N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin') THEN 1 ELSE 0 END) AS analytics_uncertain
+                          FROM scoped s
+                          LEFT JOIN analytics_issues direct_issue
+                            ON direct_issue.message_id = s.message_id
+                          LEFT JOIN analytics_issues context_issue
+                            ON context_issue.customer_id = s.customer_id
+                           AND context_issue.source_key = s.source_key
+                           AND context_issue.message_at >= DATEADD(SECOND, -2, s.ai_sent_at)
+                           AND context_issue.message_at <= DATEADD(SECOND, 2, s.ai_sent_at)
+                          GROUP BY
+                            s.id,
+                            s.message_id,
+                            s.customer_id,
+                            s.source,
+                            s.source_key,
+                            s.ai_sent_at,
+                            s.last_customer_msg_at,
+                            s.last_host_msg_at,
+                            s.customer_name,
+                            s.last_cust_text,
+                            s.last_ai_text,
+                            s.wait_mins,
+                            s.keyword_no_data,
+                            s.keyword_uncertain
+                        ),
+                        classified AS (
+                          SELECT
+                            id,
+                            customer_id,
+                            source,
+                            ai_sent_at,
+                            last_customer_msg_at,
+                            last_host_msg_at,
+                            customer_name,
+                            last_cust_text,
+                            last_ai_text,
+                            wait_mins,
+                            CASE
+                              WHEN analytics_no_data = 1 OR (keyword_no_data = 1 AND analytics_uncertain = 0) THEN 'ai_no_data'
+                              WHEN analytics_uncertain = 1 OR (keyword_uncertain = 1 AND analytics_no_data = 0) THEN 'ai_uncertain'
+                              ELSE 'none'
+                            END AS alert_type
+                          FROM flagged
+                        ),
+                        ranked AS (
+                          SELECT
+                            *,
+                            ROW_NUMBER() OVER (PARTITION BY alert_type ORDER BY ai_sent_at DESC) AS rn
+                          FROM classified
+                          WHERE alert_type IN ('ai_no_data', 'ai_uncertain')
+                        )
+                        SELECT
+                          id,
+                          customer_id,
+                          source,
+                          last_customer_msg_at,
+                          last_host_msg_at,
+                          customer_name,
+                          last_cust_text,
+                          last_ai_text,
+                          alert_type,
+                          wait_mins
+                        FROM ranked
+                        WHERE rn <= 100
+                        ORDER BY
+                          CASE WHEN alert_type = 'ai_uncertain' THEN 0 ELSE 1 END,
+                          ai_sent_at DESC
+                    """
+
+                    cursor.execute(ai_query, tuple(ai_params))
+                    rows.extend(cursor.fetchall())
+
+                return rows
         finally:
             conn.close()
 

@@ -358,6 +358,14 @@ class KeywordService:
             conversation_status=conversation_status,
             ai_status=ai_status,
         ) if period_words_map else {}
+        current_totals = keyword_repository.batch_count_groups(
+            period_words_map,
+            start_date,
+            end_date,
+            channel=channel,
+            conversation_status=conversation_status,
+            ai_status=ai_status,
+        ) if period_words_map else {}
 
         results = []
         for group_id in ORDERED_GROUP_IDS:
@@ -380,7 +388,7 @@ class KeywordService:
 
             sorted_keywords = sorted(filtered_keywords, key=lambda x: x["count"], reverse=True)
             top_keywords = sorted_keywords[:top_n]
-            total_questions = sum(kw["count"] for kw in filtered_keywords)
+            total_questions = current_totals.get(group_id, 0)
             previous_total = previous_totals.get(group_id, 0)
 
             change_rate = 0

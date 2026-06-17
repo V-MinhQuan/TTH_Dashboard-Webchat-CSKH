@@ -138,14 +138,14 @@ function buildApiParams(filters: FilterValues): URLSearchParams {
 
   if (filters.dateRange === "Tùy chỉnh") {
     if (filters.customDateFrom) startDate = new Date(filters.customDateFrom);
-    if (filters.customDateTo)   endDate   = new Date(filters.customDateTo);
+    if (filters.customDateTo) endDate = new Date(filters.customDateTo);
   } else {
     endDate = new Date(now);
     startDate = new Date(now);
-    if      (filters.dateRange === "Hôm nay")    { startDate.setHours(0, 0, 0, 0); }
-    else if (filters.dateRange === "7 ngày qua")  { startDate.setDate(now.getDate() - 7); }
+    if (filters.dateRange === "Hôm nay") { startDate.setHours(0, 0, 0, 0); }
+    else if (filters.dateRange === "7 ngày qua") { startDate.setDate(now.getDate() - 7); }
     else if (filters.dateRange === "30 ngày qua") { startDate.setDate(now.getDate() - 30); }
-    else if (filters.dateRange === "Tháng này")   { startDate = new Date(now.getFullYear(), now.getMonth(), 1); }
+    else if (filters.dateRange === "Tháng này") { startDate = new Date(now.getFullYear(), now.getMonth(), 1); }
     else if (filters.dateRange === "Quý này") {
       const q = Math.floor(now.getMonth() / 3);
       startDate = new Date(now.getFullYear(), q * 3, 1);
@@ -162,10 +162,10 @@ function buildApiParams(filters: FilterValues): URLSearchParams {
 
   // --- Kênh ---
   const channelMap: Record<string, string> = {
-    "Zalo OA":       "ZaloOA",
+    "Zalo OA": "ZaloOA",
     "Zalo Business": "ZaloBusiness",
-    "Chat Widget":   "ChatWidget",
-    "Facebook":      "Facebook",
+    "Chat Widget": "ChatWidget",
+    "Facebook": "Facebook",
   };
   if (filters.channel && filters.channel !== "Tất cả") {
     const mapped = channelMap[filters.channel];
@@ -422,7 +422,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
   // API fetching now handles suggestions
   const [heatmapRows, setHeatmapRows] = useState<any[]>([]);
   const [trendRows, setTrendRows] = useState<any[]>([]);
-  const [heatmapColsDyn, setHeatmapColsDyn] = useState<{key:string; label:string}[]>([]);
+  const [heatmapColsDyn, setHeatmapColsDyn] = useState<{ key: string; label: string }[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -513,7 +513,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
     return () => {
       cancelled = true;
     };
-  // Chỉ re-fetch khi appliedFilters thay đổi (khi bấm "Áp dụng")
+    // Chỉ re-fetch khi appliedFilters thay đổi (khi bấm "Áp dụng")
   }, [appliedFilters]);
 
   const retryLoadData = () => {
@@ -578,7 +578,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
 
       {/* Page title */}
       <div style={{ marginBottom: "20px" }}>
-        <h1 style={{ fontSize: "20px", fontWeight: 700, color: NAVY, marginBottom: "4px" }}>Phân tích Keywords</h1>
+        <h1 style={{ fontSize: "20px", fontWeight: 700, color: NAVY, marginBottom: "4px" }}>Phân tích từ khóa</h1>
         <p style={{ fontSize: "13px", color: "rgba(0,56,101,0.5)" }}>Phân tích theo 4 nhóm chủ đề chính</p>
       </div>
 
@@ -610,7 +610,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
               <span style={{ color: ORANGE, display: "flex", alignItems: "center", gap: "3px" }}>
                 <AlertCircle size={11} /> {g.aiFailed} AI thất bại
               </span>
-              <span 
+              <span
                 onClick={(e) => {
                   e.stopPropagation();
                   setSelectedGroupId(g.id);
@@ -661,7 +661,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
 
       {/* Charts row 2: Line trend */}
       <div style={{ backgroundColor: "#fff", borderRadius: "16px", padding: "20px", border: "1px solid rgba(0,56,101,0.08)", boxShadow: "0 2px 8px rgba(0,56,101,0.05)", marginBottom: "20px" }}>
-        <div style={{ fontSize: "14px", fontWeight: 700, color: NAVY, marginBottom: "16px" }}>Xu hướng câu hỏi theo thời gian</div>
+        <div style={{ fontSize: "14px", fontWeight: 700, color: NAVY, marginBottom: "16px" }}>Xu hướng chủ đề theo thời gian</div>
         <ResponsiveContainer width="100%" height={200}>
           <LineChart data={finalTrendRows} margin={{ top: 0, right: 10, bottom: 0, left: -10 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" />
@@ -857,7 +857,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
                 });
               })()}
             </div>
-            
+
             <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "20px", borderTop: "1px solid rgba(0,56,101,0.06)", paddingTop: "16px" }}>
               <button onClick={() => setSelectedGroupId(null)} style={{ padding: "8px 18px", borderRadius: "8px", border: "1.5px solid rgba(0,56,101,0.12)", backgroundColor: "#fff", color: NAVY, cursor: "pointer", fontSize: "12px", fontWeight: 600 }}>Đóng</button>
             </div>

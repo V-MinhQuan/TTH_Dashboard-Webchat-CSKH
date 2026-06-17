@@ -39,7 +39,7 @@ export function ChartToolbar({
           <span>Dashboard</span>
         </button>
         <div className="chart-builder-title-block">
-          <span>CHART BUILDER</span>
+          <span>Trình tạo biểu đồ</span>
           <input
             value={title}
             maxLength={200}
