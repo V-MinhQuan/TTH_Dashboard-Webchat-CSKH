@@ -18,11 +18,20 @@ export async function goToChartBuilder(page: import('@playwright/test').Page): P
 
 /** Wait for the loading spinner to disappear. */
 export async function waitForPreviewReady(page: import('@playwright/test').Page): Promise<void> {
-  // Wait for the loading state to clear (max 15 s)
-  await page.waitForFunction(
-    () => !document.querySelector('[class*="loading"], .spinner, [aria-busy="true"]'),
+  await page.waitForSelector(
+    [
+      '[data-preview-state="has-data"]',
+      '[data-preview-state="no-data"]',
+      '[data-preview-state="invalid"]',
+      '[data-preview-state="api-error"]',
+    ].join(', '),
     { timeout: 15_000 },
-  ).catch(() => {
-    // Non-fatal: spinner might not be present at all
-  });
+  );
+  await page
+    .locator('[data-preview-state="loading"], .chart-builder-spinner')
+    .first()
+    .waitFor({ state: 'detached', timeout: 15_000 })
+    .catch(() => {
+      // Loading indicators may already be gone when the settled state appears.
+    });
 }

@@ -35,9 +35,10 @@ export interface SheetChatbotRow {
 
 export interface SheetChatbotStats {
   total: number;
-  pendingManager: number;
+  pending?: number;
+  pendingManager?: number;
   approved: number;
-  usable: number;
+  usable?: number;
   needsEdit: number;
   rejected: number;
 }
@@ -83,6 +84,12 @@ interface SheetChatbotFaqResponse {
   success: boolean;
   message?: string;
   data: SheetChatbotFaq;
+}
+
+export interface SheetChatbotDuplicateResponse {
+  success: boolean;
+  message?: string;
+  data: Array<SheetChatbotRow & { similarity: number }>;
 }
 
 export function getSheetChatbotRows(params?: {
@@ -139,5 +146,22 @@ export async function mergeSheetChatbotToFaq(id: string, reviewer?: string) {
     cache: false,
     body: JSON.stringify({ reviewer }),
   });
+  return response.data;
+}
+
+export async function getSheetChatbotDuplicates(question: string, minSimilarity = 0.75, limit = 5) {
+  const response = await fetchApiJson<SheetChatbotDuplicateResponse>(
+    buildApiUrl("/api/admin/sheet-chatbot/duplicates", {
+      question,
+      minSimilarity,
+      limit,
+    }),
+    { cache: false },
+  );
+
+  if (!response.success) {
+    throw new Error(response.message || "Không thể kiểm tra FAQ tương tự.");
+  }
+
   return response.data;
 }

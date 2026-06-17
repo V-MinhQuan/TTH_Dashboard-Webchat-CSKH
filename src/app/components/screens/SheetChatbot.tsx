@@ -4,11 +4,11 @@ import { Plus, Search, Filter, CheckCircle2, XCircle, Clock, AlertTriangle, Edit
 import { toast } from "sonner";
 import {
   createSheetChatbotRow,
+  getSheetChatbotDuplicates,
   getSheetChatbotRows,
   mergeSheetChatbotToFaq,
   updateSheetChatbotRow,
   updateSheetChatbotStatus,
-  type SheetChatbotFaq,
 } from "../../services/sheetChatbotApi";
 
 const NAVY    = "#003865";
@@ -38,15 +38,6 @@ interface SheetRow {
 
 const TOPICS = ["TOEIC", "VSTEP", "CNTT Cơ bản", "CNTT Nâng cao", "Chuẩn đầu ra ngoại ngữ", "MOS/IC3", "Lịch thi", "Lệ phí", "Hồ sơ đăng ký", "Tra cứu điểm", "Cấp chứng chỉ"];
 const SOURCES: SourceType[] = ["AI trả lời sai", "Không tìm thấy dữ liệu", "AI không chắc chắn", "Câu hỏi lặp lại nhiều lần", "Nhân viên đề xuất"];
-
-const initialRows: SheetRow[] = [
-  { id: "CS-001", addedAt: "09:30 hôm nay", addedBy: "Thu Trang", question: "Lệ phí thi TOEIC hiện tại là bao nhiêu?", correctAnswer: "Lệ phí thi TOEIC tại FLIC là 750.000 VNĐ/lần thi. Sinh viên có thẻ được giảm 10%.", topic: "TOEIC", source: "AI trả lời sai", risk: "Thấp", status: "Đã duyệt", notes: "AI trả lời sai số tiền, đã kiểm tra bảng giá 2026" },
-  { id: "CS-002", addedAt: "08:15 hôm nay", addedBy: "Thùy NT", question: "Thi xong VSTEP bao lâu có kết quả?", correctAnswer: "Kết quả thi VSTEP được trả trong vòng 30 ngày làm việc kể từ ngày thi.", topic: "VSTEP", source: "AI trả lời sai", risk: "Trung bình", status: "Chờ xử lý", notes: "AI nói 2 tháng nhưng thực tế là 30 ngày làm việc" },
-  { id: "CS-003", addedAt: "Hôm qua 16:40", addedBy: "Thu Trang", question: "Điểm TOEIC 600 có đủ chuẩn đầu ra không?", correctAnswer: "Điểm TOEIC 600 đạt chuẩn đầu ra cho hầu hết các ngành. Một số ngành đặc biệt yêu cầu 650+. Cần kiểm tra theo ngành học cụ thể.", topic: "Chuẩn đầu ra ngoại ngữ", source: "AI không chắc chắn", risk: "Cao", status: "Chờ xử lý", notes: "Câu trả lời liên quan đến quy định trường — cần xác nhận chính thức" },
-  { id: "CS-004", addedAt: "Hôm qua 14:00", addedBy: "Thùy NT", question: "Đăng ký thi CNTT nhóm trên 3 bạn thì thế nào?", correctAnswer: "Nhóm từ 3 người trở lên có thể đăng ký thi theo nhóm qua form online. Nhóm trưởng điền thông tin của tất cả thành viên.", topic: "CNTT Cơ bản", source: "Không tìm thấy dữ liệu", risk: "Thấp", status: "Đã duyệt", notes: "" },
-  { id: "CS-005", addedAt: "28/05/2026", addedBy: "Thu Trang", question: "Lịch thi VSTEP tháng 6/2026 có chưa?", correctAnswer: "Lịch thi VSTEP tháng 6/2026 sẽ được công bố vào ngày 20/05/2026. Vui lòng theo dõi website chính thức của FLIC.", topic: "VSTEP", source: "AI không chắc chắn", risk: "Thấp", status: "Cần chỉnh sửa", notes: "Cần cập nhật ngày công bố chính xác hơn" },
-  { id: "CS-006", addedAt: "27/05/2026", addedBy: "Thùy NT", question: "Hồ sơ đăng ký thi CNTT Nâng cao cần những gì?", correctAnswer: "Hồ sơ đăng ký thi CNTT Nâng cao gồm: CCCD/CMND bản sao, chứng chỉ CNTT Cơ bản (nếu có), phiếu đăng ký điền đầy đủ.", topic: "CNTT Nâng cao", source: "Câu hỏi lặp lại nhiều lần", risk: "Thấp", status: "Đã duyệt", notes: "" },
-];
 
 const statusConfig: Record<SheetStatus, { bg: string; color: string; icon: typeof CheckCircle2 }> = {
   "Chờ xử lý":     { bg: ORANGE_50, color: ORANGE, icon: Clock },
@@ -89,15 +80,12 @@ function formatAddedAt(value: string) {
 
 interface DuplicateModalProps {
   question: string;
+  matches: Array<SheetRow & { similarity: number }>;
   onAddNew: () => void;
-  onMerge: () => void;
   onClose: () => void;
 }
 
-function DuplicateModal({ question, onAddNew, onMerge, onClose }: DuplicateModalProps) {
-  const similar = [
-    { q: "Lệ phí thi TOEIC là bao nhiêu?", topic: "TOEIC", similarity: "87%", status: "Đã duyệt" },
-  ];
+function DuplicateModal({ question, matches, onAddNew, onClose }: DuplicateModalProps) {
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div style={{ background: "#fff", borderRadius: "16px", width: "520px", padding: "24px", boxShadow: "0 16px 48px rgba(0,0,0,0.15)" }}>
@@ -121,11 +109,11 @@ function DuplicateModal({ question, onAddNew, onMerge, onClose }: DuplicateModal
               </tr>
             </thead>
             <tbody>
-              {similar.map((s, i) => (
-                <tr key={i}>
-                  <td style={{ padding: "10px 12px", color: NAVY, fontWeight: 500 }}>{s.q}</td>
+              {matches.map((s) => (
+                <tr key={s.id}>
+                  <td style={{ padding: "10px 12px", color: NAVY, fontWeight: 500 }}>{s.question}</td>
                   <td style={{ padding: "10px 12px" }}><span style={{ fontSize: "10px", padding: "2px 6px", borderRadius: "20px", backgroundColor: "#eff6ff", color: "#3b82f6" }}>{s.topic}</span></td>
-                  <td style={{ padding: "10px 12px" }}><span style={{ fontSize: "12px", fontWeight: 700, color: AMBER_TEXT }}>{s.similarity}</span></td>
+                  <td style={{ padding: "10px 12px" }}><span style={{ fontSize: "12px", fontWeight: 700, color: AMBER_TEXT }}>{Math.round((s.similarity || 0) * 100)}%</span></td>
                   <td style={{ padding: "10px 12px" }}><span style={{ fontSize: "10px", padding: "2px 6px", borderRadius: "20px", backgroundColor: "#dcfce7", color: "#16a34a" }}>{s.status}</span></td>
                 </tr>
               ))}
@@ -134,8 +122,7 @@ function DuplicateModal({ question, onAddNew, onMerge, onClose }: DuplicateModal
         </div>
         <div style={{ display: "flex", gap: "10px" }}>
           <button onClick={onAddNew} style={{ flex: 1, padding: "9px", borderRadius: "8px", border: `1px solid ${NAVY}20`, background: "#f8fafc", color: NAVY, cursor: "pointer", fontWeight: 600, fontSize: "12px" }}>Thêm mới</button>
-          <button onClick={onMerge} style={{ flex: 1, padding: "9px", borderRadius: "8px", border: `1px solid ${NAVY}20`, background: "#fff", color: NAVY, cursor: "pointer", fontWeight: 600, fontSize: "12px" }}>Gộp vào FAQ có sẵn</button>
-          <button onClick={onMerge} style={{ flex: 1, padding: "9px", borderRadius: "8px", border: "none", background: NAVY, color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: "12px" }}>Cập nhật câu trả lời cũ</button>
+          <button onClick={onClose} style={{ flex: 1, padding: "9px", borderRadius: "8px", border: "none", background: NAVY, color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: "12px" }}>Xem lại nội dung</button>
         </div>
       </div>
     </div>
@@ -158,19 +145,35 @@ export function AddSheetModal({ prefillQuestion = "", prefillAnswer = "", initia
   const [risk, setRisk] = useState<RiskLevel>((initialValues?.risk as RiskLevel) ?? "Thấp");
   const [notes, setNotes] = useState(initialValues?.notes ?? "");
   const [showDuplicate, setShowDuplicate] = useState(false);
+  const [duplicateMatches, setDuplicateMatches] = useState<Array<SheetRow & { similarity: number }>>([]);
+  const [isSaving, setIsSaving] = useState(false);
 
-  const handleSave = () => {
-    const lowRisk = ["lệ phí", "toeic", "fee"].some(k => question.toLowerCase().includes(k));
-    if (lowRisk) {
-      setShowDuplicate(true);
+  const handleSave = async () => {
+    if (initialValues) {
+      await doSave();
       return;
     }
-    doSave();
+
+    try {
+      setIsSaving(true);
+      const matches = await getSheetChatbotDuplicates(question, 0.82, 5);
+      if (matches.length > 0) {
+        setDuplicateMatches(matches as Array<SheetRow & { similarity: number }>);
+        setShowDuplicate(true);
+        return;
+      }
+      await doSave();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không thể kiểm tra FAQ tương tự");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const doSave = async () => {
     const status = statusFromRisk(risk);
     try {
+      setIsSaving(true);
       await onSave?.({ question, correctAnswer: answer, topic, source, risk, status, notes });
       if (risk === "Cao") {
         toast.success("Đã thêm vào Sheet Chatbot và chờ xử lý");
@@ -180,6 +183,8 @@ export function AddSheetModal({ prefillQuestion = "", prefillAnswer = "", initia
       onClose();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Không thể lưu dữ liệu vào Sheet Chatbot");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -245,8 +250,8 @@ export function AddSheetModal({ prefillQuestion = "", prefillAnswer = "", initia
 
           <div style={{ display: "flex", gap: "10px", marginTop: "20px" }}>
             <button onClick={onClose} style={{ flex: 1, padding: "10px", borderRadius: "10px", border: "1px solid rgba(0,56,101,0.12)", background: "#fff", color: NAVY, cursor: "pointer", fontWeight: 600, fontSize: "13px" }}>Hủy</button>
-            <button onClick={handleSave} disabled={!question.trim() || !answer.trim()} style={{ flex: 2, padding: "10px", borderRadius: "10px", border: "none", background: (!question.trim() || !answer.trim()) ? "#ccc" : NAVY, color: "#fff", cursor: (!question.trim() || !answer.trim()) ? "not-allowed" : "pointer", fontWeight: 600, fontSize: "13px" }}>
-              Lưu vào Sheet Chatbot
+            <button onClick={handleSave} disabled={!question.trim() || !answer.trim() || isSaving} style={{ flex: 2, padding: "10px", borderRadius: "10px", border: "none", background: (!question.trim() || !answer.trim() || isSaving) ? "#ccc" : NAVY, color: "#fff", cursor: (!question.trim() || !answer.trim() || isSaving) ? "not-allowed" : "pointer", fontWeight: 600, fontSize: "13px" }}>
+              {isSaving ? "Đang lưu..." : "Lưu vào Sheet Chatbot"}
             </button>
           </div>
         </div>
@@ -255,8 +260,8 @@ export function AddSheetModal({ prefillQuestion = "", prefillAnswer = "", initia
       {showDuplicate && (
         <DuplicateModal
           question={question}
+          matches={duplicateMatches}
           onAddNew={() => { setShowDuplicate(false); doSave(); }}
-          onMerge={() => { setShowDuplicate(false); toast.success("Đã gộp vào FAQ có sẵn"); onClose(); }}
           onClose={() => setShowDuplicate(false)}
         />
       )}
@@ -388,36 +393,10 @@ export function SheetChatbot() {
     setRows(prev => [created, ...prev]);
   };
 
-  const syncFaqStorage = (faq: SheetChatbotFaq) => {
-    let currentFaqs: any[] = [];
-    const saved = localStorage.getItem("flic_faqs");
-    if (saved) {
-      try {
-        currentFaqs = JSON.parse(saved);
-      } catch (e) {
-        console.error(e);
-      }
-    }
-
-    const exists = currentFaqs.some((f: any) => f.question.toLowerCase() === faq.question.toLowerCase());
-    if (exists) return false;
-
-    const nextFaqs = [faq, ...currentFaqs];
-    const nextValue = JSON.stringify(nextFaqs);
-    localStorage.setItem("flic_faqs", nextValue);
-    try {
-      window.dispatchEvent(new StorageEvent("storage", { key: "flic_faqs", newValue: nextValue }));
-    } catch {
-      window.dispatchEvent(new Event("storage"));
-    }
-    return true;
-  };
-
   const updateStatus = async (id: string, status: SheetStatus) => {
     try {
       if (status === "Đã duyệt") {
-        const faq = await mergeSheetChatbotToFaq(id, currentUserName);
-        syncFaqStorage(faq);
+        await mergeSheetChatbotToFaq(id, currentUserName);
         await loadRows();
         toast.success("Đã cập nhật trạng thái dữ liệu chatbot");
         return;
@@ -433,14 +412,9 @@ export function SheetChatbot() {
 
   const handleMergeFaq = async (id: string) => {
     try {
-      const faq = await mergeSheetChatbotToFaq(id, currentUserName);
-      const added = syncFaqStorage(faq);
+      await mergeSheetChatbotToFaq(id, currentUserName);
       await loadRows();
-      if (added) {
-        toast.success("Đã gộp vào danh sách FAQ thành công!");
-      } else {
-        toast.info("FAQ này đã tồn tại trong danh sách FAQ!");
-      }
+      toast.success("Đã duyệt để hiển thị trong danh sách FAQ.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Không thể gộp FAQ");
     }
@@ -574,7 +548,7 @@ export function SheetChatbot() {
                             <>
                               <button onClick={() => updateStatus(row.id, "Đã duyệt")} style={{ padding: "3px 9px", borderRadius: "6px", border: "1px solid #bbf7d0", background: "#f0fdf4", color: "#16a34a", cursor: "pointer", fontSize: "10px", fontWeight: 600 }}>Duyệt</button>
                               <button onClick={() => { setEditingRow(row); setShowAddModal(true); }} style={{ padding: "3px 9px", borderRadius: "6px", border: "1px solid #e9d5ff", background: "#faf5ff", color: "#7c3aed", cursor: "pointer", fontSize: "10px", fontWeight: 600 }}>Chỉnh sửa</button>
-                              <button onClick={() => updateStatus(row.id, "Bị từ chối")} style={{ padding: "3px 9px", borderRadius: "6px", border: "1px solid rgba(0,62,154,0.12)", background: "#f8fafc", color: "#64748b", cursor: "pointer", fontSize: "10px", fontWeight: 600 }}>Từ chối</button>
+                              <button onClick={() => updateStatus(row.id, "Từ chối")} style={{ padding: "3px 9px", borderRadius: "6px", border: "1px solid rgba(0,62,154,0.12)", background: "#f8fafc", color: "#64748b", cursor: "pointer", fontSize: "10px", fontWeight: 600 }}>Từ chối</button>
                             </>
                           ) : row.status === "Đã duyệt" ? (
                             <button onClick={() => handleMergeFaq(row.id)} style={{ padding: "3px 9px", borderRadius: "6px", border: `1px solid ${NAVY}20`, background: "#f8fafc", color: NAVY, cursor: "pointer", fontSize: "10px", fontWeight: 600 }}>Gộp FAQ</button>

@@ -10,6 +10,12 @@ import {
 } from "../chartbuilder/ChartSettingsPanel";
 import { CHART_BUILDER_LABELS } from "../chartbuilder/chartBuilderLabels";
 import {
+  canUseFieldInSlot,
+  describeFieldSlotRejection,
+  type ChartBuilderFieldSlot,
+  type FieldSlotContext,
+} from "../chartbuilder/chartBuilderFieldSlots";
+import {
   buildDimensionSelectionForField,
   normalizeChartBuilderState,
   validateChartConfiguration,
@@ -102,6 +108,9 @@ export function ChartBuilder({
     () => window.innerWidth > 1100,
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [draggedField, setDraggedField] = useState<ChartFieldDragData | null>(
+    null,
+  );
 
   const selectedDataset = useMemo(
     () => datasets.find((dataset) => dataset.id === state.datasetId) || null,
@@ -132,6 +141,15 @@ export function ChartBuilder({
     ...(state.series ? [state.series.fieldId] : []),
     ...state.filters.map((item) => item.fieldId),
   ], [state.dimensions, state.metrics, state.series, state.filters]);
+  const selectedOutputFieldIds = useMemo(() => [
+    ...state.dimensions.map((item) => item.fieldId),
+    ...state.metrics.map((item) => item.fieldId),
+    ...(state.series ? [state.series.fieldId] : []),
+  ], [state.dimensions, state.metrics, state.series]);
+  const fieldSlotContext = useMemo<FieldSlotContext>(() => ({
+    chartType: state.chartType,
+    selectedOutputFieldIds,
+  }), [state.chartType, selectedOutputFieldIds]);
   const customRequest = useMemo(
     () => buildCustomRequest(state),
     [
@@ -290,17 +308,41 @@ export function ChartBuilder({
     setDataError("");
   };
 
-  const handleFieldSelect = (field: ChartFieldDragData) => {
-    setLegacyConfig(null);
-    if (field.roles.includes("metric")) {
-      addMetricField(field);
+  const handleFieldSelectForSlot = (
+    slot: ChartBuilderFieldSlot,
+    field: ChartFieldDragData,
+  ) => {
+    if (!canUseFieldInSlot(field, slot, fieldSlotContext)) {
+      toast.warning(describeFieldSlotRejection(field, slot, fieldSlotContext));
       return;
     }
-    addDimensionField(field);
+
+    if (slot === "dimension") addDimensionField(field);
+    else if (slot === "metric") addMetricField(field);
+    else if (slot === "series") addSeriesField(field);
+    else if (slot === "filter") addFilterField(field);
+    else addTooltipField(field);
+  };
+
+  const handleFieldSelect = (field: ChartFieldDragData) => {
+    setLegacyConfig(null);
+    if (canUseFieldInSlot(field, "metric", fieldSlotContext)) {
+      handleFieldSelectForSlot("metric", field);
+      return;
+    }
+    if (canUseFieldInSlot(field, "dimension", fieldSlotContext)) {
+      handleFieldSelectForSlot("dimension", field);
+      return;
+    }
+    if (canUseFieldInSlot(field, "filter", fieldSlotContext)) {
+      handleFieldSelectForSlot("filter", field);
+      return;
+    }
+    toast.warning("Trường này chưa có vị trí phù hợp với cấu hình hiện tại.");
   };
 
   const addDimensionField = (field: ChartFieldDragData) => {
-    if (!field.roles.includes("dimension")) return;
+    if (!canUseFieldInSlot(field, "dimension", fieldSlotContext)) return;
     setLegacyConfig(null);
     setState((current) => reconcileSelectedOutputs({
       ...current,
@@ -314,7 +356,7 @@ export function ChartBuilder({
   };
 
   const addMetricField = (field: ChartFieldDragData) => {
-    if (!field.roles.includes("metric")) return;
+    if (!canUseFieldInSlot(field, "metric", fieldSlotContext)) return;
     const fieldMeta = selectedDataset?.fields.find(
       (item) => item.id === field.fieldId,
     );
@@ -346,7 +388,7 @@ export function ChartBuilder({
   };
 
   const addSeriesField = (field: ChartFieldDragData) => {
-    if (!field.roles.includes("series")) return;
+    if (!canUseFieldInSlot(field, "series", fieldSlotContext)) return;
     updateState({
       series: buildDimensionSelectionForField({
         id: field.fieldId,
@@ -357,7 +399,7 @@ export function ChartBuilder({
   };
 
   const addFilterField = (field: ChartFieldDragData) => {
-    if (!field.roles.includes("filter")) return;
+    if (!canUseFieldInSlot(field, "filter", fieldSlotContext)) return;
     const fieldMeta = selectedDataset?.fields.find(
       (item) => item.id === field.fieldId,
     );
@@ -372,10 +414,18 @@ export function ChartBuilder({
   };
 
   const addTooltipField = (field: ChartFieldDragData) => {
+    if (!canUseFieldInSlot(field, "tooltip", fieldSlotContext)) return;
     if (state.tooltipFields.includes(field.fieldId)) return;
     updateState({
       tooltipFields: [...state.tooltipFields, field.fieldId],
     });
+  };
+
+  const handleInvalidFieldDrop = (
+    slot: ChartBuilderFieldSlot,
+    field: ChartFieldDragData,
+  ) => {
+    toast.warning(describeFieldSlotRejection(field, slot, fieldSlotContext));
   };
 
   const handleFiltersChange = (filters: FilterSelection[]) => {
@@ -489,14 +539,19 @@ export function ChartBuilder({
           datasets={datasets}
           selectedDataset={selectedDataset}
           datasetId={state.datasetId}
+          chartType={state.chartType}
           loading={loadingCatalog}
           error={catalogError}
           selectedFieldIds={selectedFieldIds}
+          selectedOutputFieldIds={selectedOutputFieldIds}
           configs={configs}
           loadingConfigs={loadingConfigs}
           open={dataPanelOpen}
           onDatasetChange={handleDatasetChange}
           onFieldSelect={handleFieldSelect}
+          onFieldSelectForSlot={handleFieldSelectForSlot}
+          onFieldDragStart={setDraggedField}
+          onFieldDragEnd={() => setDraggedField(null)}
           onApplyConfig={handleApplyConfig}
           onDeleteConfig={handleDeleteConfig}
           onClose={() => setDataPanelOpen(false)}
@@ -532,16 +587,19 @@ export function ChartBuilder({
             )}
             <DropZoneBar
               dataset={selectedDataset}
+              chartType={state.chartType}
               dimensions={state.dimensions}
               metrics={state.metrics}
               series={state.series}
               filters={state.filters}
               tooltipFields={state.tooltipFields}
+              draggedField={draggedField}
               onDimensionField={addDimensionField}
               onMetricField={addMetricField}
               onSeriesField={addSeriesField}
               onFilterField={addFilterField}
               onTooltipField={addTooltipField}
+              onInvalidField={handleInvalidFieldDrop}
               onDimensionsChange={(dimensions) => updateState({ dimensions })}
               onMetricsChange={(metrics) => updateState({ metrics })}
               onSeriesChange={(series) => updateState({ series })}

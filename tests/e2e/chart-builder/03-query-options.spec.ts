@@ -3,7 +3,14 @@
  * Tests: aggregation, date grain, filters, sort, topN, limit, preview debounce,
  * AbortController, and verifying settings-only changes do NOT trigger extra /preview calls.
  */
-import { test, expect, withCatalogMock, withPreviewMock, goToChartBuilder } from '../fixtures/index';
+import {
+  test,
+  expect,
+  withCatalogMock,
+  withPreviewMock,
+  goToChartBuilder,
+  waitForPreviewReady,
+} from '../fixtures/index';
 
 test.describe('Chart Builder – Query Options & Debounce', () => {
   test('changing aggregation triggers a new /preview request', async ({ page }) => {
@@ -65,13 +72,12 @@ test.describe('Chart Builder – Query Options & Debounce', () => {
     await withPreviewMock(page);
     await goToChartBuilder(page);
 
-    // Wait for initial load and preview calls to settle
-    await page.waitForTimeout(2000);
-
     const previewRequests: string[] = [];
     page.on('request', (req) => {
       if (req.url().includes('/api/chart-builder/preview')) previewRequests.push(req.url());
     });
+    await waitForPreviewReady(page);
+    previewRequests.length = 0;
 
     // Open settings panel if not open
     const settingsBtn = page.locator('button').filter({ hasText: /cài đặt|settings/i }).first();

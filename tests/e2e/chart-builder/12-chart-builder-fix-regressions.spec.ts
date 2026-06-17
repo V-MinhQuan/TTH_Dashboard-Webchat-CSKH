@@ -75,6 +75,69 @@ test.describe('Chart Builder - CB-QA fix regressions', () => {
     expect(previewBodies[0].filters).toEqual([]);
   });
 
+  test('field slot map shows valid targets and warns on invalid drops', async ({ page }) => {
+    await withCatalogMock(page);
+    await withConfigsMock(page);
+    await page.route('**/api/chart-builder/preview', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(MOCK_PREVIEW_CONVERSATIONS_BY_CHANNEL),
+      }),
+    );
+
+    await goToChartBuilder(page);
+
+    const channelCard = page
+      .locator('.chart-builder-field-card')
+      .filter({ hasText: 'Kênh' })
+      .first();
+    await expect(channelCard.locator('.chart-builder-slot-badge').filter({ hasText: 'X' })).toBeVisible();
+    await expect(channelCard.locator('.chart-builder-slot-badge').filter({ hasText: 'F' })).toBeVisible();
+    await expect(channelCard.locator('.chart-builder-slot-badge').filter({ hasText: 'T' })).toBeVisible();
+
+    await channelCard.locator('.chart-builder-field-item').click();
+    await expect(channelCard.locator('.chart-builder-field-actions')).toContainText('Trục X');
+    await expect(channelCard.locator('.chart-builder-field-actions')).toContainText('Bộ lọc');
+    await expect(channelCard.locator('.chart-builder-field-actions')).toContainText('Tooltip');
+
+    const slotFilter = page.locator('.chart-builder-slot-filter');
+    await slotFilter.getByRole('button', { name: 'Giá trị Y', exact: true }).click();
+    await expect(
+      page.locator('.chart-builder-field-card').filter({ hasText: 'Số lượng hội thoại' }).first(),
+    ).toBeVisible();
+    await expect(
+      page.locator('.chart-builder-field-card').filter({ hasText: 'Không cần phản hồi' }),
+    ).toHaveCount(0);
+
+    await slotFilter.getByRole('button', { name: 'Chú giải', exact: true }).click();
+    await expect(
+      page.locator('.chart-builder-field-card').filter({ hasText: 'Không cần phản hồi' }).first(),
+    ).toBeVisible();
+    await expect(
+      page.locator('.chart-builder-field-card').filter({ hasText: 'Số lượng hội thoại' }),
+    ).toHaveCount(0);
+
+    await page.locator('.chart-builder-drop-zone').first().evaluate((element) => {
+      const dataTransfer = new DataTransfer();
+      dataTransfer.setData('application/x-flic-chart-field', JSON.stringify({
+        datasetId: 'conversations',
+        fieldId: 'conversation_id',
+        label: 'Số lượng hội thoại',
+        dataType: 'number',
+        semanticType: 'id',
+        roles: ['metric'],
+      }));
+      element.dispatchEvent(new DragEvent('drop', {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer,
+      }));
+    });
+
+    await expect(page.getByText('không phù hợp với vị trí Trục X')).toBeVisible();
+  });
+
   test('stacked bar boolean series resets nullHandling before preview payload', async ({ page }) => {
     const previewBodies: Array<Record<string, any>> = [];
     await withCatalogMock(page);

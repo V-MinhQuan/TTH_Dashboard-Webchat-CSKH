@@ -11,6 +11,7 @@ import {
   withPreviewMock,
   withEmptyPreview,
   goToChartBuilder,
+  waitForPreviewReady,
 } from '../fixtures/index';
 
 const CHART_TYPES = [
@@ -32,6 +33,7 @@ async function selectChartType(page: import('@playwright/test').Page, label: str
     await page.getByRole('button', { name: 'Mở cài đặt biểu đồ' }).click();
   }
   await button.click();
+  await expect(button).toHaveClass(/is-selected/, { timeout: 5_000 });
 }
 
 test.describe('Chart Builder – Chart Rendering', () => {
@@ -39,7 +41,7 @@ test.describe('Chart Builder – Chart Rendering', () => {
     await withCatalogMock(page);
     await withPreviewMock(page);
     await goToChartBuilder(page);
-    await page.waitForTimeout(1500);
+    await waitForPreviewReady(page);
   });
 
   test('default bar chart renders an SVG element', async ({ page }) => {

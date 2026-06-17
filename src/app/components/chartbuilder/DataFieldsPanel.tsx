@@ -19,6 +19,7 @@ import {
 import {
   CatalogDatasetMeta,
   CatalogFieldMeta,
+  ChartType,
   FieldRole,
   SavedChartConfig,
 } from "../../types/chartBuilder";
@@ -28,6 +29,15 @@ import {
   DIMENSION_GUIDANCE,
   METRIC_GUIDANCE,
 } from "./chartBuilderLabels";
+import {
+  FIELD_SLOT_META,
+  FIELD_SLOT_ORDER,
+  getFieldSlotCapabilities,
+  getFieldSlotSummary,
+  type ChartBuilderFieldSlot,
+  type FieldSlotContext,
+  toSlotCapableField,
+} from "./chartBuilderFieldSlots";
 
 export const CHART_FIELD_MIME = "application/x-flic-chart-field";
 
@@ -44,18 +54,28 @@ interface Props {
   datasets: CatalogDatasetMeta[];
   selectedDataset: CatalogDatasetMeta | null;
   datasetId: string;
+  chartType: ChartType;
   loading: boolean;
   error: string;
   selectedFieldIds: string[];
+  selectedOutputFieldIds: string[];
   configs: SavedChartConfig[];
   loadingConfigs: boolean;
   open: boolean;
   onDatasetChange: (datasetId: string) => void;
   onFieldSelect: (field: ChartFieldDragData) => void;
+  onFieldSelectForSlot: (
+    slot: ChartBuilderFieldSlot,
+    field: ChartFieldDragData,
+  ) => void;
+  onFieldDragStart?: (field: ChartFieldDragData) => void;
+  onFieldDragEnd?: () => void;
   onApplyConfig: (config: SavedChartConfig) => void;
   onDeleteConfig: (config: SavedChartConfig) => void;
   onClose?: () => void;
 }
+
+type FieldSlotFilter = "all" | ChartBuilderFieldSlot;
 
 interface FieldGroup {
   id: string;
@@ -68,23 +88,34 @@ export function DataFieldsPanel({
   datasets,
   selectedDataset,
   datasetId,
+  chartType,
   loading,
   error,
   selectedFieldIds,
+  selectedOutputFieldIds,
   configs,
   loadingConfigs,
   open,
   onDatasetChange,
   onFieldSelect,
+  onFieldSelectForSlot,
+  onFieldDragStart,
+  onFieldDragEnd,
   onApplyConfig,
   onDeleteConfig,
   onClose,
 }: Props) {
   const [search, setSearch] = useState("");
   const [collapsedGroups, setCollapsedGroups] = useState<string[]>([]);
+  const [slotFilter, setSlotFilter] = useState<FieldSlotFilter>("all");
+  const [activeFieldId, setActiveFieldId] = useState<string | null>(null);
+  const slotContext = useMemo<FieldSlotContext>(
+    () => ({ chartType, selectedOutputFieldIds }),
+    [chartType, selectedOutputFieldIds],
+  );
   const groups = useMemo(
-    () => buildFieldGroups(selectedDataset, search),
-    [selectedDataset, search],
+    () => buildFieldGroups(selectedDataset, search, slotFilter, slotContext),
+    [selectedDataset, search, slotFilter, slotContext],
   );
   const recentFields = useMemo(
     () => selectedDataset?.fields.filter(
@@ -186,6 +217,23 @@ export function DataFieldsPanel({
               </span>
             </div>
 
+            <div
+              className="chart-builder-slot-filter"
+              aria-label="Lọc trường theo vị trí"
+            >
+              {fieldSlotFilters.map((filter) => (
+                <button
+                  type="button"
+                  key={filter.id}
+                  className={slotFilter === filter.id ? "is-active" : ""}
+                  title={filter.description}
+                  onClick={() => setSlotFilter(filter.id)}
+                >
+                  {filter.label}
+                </button>
+              ))}
+            </div>
+
             {recentFields.length > 0 && (
               <section className="chart-builder-recent-fields">
                 <div className="chart-builder-saved-configs-title">
@@ -232,37 +280,84 @@ export function DataFieldsPanel({
                           const selected = selectedFieldIds.includes(field.id);
                           const dragData = toDragData(selectedDataset.id, field);
                           const isMetric = field.roles.includes("metric");
+                          const slotField = toSlotCapableField(field);
+                          const capabilities = getFieldSlotCapabilities(
+                            slotField,
+                            slotContext,
+                          );
+                          const slotSummary = getFieldSlotSummary(
+                            slotField,
+                            slotContext,
+                          );
+                          const active = activeFieldId === field.id;
                           return (
-                            <button
-                              type="button"
+                            <div
                               key={field.id}
-                              draggable
-                              title={field.label}
                               className={[
-                                "chart-builder-field-item",
-                                selected ? "is-selected" : "",
+                                "chart-builder-field-card",
+                                active ? "is-open" : "",
                               ].join(" ")}
-                              onClick={() => onFieldSelect(dragData)}
-                              onDragStart={(event) => {
-                                const payload = JSON.stringify(dragData);
-                                event.dataTransfer.effectAllowed = "copy";
-                                event.dataTransfer.setData(CHART_FIELD_MIME, payload);
-                                event.dataTransfer.setData("text/plain", payload);
-                              }}
                             >
-                              <GripVertical size={14} className="chart-builder-grip" />
-                              <span
-                                className={`chart-builder-field-kind ${
-                                  isMetric ? "metric" : "dimension"
-                                }`}
+                              <button
+                                type="button"
+                                draggable
+                                title={`${field.label} · ${slotSummary}`}
+                                aria-expanded={active}
+                                className={[
+                                  "chart-builder-field-item",
+                                  selected ? "is-selected" : "",
+                                ].join(" ")}
+                                onClick={() => {
+                                  onFieldSelect(dragData);
+                                  setActiveFieldId(active ? null : field.id);
+                                }}
+                                onDragStart={(event) => {
+                                  const payload = JSON.stringify(dragData);
+                                  event.dataTransfer.effectAllowed = "copy";
+                                  event.dataTransfer.setData(CHART_FIELD_MIME, payload);
+                                  event.dataTransfer.setData("text/plain", payload);
+                                  onFieldDragStart?.(dragData);
+                                }}
+                                onDragEnd={() => onFieldDragEnd?.()}
                               >
-                                {isMetric ? <Sigma size={12} /> : <Hash size={12} />}
-                              </span>
-                              <span className="chart-builder-field-copy">
-                                <strong>{field.label}</strong>
-                                <small>{dataTypeLabels[field.dataType]}</small>
-                              </span>
-                            </button>
+                                <GripVertical size={14} className="chart-builder-grip" />
+                                <span
+                                  className={`chart-builder-field-kind ${
+                                    isMetric ? "metric" : "dimension"
+                                  }`}
+                                >
+                                  {isMetric ? <Sigma size={12} /> : <Hash size={12} />}
+                                </span>
+                                <span className="chart-builder-field-copy">
+                                  <strong>{field.label}</strong>
+                                  <small>{dataTypeLabels[field.dataType]}</small>
+                                </span>
+                                <SlotBadges
+                                  capabilities={capabilities}
+                                  slotSummary={slotSummary}
+                                />
+                              </button>
+                              {active && (
+                                <div className="chart-builder-field-actions">
+                                  <span>Thêm vào</span>
+                                  {capabilities.length ? capabilities.map((slot) => (
+                                    <button
+                                      type="button"
+                                      key={slot}
+                                      title={FIELD_SLOT_META[slot].description}
+                                      onClick={() => {
+                                        onFieldSelectForSlot(slot, dragData);
+                                        setActiveFieldId(null);
+                                      }}
+                                    >
+                                      {FIELD_SLOT_META[slot].menuLabel}
+                                    </button>
+                                  )) : (
+                                    <em>Chưa có vị trí phù hợp.</em>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                           );
                         })}
                       </div>
@@ -316,6 +411,31 @@ function HelpButton({
   );
 }
 
+function SlotBadges({
+  capabilities,
+  slotSummary,
+}: {
+  capabilities: ChartBuilderFieldSlot[];
+  slotSummary: string;
+}) {
+  return (
+    <span
+      className="chart-builder-field-slot-badges"
+      aria-label={`Có thể dùng cho: ${slotSummary}`}
+    >
+      {capabilities.map((slot) => (
+        <span
+          key={slot}
+          className={`chart-builder-slot-badge is-${slot}`}
+          title={`${FIELD_SLOT_META[slot].label}: ${FIELD_SLOT_META[slot].description}`}
+        >
+          {FIELD_SLOT_META[slot].shortLabel}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 function toDragData(
   datasetId: string,
   field: CatalogFieldMeta,
@@ -333,6 +453,8 @@ function toDragData(
 function buildFieldGroups(
   dataset: CatalogDatasetMeta | null,
   search: string,
+  slotFilter: FieldSlotFilter,
+  slotContext: FieldSlotContext,
 ): FieldGroup[] {
   if (!dataset) return [];
   const query = search.trim().toLocaleLowerCase("vi");
@@ -351,6 +473,11 @@ function buildFieldGroups(
 
   dataset.fields
     .filter((field) => field.available)
+    .filter((field) => (
+      slotFilter === "all"
+      || getFieldSlotCapabilities(toSlotCapableField(field), slotContext)
+        .includes(slotFilter)
+    ))
     .filter((field) => {
       if (!query) return true;
       return `${field.label} ${field.id} ${field.semanticType}`
@@ -393,3 +520,20 @@ function classifyField(
   if (dataset.id === "agent_performance") return "agent";
   return "conversation";
 }
+
+const fieldSlotFilters: Array<{
+  id: FieldSlotFilter;
+  label: string;
+  description: string;
+}> = [
+  {
+    id: "all",
+    label: "Tất cả",
+    description: "Hiển thị tất cả trường khả dụng.",
+  },
+  ...FIELD_SLOT_ORDER.map((slot) => ({
+    id: slot,
+    label: FIELD_SLOT_META[slot].label,
+    description: FIELD_SLOT_META[slot].description,
+  })),
+];

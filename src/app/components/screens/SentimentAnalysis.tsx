@@ -20,7 +20,7 @@ import {
 import { ChartCard } from "../ChartCard";
 import { FilterPanel, FilterValues } from "../FilterPanel";
 import { toast } from "sonner";
-import { fetchApiJson, buildApiUrl, formatChannelParam } from "../../services/dashboardApi";
+import { closeConversation, fetchApiJson, buildApiUrl, formatChannelParam } from "../../services/dashboardApi";
 
 const NAVY = "#003865";
 const ORANGE = "#D73C01";
@@ -139,9 +139,9 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
   const [sentimentTrend, setSentimentTrend] = useState<any[]>([]);
   const [topicSentiment, setTopicSentiment] = useState<any[]>([]);
   const [donutData, setDonutData] = useState<any[]>([
-    { name: "Tích cực", value: 64, color: "#3E9675" },
-    { name: "Trung lập", value: 22, color: "#E5A850" },
-    { name: "Tiêu cực", value: 14, color: "#D26767" },
+    { name: "Tích cực", value: 0, color: "#3E9675" },
+    { name: "Trung lập", value: 0, color: "#E5A850" },
+    { name: "Tiêu cực", value: 0, color: "#D26767" },
   ]);
   const [negKeywords, setNegKeywords] = useState<any[]>([]);
   const [negativeConversations, setNegativeConversations] = useState<any[]>([]);
@@ -210,11 +210,11 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
           const rawTopic = Array.isArray(topicRes.data) ? topicRes.data : [];
           setTopicSentiment(rawTopic.slice(0, 10).map(d => {
             const total = d.count || 1;
-            const pos = d.positive !== undefined ? Math.round((d.positive / total) * 100) : 33;
-            const neu = d.neutral !== undefined ? Math.round((d.neutral / total) * 100) : 33;
-            const neg = d.negative !== undefined ? Math.round((d.negative / total) * 100) : 34;
+            const pos = d.positive !== undefined ? Math.round((d.positive / total) * 100) : 0;
+            const neu = d.neutral !== undefined ? Math.round((d.neutral / total) * 100) : 0;
+            const neg = d.negative !== undefined ? Math.round((d.negative / total) * 100) : 0;
             return {
-              topic: d.topicLabel || "Chung",
+              topic: d.topicLabel || "Không phân loại trong database",
               positive: pos,
               neutral: neu,
               negative: neg
@@ -227,7 +227,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
           setNegKeywords(rawKw.slice(0, 10).map(d => ({
             word: d.keyword,
             count: d.count,
-            topic: d.issueType || "Chung"
+            topic: d.issueType || "Không phân loại trong database"
           })));
         }
 
@@ -241,13 +241,15 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
             const levelStr = conv.sentimentScore < 0.3 ? "Rất tiêu cực" : conv.sentimentScore < 0.6 ? "Tiêu cực" : "Hơi tiêu cực";
             return {
               id: `#${conv.messageId || conv.id_webchat_messagelogs || "N/A"}`,
-              customer: conv.customerId || "Khách hàng",
-              complaint: conv.textContent || "",
-              topic: Array.isArray(conv.detectedTopics) && conv.detectedTopics.length > 0 ? conv.detectedTopics.join(", ") : (conv.detectedTopics || "Chung"),
-              channel: conv.source || "Unknown",
+              customer: conv.customerId || "Không có mã khách hàng trong database",
+              complaint: conv.textContent || "Tin nhắn khách hàng đang trống trong database",
+              topic: Array.isArray(conv.detectedTopics) && conv.detectedTopics.length > 0 ? conv.detectedTopics.join(", ") : (conv.detectedTopics || "Không phân loại trong database"),
+              channel: conv.source || "Không có kênh trong database",
               level: levelStr as NegLevel,
               waitTime: waitTimeStr,
-              status: conv.needStaffReview ? "Cần xử lý" : "Chờ xử lý"
+              status: conv.needStaffReview ? "Cần xử lý" : "Chờ xử lý",
+              customerId: conv.customerId,
+              source: conv.source,
             };
           }));
         }
@@ -285,6 +287,39 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
 
   // Dữ liệu chủ đề từ API thực — hiển thị empty state nếu chưa có dữ liệu
   const dynamicTopicData = topicSentiment && topicSentiment.length > 0 ? topicSentiment : [];
+
+  const handleCloseNegativeConversation = async (conv: any) => {
+    if (!conv.customerId || !conv.source) {
+      toast.error("Bản ghi thiếu customerId/source trong database nên không thể đóng hội thoại.");
+      return;
+    }
+
+    try {
+      await closeConversation(conv.customerId, conv.source);
+      setNegativeConversations(prev => prev.map(c => c.id === conv.id ? { ...c, status: "Đã xử lý" } : c));
+      toast.success(`Đã đóng hội thoại ${conv.id} trong database`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không thể đóng hội thoại");
+    }
+  };
+
+  const handleCloseAllNegativeConversations = async () => {
+    const pending = negativeConversations.filter((conv) => conv.status !== "Đã xử lý");
+    const closable = pending.filter((conv) => conv.customerId && conv.source);
+    if (closable.length === 0) {
+      toast.error("Không có hội thoại đủ customerId/source trong database để đóng.");
+      return;
+    }
+
+    try {
+      await Promise.all(closable.map((conv) => closeConversation(conv.customerId, conv.source)));
+      const closedIds = new Set(closable.map((conv) => conv.id));
+      setNegativeConversations(prev => prev.map(c => closedIds.has(c.id) ? { ...c, status: "Đã xử lý" } : c));
+      toast.success(`Đã đóng ${closable.length} hội thoại trong database`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không thể đóng toàn bộ hội thoại");
+    }
+  };
 
   return (
     <div style={{ padding: "24px", position: "relative" }}>
@@ -542,10 +577,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
             <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "20px", backgroundColor: "#FFF4EE", border: "1px solid #FBCBB8", color: ORANGE, fontWeight: 600 }}>{negativeConversations.length} hội thoại</span>
           </div>
           <button
-            onClick={() => {
-              setNegativeConversations(prev => prev.map(c => ({ ...c, status: "Đã xử lý" })));
-              toast.success("Đã đánh dấu xử lý toàn bộ danh sách");
-            }}
+            onClick={() => { void handleCloseAllNegativeConversations(); }}
             style={{ padding: "6px 14px", borderRadius: "8px", border: "none", background: `linear-gradient(135deg, #ED5206 0%, #F36C2E 100%)`, color: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 600, boxShadow: "0 4px 12px rgba(237,82,6,0.18)" }}
           >
             Đánh dấu xử lý (tất cả)
@@ -604,10 +636,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
                       <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
                         {conv.status !== "Đã xử lý" ? (
                           <button
-                            onClick={() => {
-                              setNegativeConversations(prev => prev.map(c => c.id === conv.id ? { ...c, status: "Đã xử lý" } : c));
-                              toast.success(`Đã đánh dấu xử lý ${conv.id}`);
-                            }}
+                            onClick={() => { void handleCloseNegativeConversation(conv); }}
                             style={{ padding: "4px 10px", borderRadius: "6px", border: `1px solid ${ORANGE}30`, background: "#fff3ef", color: ORANGE, cursor: "pointer", fontSize: "10px", fontWeight: 600, whiteSpace: "nowrap" }}
                           >
                             Đánh dấu xử lý

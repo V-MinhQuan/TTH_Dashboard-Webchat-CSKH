@@ -451,6 +451,7 @@ export async function withCatalogMock(page: Page): Promise<void> {
   await page.route('**/api/chart-builder/catalog', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_CATALOG) }),
   );
+  await withConfigsMock(page);
 }
 
 export async function withPreviewMock(

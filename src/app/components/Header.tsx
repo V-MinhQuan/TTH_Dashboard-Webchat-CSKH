@@ -118,7 +118,7 @@ export function Header({ activeScreen, onNavigate }: HeaderProps) {
       const items: SystemNotification[] = [];
       const overtimeCount = kpiData?.urgentAlerts.filter((alert) => alert.type === "overtime").length ?? 0;
       const aiFailures = Number(kpiData?.aiFailures || 0);
-      const pendingManager = Number(sheetData?.stats?.pendingManager || 0);
+      const pendingManager = Number(sheetData?.stats?.pendingManager ?? sheetData?.stats?.pending ?? 0);
       const needsEdit = Number(sheetData?.stats?.needsEdit || 0);
 
       if (overtimeCount > 0) {

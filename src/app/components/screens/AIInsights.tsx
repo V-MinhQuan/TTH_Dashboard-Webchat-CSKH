@@ -9,7 +9,7 @@ import { FilterPanel, FilterValues } from "../FilterPanel";
 import { toast } from "sonner";
 import { fetchApiJson, buildApiUrl, formatChannelParam } from "../../services/dashboardApi";
 import { AddSheetModal } from "./SheetChatbot";
-import { createSheetChatbotRow, getSheetChatbotRows } from "../../services/sheetChatbotApi";
+import { createSheetChatbotRow, getSheetChatbotRows, type SheetChatbotStats } from "../../services/sheetChatbotApi";
 import { useAuth } from "../../context/AuthContext";
 
 const NAVY = "#003865";
@@ -167,6 +167,19 @@ const AIInsightsSkeleton = () => (
   </div>
 );
 
+function displayTopic(value: unknown) {
+  if (Array.isArray(value) && value.length > 0) return value[0];
+  if (typeof value === "string" && value.trim()) return value;
+  return "Không phân loại trong database";
+}
+
+function displayDateTime(value: unknown) {
+  if (!value) return "Không có thời gian trong database";
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString("vi-VN");
+}
+
 export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsProps) {
   const { user } = useAuth();
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
@@ -183,6 +196,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
   const [staffReportedErrors, setStaffReportedErrors] = useState<any[]>([]);
   const [suggestedFAQs, setSuggestedFAQs] = useState<any[]>([]);
   const [recentChatbotRows, setRecentChatbotRows] = useState<any[]>([]);
+  const [sheetStats, setSheetStats] = useState<Partial<SheetChatbotStats>>({});
 
   useEffect(() => {
     let queryParams = new URLSearchParams();
@@ -214,18 +228,21 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
         if (ft.success) setFailureTrend(ft.data);
         if (fbt.success) setFailureByTopic(fbt.data);
         if (fc.success) setFailedConversations(fc.data.records.map((r: any) => ({
-          id: r.id, question: r.textContent || "Không có nội dung", aiAnswer: r.aiAnswer || "Không có câu trả lời AI",
-          topic: r.detectedTopics?.[0] || "Khác", channel: r.source || "Unknown", failReason: r.issueType || "Không xác định",
-          confidence: r.issueConfidence || 0, impact: "Ưu tiên cao", kbSuggestion: r.issueReason || "Cần bổ sung kiến thức",
-          customerId: r.customerId || "Ẩn danh"
+          id: r.id, question: r.textContent || "Tin nhắn khách hàng đang trống trong database", aiAnswer: r.aiAnswer || "Câu trả lời AI đang trống trong database",
+          topic: displayTopic(r.detectedTopics), channel: r.source || "Không có kênh trong database", failReason: r.issueType || "Không có loại lỗi trong database",
+          confidence: r.issueConfidence || 0, impact: "Ưu tiên cao", kbSuggestion: r.issueReason || "Chưa có gợi ý tri thức trong database",
+          customerId: r.customerId || "Không có mã khách hàng trong database"
         })));
         if (sre.success) setStaffReportedErrors(sre.data.records.map((r: any) => ({
-          id: r.id, time: r.messageAt || "Hôm nay", staff: "Admin", channel: r.source || "Unknown",
-          topic: r.detectedTopics?.[0] || "Khác", question: r.textContent || "", aiAnswer: r.aiAnswer || "",
-          reason: r.issueType || "AI trả lời sai", impact: "Ưu tiên trung bình", status: "Chờ quản lý xác nhận"
+          id: r.id, time: displayDateTime(r.messageAt), staff: "Từ database MessageAnalytics", channel: r.source || "Không có kênh trong database",
+          topic: displayTopic(r.detectedTopics), question: r.textContent || "Tin nhắn khách hàng đang trống trong database", aiAnswer: r.aiAnswer || "Câu trả lời AI đang trống trong database",
+          reason: r.issueType || "Không có loại lỗi trong database", impact: "Ưu tiên trung bình", status: r.needStaffReview ? "Chờ quản lý xác nhận" : "Không có trạng thái review trong database"
         })));
         if (sf.success) setSuggestedFAQs(sf.data);
-        if (scRows.success) setRecentChatbotRows(scRows.data || []);
+        if (scRows.success) {
+          setRecentChatbotRows(scRows.data || []);
+          setSheetStats(scRows.stats || {});
+        }
       } catch (err) {
         console.error("Fetch API Error:", err);
         toast.error("Lỗi khi tải dữ liệu Phân tích AI");
@@ -238,30 +255,26 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
 
   const handleAddFaq = async (question: string, topic: string) => {
     try {
-      const res = await fetch("/api/sheet-chatbot", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          question,
-          correctAnswer: "Đang cập nhật...",
-          topic,
-          source: "Phân tích AI"
-        })
+      await createSheetChatbotRow({
+        question,
+        correctAnswer: "Cần bổ sung câu trả lời chính thức từ quản lý.",
+        topic,
+        source: "AI trả lời sai",
+        risk: "Trung bình",
+        status: "Chờ xử lý",
+        notes: "Tạo từ màn Phân tích AI.",
+        addedBy: user?.name || "Dashboard",
       });
-      if (res.ok) {
-        toast.success("Đã thêm FAQ thành công vào Sheet Chatbot");
-      } else {
-        toast.error("Thêm FAQ thất bại");
-      }
+      toast.success("Đã thêm FAQ thành công vào Sheet Chatbot");
     } catch (e) {
-      toast.error("Lỗi khi thêm FAQ");
+      toast.error(e instanceof Error ? e.message : "Lỗi khi thêm FAQ");
     }
   };
 
   const handleMarkAsProcessed = (id: string, showToast = true) => {
     setFailedConversations(prev => prev.filter(c => c.id !== id));
     if (showToast) {
-      toast.success("Đã đánh dấu xử lý");
+      toast.info("Backend hiện chưa có API lưu trạng thái xử lý lỗi AI; chỉ ẩn dòng trong phiên hiện tại.");
     }
   };
 
@@ -368,9 +381,9 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "14px", marginBottom: "24px" }}>
             {[
               { icon: AlertTriangle, label: "Lỗi AI nhân viên ghi nhận", value: staffActivity.reported_errors.toString(), isWarning: true },
-              { icon: FilePlus2, label: "FAQ nhân viên đã thêm", value: "28", isWarning: false },
-              { icon: Clock, label: "Dữ liệu chờ duyệt", value: staffActivity.pending_review.toString(), isWarning: true },
-              { icon: Table2, label: "Đã cập nhật vào Sheet Chatbot", value: "16", isWarning: false },
+              { icon: FilePlus2, label: "FAQ nhân viên đã thêm", value: String(sheetStats.total ?? recentChatbotRows.length), isWarning: false },
+              { icon: Clock, label: "Dữ liệu chờ duyệt", value: String(sheetStats.pending ?? staffActivity.pending_review ?? 0), isWarning: true },
+              { icon: Table2, label: "Đã cập nhật vào Sheet Chatbot", value: String(sheetStats.approved ?? 0), isWarning: false },
             ].map(({ icon: Icon, label, value, isWarning }) => {
               let iconBg = "#EBF2FF";
               let iconColor = NAVY;
@@ -523,7 +536,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
               </div>
               <div style={{ display: "flex", gap: "8px" }}>
                 <button
-                  onClick={() => toast.success("Đã xuất danh sách câu hỏi AI thất bại")}
+                  onClick={() => toast.info("Chưa có chức năng xuất file cho danh sách lỗi AI trong backend hiện tại.")}
                   style={{ padding: "6px 14px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.12)", background: "#f8fafc", color: NAVY, cursor: "pointer", fontSize: "12px" }}
                 >
                   Xuất danh sách
@@ -670,7 +683,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                 <CheckCircle size={16} style={{ color: "#228A61" }} />
                 <h3 style={{ color: NAVY, fontSize: "14px", fontWeight: 700, margin: 0 }}>AI trả lời sai đã được bổ sung vào Sheet Chatbot</h3>
-                <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "20px", backgroundColor: "#dcfce7", color: "#16a34a", fontWeight: 600 }}>16 mục</span>
+                <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "20px", backgroundColor: "#dcfce7", color: "#16a34a", fontWeight: 600 }}>{sheetStats.approved ?? recentChatbotRows.length} mục</span>
               </div>
               <button onClick={() => onNavigate("chatbot_sheet")} style={{ padding: "6px 14px", borderRadius: "8px", border: `1px solid ${NAVY}20`, background: "#f8fafc", color: NAVY, cursor: "pointer", fontSize: "12px", fontWeight: 500 }}>
                 Xem Sheet Chatbot
@@ -761,7 +774,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
               addedBy: user?.name || "Nhân viên",
             });
             handleMarkAsProcessed(faqModalConv.id, false);
-            toast.success("Đã thêm FAQ và tự động đánh dấu xử lý");
+            toast.success("Đã thêm FAQ vào Sheet Chatbot; dòng lỗi AI chỉ được ẩn trong phiên hiện tại.");
           }}
         />
       )}
@@ -786,7 +799,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
               <button
                 onClick={() => {
                   setFailedConversations([]);
-                  toast.success("Đã đánh dấu xử lý toàn bộ danh sách");
+                  toast.info("Backend hiện chưa có API lưu trạng thái xử lý hàng loạt; danh sách chỉ được ẩn trong phiên hiện tại.");
                   setShowConfirmAllModal(false);
                 }}
                 style={{ flex: 1, padding: "10px 0", borderRadius: "8px", border: "none", background: ORANGE, color: "#fff", cursor: "pointer", fontSize: "14px", fontWeight: 600 }}

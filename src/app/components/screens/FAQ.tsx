@@ -1,7 +1,15 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { Plus, Search, CheckCircle2, XCircle, Clock, X, Filter } from "lucide-react";
 import { toast } from "sonner";
+import {
+  createSheetChatbotRow,
+  getSheetChatbotRows,
+  updateSheetChatbotRow,
+  updateSheetChatbotStatus,
+  type SheetChatbotRow,
+  type SheetChatbotStatus,
+} from "../../services/sheetChatbotApi";
 
 const NAVY    = "#003BB9";
 const ORANGE  = "#D73C01";
@@ -16,16 +24,9 @@ const FAQ_TOPICS_LANGUAGE = ["TOEIC", "VSTEP", "Chuẩn đầu ra"];
 const FAQ_TOPICS_COMPUTER = ["MOS", "IC3", "Tin học cơ bản"];
 
 const RISK_LEVELS = ["Cao", "Trung bình", "Thấp"];
-const FAQ_STATUSES = ["Chờ duyệt", "Đã duyệt", "Cần chỉnh sửa"];
+const FAQ_STATUSES: SheetChatbotStatus[] = ["Chờ xử lý", "Đã duyệt", "Cần chỉnh sửa", "Từ chối"];
 const TIME_PERIODS = ["Hôm nay", "7 ngày qua", "30 ngày qua", "Tháng này", "Tùy chỉnh"];
 const SOURCES = ["AI trả lời sai", "AI không chắc chắn", "Không tìm thấy dữ liệu", "AI có nguy cơ tự tạo thông tin", "Nhân viên đề xuất", "Phản hồi từ khách hàng"];
-
-const initialFaqs = [
-  { id: "FAQ-01", question: "Học sinh có được giảm giá thi TOEIC không?", answer: "Học sinh/sinh viên được giảm 20% lệ phí thi khi mang theo thẻ học sinh/sinh viên còn hạn.", topic: "TOEIC", proposer: "Thu Trang", source: "Phản hồi từ khách hàng", status: "Chờ duyệt", riskLevel: "Thấp", date: "2026-05-28", notes: "" },
-  { id: "FAQ-02", question: "Khi nào có lịch thi VSTEP tháng 5/2026?", answer: "Lịch thi VSTEP tháng 5 sẽ được công bố vào ngày 25/04/2026 trên website chính thức.", topic: "VSTEP", proposer: "Thùy NT", source: "Không tìm thấy dữ liệu", status: "Chờ duyệt", riskLevel: "Trung bình", date: "2026-05-28", notes: "" },
-  { id: "FAQ-03", question: "Điểm TOEIC 600 có đủ chuẩn đầu ra không?", answer: "Với đa số ngành, TOEIC 600 là đạt. Một số ngành đặc thù có thể yêu cầu cao hơn, vui lòng tra cứu thêm.", topic: "Chuẩn đầu ra", proposer: "Thu Trang", source: "Nhân viên đề xuất", status: "Đã duyệt", riskLevel: "Thấp", date: "2026-05-27", notes: "" },
-  { id: "FAQ-04", question: "Tôi muốn đổi ca thi thì làm thế nào?", answer: "Thí sinh có thể đổi ca thi trước 5 ngày thi qua cổng thông tin. Phí đổi ca là 100k.", topic: "MOS", proposer: "Thùy NT", source: "Phản hồi từ khách hàng", status: "Cần chỉnh sửa", riskLevel: "Trung bình", date: "2026-05-27", notes: "Cần xác nhận lại mức phí đổi ca" },
-];
 
 interface Faq {
   id: string;
@@ -40,50 +41,94 @@ interface Faq {
   notes: string;
 }
 
+const emptyFaqForm = {
+  question: "",
+  answer: "",
+  topic: "TOEIC",
+  source: "Phản hồi từ khách hàng",
+  riskLevel: "Thấp",
+  notes: "",
+  status: "Chờ xử lý" as SheetChatbotStatus,
+};
+
+function mapSheetRowToFaq(row: SheetChatbotRow): Faq {
+  return {
+    id: row.id,
+    question: row.question,
+    answer: row.correctAnswer,
+    topic: row.topic,
+    proposer: row.addedBy,
+    source: row.source,
+    status: row.status,
+    riskLevel: row.risk,
+    date: (row.addedAt || row.createdAt || "").slice(0, 10),
+    notes: row.notes || "",
+  };
+}
+
+function matchesTimePeriod(dateValue: string, period: string) {
+  if (period === "Tất cả" || period === "Tùy chỉnh") return true;
+  if (!dateValue) return false;
+
+  const itemDate = new Date(`${dateValue}T00:00:00`);
+  if (Number.isNaN(itemDate.getTime())) return false;
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const itemDay = new Date(itemDate.getFullYear(), itemDate.getMonth(), itemDate.getDate());
+
+  if (period === "Hôm nay") {
+    return itemDay.getTime() === today.getTime();
+  }
+
+  if (period === "7 ngày qua" || period === "30 ngày qua") {
+    const days = period === "7 ngày qua" ? 7 : 30;
+    const start = new Date(today);
+    start.setDate(today.getDate() - days);
+    return itemDay >= start && itemDay <= today;
+  }
+
+  if (period === "Tháng này") {
+    return itemDay.getFullYear() === today.getFullYear() && itemDay.getMonth() === today.getMonth();
+  }
+
+  return true;
+}
+
 export function FAQ() {
-  const { role } = useAuth();
+  const { role, user } = useAuth();
   const [editingFaqId, setEditingFaqId] = useState<string | null>(null);
-  
-  // Initial loading from localStorage or default
-  const [faqs, setFaqs] = useState<Faq[]>(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("flic_faqs");
-      if (saved) {
-        try {
-          return JSON.parse(saved);
-        } catch (e) {
-          console.error("Failed parsing flic_faqs", e);
-        }
-      }
+  const currentUserName = role === "manager" ? "Admin FLIC" : user?.name || "Nhân viên";
+  const [faqs, setFaqs] = useState<Faq[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const loadFaqs = useCallback(async () => {
+    setIsLoading(true);
+    setLoadError(null);
+    try {
+      const response = await getSheetChatbotRows({ page: 1, pageSize: 500, role });
+      setFaqs(response.data.map(mapSheetRowToFaq));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Không thể tải FAQ từ database.";
+      setLoadError(message);
+      toast.error(message);
+    } finally {
+      setIsLoading(false);
     }
-    return initialFaqs;
-  });
+  }, [role]);
 
-  // Sync to localStorage
   useEffect(() => {
-    localStorage.setItem("flic_faqs", JSON.stringify(faqs));
-  }, [faqs]);
-
-  // Sync with localStorage periodically in case another tab updates it
-  useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === "flic_faqs" && e.newValue) {
-        try {
-          setFaqs(JSON.parse(e.newValue));
-        } catch (err) {
-          console.error(err);
-        }
-      }
-    };
-    window.addEventListener("storage", handleStorageChange);
-    return () => window.removeEventListener("storage", handleStorageChange);
-  }, []);
+    void loadFaqs();
+  }, [loadFaqs]);
 
   const [search, setSearch] = useState("");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedFaq, setSelectedFaq] = useState<Faq | null>(null);
   const [showEditSuggestModal, setShowEditSuggestModal] = useState(false);
+  const [suggestedAnswer, setSuggestedAnswer] = useState("");
+  const [suggestionReason, setSuggestionReason] = useState("");
 
   // Filters state
   const [isFilterExpanded, setIsFilterExpanded] = useState(true);
@@ -93,15 +138,7 @@ export function FAQ() {
   const [filterTime, setFilterTime] = useState("30 ngày qua");
 
   // Admin Tạo FAQ form state
-  const [faqForm, setFaqForm] = useState({
-    question: "",
-    answer: "",
-    topic: "TOEIC",
-    source: "Phản hồi từ khách hàng",
-    riskLevel: "Thấp",
-    notes: "",
-    status: "Chờ duyệt",
-  });
+  const [faqForm, setFaqForm] = useState(emptyFaqForm);
 
   const filtered = faqs.filter(
     (f) => {
@@ -109,72 +146,115 @@ export function FAQ() {
       const matchTopic = filterTopic === "Tất cả" || f.topic === filterTopic;
       const matchRisk = filterRisk === "Tất cả" || f.riskLevel === filterRisk;
       const matchStatus = filterStatus === "Tất cả" || f.status === filterStatus;
-      return matchSearch && matchTopic && matchRisk && matchStatus;
+      const matchTime = matchesTimePeriod(f.date, filterTime);
+      return matchSearch && matchTopic && matchRisk && matchStatus && matchTime;
     }
   );
 
-  const handleCreateFaq = () => {
+  const handleCreateFaq = async () => {
     if (!faqForm.question.trim()) {
       toast.error("Vui lòng nhập câu hỏi");
       return;
     }
 
-    if (editingFaqId) {
-      // Update existing FAQ
-      const updated = faqs.map((f) =>
-        f.id === editingFaqId
-          ? {
-              ...f,
-              question: faqForm.question,
-              answer: faqForm.answer,
-              topic: faqForm.topic,
-              source: faqForm.source,
-              riskLevel: faqForm.riskLevel,
-              notes: faqForm.notes,
-              status: faqForm.status,
-            }
-          : f
-      );
-      setFaqs(updated);
-      toast.success("Đã cập nhật FAQ thành công");
-      setEditingFaqId(null);
-    } else {
-      // Create new FAQ
-      const newFaq: Faq = {
-        id: `FAQ-${String(faqs.length + 1).padStart(2, "0")}`,
-        question: faqForm.question,
-        answer: faqForm.answer,
-        topic: faqForm.topic,
-        proposer: "Admin FLIC",
-        source: faqForm.source,
-        status: faqForm.status,
-        riskLevel: faqForm.riskLevel,
-        date: new Date().toISOString().split('T')[0],
-        notes: faqForm.notes,
-      };
-      setFaqs([newFaq, ...faqs]);
-      toast.success("Đã tạo FAQ thành công");
+    if (!faqForm.answer.trim()) {
+      toast.error("Vui lòng nhập câu trả lời chính thức trước khi lưu vào database");
+      return;
     }
 
-    setShowCreateModal(false);
-    setFaqForm({ question: "", answer: "", topic: "TOEIC", source: "Phản hồi từ khách hàng", riskLevel: "Thấp", notes: "", status: "Chờ duyệt" });
+    try {
+      if (editingFaqId) {
+        await updateSheetChatbotRow(editingFaqId, {
+          question: faqForm.question.trim(),
+          correctAnswer: faqForm.answer.trim(),
+          topic: faqForm.topic,
+          source: faqForm.source,
+          risk: faqForm.riskLevel as "Thấp" | "Trung bình" | "Cao",
+          status: faqForm.status,
+          notes: faqForm.notes,
+          addedBy: currentUserName,
+        });
+        toast.success("Đã cập nhật FAQ trong database");
+        setEditingFaqId(null);
+      } else {
+        await createSheetChatbotRow({
+          question: faqForm.question.trim(),
+          correctAnswer: faqForm.answer.trim(),
+          topic: faqForm.topic,
+          source: faqForm.source,
+          risk: faqForm.riskLevel as "Thấp" | "Trung bình" | "Cao",
+          status: faqForm.status,
+          notes: faqForm.notes,
+          addedBy: currentUserName,
+        });
+        toast.success("Đã tạo FAQ trong database");
+      }
+
+      await loadFaqs();
+      setShowCreateModal(false);
+      setFaqForm(emptyFaqForm);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không thể lưu FAQ vào database");
+    }
+  };
+
+  const handleApproveFaq = async (faq: Faq) => {
+    try {
+      await updateSheetChatbotStatus(faq.id, "Đã duyệt", currentUserName);
+      await loadFaqs();
+      toast.success("Đã duyệt FAQ trong database");
+      if (selectedFaq?.id === faq.id) {
+        setShowDetailModal(false);
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không thể duyệt FAQ");
+    }
+  };
+
+  const handleSubmitSuggestion = async () => {
+    if (!selectedFaq) return;
+    if (!suggestedAnswer.trim()) {
+      toast.error("Vui lòng nhập câu trả lời đề xuất");
+      return;
+    }
+
+    try {
+      await createSheetChatbotRow({
+        question: selectedFaq.question,
+        correctAnswer: suggestedAnswer.trim(),
+        topic: selectedFaq.topic,
+        source: "Nhân viên đề xuất",
+        risk: selectedFaq.riskLevel as "Thấp" | "Trung bình" | "Cao",
+        status: "Chờ xử lý",
+        notes: `Đề xuất chỉnh sửa cho ${selectedFaq.id}${suggestionReason.trim() ? `: ${suggestionReason.trim()}` : ""}`,
+        addedBy: currentUserName,
+      });
+      await loadFaqs();
+      toast.success("Đã gửi đề xuất chỉnh sửa vào database");
+      setSuggestedAnswer("");
+      setSuggestionReason("");
+      setShowEditSuggestModal(false);
+      setShowDetailModal(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không thể gửi đề xuất chỉnh sửa");
+    }
   };
 
   const closeCreateModal = () => {
     setShowCreateModal(false);
     setEditingFaqId(null);
-    setFaqForm({ question: "", answer: "", topic: "TOEIC", source: "Phản hồi từ khách hàng", riskLevel: "Thấp", notes: "", status: "Chờ duyệt" });
+    setFaqForm(emptyFaqForm);
   };
 
   const statusStyle = (status: string) => {
     if (status === "Đã duyệt") return { color: "#228A61" };
-    if (status === "Chờ duyệt") return { color: AMBER_TEXT };
+    if (status === "Chờ xử lý") return { color: AMBER_TEXT };
     return { color: RED_TEXT };
   };
 
   const StatusIcon = ({ status }: { status: string }) => {
     if (status === "Đã duyệt") return <CheckCircle2 size={12} />;
-    if (status === "Chờ duyệt") return <Clock size={12} />;
+    if (status === "Chờ xử lý") return <Clock size={12} />;
     return <XCircle size={12} />;
   };
 
@@ -260,7 +340,7 @@ export function FAQ() {
           </div>
           {role === "manager" && (
             <button
-              onClick={() => { setFaqForm({ question: "", answer: "", topic: "TOEIC", source: "Phản hồi từ khách hàng", riskLevel: "Thấp", notes: "", status: "Chờ duyệt" }); setEditingFaqId(null); setShowCreateModal(true); }}
+              onClick={() => { setFaqForm(emptyFaqForm); setEditingFaqId(null); setShowCreateModal(true); }}
               style={{ padding: "9px 18px", borderRadius: "10px", background: `linear-gradient(135deg, ${CTA} 0%, ${CTA_SOFT} 100%)`, color: "#fff", border: "none", display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontWeight: 600, fontSize: "13px", boxShadow: "0 4px 12px rgba(237,82,6,0.18)" }}
             >
               <Plus size={16} /> Tạo FAQ
@@ -347,7 +427,22 @@ export function FAQ() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((faq) => (
+              {isLoading && (
+                <tr>
+                  <td colSpan={6} style={{ padding: "36px", textAlign: "center", color: "rgba(0,56,101,0.5)", fontSize: "13px" }}>Đang tải FAQ từ database...</td>
+                </tr>
+              )}
+              {!isLoading && loadError && (
+                <tr>
+                  <td colSpan={6} style={{ padding: "36px", textAlign: "center", color: RED_TEXT, fontSize: "13px" }}>{loadError}</td>
+                </tr>
+              )}
+              {!isLoading && !loadError && filtered.length === 0 && (
+                <tr>
+                  <td colSpan={6} style={{ padding: "36px", textAlign: "center", color: "rgba(0,56,101,0.5)", fontSize: "13px" }}>Database chưa có FAQ phù hợp với bộ lọc hiện tại.</td>
+                </tr>
+              )}
+              {!isLoading && !loadError && filtered.map((faq) => (
                 <tr key={faq.id} style={{ borderBottom: "1px solid rgba(0,56,101,0.04)", cursor: "pointer" }}
                   onMouseEnter={(e) => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "#fafbfc"}
                   onMouseLeave={(e) => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "transparent"}
@@ -379,14 +474,13 @@ export function FAQ() {
                           {faq.status !== "Đã duyệt" && (
                             <button onClick={(e) => {
                               e.stopPropagation();
-                              setFaqs(faqs.map((f) => f.id === faq.id ? { ...f, status: "Đã duyệt" } : f));
-                              toast.success("Đã duyệt FAQ và cập nhật cơ sở tri thức");
+                              void handleApproveFaq(faq);
                             }} style={{ padding: "5px 10px", borderRadius: "6px", border: "1px solid #bbf7d0", background: "#f0fdf4", color: "#228A61", cursor: "pointer", fontWeight: 600, fontSize: "11px" }}>Duyệt</button>
                           )}
                           <button onClick={(e) => {
                             e.stopPropagation();
                             setEditingFaqId(faq.id);
-                            setFaqForm({ question: faq.question, answer: faq.answer, topic: faq.topic, source: faq.source, riskLevel: faq.riskLevel, notes: faq.notes, status: faq.status });
+                            setFaqForm({ question: faq.question, answer: faq.answer, topic: faq.topic, source: faq.source, riskLevel: faq.riskLevel, notes: faq.notes, status: faq.status as SheetChatbotStatus });
                             setShowCreateModal(true);
                           }} style={{ padding: "5px 10px", borderRadius: "6px", border: "1px solid rgba(0,56,101,0.1)", background: "#fff", color: NAVY, cursor: "pointer", fontWeight: 600, fontSize: "11px" }}>Chỉnh sửa</button>
                         </>
@@ -459,10 +553,8 @@ export function FAQ() {
               </div>
               <div>
                 <label style={labelStyle}>Trạng thái</label>
-                <select value={faqForm.status} onChange={(e) => setFaqForm({ ...faqForm, status: e.target.value })} style={fieldStyle}>
-                  <option value="Chờ duyệt">Chờ duyệt</option>
-                  <option value="Đã duyệt">Đã duyệt</option>
-                  <option value="Cần chỉnh sửa">Cần chỉnh sửa</option>
+                <select value={faqForm.status} onChange={(e) => setFaqForm({ ...faqForm, status: e.target.value as SheetChatbotStatus })} style={fieldStyle}>
+                  {FAQ_STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}
                 </select>
               </div>
             </div>
@@ -518,22 +610,20 @@ export function FAQ() {
               <button onClick={() => setShowDetailModal(false)} style={{ padding: "9px 18px", borderRadius: "9px", border: "1px solid rgba(0,56,101,0.12)", background: "#fff", color: NAVY, cursor: "pointer", fontWeight: 600, fontSize: "13px" }}>Đóng</button>
               {role === "staff" ? (
                 <>
-                  <button onClick={() => { setShowEditSuggestModal(true); }} style={{ padding: "9px 18px", borderRadius: "9px", border: `1px solid ${ORANGE}`, background: "#fff", color: ORANGE, cursor: "pointer", fontWeight: 600, fontSize: "13px" }}>Đề xuất chỉnh sửa</button>
-                  <button onClick={() => { toast.success("Đã thêm vào Sheet Chatbot"); setShowDetailModal(false); }} style={{ padding: "9px 18px", borderRadius: "9px", border: "none", background: `linear-gradient(135deg, ${CTA} 0%, ${CTA_SOFT} 100%)`, color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: "13px", boxShadow: "0 4px 12px rgba(237,82,6,0.18)" }}>Thêm vào Sheet Chatbot</button>
+                  <button onClick={() => { setSuggestedAnswer(selectedFaq.answer); setSuggestionReason(""); setShowEditSuggestModal(true); }} style={{ padding: "9px 18px", borderRadius: "9px", border: `1px solid ${ORANGE}`, background: "#fff", color: ORANGE, cursor: "pointer", fontWeight: 600, fontSize: "13px" }}>Đề xuất chỉnh sửa</button>
+                  <button onClick={() => { toast.info("FAQ này đã được lấy trực tiếp từ Sheet Chatbot trong database."); setShowDetailModal(false); }} style={{ padding: "9px 18px", borderRadius: "9px", border: "none", background: `linear-gradient(135deg, ${CTA} 0%, ${CTA_SOFT} 100%)`, color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: "13px", boxShadow: "0 4px 12px rgba(237,82,6,0.18)" }}>Đã có trong Sheet Chatbot</button>
                 </>
               ) : (
                 <>
                   <button onClick={() => {
                     setEditingFaqId(selectedFaq.id);
-                    setFaqForm({ question: selectedFaq.question, answer: selectedFaq.answer, topic: selectedFaq.topic, source: selectedFaq.source, riskLevel: selectedFaq.riskLevel, notes: selectedFaq.notes, status: selectedFaq.status });
+                    setFaqForm({ question: selectedFaq.question, answer: selectedFaq.answer, topic: selectedFaq.topic, source: selectedFaq.source, riskLevel: selectedFaq.riskLevel, notes: selectedFaq.notes, status: selectedFaq.status as SheetChatbotStatus });
                     setShowDetailModal(false);
                     setShowCreateModal(true);
                   }} style={{ padding: "9px 18px", borderRadius: "9px", border: `1px solid ${NAVY}`, background: "#fff", color: NAVY, cursor: "pointer", fontWeight: 600, fontSize: "13px" }}>Chỉnh sửa</button>
                   {selectedFaq.status !== "Đã duyệt" && (
                     <button onClick={() => {
-                      setFaqs(faqs.map((f) => f.id === selectedFaq.id ? { ...f, status: "Đã duyệt" } : f));
-                      toast.success("Đã duyệt FAQ và cập nhật cơ sở tri thức");
-                      setShowDetailModal(false);
+                      void handleApproveFaq(selectedFaq);
                     }} style={{ padding: "9px 18px", borderRadius: "9px", border: "none", background: `linear-gradient(135deg, ${CTA} 0%, ${CTA_SOFT} 100%)`, color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: "13px", boxShadow: "0 4px 12px rgba(237,82,6,0.18)" }}>Duyệt FAQ</button>
                   )}
                 </>
@@ -558,16 +648,16 @@ export function FAQ() {
               </div>
               <div>
                 <label style={labelStyle}>Câu trả lời đề xuất</label>
-                <textarea rows={4} placeholder="Nhập câu trả lời bạn đề xuất thay thế..." style={{ ...fieldStyle, resize: "none" }} />
+                <textarea value={suggestedAnswer} onChange={(e) => setSuggestedAnswer(e.target.value)} rows={4} placeholder="Nhập câu trả lời bạn đề xuất thay thế..." style={{ ...fieldStyle, resize: "none" }} />
               </div>
               <div>
                 <label style={labelStyle}>Lý do chỉnh sửa</label>
-                <input placeholder="Lý do chỉnh sửa..." style={fieldStyle} />
+                <input value={suggestionReason} onChange={(e) => setSuggestionReason(e.target.value)} placeholder="Lý do chỉnh sửa..." style={fieldStyle} />
               </div>
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "20px" }}>
               <button onClick={() => setShowEditSuggestModal(false)} style={{ padding: "9px 18px", borderRadius: "9px", border: "1px solid rgba(0,56,101,0.12)", background: "#fff", color: NAVY, cursor: "pointer", fontWeight: 600, fontSize: "13px" }}>Hủy</button>
-              <button onClick={() => { toast.success("Đã gửi đề xuất chỉnh sửa"); setShowEditSuggestModal(false); setShowDetailModal(false); }} style={{ padding: "9px 18px", borderRadius: "9px", border: "none", background: NAVY, color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: "13px" }}>Gửi đề xuất</button>
+              <button onClick={() => { void handleSubmitSuggestion(); }} style={{ padding: "9px 18px", borderRadius: "9px", border: "none", background: NAVY, color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: "13px" }}>Gửi đề xuất</button>
             </div>
           </div>
         </div>
