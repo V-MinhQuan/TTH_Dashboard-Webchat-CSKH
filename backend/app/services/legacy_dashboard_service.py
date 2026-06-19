@@ -34,6 +34,18 @@ def set_cached_value(key: str, value):
 def clear_dashboard_cache():
     _dashboard_cache.clear()
 
+def _as_number(value):
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+def trim_trailing_zero_rows(rows, metric_keys):
+    trimmed = list(rows or [])
+    while trimmed and all(_as_number(trimmed[-1].get(key)) == 0 for key in metric_keys):
+        trimmed.pop()
+    return trimmed
+
 def hash_str(s: str) -> int:
     h = 0
     for char in s:
@@ -427,6 +439,11 @@ class DashboardService:
             daily_map[date_str]['ai_ok'] = row.get('ai_ok') or 0
             daily_map[date_str]['ai_fail'] = row.get('ai_fail') or 0
 
+        daily_trends = trim_trailing_zero_rows(
+            [daily_map[k] for k in sorted(daily_map.keys())],
+            ("total", "processed", "unprocessed", "ai_ok", "ai_fail"),
+        )
+
         return {
             "totalConversations": total_conversations,
             "totalMessages": total_messages,
@@ -447,7 +464,7 @@ class DashboardService:
             "urgentAlerts": urgent_alerts,
             "topQuestions": top_questions_mapped[:5],
             "priorityConversations": priority_conversations_mapped[:10],
-            "dailyTrends": [daily_map[k] for k in sorted(daily_map.keys())],
+            "dailyTrends": daily_trends,
         }
 
     def get_kpis(self, start_date=None, end_date=None, filters=None):

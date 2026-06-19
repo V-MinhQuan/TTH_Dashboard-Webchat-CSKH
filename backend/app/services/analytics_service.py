@@ -164,6 +164,18 @@ class AnalyticsService:
             },
         }
 
+    def get_negative_review_conversations(self, filters: Dict[str, Any]) -> Dict[str, Any]:
+        payload = self.repository.get_negative_review_conversations(filters)
+        optional_columns = payload.get("optionalColumns") or {}
+        return {
+            "records": [_normalize_review_record(row) for row in payload.get("records", [])],
+            "pagination": payload.get("pagination") or {"page": 1, "pageSize": 20, "total": 0},
+            "metadata": {
+                "criteria": "sentimentLabel=negative AND needStaffReview=1",
+                "issueMetadataAvailable": issue_metadata_available(optional_columns),
+            },
+        }
+
     def get_ai_quality_metrics(self, filters: Dict[str, Any]) -> Dict[str, Any]:
         payload = self.repository.get_ai_quality_metrics(filters)
         row = payload.get("row") or {}

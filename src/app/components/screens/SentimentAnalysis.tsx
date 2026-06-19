@@ -40,6 +40,22 @@ const statusConfig: Record<string, { bg: string; color: string }> = {
   "Hoàn thành":           { bg: "#EAF8F1", color: "#228A61" },
 };
 
+function getNegativeLevel(sentimentLabel: unknown, sentimentScore: unknown): NegLevel {
+  const label = String(sentimentLabel || "").toLowerCase();
+  const score = Number(sentimentScore);
+  if (label !== "negative" || !Number.isFinite(score)) return "Hơi tiêu cực";
+
+  if (score < 0) {
+    if (score <= -0.75) return "Rất tiêu cực";
+    if (score <= -0.45) return "Tiêu cực";
+    return "Hơi tiêu cực";
+  }
+
+  if (score >= 0.8) return "Rất tiêu cực";
+  if (score >= 0.6) return "Tiêu cực";
+  return "Hơi tiêu cực";
+}
+
 function getDatesFromRange(range: string, customFrom?: string, customTo?: string): { startDate?: string; endDate?: string } {
   const today = new Date();
   const formatDateStr = (d: Date) => {
@@ -233,19 +249,21 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
 
         if (convRes.success) {
           const rawConv = Array.isArray(convRes.data?.records) ? convRes.data.records : [];
-          setNegativeConversations(rawConv.map(conv => {
+          const negativeReviewConversations = rawConv.filter(
+            (conv) => String(conv.sentimentLabel || "").toLowerCase() === "negative" && Boolean(conv.needStaffReview)
+          );
+          setNegativeConversations(negativeReviewConversations.map(conv => {
             const waitTimeRaw = Date.now() - new Date(conv.messageAt).getTime();
             const waitHours = Math.floor(waitTimeRaw / (1000 * 60 * 60));
             const waitMins = Math.floor((waitTimeRaw / (1000 * 60)) % 60);
             const waitTimeStr = !isNaN(waitHours) && waitHours > 0 ? `${waitHours}g ${waitMins}p` : !isNaN(waitMins) ? `${waitMins}p` : "0p";
-            const levelStr = conv.sentimentScore < 0.3 ? "Rất tiêu cực" : conv.sentimentScore < 0.6 ? "Tiêu cực" : "Hơi tiêu cực";
             return {
               id: `#${conv.messageId || conv.id_webchat_messagelogs || "N/A"}`,
               customer: conv.customerId || "Không có mã khách hàng trong database",
               complaint: conv.textContent || "Tin nhắn khách hàng đang trống trong database",
               topic: Array.isArray(conv.detectedTopics) && conv.detectedTopics.length > 0 ? conv.detectedTopics.join(", ") : (conv.detectedTopics || "Không phân loại trong database"),
               channel: conv.source || "Không có kênh trong database",
-              level: levelStr as NegLevel,
+              level: getNegativeLevel(conv.sentimentLabel, conv.sentimentScore),
               waitTime: waitTimeStr,
               status: conv.needStaffReview ? "Cần xử lý" : "Chờ xử lý",
               customerId: conv.customerId,
@@ -595,6 +613,13 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
               </tr>
             </thead>
             <tbody>
+              {negativeConversations.length === 0 && (
+                <tr>
+                  <td colSpan={8} style={{ padding: "22px 14px", textAlign: "center", color: "rgba(0,56,101,0.55)", fontSize: "12px" }}>
+                    Không có hội thoại có cảm xúc tiêu cực cần xử lý trong khoảng lọc.
+                  </td>
+                </tr>
+              )}
               {negativeConversations.map((conv) => {
                 const lc = negLevelConfig[conv.level];
                 const sc = statusConfig[conv.status] || { bg: "#f1f5f9", color: "#64748b" };

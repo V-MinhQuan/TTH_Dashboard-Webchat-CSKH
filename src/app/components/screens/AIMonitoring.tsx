@@ -3,7 +3,9 @@ import { Brain, Cpu, Zap, Activity, AlertOctagon, Shield, Terminal, FileText, Fl
 import { toast } from "sonner";
 import { AddSheetModal } from "./SheetChatbot";
 import { createSheetChatbotRow } from "../../services/sheetChatbotApi";
-import { buildApiUrl, fetchApiJson } from "../../services/dashboardApi";
+import { buildApiUrl, fetchApiJson, formatChannelParam } from "../../services/dashboardApi";
+import { FilterValues } from "../FilterPanel";
+import { getDateParamsFromFilters } from "../../utils/dateFilters";
 
 const DARK_BG = "#020617";
 const PANEL_BG = "#0f172a";
@@ -33,6 +35,10 @@ interface QualityMetrics {
   failure_count: number;
   hallucination_count: number;
   avg_confidence: number;
+}
+
+interface AIMonitoringProps {
+  filters: FilterValues;
 }
 
 const aiStatusColor: Record<string, { color: string; bg: string }> = {
@@ -81,7 +87,7 @@ function mapAnomaly(row: any): AnomalyItem {
   };
 }
 
-export function AIMonitoring() {
+export function AIMonitoring({ filters }: AIMonitoringProps) {
   const [anomalies, setAnomalies] = useState<AnomalyItem[]>([]);
   const [qualityMetrics, setQualityMetrics] = useState<QualityMetrics>({ total_messages: 0, success_rate: 0, failure_count: 0, hallucination_count: 0, avg_confidence: 0 });
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -97,9 +103,22 @@ export function AIMonitoring() {
     async function loadData() {
       setLoading(true);
       try {
+        const queryParams = new URLSearchParams();
+        const dates = getDateParamsFromFilters(filters);
+        if (dates.startDate) queryParams.set("startDate", dates.startDate);
+        if (dates.endDate) queryParams.set("endDate", dates.endDate);
+        if (filters.channel && filters.channel !== "Tất cả") queryParams.set("channel", formatChannelParam(filters.channel));
+        if (filters.topic && filters.topic !== "Tất cả") queryParams.set("topic", filters.topic);
+        if (filters.conversationStatus && filters.conversationStatus !== "Tất cả") queryParams.set("conversationStatus", filters.conversationStatus);
+        if (filters.aiStatus && filters.aiStatus !== "Tất cả") queryParams.set("aiStatus", filters.aiStatus);
+
+        const failedParams = new URLSearchParams(queryParams);
+        failedParams.set("page", "1");
+        failedParams.set("pageSize", "50");
+
         const [qualityResponse, failedResponse] = await Promise.all([
-          fetchApiJson<{ success: boolean; data: QualityMetrics }>(buildApiUrl("/api/analytics/ai/quality-metrics"), { cache: false }),
-          fetchApiJson<{ success: boolean; data: { records: any[] } }>(buildApiUrl("/api/analytics/ai/failed-conversations", { page: 1, pageSize: 50 }), { cache: false }),
+          fetchApiJson<{ success: boolean; data: QualityMetrics }>(buildApiUrl("/api/analytics/ai/quality-metrics", queryParams), { cache: false }),
+          fetchApiJson<{ success: boolean; data: { records: any[] } }>(buildApiUrl("/api/analytics/ai/failed-conversations", failedParams), { cache: false }),
         ]);
 
         if (cancelled) return;
@@ -122,7 +141,7 @@ export function AIMonitoring() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [filters]);
 
   const activeAnomaly = useMemo(() => anomalies.find((item) => item.id === activeId) || anomalies[0] || null, [anomalies, activeId]);
   const currentAnswer = activeAnomaly ? (editedAnswer[activeAnomaly.id] ?? activeAnomaly.aiAnswer) : "";

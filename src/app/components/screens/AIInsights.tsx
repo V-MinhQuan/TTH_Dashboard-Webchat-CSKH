@@ -9,7 +9,7 @@ import { FilterPanel, FilterValues } from "../FilterPanel";
 import { toast } from "sonner";
 import { fetchApiJson, buildApiUrl, formatChannelParam } from "../../services/dashboardApi";
 import { AddSheetModal } from "./SheetChatbot";
-import { createSheetChatbotRow, getSheetChatbotRows, type SheetChatbotStats } from "../../services/sheetChatbotApi";
+import { createSheetChatbotRow, getSheetChatbotRows, type SheetChatbotStats, type SheetChatbotStatus } from "../../services/sheetChatbotApi";
 import { useAuth } from "../../context/AuthContext";
 
 const NAVY = "#003865";
@@ -24,6 +24,8 @@ const AMBER_TEXT = "#B7791F";
 const RED_50 = "#FFF1F1";
 const RED_100 = "#F8CACA";
 const RED_TEXT = "#B42318";
+const BLUE_50 = "#EBF2FF";
+const BLUE_200 = "#B9DCFF";
 
 type FailReason = "Không tìm thấy dữ liệu" | "Không hiểu intent" | "AI không chắc chắn" | "Câu hỏi ngoài phạm vi" | "AI có nguy cơ tự tạo thông tin" | "AI trả lời sai" | string;
 
@@ -47,6 +49,15 @@ const impactColor: Record<string, { bg: string; color: string }> = {
   "Ưu tiên trung bình": { bg: AMBER_50, color: AMBER_TEXT },
   "Ưu tiên thấp": { bg: "#f1f5f9", color: "#64748b" },
 };
+
+const sheetStatusColor: Record<SheetChatbotStatus, { bg: string; color: string; border: string }> = {
+  "Từ chối": { bg: RED_50, color: RED_TEXT, border: RED_100 },
+  "Chờ xử lý": { bg: AMBER_50, color: AMBER_TEXT, border: AMBER_100 },
+  "Đã duyệt": { bg: BLUE_50, color: NAVY, border: BLUE_200 },
+  "Cần chỉnh sửa": { bg: AMBER_50, color: AMBER_TEXT, border: AMBER_100 },
+};
+
+const defaultSheetStatusColor = { bg: "#f1f5f9", color: "#64748b", border: "#e2e8f0" };
 
 interface AIInsightsProps {
   filters: FilterValues;
@@ -296,8 +307,8 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
           {/* KPI Row - AI quality */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "14px", marginBottom: "16px" }}>
             {[
-              { icon: CheckCircle, label: "Tỷ lệ AI trả lời thành công", value: `${qualityMetrics.success_rate}%`, change: "+2,1%", isWarning: false },
-              { icon: XCircle, label: "AI trả lời thất bại", value: qualityMetrics.failure_count.toString(), change: "+24", isWarning: true },
+              { icon: CheckCircle, label: "Độ chính xác phản hồi của AI", value: `${qualityMetrics.success_rate}%`, change: "+2,1%", isWarning: false },
+              { icon: XCircle, label: "Số lượt AI phản hồi thất bại", value: qualityMetrics.failure_count.toString(), change: "+24", isWarning: true },
               { icon: ShieldAlert, label: "Cảnh báo AI tự tạo thông tin", value: qualityMetrics.hallucination_count.toString(), change: "+5", isWarning: true },
               { icon: Activity, label: "Độ tin cậy trung bình", value: `${qualityMetrics.avg_confidence.toFixed(1)}%`, change: "+3%", isWarning: false },
             ].map(({ icon: Icon, label, value, change, isWarning }) => {
@@ -382,8 +393,8 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
             {[
               { icon: AlertTriangle, label: "Lỗi AI nhân viên ghi nhận", value: staffActivity.reported_errors.toString(), isWarning: true },
               { icon: FilePlus2, label: "FAQ nhân viên đã thêm", value: String(sheetStats.total ?? recentChatbotRows.length), isWarning: false },
-              { icon: Clock, label: "Dữ liệu chờ duyệt", value: String(sheetStats.pending ?? staffActivity.pending_review ?? 0), isWarning: true },
-              { icon: Table2, label: "Đã cập nhật vào Sheet Chatbot", value: String(sheetStats.approved ?? 0), isWarning: false },
+              { icon: Clock, label: "Dữ liệu FAQ chờ duyệt", value: String(sheetStats.pending ?? staffActivity.pending_review ?? 0), isWarning: true },
+              { icon: Table2, label: "Đã cập nhật vào thư viện", value: String(sheetStats.approved ?? 0), isWarning: false },
             ].map(({ icon: Icon, label, value, isWarning }) => {
               let iconBg = "#EBF2FF";
               let iconColor = NAVY;
@@ -458,21 +469,21 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
 
                       {isBar ? (
                         <>
-                          <Bar dataKey="failure" name="AI trả lời thất bại" fill={ORANGE} radius={layout === "vertical" ? [0, 4, 4, 0] : [4, 4, 0, 0]} />
+                          <Bar dataKey="failure" name="AI phản hồi không chính xác" fill={ORANGE} radius={layout === "vertical" ? [0, 4, 4, 0] : [4, 4, 0, 0]} />
                           <Bar dataKey="hallucination" name="AI tự tạo thông tin" fill="#ef4444" radius={layout === "vertical" ? [0, 4, 4, 0] : [4, 4, 0, 0]} />
-                          <Bar dataKey="uncertain" name="AI không chắc chắn" fill="#f59e0b" radius={layout === "vertical" ? [0, 4, 4, 0] : [4, 4, 0, 0]} />
+                          <Bar dataKey="uncertain" name="AI phản hồi không chắc chắn" fill="#f59e0b" radius={layout === "vertical" ? [0, 4, 4, 0] : [4, 4, 0, 0]} />
                         </>
                       ) : isArea ? (
                         <>
-                          <Area type="monotone" dataKey="failure" name="AI trả lời thất bại" stroke={ORANGE} fill={`${ORANGE}30`} strokeWidth={2} />
+                          <Area type="monotone" dataKey="failure" name="AI phản hồi không chính xác" stroke={ORANGE} fill={`${ORANGE}30`} strokeWidth={2} />
                           <Area type="monotone" dataKey="hallucination" name="AI tự tạo thông tin" stroke="#ef4444" fill="#ef444430" strokeWidth={2} />
-                          <Area type="monotone" dataKey="uncertain" name="AI không chắc chắn" stroke="#f59e0b" fill="#f59e0b30" strokeWidth={2} />
+                          <Area type="monotone" dataKey="uncertain" name="AI phản hồi không chắc chắn" stroke="#f59e0b" fill="#f59e0b30" strokeWidth={2} />
                         </>
                       ) : (
                         <>
-                          <Line type="monotone" dataKey="failure" name="AI trả lời thất bại" stroke={ORANGE} strokeWidth={2.5} dot={{ r: 3 }} />
+                          <Line type="monotone" dataKey="failure" name="AI phản hồi không chính xác" stroke={ORANGE} strokeWidth={2.5} dot={{ r: 3 }} />
                           <Line type="monotone" dataKey="hallucination" name="AI tự tạo thông tin" stroke="#ef4444" strokeWidth={2} dot={{ r: 2 }} />
-                          <Line type="monotone" dataKey="uncertain" name="AI không chắc chắn" stroke="#f59e0b" strokeWidth={2} dot={{ r: 2 }} />
+                          <Line type="monotone" dataKey="uncertain" name="AI phản hồi không chắc chắn" stroke="#f59e0b" strokeWidth={2} dot={{ r: 2 }} />
                         </>
                       )}
                     </ChartComp>
@@ -500,22 +511,19 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
                       {isBar ? (
                         <>
                           <Bar dataKey="thieuDL" name="Không tìm thấy dữ liệu" stackId="a" fill={ORANGE} />
-                          <Bar dataKey="khongChac" name="AI không chắc chắn" stackId="a" fill="#f59e0b" />
-                          <Bar dataKey="ngoaiPhamVi" name="Ngoài phạm vi" stackId="a" fill="#64748b" />
+                          <Bar dataKey="khongChac" name="AI phản hồi không chắc chắn" stackId="a" fill="#f59e0b" />
                           <Bar dataKey="hallucination" name="AI tự tạo thông tin" stackId="a" fill="#ef4444" radius={layout === "vertical" ? [0, 4, 4, 0] : [4, 4, 0, 0]} />
                         </>
                       ) : isArea ? (
                         <>
                           <Area type="monotone" dataKey="thieuDL" name="Không tìm thấy dữ liệu" stackId="a" fill={ORANGE} stroke={ORANGE} />
-                          <Area type="monotone" dataKey="khongChac" name="AI không chắc chắn" stackId="a" fill="#f59e0b" stroke="#f59e0b" />
-                          <Area type="monotone" dataKey="ngoaiPhamVi" name="Ngoài phạm vi" stackId="a" fill="#64748b" stroke="#64748b" />
+                          <Area type="monotone" dataKey="khongChac" name="AI phản hồi không chắc chắn" stackId="a" fill="#f59e0b" stroke="#f59e0b" />
                           <Area type="monotone" dataKey="hallucination" name="AI tự tạo thông tin" stackId="a" fill="#ef4444" stroke="#ef4444" />
                         </>
                       ) : (
                         <>
                           <Line type="monotone" dataKey="thieuDL" name="Không tìm thấy dữ liệu" stroke={ORANGE} dot={{ r: 2 }} />
-                          <Line type="monotone" dataKey="khongChac" name="AI không chắc chắn" stroke="#f59e0b" dot={{ r: 2 }} />
-                          <Line type="monotone" dataKey="ngoaiPhamVi" name="Ngoài phạm vi" stroke="#64748b" dot={{ r: 2 }} />
+                          <Line type="monotone" dataKey="khongChac" name="AI phản hồi không chắc chắn" stroke="#f59e0b" dot={{ r: 2 }} />
                           <Line type="monotone" dataKey="hallucination" name="AI tự tạo thông tin" stroke="#ef4444" dot={{ r: 2 }} />
                         </>
                       )}
@@ -709,6 +717,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
                     const isToday = new Date().toDateString() === dateObj.toDateString();
                     const formattedDate = isToday ? "Hôm nay" : dateObj.toLocaleDateString("vi-VN");
                     const isExpanded = expandedChatbotRow === (item.id || String(i));
+                    const statusTone = sheetStatusColor[item.status as SheetChatbotStatus] || defaultSheetStatusColor;
 
                     return (
                       <React.Fragment key={item.id || i}>
@@ -720,7 +729,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
                           <td style={{ padding: "12px 14px", color: "#16a34a", maxWidth: "180px", fontSize: "11px" }}>{item.correctAnswer}</td>
                           <td style={{ padding: "12px 14px", color: NAVY, fontWeight: 600 }}>{item.addedBy}</td>
                           <td style={{ padding: "12px 14px" }}><span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: "#eff6ff", color: "#3b82f6" }}>{item.topic}</span></td>
-                          <td style={{ padding: "12px 14px" }}><span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: item.status === "Đã duyệt" ? "#dbeafe" : "#dcfce7", color: item.status === "Đã duyệt" ? "#2563eb" : "#16a34a", fontWeight: 600 }}>{item.status}</span></td>
+                          <td style={{ padding: "12px 14px" }}><span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: statusTone.bg, color: statusTone.color, border: `1px solid ${statusTone.border}`, fontWeight: 600 }}>{item.status}</span></td>
                           <td style={{ padding: "12px 14px", color: ORANGE, fontStyle: "italic", maxWidth: "160px", fontSize: "11px" }}>
                             <div style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", textOverflow: "ellipsis" }}>
                               {item.notes || "---"}

@@ -163,6 +163,31 @@ def _build_message_filters(
     return "\n".join(joins), clauses, params
 
 
+def _analytics_keyword_match(words: list) -> tuple[str, list]:
+    fields = [
+        "a.detectedTopics",
+        "a.detectedKeywords",
+        "a.matchedNegativeKeywords",
+        "a.standardizedQuestion",
+        "m.TextContent",
+        "cmsg.TextContent",
+    ]
+    parts = []
+    params = []
+
+    for word in words:
+        if not word:
+            continue
+
+        parts.append("(" + " OR ".join([f"{field} LIKE ?" for field in fields]) + ")")
+        params.extend([f"%{word}%" for _ in fields])
+
+    if not parts:
+        return "1 = 0", []
+
+    return "(" + " OR ".join(parts) + ")", params
+
+
 class KeywordRepository:
     def get_all(self) -> list:
         try:
@@ -257,7 +282,7 @@ class KeywordRepository:
             return {w: (row.get(f"col_{i}") or 0) for i, w in enumerate(words)}
         except Exception as e:
             print("Lỗi batch_count_keyword_occurrences:", e)
-            return {w: 0 for w in words}
+            raise
 
     # ─── Đếm tổng số lần xuất hiện của một nhóm từ trong khoảng thời gian ──
     def count_words_in_period(
@@ -430,7 +455,94 @@ class KeywordRepository:
             return {group_id: row.get(group_id) or 0 for group_id in group_words_map}
         except Exception as e:
             print("Lỗi batch_count_groups:", e)
+            raise
+
+    def batch_count_ai_failed_groups(
+        self,
+        group_words_map: dict,
+        start_date: str = None,
+        end_date: str = None,
+        channel: str = None,
+        conversation_status: str = None,
+        ai_status: str = None,
+    ) -> dict:
+        if not group_words_map:
+            return {}
+
+        if ai_status == "AI trả lời thành công":
             return {group_id: 0 for group_id in group_words_map}
+
+        select_parts = []
+        select_params = []
+        for group_id, words in group_words_map.items():
+            if not words:
+                continue
+
+            match_sql, match_params = _analytics_keyword_match(words)
+            select_parts.append(f"SUM(CASE WHEN {match_sql} THEN 1 ELSE 0 END) AS [{group_id}]")
+            select_params.extend(match_params)
+
+        if not select_parts:
+            return {}
+
+        clauses = ["a.issueFlag = 1"]
+        filter_params = []
+
+        if start_date:
+            clauses.append("a.messageAt >= ?")
+            filter_params.append(_parse_filter_datetime(start_date))
+
+        if end_date:
+            clauses.append("a.messageAt <= ?")
+            filter_params.append(_parse_filter_datetime(end_date, is_end=True))
+
+        if channel:
+            clauses.append("a.source = ?")
+            filter_params.append(channel)
+
+        if conversation_status and conversation_status != "Tất cả":
+            closed_sql = "(s.NoResponseNeeded = 1 AND (s.MarkedAt IS NULL OR c.LastCustomerMessageAt <= s.MarkedAt))"
+            active_sql = "(s.NoResponseNeeded IS NULL OR s.NoResponseNeeded = 0 OR c.LastCustomerMessageAt > s.MarkedAt)"
+
+            if conversation_status == "Chờ xử lý":
+                clauses.append(f"c.CustomerId IS NOT NULL AND {active_sql} AND (c.LastHostMessageAt IS NULL OR c.LastCustomerMessageAt > c.LastHostMessageAt)")
+            elif conversation_status == "Đang xử lý":
+                clauses.append(f"c.CustomerId IS NOT NULL AND {active_sql} AND c.LastHostMessageAt IS NOT NULL AND c.LastCustomerMessageAt <= c.LastHostMessageAt")
+            elif conversation_status == "Hoàn thành":
+                clauses.append(f"c.CustomerId IS NOT NULL AND {closed_sql}")
+
+        if ai_status and ai_status != "Tất cả":
+            if ai_status == "Không tìm thấy dữ liệu":
+                clauses.append("a.issueType = N'Không tìm thấy dữ liệu'")
+            elif ai_status in ("AI không chắc chắn", "AI trả lời không chắc chắn"):
+                clauses.append("a.issueType IN (N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin')")
+
+        where_sql = " AND ".join(f"({clause})" for clause in clauses)
+        query = f"""
+            SELECT {', '.join(select_parts)}
+            FROM dbo.WebChat_MessageAnalytics a
+            LEFT JOIN dbo.WebChat_MessageLogs m
+              ON m.id_webchat_messageLogs = a.messageId
+            LEFT JOIN dbo.WebChat_Conversations c
+              ON c.Id = a.conversationId
+            LEFT JOIN dbo.WebChat_ConversationStatus s
+              ON c.CustomerId = s.CustomerId
+             AND c.Source = s.Source
+            OUTER APPLY (
+                SELECT TOP 1 cmsg.TextContent
+                FROM dbo.WebChat_MessageLogs cmsg
+                WHERE cmsg.Source = c.Source
+                  AND cmsg.SenderId = c.CustomerId
+                  AND cmsg.FromHost = 0
+                  AND cmsg.SentAt <= a.messageAt
+                ORDER BY cmsg.SentAt DESC
+            ) cmsg
+            WHERE {where_sql}
+        """
+
+        rows = execute_query(query, tuple(select_params + filter_params))
+        row = rows[0] if rows else {}
+        return {group_id: row.get(group_id) or 0 for group_id in group_words_map}
 
     def get_monthly_counts_for_words(
         self,
@@ -682,6 +794,109 @@ class KeywordRepository:
         except Exception as e:
             print("Lỗi batch_count_cooccurrence:", e)
             return {}
+
+    def batch_count_ai_failed_cooccurrence(
+        self,
+        group_words_map: dict,
+        cross_words: list,
+        start_date=None,
+        end_date=None,
+        channel=None,
+        conversation_status=None,
+        ai_status=None,
+    ) -> dict:
+        if not group_words_map or not cross_words:
+            return {}
+
+        if ai_status == "AI trả lời thành công":
+            return {(group_id, cross_word): 0 for group_id in group_words_map for cross_word in cross_words}
+
+        select_parts = []
+        select_params = []
+        col_map = {}
+        col_idx = 0
+
+        for group_id, group_words in group_words_map.items():
+            if not group_words:
+                continue
+
+            group_match_sql, group_match_params = _analytics_keyword_match(group_words)
+            for cross_word in cross_words:
+                cross_match_sql, cross_match_params = _analytics_keyword_match([cross_word])
+                col_name = f"col_{col_idx}"
+                col_map[col_name] = (group_id, cross_word)
+                select_parts.append(
+                    f"SUM(CASE WHEN ({group_match_sql}) AND ({cross_match_sql}) THEN 1 ELSE 0 END) AS {col_name}"
+                )
+                select_params.extend(group_match_params)
+                select_params.extend(cross_match_params)
+                col_idx += 1
+
+        if not select_parts:
+            return {}
+
+        clauses = ["a.issueFlag = 1"]
+        filter_params = []
+
+        if start_date:
+            clauses.append("a.messageAt >= ?")
+            filter_params.append(_parse_filter_datetime(start_date))
+
+        if end_date:
+            clauses.append("a.messageAt <= ?")
+            filter_params.append(_parse_filter_datetime(end_date, is_end=True))
+
+        if channel:
+            clauses.append("a.source = ?")
+            filter_params.append(channel)
+
+        if conversation_status and conversation_status != "Tất cả":
+            closed_sql = "(s.NoResponseNeeded = 1 AND (s.MarkedAt IS NULL OR c.LastCustomerMessageAt <= s.MarkedAt))"
+            active_sql = "(s.NoResponseNeeded IS NULL OR s.NoResponseNeeded = 0 OR c.LastCustomerMessageAt > s.MarkedAt)"
+
+            if conversation_status == "Chờ xử lý":
+                clauses.append(f"c.CustomerId IS NOT NULL AND {active_sql} AND (c.LastHostMessageAt IS NULL OR c.LastCustomerMessageAt > c.LastHostMessageAt)")
+            elif conversation_status == "Đang xử lý":
+                clauses.append(f"c.CustomerId IS NOT NULL AND {active_sql} AND c.LastHostMessageAt IS NOT NULL AND c.LastCustomerMessageAt <= c.LastHostMessageAt")
+            elif conversation_status == "Hoàn thành":
+                clauses.append(f"c.CustomerId IS NOT NULL AND {closed_sql}")
+
+        if ai_status and ai_status != "Tất cả":
+            if ai_status == "Không tìm thấy dữ liệu":
+                clauses.append("a.issueType = N'Không tìm thấy dữ liệu'")
+            elif ai_status in ("AI không chắc chắn", "AI trả lời không chắc chắn"):
+                clauses.append("a.issueType IN (N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin')")
+
+        where_sql = " AND ".join(f"({clause})" for clause in clauses)
+        query = f"""
+            SELECT {', '.join(select_parts)}
+            FROM dbo.WebChat_MessageAnalytics a
+            LEFT JOIN dbo.WebChat_MessageLogs m
+              ON m.id_webchat_messageLogs = a.messageId
+            LEFT JOIN dbo.WebChat_Conversations c
+              ON c.Id = a.conversationId
+            LEFT JOIN dbo.WebChat_ConversationStatus s
+              ON c.CustomerId = s.CustomerId
+             AND c.Source = s.Source
+            OUTER APPLY (
+                SELECT TOP 1 cmsg.TextContent
+                FROM dbo.WebChat_MessageLogs cmsg
+                WHERE cmsg.Source = c.Source
+                  AND cmsg.SenderId = c.CustomerId
+                  AND cmsg.FromHost = 0
+                  AND cmsg.SentAt <= a.messageAt
+                ORDER BY cmsg.SentAt DESC
+            ) cmsg
+            WHERE {where_sql}
+        """
+
+        rows = execute_query(query, tuple(select_params + filter_params))
+        result = {}
+        if rows:
+            row = rows[0]
+            for col_name, key in col_map.items():
+                result[key] = row.get(col_name) or 0
+        return result
 
     # ─── Giữ lại để tương thích ngược ──────────────────────────────────────
     def count_cooccurrence(self, group_words: list, cross_word: str, filters: dict = None) -> int:

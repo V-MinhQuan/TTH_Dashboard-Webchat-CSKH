@@ -440,7 +440,7 @@ export function SheetChatbot() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
           <h1 style={{ fontSize: "20px", fontWeight: 700, color: NAVY, marginBottom: "4px" }}>
-            {role === "manager" ? "Quản lý Sheet Chatbot" : "Sheet Chatbot của tôi"}
+            {role === "manager" ? "Quản lý thư viện phản hồi" : "Sheet Chatbot của tôi"}
           </h1>
           <p style={{ fontSize: "13px", color: "rgba(0,56,101,0.5)", margin: 0 }}>
             {role === "manager" ? "Quản lý, duyệt và cập nhật dữ liệu chatbot từ tất cả nhân viên" : "Câu hỏi đúng bạn đã thêm vào Sheet Chatbot"}

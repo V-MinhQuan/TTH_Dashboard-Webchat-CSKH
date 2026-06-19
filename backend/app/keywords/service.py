@@ -141,6 +141,14 @@ def seed_trend_buckets(start_date: str, end_date: str, granularity: str) -> dict
     return buckets
 
 
+def trim_trailing_zero_trends(rows: list) -> list:
+    trimmed = list(rows or [])
+    metric_names = [meta["name"] for meta in GROUP_META.values()]
+    while trimmed and all((trimmed[-1].get(name) or 0) == 0 for name in metric_names):
+        trimmed.pop()
+    return trimmed
+
+
 def get_previous_period(start_date: str = None, end_date: str = None):
     if start_date and end_date:
         current_start = parse_trend_date(start_date)
@@ -366,6 +374,14 @@ class KeywordService:
             conversation_status=conversation_status,
             ai_status=ai_status,
         ) if period_words_map else {}
+        ai_failed_totals = keyword_repository.batch_count_ai_failed_groups(
+            period_words_map,
+            start_date,
+            end_date,
+            channel=channel,
+            conversation_status=conversation_status,
+            ai_status=ai_status,
+        ) if period_words_map else {}
 
         results = []
         for group_id in ORDERED_GROUP_IDS:
@@ -386,7 +402,11 @@ class KeywordService:
             else:
                 filtered_keywords = keywords_with_count
 
-            sorted_keywords = sorted(filtered_keywords, key=lambda x: x["count"], reverse=True)
+            sorted_keywords = sorted(
+                [kw for kw in filtered_keywords if kw.get("count", 0) > 0],
+                key=lambda x: x["count"],
+                reverse=True,
+            )
             top_keywords = sorted_keywords[:top_n]
             total_questions = current_totals.get(group_id, 0)
             previous_total = previous_totals.get(group_id, 0)
@@ -403,6 +423,7 @@ class KeywordService:
                 "color": meta["color"],
                 "totalQuestions": total_questions,
                 "changeRate": change_rate,
+                "aiFailed": ai_failed_totals.get(group_id, 0),
                 "keywords": top_keywords,
                 "totalKeywords": len(sorted_keywords)
             })
@@ -494,6 +515,7 @@ class KeywordService:
                 entry[GROUP_META[gid]["name"]] = row.get(gid, 0)
             trends.append(entry)
 
+        trends = trim_trailing_zero_trends(trends)
         set_cached_value(cache_key, trends)
         return trends
 
@@ -547,7 +569,7 @@ class KeywordService:
                     words = [word for word in words if matches_topic_filter(topic, word)]
             group_words_map[gid] = words
 
-        batch_result = keyword_repository.batch_count_cooccurrence(
+        batch_result = keyword_repository.batch_count_ai_failed_cooccurrence(
             group_words_map, cross_words,
             start_date=start_date,
             end_date=end_date,
@@ -581,7 +603,7 @@ class KeywordService:
             out = {"groupId": row["groupId"], "topic": row["topic"]}
             for ck in CROSS_KEYWORDS:
                 raw = row[ck["key"]]
-                val = 1 if raw == 0 else min(5, max(1, int(round((raw / max_val) * 5))))
+                val = 0 if raw == 0 else min(5, max(1, int(round((raw / max_val) * 5))))
                 out[ck["key"]] = val
                 out[f"{ck['key']}_raw"] = raw
             normalized_matrix.append(out)

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { TrendingUp, TrendingDown, Hash, Brain, AlertCircle, Plus, X, HelpCircle, CheckCircle } from "lucide-react";
+import { Hash, Brain, X, HelpCircle, CheckCircle } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
   LineChart, Line,
@@ -14,7 +14,7 @@ import { useAuth } from "../../context/AuthContext";
 const NAVY = "#003865";
 const ORANGE = "#D73C01";
 const CTA = "#ED5206";
-const COLORS = [NAVY, ORANGE, "rgba(0,56,101,0.6)", "rgba(215,60,1,0.6)", "rgba(0,56,101,0.3)", "rgba(215,60,1,0.3)"];
+const TOPIC_DONUT_COLORS = [NAVY, "#1565C0", "#1D7FF2", "#00AEEF"];
 
 type KeywordItem = {
   word: string;
@@ -28,7 +28,7 @@ type KeywordGroup = {
   color: string;
   totalQuestions: number;
   changeRate: number;
-  aiFailed: number;
+  aiFailed: number | null;
   faqNeeded: number;
   keywords: KeywordItem[];
 };
@@ -92,6 +92,7 @@ const topicGroupMeta: Pick<KeywordGroup, "id" | "name" | "color">[] = [
 ];
 
 function heatColor(val: number) {
+  if (val <= 0) return "#f1f5f9";
   if (val >= 5) return "#003865";
   if (val >= 4) return "#1565C0";
   if (val >= 3) return "#42A5F5";
@@ -213,13 +214,14 @@ function getTrendGranularity(filters: FilterValues) {
 function mapApiGroups(apiGroups: any[]): KeywordGroup[] {
   return apiGroups.map((apiGroup: any) => {
     const group = topicGroupMeta.find(g => g.id === apiGroup.id);
+    const aiFailed = apiGroup.aiFailed == null ? null : Number(apiGroup.aiFailed);
     return {
       id: apiGroup.id,
       name: apiGroup.name || group?.name || apiGroup.id,
       color: apiGroup.color || group?.color || NAVY,
       totalQuestions: apiGroup.totalQuestions || 0,
       changeRate: apiGroup.changeRate || 0,
-      aiFailed: apiGroup.aiFailed || 0,
+      aiFailed: aiFailed !== null && Number.isFinite(aiFailed) ? aiFailed : null,
       faqNeeded: apiGroup.faqNeeded || 0,
       keywords: (apiGroup.keywords || []).map((k: any) => ({
         word: k.word,
@@ -567,8 +569,9 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
   const finalGroups = filteredGroups;
   const finalTrendRows = trendRows;
   const finalHeatmapRows = heatmapRows;
+  const hasAiFailedMetric = finalGroups.some((g) => g.aiFailed !== null);
 
-  const barData = finalGroups.map((g) => ({ name: g.name.split(" / ")[0], "Hội thoại": g.totalQuestions, "AI thất bại": g.aiFailed }));
+  const barData = finalGroups.map((g) => ({ name: g.name.split(" / ")[0], "Số câu hỏi": g.totalQuestions, "Số câu AI phản hồi không chính xác": g.aiFailed }));
   const donutData = finalGroups.map((g) => ({ name: g.name.split(" / ")[0], value: g.totalQuestions }));
 
   return (
@@ -601,27 +604,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
           >
             <div style={{ fontSize: "13px", fontWeight: 700, color: NAVY, marginBottom: "10px" }}>{g.name}</div>
             <div style={{ fontSize: "22px", fontWeight: 700, color: g.color, marginBottom: "6px" }}>{g.totalQuestions.toLocaleString("vi-VN")}</div>
-            <div style={{ fontSize: "11px", color: "rgba(0,56,101,0.5)", marginBottom: "8px" }}>tổng câu hỏi</div>
-            <div style={{ display: "flex", gap: "12px", fontSize: "11px" }}>
-              <span style={{ color: g.changeRate > 0 ? "#228A61" : ORANGE, display: "flex", alignItems: "center", gap: "3px" }}>
-                {g.changeRate > 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
-                {Math.abs(g.changeRate)}%
-              </span>
-              <span style={{ color: ORANGE, display: "flex", alignItems: "center", gap: "3px" }}>
-                <AlertCircle size={11} /> {g.aiFailed} AI thất bại
-              </span>
-              <span
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSelectedGroupId(g.id);
-                  setComposingIndex(null);
-                  setComposeAnswer("");
-                }}
-                style={{ color: CTA, display: "flex", alignItems: "center", gap: "3px", cursor: "pointer" }}
-              >
-                <Plus size={11} /> {getFaqNeededCount(g.id)} FAQ
-              </span>
-            </div>
+            <div style={{ fontSize: "11px", color: "rgba(0,56,101,0.5)" }}>tổng câu hỏi</div>
           </div>
         ))}
       </div>
@@ -638,10 +621,15 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
               <YAxis tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
               <Tooltip />
               <Legend iconSize={10} />
-              <Bar dataKey="Hội thoại" fill={NAVY} radius={[4, 4, 0, 0]} />
-              <Bar dataKey="AI thất bại" fill={ORANGE} radius={[4, 4, 0, 0]} />
+              <Bar dataKey="Số câu hỏi" fill={NAVY} radius={[4, 4, 0, 0]} />
+              {hasAiFailedMetric && <Bar dataKey="Số câu AI phản hồi không chính xác" fill={ORANGE} radius={[4, 4, 0, 0]} />}
             </BarChart>
           </ResponsiveContainer>
+          {!hasAiFailedMetric && (
+            <div style={{ marginTop: "-10px", fontSize: "11px", color: "rgba(0,56,101,0.55)" }}>
+              API chưa trả số liệu AI phản hồi không chính xác từ database.
+            </div>
+          )}
         </div>
 
         {/* Donut chart */}
@@ -650,7 +638,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
           <ResponsiveContainer width="100%" height={220}>
             <PieChart>
               <Pie data={donutData} cx="50%" cy="50%" innerRadius={55} outerRadius={85} dataKey="value" nameKey="name">
-                {donutData.map((_, i) => <Cell key={`cell-${i}`} fill={COLORS[i % COLORS.length]} />)}
+                {donutData.map((_, i) => <Cell key={`cell-${i}`} fill={TOPIC_DONUT_COLORS[i % TOPIC_DONUT_COLORS.length]} />)}
               </Pie>
               <Tooltip formatter={(v: number) => v.toLocaleString("vi-VN")} />
               <Legend iconSize={10} formatter={(v) => <span style={{ fontSize: "11px", color: NAVY }}>{v}</span>} />
@@ -682,7 +670,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
         <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
           <Brain size={16} style={{ color: ORANGE }} />
           <span style={{ fontSize: "14px", fontWeight: 700, color: NAVY }}>Mức độ lỗi AI theo nhóm chủ đề</span>
-          <span style={{ marginLeft: "auto", fontSize: "11px", color: "rgba(0,56,101,0.4)" }}>1 = thấp · 5 = cao</span>
+          <span style={{ marginLeft: "auto", fontSize: "11px", color: "rgba(0,56,101,0.4)" }}>0 = không có lỗi · 5 = cao</span>
         </div>
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: "4px" }}>
@@ -702,7 +690,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
                     const val = (row as any)[col.key];
                     const rawVal = (row as any)[`${col.key}_raw`];
                     return (
-                      <td key={col.key} title={rawVal !== undefined ? `${rawVal} tin nhắn` : ''} style={{ padding: "6px 12px", textAlign: "center", borderRadius: "8px", backgroundColor: heatColor(val), fontSize: "13px", fontWeight: 700, color: heatTextColor(val), cursor: rawVal !== undefined ? "help" : "default" }}>
+                      <td key={col.key} title={rawVal !== undefined ? `${rawVal} lỗi AI từ database` : ''} style={{ padding: "6px 12px", textAlign: "center", borderRadius: "8px", backgroundColor: heatColor(val), fontSize: "13px", fontWeight: 700, color: heatTextColor(val), cursor: rawVal !== undefined ? "help" : "default" }}>
                         {val}
                       </td>
                     );
@@ -714,6 +702,10 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
         </div>
         <div style={{ display: "flex", gap: "12px", marginTop: "12px", fontSize: "11px", color: "rgba(0,56,101,0.5)", alignItems: "center" }}>
           <span style={{ fontWeight: 600 }}>Mức độ:</span>
+          <span style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+            <span style={{ width: "16px", height: "16px", borderRadius: "4px", backgroundColor: heatColor(0), display: "inline-block", border: "1px solid rgba(0,56,101,0.1)" }} />
+            Không có
+          </span>
           {[
             { label: "Thấp", val: 1 },
             { label: "Trung bình", val: 3 },
@@ -725,7 +717,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
             </span>
           ))}
           <span style={{ marginLeft: "8px", display: "flex", alignItems: "center", gap: "3px" }}>
-            {["#EBF2FF", "#B9DCFF", "#42A5F5", "#1565C0", "#003865"].map((c) => (
+            {["#f1f5f9", "#EBF2FF", "#B9DCFF", "#42A5F5", "#1565C0", "#003865"].map((c) => (
               <span key={c} style={{ width: "20px", height: "12px", backgroundColor: c, display: "inline-block", borderRadius: "2px" }} />
             ))}
           </span>
@@ -764,6 +756,11 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
             </div>
             <div style={{ padding: "14px 18px" }}>
               <div style={{ display: "flex", flexDirection: "column", gap: "9px" }}>
+                {group.keywords.length === 0 && (
+                  <div style={{ padding: "12px 0", fontSize: "12px", color: "rgba(0,56,101,0.45)" }}>
+                    Không có từ khóa phát sinh trong khoảng lọc.
+                  </div>
+                )}
                 {group.keywords.map((kw, i) => {
                   const maxCount = group.keywords[0]?.count || 0;
                   const widthPct = maxCount > 0 ? (kw.count / maxCount) * 100 : 0;
@@ -774,8 +771,6 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
                         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "3px" }}>
                           <span style={{ fontSize: "12px", color: NAVY, fontWeight: 500 }}>{kw.word}</span>
                           <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                            {kw.trend > 0 ? <TrendingUp size={11} style={{ color: "#228A61" }} /> : <TrendingDown size={11} style={{ color: ORANGE }} />}
-                            <span style={{ fontSize: "11px", fontWeight: 600, color: kw.trend > 0 ? "#228A61" : ORANGE }}>{Math.abs(kw.trend)}%</span>
                             <span style={{ fontSize: "11px", color: "rgba(0,56,101,0.45)", marginLeft: "5px" }}>{kw.count.toLocaleString("vi-VN")}</span>
                           </div>
                         </div>

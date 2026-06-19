@@ -6,8 +6,9 @@ import {
 } from "recharts";
 import { ChartCard } from "../ChartCard";
 import { FilterPanel, FilterValues } from "../FilterPanel";
-import { buildApiUrl, fetchApiJson, getDashboardKpi } from "../../services/dashboardApi";
+import { buildApiUrl, fetchApiJson, formatChannelParam, getDashboardKpi } from "../../services/dashboardApi";
 import type { DashboardKpiData } from "../../types/dashboard";
+import { getDateParamsFromFilters } from "../../utils/dateFilters";
 
 const NAVY = "#003865";
 const ORANGE = "#D73C01";
@@ -35,14 +36,24 @@ export function PerformanceAnalysis({ filters, onFiltersChange, onNavigate }: Pe
     async function loadData() {
       setLoading(true);
       try {
+        const dateParams = getDateParamsFromFilters(filters);
+        const queryParams = new URLSearchParams();
+        if (dateParams.startDate) queryParams.set("startDate", dateParams.startDate);
+        if (dateParams.endDate) queryParams.set("endDate", dateParams.endDate);
+        if (filters.channel && filters.channel !== "Tất cả") queryParams.set("channel", formatChannelParam(filters.channel));
+        if (filters.topic && filters.topic !== "Tất cả") queryParams.set("topic", filters.topic);
+        if (filters.conversationStatus && filters.conversationStatus !== "Tất cả") queryParams.set("conversationStatus", filters.conversationStatus);
+        if (filters.aiStatus && filters.aiStatus !== "Tất cả") queryParams.set("aiStatus", filters.aiStatus);
+
         const [kpiData, qualityData] = await Promise.all([
           getDashboardKpi({
+            ...dateParams,
             channel: filters.channel,
             topic: filters.topic,
             conversationStatus: filters.conversationStatus,
             aiStatus: filters.aiStatus,
           }),
-          fetchApiJson<{ success: boolean; data: any }>(buildApiUrl("/api/analytics/ai/quality-metrics"), { cache: false }).catch(() => null),
+          fetchApiJson<{ success: boolean; data: any }>(buildApiUrl("/api/analytics/ai/quality-metrics", queryParams), { cache: false }).catch(() => null),
         ]);
         if (cancelled) return;
         setKpi(kpiData);

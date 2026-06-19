@@ -157,19 +157,15 @@ def negative_conversations(
     filters: dict = Depends(_review_filters),
     service: AnalyticsService = Depends(get_analytics_service),
 ):
-    data = service.get_need_review_conversations(filters)
+    data = service.get_negative_review_conversations(filters)
     data["metadata"] = {
         **data.get("metadata", {}),
-        "legacy": True,
-        "canonicalEndpoint": "/api/analytics/need-review-conversations",
+        "canonicalEndpoint": "/api/analytics/negative-conversations",
     }
     return {
         "success": True,
-        "message": "Lay danh sach hoi thoai can nhan vien xem xet thanh cong.",
-        "meta": {
-            "legacy": True,
-            "canonicalEndpoint": "/api/analytics/need-review-conversations",
-        },
+        "message": "Lay danh sach hoi thoai tieu cuc can xu ly thanh cong.",
+        "meta": data["metadata"],
         "data": data,
     }
 

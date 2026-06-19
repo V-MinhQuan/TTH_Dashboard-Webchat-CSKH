@@ -184,13 +184,23 @@ class AnalyticsRepository:
         return {"rows": rows, "optionalColumns": columns}
 
     def get_need_review_conversations(self, filters: Dict[str, Any]) -> Dict[str, Any]:
+        return self._get_review_conversations(filters, self._build_need_review_where)
+
+    def get_negative_review_conversations(self, filters: Dict[str, Any]) -> Dict[str, Any]:
+        return self._get_review_conversations(filters, self._build_negative_review_where)
+
+    def _get_review_conversations(
+        self,
+        filters: Dict[str, Any],
+        where_builder: Callable[[Dict[str, Any], Dict[str, bool]], Tuple[str, List[Any]]],
+    ) -> Dict[str, Any]:
         pagination = normalize_pagination(
             page=int(filters.get("page") or 1),
             page_size=int(filters.get("pageSize") or 20),
         )
         with self._connection_factory() as conn:
             columns = inspect_message_analytics_columns(conn)
-            data_where, data_params = self._build_need_review_where(filters, columns, include_search=True)
+            data_where, data_params = where_builder(filters, columns)
             issue_flag_expr = "a.issueFlag" if columns.get("issueFlag") else "CAST(NULL AS BIT)"
             issue_type_expr = "a.issueType" if columns.get("issueType") else "CAST(NULL AS NVARCHAR(100))"
             issue_reason_expr = "a.issueReason" if columns.get("issueReason") else "CAST(NULL AS NVARCHAR(1000))"
@@ -683,7 +693,7 @@ class AnalyticsRepository:
         filters: Dict[str, Any],
         columns: Dict[str, bool],
         *,
-        include_search: bool,
+        include_search: bool = True,
     ) -> Tuple[str, List[Any]]:
         review_parts = ["a.needStaffReview = 1", "a.sentimentLabel = 'negative'"]
         if columns.get("issueFlag"):
@@ -692,6 +702,26 @@ class AnalyticsRepository:
         search = base_filters.pop("search", None)
         where, params = self._build_read_where(base_filters, columns)
         conditions = [f"({ ' OR '.join(review_parts) })"]
+        if where:
+            conditions.append(where.removeprefix("WHERE "))
+        if include_search and search:
+            conditions.append("(m.TextContent LIKE ? OR a.customerId LIKE ?)")
+            params.extend([f"%{search}%", f"%{search}%"])
+        return "WHERE " + " AND ".join(conditions), params
+
+    def _build_negative_review_where(
+        self,
+        filters: Dict[str, Any],
+        columns: Dict[str, bool],
+        *,
+        include_search: bool = True,
+    ) -> Tuple[str, List[Any]]:
+        base_filters = dict(filters)
+        search = base_filters.pop("search", None)
+        base_filters.pop("sentiment", None)
+        base_filters.pop("sentimentLabel", None)
+        where, params = self._build_read_where(base_filters, columns)
+        conditions = ["a.sentimentLabel = 'negative'", "a.needStaffReview = 1"]
         if where:
             conditions.append(where.removeprefix("WHERE "))
         if include_search and search:

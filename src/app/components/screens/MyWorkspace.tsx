@@ -5,6 +5,8 @@ import { useAuth } from "../../context/AuthContext";
 import { AddSheetModal } from "./SheetChatbot";
 import { createSheetChatbotRow } from "../../services/sheetChatbotApi";
 import { closeConversation } from "../../services/dashboardApi";
+import { FilterValues } from "../FilterPanel";
+import { getDateParamsFromFilters } from "../../utils/dateFilters";
 import {
   getConversationDetail,
   getConversations,
@@ -34,6 +36,10 @@ interface WorkspaceTask extends ConversationListRecord {
   statusLabel: string;
   timeLabel: string;
   topicLabel: string;
+}
+
+interface MyWorkspaceProps {
+  filters: FilterValues;
 }
 
 function formatDateTime(value?: string | null) {
@@ -78,7 +84,7 @@ function isHostMessage(message: ConversationMessage) {
   return message.fromHost === true || message.fromHost === 1;
 }
 
-export function MyWorkspace() {
+export function MyWorkspace({ filters }: MyWorkspaceProps) {
   const { user } = useAuth();
   const [tasks, setTasks] = useState<WorkspaceTask[]>([]);
   const [activeTaskId, setActiveTaskId] = useState<number | null>(null);
@@ -113,7 +119,14 @@ export function MyWorkspace() {
   const loadTasks = async () => {
     setLoading(true);
     try {
-      const response = await getConversations({ page: 1, pageSize: 50, search: search || undefined });
+      const dateParams = getDateParamsFromFilters(filters);
+      const response = await getConversations({
+        ...dateParams,
+        page: 1,
+        pageSize: 50,
+        search: search || undefined,
+        channel: filters.channel,
+      });
       const mapped = response.records.map(toTask);
       setTasks(mapped);
       setActiveTaskId((current) => current && mapped.some((task) => task.id === current) ? current : mapped[0]?.id ?? null);
@@ -131,7 +144,7 @@ export function MyWorkspace() {
       void loadTasks();
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [search]);
+  }, [search, filters]);
 
   useEffect(() => {
     if (!activeTask) {

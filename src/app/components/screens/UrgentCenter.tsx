@@ -3,6 +3,8 @@ import { AlertTriangle, Timer, Flame, ShieldAlert, PhoneForwarded, AlertOctagon,
 import { toast } from "sonner";
 import { useAuth } from "../../context/AuthContext";
 import { closeConversation, getDashboardKpi } from "../../services/dashboardApi";
+import { FilterValues } from "../FilterPanel";
+import { getDateParamsFromFilters } from "../../utils/dateFilters";
 import type { UrgentAlert } from "../../types/dashboard";
 
 const ORANGE = "#D73C01";
@@ -27,7 +29,11 @@ function sourceForClose(alert: AlertWithRaw) {
   return alert.raw_source || alert.channel;
 }
 
-export function UrgentCenter() {
+interface UrgentCenterProps {
+  filters: FilterValues;
+}
+
+export function UrgentCenter({ filters }: UrgentCenterProps) {
   const { role } = useAuth();
   const [urgentTasks, setUrgentTasks] = useState<AlertWithRaw[]>([]);
   const [activeId, setActiveId] = useState<string | number | null>(null);
@@ -43,7 +49,13 @@ export function UrgentCenter() {
   const loadAlerts = async () => {
     setLoading(true);
     try {
-      const data = await getDashboardKpi();
+      const data = await getDashboardKpi({
+        ...getDateParamsFromFilters(filters),
+        channel: filters.channel,
+        topic: filters.topic,
+        conversationStatus: filters.conversationStatus,
+        aiStatus: filters.aiStatus,
+      });
       const alerts = data.urgentAlerts as AlertWithRaw[];
       setUrgentTasks(alerts);
       setActiveId((current) => current && alerts.some((alert) => alert.id === current) ? current : alerts[0]?.id ?? null);
@@ -58,7 +70,7 @@ export function UrgentCenter() {
 
   useEffect(() => {
     void loadAlerts();
-  }, []);
+  }, [filters]);
 
   const activeItem = useMemo(() => urgentTasks.find((task) => task.id === activeId) || urgentTasks[0] || null, [urgentTasks, activeId]);
 

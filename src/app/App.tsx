@@ -124,11 +124,11 @@ function MainApp() {
       // case "performance": // Tạm ẩn trang Hiệu suất
       //   return <PerformanceAnalysis {...baseProps} />;
       case "conversation":
-        return <MyWorkspace />;
+        return <MyWorkspace filters={filters} />;
       case "todo":
-        return <UrgentCenter />;
+        return <UrgentCenter filters={filters} />;
       case "ai_intervention":
-        return <AIMonitoring />;
+        return <AIMonitoring filters={filters} />;
       case "sentiment":
         return <SentimentAnalysis {...baseProps} />;
       case "aiinsights":
