@@ -349,9 +349,8 @@ export function Header({ activeScreen, onNavigate }: HeaderProps) {
               <div style={{ fontSize: "13px", fontWeight: 700, color: NAVY }}>{user ? user.name : (role === "manager" ? "Admin FLIC" : "Nhân viên CSKH")}</div>
               <div style={{ fontSize: "11px", color: "rgba(0,56,101,0.45)" }}>{user ? user.email : (role === "manager" ? "admin@flic.edu.vn" : "staff@flic.edu.vn")}</div>
             </div>
-            {dropdownItem(() => { onNavigate(role === "manager" ? "personalinfo" : "profile"); setShowAvatar(false); }, <User size={15} style={{ color: NAVY }} />, "Thông tin cá nhân")}
+            {dropdownItem(() => { onNavigate("personalinfo"); setShowAvatar(false); }, <User size={15} style={{ color: NAVY }} />, "Thông tin cá nhân")}
             {dropdownItem(() => { onNavigate("settings"); setShowAvatar(false); }, <Settings size={15} style={{ color: NAVY }} />, role === "manager" ? "Cài đặt" : "Cài đặt cá nhân")}
-            {dropdownItem(() => { toast.info("Trung tâm trợ giúp đang cập nhật..."); setShowAvatar(false); }, <HelpCircle size={15} style={{ color: NAVY }} />, "Trợ giúp")}
             <div style={{ height: "1px", backgroundColor: "rgba(0,56,101,0.08)" }} />
             {dropdownItem(() => { setShowLogoutModal(true); setShowAvatar(false); }, <LogOut size={15} style={{ color: RED_TEXT }} />, "Đăng xuất", true)}
           </div>

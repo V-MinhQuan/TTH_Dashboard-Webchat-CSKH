@@ -62,7 +62,8 @@ class AuthService:
             "data": {
                 "username": user_name,
                 "name": row.get("HoTen") or row.get("ShortName") or user_name,
-                "email": f"{user_name}@flic.edu.vn",
+                "email": row.get("Email") or f"{user_name}@flic.edu.vn",
+                "phone": row.get("DienThoai") or "",
                 "role": role,
                 "shortName": row.get("ShortName") or "",
             },

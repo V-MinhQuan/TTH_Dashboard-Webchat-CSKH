@@ -93,10 +93,10 @@ function MainApp() {
   useEffect(() => {
     setScreenSwitching(true);
     const timer = window.setTimeout(() => setScreenSwitching(false), 220);
-    
+
     try {
       localStorage.setItem("dashboard_activeScreen", activeScreen);
-    } catch {}
+    } catch { }
 
     return () => window.clearTimeout(timer);
   }, [activeScreen]);

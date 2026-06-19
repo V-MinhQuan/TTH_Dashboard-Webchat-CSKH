@@ -119,7 +119,7 @@ class UserService:
         return user
 
     def reset_user_password(self, username: str, new_password: Optional[str] = None) -> dict:
-        password = new_password or self._generate_temporary_password()
+        password = new_password or "123456"
         if len(password) < 6:
             raise Exception("Mật khẩu mới phải có ít nhất 6 ký tự.")
 
