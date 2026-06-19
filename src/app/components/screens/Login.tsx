@@ -10,10 +10,10 @@ const ORANGE = "#D73C01";
 
 export function LoginScreen() {
   const { login } = useAuth();
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+  const [username, setUsername] = useState(() => localStorage.getItem("saved_username") || "");
+  const [password, setPassword] = useState(() => localStorage.getItem("saved_password") || "");
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberLogin, setRememberLogin] = useState(true);
+  const [rememberLogin, setRememberLogin] = useState(() => localStorage.getItem("saved_username") ? true : false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -45,6 +45,13 @@ export function LoginScreen() {
       }
 
       const userData = resJson.data;
+      if (rememberLogin) {
+        localStorage.setItem("saved_username", username.trim());
+        localStorage.setItem("saved_password", password);
+      } else {
+        localStorage.removeItem("saved_username");
+        localStorage.removeItem("saved_password");
+      }
       login(userData, rememberLogin);
     } catch (err: any) {
       setError("Không thể kết nối tới máy chủ. Vui lòng thử lại sau.");

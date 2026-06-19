@@ -53,7 +53,7 @@ export function Sidebar({ activeScreen, onNavigate, collapsed, onToggleCollapse 
     { id: "aiinsights", label: "Hiệu suất AI", icon: Bot },
     { id: "sentiment", label: "Phân tích cảm xúc", icon: Heart },
     { id: "chatbot_sheet", label: "Thư viện phản hồi", icon: FileText },
-    { id: "profile", label: "Hồ sơ", icon: User },
+    { id: "settings", label: "Cài đặt", icon: Settings },
   ];
 
   const menuItems = role === "manager" ? managerMenuItems : staffMenuItems;

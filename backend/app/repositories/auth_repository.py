@@ -27,7 +27,9 @@ class AuthRepository:
                     UserName,
                     DangHoatDong,
                     HoTen,
-                    ShortName
+                    ShortName,
+                    Email,
+                    DienThoai
                 FROM [User]
                 WHERE UserName = ? AND Password = ?
                 """,

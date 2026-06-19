@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowLeft, User, Mail, Building2, Shield, Clock, CheckCircle, X } from "lucide-react";
+import { ArrowLeft, User, Mail, Building2, Shield, Clock, CheckCircle, X, Phone } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { toast } from "sonner";
 
@@ -63,6 +63,29 @@ export function PersonalInfo({ onNavigate }: PersonalInfoProps) {
   const isManager = role === "manager";
   const [showOtpModal, setShowOtpModal] = useState(false);
 
+  // Format last login time
+  const formatLastLogin = () => {
+    if (!user?.lastLogin) return "Chưa đăng nhập";
+    
+    const lastLoginDate = new Date(user.lastLogin);
+    const now = new Date();
+    const hoChiMinhTime = new Intl.DateTimeFormat('vi-VN', {
+      timeZone: 'Asia/Ho_Chi_Minh',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    }).format(lastLoginDate);
+    
+    const lastLoginDateOnly = lastLoginDate.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+    const nowDateOnly = now.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+    
+    if (lastLoginDateOnly === nowDateOnly) {
+      return `${hoChiMinhTime} hôm nay`;
+    } else {
+      return `${hoChiMinhTime} ${lastLoginDateOnly}`;
+    }
+  };
+
   return (
     <div style={{ padding: "28px", maxWidth: "760px", margin: "0 auto" }}>
       {/* Back button */}
@@ -109,8 +132,8 @@ export function PersonalInfo({ onNavigate }: PersonalInfoProps) {
         {[
           { icon: User, label: "Họ và tên", value: user ? user.name : (isManager ? "Admin FLIC" : "Nhân viên CSKH") },
           { icon: Mail, label: "Email", value: user ? user.email : (isManager ? "admin@flic.edu.vn" : "staff@flic.edu.vn") },
-          { icon: Building2, label: isManager ? "Kênh quản lý" : "Kênh phụ trách", value: isManager ? "Tất cả kênh" : (user?.username === "thutrang" ? "Zalo Business, Facebook" : "Zalo OA, Chat Widget") },
-          { icon: Clock, label: "Đăng nhập lần cuối", value: "09:38 hôm nay" },
+          { icon: Clock, label: "Đăng nhập lần cuối", value: formatLastLogin() },
+          { icon: Phone, label: "Số điện thoại", value: user?.phone || "Chưa cập nhật" },
         ].map(({ icon: Icon, label, value }) => (
           <div key={label} style={{ backgroundColor: "#fff", borderRadius: "14px", border: "1px solid rgba(0,56,101,0.08)", padding: "18px 20px", display: "flex", gap: "14px", alignItems: "flex-start" }}>
             <div style={{ width: "36px", height: "36px", borderRadius: "10px", backgroundColor: "#EBF2FF", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>

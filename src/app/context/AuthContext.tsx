@@ -6,7 +6,9 @@ export interface UserInfo {
   username: string;
   name: string;
   email: string;
+  phone?: string;
   role: 'manager' | 'staff';
+  lastLogin?: string;
 }
 
 interface AuthContextType {
@@ -80,6 +82,18 @@ function clearStoredAuth() {
   safeRemoveStoredAuth(window.sessionStorage);
 }
 
+function updateStoredAuthUser(user: UserInfo | null) {
+  if (typeof window === 'undefined') return;
+
+  if (!user) {
+    clearStoredAuth();
+    return;
+  }
+
+  const remember = Boolean(window.localStorage.getItem(AUTH_STORAGE_KEY));
+  saveStoredAuth({ user, role: user.role }, remember);
+}
+
 function safeRemoveStoredAuth(storage: Storage) {
   try {
     storage.removeItem(AUTH_STORAGE_KEY);
@@ -91,17 +105,29 @@ function safeRemoveStoredAuth(storage: Storage) {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [storedAuth] = useState<StoredAuth | null>(() => readStoredAuth());
   const [role, setRole] = useState<Role>(storedAuth?.role ?? null);
-  const [user, setUser] = useState<UserInfo | null>(storedAuth?.user ?? null);
+  const [user, setUserState] = useState<UserInfo | null>(storedAuth?.user ?? null);
 
   const login = (userData: UserInfo, remember: boolean) => {
-    setUser(userData);
+    const userWithTimestamp = {
+      ...userData,
+      lastLogin: new Date().toISOString()
+    };
+    setUserState(userWithTimestamp);
     setRole(userData.role);
-    saveStoredAuth({ user: userData, role: userData.role }, remember);
+    saveStoredAuth({ user: userWithTimestamp, role: userData.role }, remember);
+  };
+
+  const setUser = (userData: UserInfo | null) => {
+    setUserState(userData);
+    if (userData) {
+      setRole(userData.role);
+    }
+    updateStoredAuthUser(userData);
   };
 
   const logout = () => {
     setRole(null);
-    setUser(null);
+    setUserState(null);
     clearStoredAuth();
   };
 

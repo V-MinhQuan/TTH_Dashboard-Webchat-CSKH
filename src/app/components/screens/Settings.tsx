@@ -47,7 +47,7 @@ function WeeklyReportModal({ isOpen, onClose }: { isOpen: boolean; onClose: () =
         .then(([kpiData, channelData]) => {
           setKpi(kpiData);
           setChannels(channelData.channels || []);
-          
+
           // Calculate top topics from heatmap
           const topicMap: Record<string, number> = {};
           (channelData.heatmap || []).forEach(cell => {
@@ -57,7 +57,7 @@ function WeeklyReportModal({ isOpen, onClose }: { isOpen: boolean; onClose: () =
             .map(([topic, count]) => ({ topic, count }))
             .sort((a, b) => b.count - a.count)
             .slice(0, 5);
-            
+
           const maxCount = sortedTopics.length > 0 ? sortedTopics[0].count : 1;
           setTopics(sortedTopics.map(t => ({ ...t, pct: Math.round((t.count / maxCount) * 100) })));
         })
@@ -274,8 +274,8 @@ function Toggle({ value, onChange }: ToggleProps) {
 }
 
 export function Settings({ defaultSection = "notifications" }: { defaultSection?: string }) {
-  const { role, user } = useAuth();
-  const sections = role === "manager" ? adminSections : staffSections;
+  const { role, user, setUser } = useAuth();
+  const sections = adminSections;
   const [activeSection, setActiveSection] = useState(defaultSection);
   const [showPasscodeModal, setShowPasscodeModal] = useState(false);
   const [showOtpModal, setShowOtpModal] = useState(false);
@@ -313,7 +313,7 @@ export function Settings({ defaultSection = "notifications" }: { defaultSection?
         .catch(err => console.error("Error loading profile", err))
         .finally(() => setLoadingProfile(false));
     }
-  }, [user]);
+  }, [user?.username]);
 
   useEffect(() => {
     setActiveSection(defaultSection);
@@ -324,12 +324,16 @@ export function Settings({ defaultSection = "notifications" }: { defaultSection?
       toast.error("Vui lòng nhập họ tên");
       return;
     }
+    if (!user) {
+      toast.error("Không tìm thấy thông tin người dùng hiện tại.");
+      return;
+    }
     try {
       const res = await fetch(`${API_BASE_URL}/api/settings/profile`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          username: user?.username,
+          username: user.username,
           name: profileData.name,
           email: profileData.email,
           phone: profileData.phone
@@ -337,6 +341,15 @@ export function Settings({ defaultSection = "notifications" }: { defaultSection?
       });
       const resJson = await res.json();
       if (res.ok && resJson.success) {
+        const updatedProfile = resJson.data || {};
+        setUser({
+          ...user,
+          username: updatedProfile.username || user.username,
+          name: updatedProfile.name || profileData.name,
+          email: updatedProfile.email || profileData.email,
+          phone: updatedProfile.phone ?? profileData.phone,
+          role: updatedProfile.role || user.role,
+        });
         toast.success("Cập nhật thông tin tài khoản thành công!");
       } else {
         toast.error(resJson.message || resJson.detail || "Cập nhật thất bại.");
@@ -428,25 +441,6 @@ export function Settings({ defaultSection = "notifications" }: { defaultSection?
   };
 
   const renderSection = () => {
-    if (role === "staff" && !staffSections.find((s) => s.id === activeSection)) {
-      return (
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "48px 24px", textAlign: "center", gap: "16px" }}>
-          <div style={{ width: "60px", height: "60px", borderRadius: "50%", backgroundColor: "#fef2f2", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Shield size={28} style={{ color: ORANGE }} />
-          </div>
-          <div>
-            <div style={{ fontSize: "16px", fontWeight: 700, color: NAVY, marginBottom: "8px" }}>Không có quyền truy cập</div>
-            <div style={{ fontSize: "13px", color: "rgba(0,56,101,0.55)", lineHeight: 1.6, maxWidth: "380px" }}>
-              Bạn không có quyền truy cập chức năng này. Vui lòng liên hệ Quản lý CSKH nếu cần hỗ trợ.
-            </div>
-          </div>
-          <button onClick={() => setActiveSection("profile")} style={{ padding: "9px 22px", borderRadius: "9px", border: "none", background: NAVY, color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: "13px", display: "flex", alignItems: "center", gap: "6px" }}>
-            <ArrowLeft size={14} /> Quay lại
-          </button>
-        </div>
-      );
-    }
-
     if (activeSection === "profile") {
       return (
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
@@ -510,17 +504,11 @@ export function Settings({ defaultSection = "notifications" }: { defaultSection?
     }
 
     if (activeSection === "notifications") {
-      const notifItems = role === "manager"
-        ? [
-            { label: "Thông báo qua Email", desc: "Nhận cảnh báo và báo cáo qua email", key: "emailNotif" },
-            { label: "Cảnh báo AI thất bại", desc: "Thông báo ngay khi tỷ lệ AI thất bại vượt ngưỡng", key: "aiFailAlert" },
-            { label: "Báo cáo tuần tự động", desc: "Gửi báo cáo tổng hợp mỗi thứ Hai", key: "weeklyReport", hasPreview: true },
-          ]
-        : [
-            { label: "Thông báo hội thoại mới", desc: "Nhận thông báo khi có hội thoại mới được phân công", key: "emailNotif" },
-            { label: "Cảnh báo AI thất bại", desc: "Thông báo khi AI trả lời không đúng trong kênh phụ trách", key: "aiFailAlert" },
-            { label: "Báo cáo hiệu suất tuần", desc: "Nhận tóm tắt hiệu suất cá nhân mỗi tuần", key: "weeklyReport", hasPreview: true },
-          ];
+      const notifItems = [
+        { label: "Thông báo qua Email", desc: "Nhận cảnh báo và báo cáo qua email", key: "emailNotif" },
+        { label: "Cảnh báo AI thất bại", desc: "Thông báo ngay khi tỷ lệ AI thất bại vượt ngưỡng", key: "aiFailAlert" },
+        { label: "Báo cáo tuần tự động", desc: "Gửi báo cáo tổng hợp mỗi thứ Hai", key: "weeklyReport", hasPreview: true },
+      ];
       return (
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
           <SectionTitle title="Thông báo" />
@@ -550,7 +538,7 @@ export function Settings({ defaultSection = "notifications" }: { defaultSection?
       );
     }
 
-    if (activeSection === "datasource" && role === "manager") {
+    if (activeSection === "datasource") {
       return (
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
           <SectionTitle title="Nguồn dữ liệu" />
@@ -608,7 +596,7 @@ export function Settings({ defaultSection = "notifications" }: { defaultSection?
       );
     }
 
-    if (activeSection === "channel_config" && role === "manager") {
+    if (activeSection === "channel_config") {
       const channels = [
         { key: "dataSourceZalo", label: "Zalo OA", desc: "Kênh Zalo Official Account chính" },
         { key: "dataSourceZaloBiz", label: "Zalo Business", desc: "Kênh Zalo Business doanh nghiệp" },
