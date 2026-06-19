@@ -396,7 +396,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
       // 2. Reset compose state
       setComposeAnswer("");
       setComposingIndex(null);
-      toast.success("Đã chuyển đề xuất FAQ vào Sheet Chatbot chờ duyệt!");
+      toast.success("Đã chuyển đề xuất FAQ vào thư viện phản hồi chờ duyệt!");
     } catch (error: any) {
       toast.error(error.message || "Có lỗi xảy ra khi thêm FAQ");
     }

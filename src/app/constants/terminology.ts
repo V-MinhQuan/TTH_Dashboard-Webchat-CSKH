@@ -8,13 +8,13 @@ export const TERMINOLOGY = {
     keyword: "Phân tích Keywords",
     sentiment: "Phân tích cảm xúc",
     chartbuilder: "Trình tạo biểu đồ",
-    chatbot_sheet: "Quản lý Sheet Chatbot",
+    chatbot_sheet: "Quản lý thư viện phản hồi",
     settings: "Cài đặt hệ thống",
 
     // Staff page titles
     conversation_staff: "Hội thoại của tôi",
     faq_staff: "FAQ",
-    chatbot_sheet_staff: "Sheet Chatbot của tôi",
+    chatbot_sheet_staff: "Thư viện phản hồi của tôi",
     performance_staff: "Hiệu suất cá nhân",
     profile_staff: "Hồ sơ cá nhân",
   },
@@ -26,7 +26,7 @@ export const TERMINOLOGY = {
     keyword: "Keywords",
     sentiment: "Cảm xúc",
     chartbuilder: "Biểu đồ",
-    chatbot_sheet: "Sheet Chatbot",
+    chatbot_sheet: "Thư viện phản hồi",
     settings: "Cài đặt",
     
     // Staff extra
@@ -75,7 +75,7 @@ export const TERMINOLOGY = {
     request_edit: "Yêu cầu chỉnh sửa",
     add: "Thêm",
     add_faq: "Thêm vào FAQ",
-    add_sheet: "Thêm vào Sheet Chatbot",
+    add_sheet: "Thêm phản hồi",
     resolve: "Đánh dấu đã xử lý",
     mark_ai_wrong: "Đánh dấu AI sai",
     send_corrected: "Gửi lại câu trả lời",

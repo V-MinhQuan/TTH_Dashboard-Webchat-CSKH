@@ -4,10 +4,11 @@ import { toast } from "sonner";
 
 import { FilterValues } from "../FilterPanel";
 import { ChartPreview } from "../chartbuilder/ChartPreview";
+import { ChartSettingsPanel } from "../chartbuilder/ChartSettingsPanel";
 import {
-  ChartSettingsPanel,
-  themePalettes,
-} from "../chartbuilder/ChartSettingsPanel";
+  getChartBuilderPalette,
+  paletteColor,
+} from "../chartbuilder/chartBuilderPalettes";
 import { CHART_BUILDER_LABELS } from "../chartbuilder/chartBuilderLabels";
 import {
   canUseFieldInSlot,
@@ -121,7 +122,7 @@ export function ChartBuilder({
     || state.dimensions[0]?.alias
     || state.dimensions[0]?.fieldId
     || "";
-  const palette = themePalettes[state.chartSettings.theme];
+  const palette = getChartBuilderPalette(state.chartSettings.theme);
   const isMobileBuilder = viewportWidth <= 1100;
   const drawerOpen = settingsOpen || (isMobileBuilder && dataPanelOpen);
   const customValidation = useMemo(
@@ -164,6 +165,10 @@ export function ChartBuilder({
       state.topN,
       state.limit,
     ],
+  );
+  const seriesDisplayByKey = useMemo(
+    () => buildSeriesDisplayMap(state, selectedDataset),
+    [state.metrics, state.dimensions, state.series, state.chartSettings.theme, selectedDataset],
   );
 
   const loadConfigs = useCallback(async () => {
@@ -378,7 +383,7 @@ export function ChartBuilder({
         fieldMeta,
         current.metrics.length,
         current.chartType,
-        themePalettes[current.chartSettings.theme],
+        current.chartSettings.theme,
       );
       return {
         ...current,
@@ -680,6 +685,7 @@ export function ChartBuilder({
                   showGrid={state.chartSettings.showGrid}
                   showTooltip={state.chartSettings.showTooltip}
                   palette={palette}
+                  seriesDisplayByKey={seriesDisplayByKey}
                 />
               </div>
             </section>
@@ -730,7 +736,7 @@ function configureForDataset(
       metricField,
       0,
       chartType,
-      themePalettes[current.chartSettings.theme],
+      current.chartSettings.theme,
     )
     : null;
   return {
@@ -758,7 +764,7 @@ function createMetric(
   field: CatalogFieldMeta,
   index: number,
   chartType: ChartBuilderState["chartType"],
-  palette: string[],
+  theme: ChartBuilderState["chartSettings"]["theme"],
 ): MetricSelection {
   const aggregation = (
     field.defaultAggregation
@@ -770,7 +776,7 @@ function createMetric(
     aggregation,
     alias: `metric_${field.id}_${index + 1}`,
     label: field.label,
-    color: palette[index % palette.length],
+    color: paletteColor(theme, index),
     axisGroup: "left",
     seriesType: chartType === "combo"
       ? (index === 0 ? "bar" : "line")
@@ -796,6 +802,52 @@ function buildCustomRequest(state: ChartBuilderState): CustomChartRequest {
     topN: state.topN,
     limit: state.limit,
   };
+}
+
+function buildSeriesDisplayMap(
+  state: ChartBuilderState,
+  dataset: CatalogDatasetMeta | null,
+) {
+  const fieldLabels = new Map(
+    dataset?.fields.map((field) => [field.id, field.label]) || [],
+  );
+  const entries = state.metrics.map((metric, index) => {
+    const key = metric.alias || `${metric.aggregation}_${metric.fieldId}`;
+    return [
+      key,
+      {
+        label: metric.label || fieldLabels.get(metric.fieldId) || "Chỉ số",
+        color: metric.color || paletteColor(state.chartSettings.theme, index),
+        axisGroup: metric.axisGroup,
+        seriesType: metric.seriesType,
+        numberFormat: metric.numberFormat,
+      },
+    ] as const;
+  });
+
+  for (const dimension of state.dimensions) {
+    const key = dimension.alias || dimension.fieldId;
+    entries.push([
+      key,
+      {
+        label: dimension.label || fieldLabels.get(dimension.fieldId) || "Chiều phân tích",
+        color: paletteColor(state.chartSettings.theme, entries.length),
+      },
+    ]);
+  }
+
+  if (state.series) {
+    const key = state.series.alias || state.series.fieldId;
+    entries.push([
+      key,
+      {
+        label: state.series.label || fieldLabels.get(state.series.fieldId) || "Chuỗi dữ liệu",
+        color: paletteColor(state.chartSettings.theme, entries.length),
+      },
+    ]);
+  }
+
+  return Object.fromEntries(entries);
 }
 
 function isCompleteFilter(filter: FilterSelection) {

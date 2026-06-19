@@ -265,7 +265,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
         notes: "Tạo từ màn Phân tích AI.",
         addedBy: user?.name || "Dashboard",
       });
-      toast.success("Đã thêm FAQ thành công vào Sheet Chatbot");
+      toast.success("Đã thêm FAQ thành công vào thư viện phản hồi");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Lỗi khi thêm FAQ");
     }
@@ -383,7 +383,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
               { icon: AlertTriangle, label: "Lỗi AI nhân viên ghi nhận", value: staffActivity.reported_errors.toString(), isWarning: true },
               { icon: FilePlus2, label: "FAQ nhân viên đã thêm", value: String(sheetStats.total ?? recentChatbotRows.length), isWarning: false },
               { icon: Clock, label: "Dữ liệu chờ duyệt", value: String(sheetStats.pending ?? staffActivity.pending_review ?? 0), isWarning: true },
-              { icon: Table2, label: "Đã cập nhật vào Sheet Chatbot", value: String(sheetStats.approved ?? 0), isWarning: false },
+              { icon: Table2, label: "Đã cập nhật vào thư viện phản hồi", value: String(sheetStats.approved ?? 0), isWarning: false },
             ].map(({ icon: Icon, label, value, isWarning }) => {
               let iconBg = "#EBF2FF";
               let iconColor = NAVY;
@@ -677,16 +677,16 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
             </div>
           </div>
 
-          {/* AI sai đã bổ sung vào Sheet Chatbot */}
+          {/* AI sai đã bổ sung vào thư viện phản hồi */}
           <div style={{ backgroundColor: "#fff", borderRadius: "20px", border: "1px solid rgba(0,56,101,0.08)", boxShadow: "0 2px 12px rgba(0,56,101,0.06)", overflow: "hidden", marginBottom: "24px" }}>
             <div style={{ padding: "18px 24px", borderBottom: "1px solid rgba(0,56,101,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                 <CheckCircle size={16} style={{ color: "#228A61" }} />
-                <h3 style={{ color: NAVY, fontSize: "14px", fontWeight: 700, margin: 0 }}>AI trả lời sai đã được bổ sung vào Sheet Chatbot</h3>
+                <h3 style={{ color: NAVY, fontSize: "14px", fontWeight: 700, margin: 0 }}>AI trả lời sai đã được bổ sung vào thư viện phản hồi</h3>
                 <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "20px", backgroundColor: "#dcfce7", color: "#16a34a", fontWeight: 600 }}>{sheetStats.approved ?? recentChatbotRows.length} mục</span>
               </div>
               <button onClick={() => onNavigate("chatbot_sheet")} style={{ padding: "6px 14px", borderRadius: "8px", border: `1px solid ${NAVY}20`, background: "#f8fafc", color: NAVY, cursor: "pointer", fontSize: "12px", fontWeight: 500 }}>
-                Xem Sheet Chatbot
+                Xem thư viện phản hồi
               </button>
             </div>
             <div style={{ overflowX: "auto" }}>
@@ -774,7 +774,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
               addedBy: user?.name || "Nhân viên",
             });
             handleMarkAsProcessed(faqModalConv.id, false);
-            toast.success("Đã thêm FAQ vào Sheet Chatbot; dòng lỗi AI chỉ được ẩn trong phiên hiện tại.");
+            toast.success("Đã thêm FAQ vào thư viện phản hồi; dòng lỗi AI chỉ được ẩn trong phiên hiện tại.");
           }}
         />
       )}

@@ -123,7 +123,7 @@ class SheetChatbotService:
     async def get_row_by_id(self, row_id):
         row = self._find_row(row_id)
         if not row:
-            raise Exception(f"Không tìm thấy dữ liệu Sheet Chatbot có ID {row_id}.")
+            raise Exception(f"Không tìm thấy phản hồi có ID {row_id}.")
         return row
 
     async def create_row(self, data):
@@ -164,7 +164,7 @@ class SheetChatbotService:
         rows = self.repository.get_all()
         index = self._find_index(rows, row_id)
         if index == -1:
-            raise Exception(f"Không tìm thấy dữ liệu Sheet Chatbot có ID {row_id}.")
+            raise Exception(f"Không tìm thấy phản hồi có ID {row_id}.")
 
         current = rows[index]
         allowed_fields = ["question", "correctAnswer", "topic", "source", "risk", "status", "notes", "addedBy"]
@@ -201,7 +201,7 @@ class SheetChatbotService:
         rows = self.repository.get_all()
         index = self._find_index(rows, row_id)
         if index == -1:
-            raise Exception(f"Không tìm thấy dữ liệu Sheet Chatbot có ID {row_id}.")
+            raise Exception(f"Không tìm thấy phản hồi có ID {row_id}.")
 
         now = self.repository.now_iso()
         row = {
@@ -222,7 +222,7 @@ class SheetChatbotService:
         rows = self.repository.get_all()
         index = self._find_index(rows, row_id)
         if index == -1:
-            raise Exception(f"Không tìm thấy dữ liệu Sheet Chatbot có ID {row_id}.")
+            raise Exception(f"Không tìm thấy phản hồi có ID {row_id}.")
         rows.pop(index)
         self.repository.save_all(rows)
         return True
@@ -258,7 +258,7 @@ class SheetChatbotService:
             "status": "Đã duyệt",
             "riskLevel": row.get("risk"),
             "date": self.repository.now_iso()[:10],
-            "notes": row.get("notes") or "Gộp từ Sheet Chatbot",
+            "notes": row.get("notes") or "Gộp từ thư viện phản hồi",
         }
 
     def get_stats(self, rows=None):

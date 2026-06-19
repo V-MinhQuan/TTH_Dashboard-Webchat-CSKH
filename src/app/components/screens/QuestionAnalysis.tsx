@@ -126,7 +126,7 @@ export function QuestionAnalysis({ filters, onFiltersChange, onNavigate }: Quest
         notes: `Tạo từ Phân tích câu hỏi. Số lần hỏi trong database: ${question.count}.`,
         addedBy: "Dashboard",
       });
-      toast.success("Đã tạo dòng chờ xử lý trong Sheet Chatbot");
+      toast.success("Đã tạo phản hồi chờ xử lý trong thư viện");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Không thể tạo FAQ từ câu hỏi này");
     }

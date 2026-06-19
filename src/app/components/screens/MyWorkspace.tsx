@@ -305,7 +305,7 @@ export function MyWorkspace() {
                   {activeTask.statusLabel}
                 </span>
                 <button onClick={() => setShowSheetModal(true)} style={{ padding: "7px 12px", borderRadius: "6px", backgroundColor: "#fff", border: `1px solid ${NAVY}20`, color: NAVY, fontSize: "12px", fontWeight: 500, cursor: "pointer", display: "flex", alignItems: "center", gap: "5px" }}>
-                  <FileText size={13} /> Sheet Chatbot
+                  <FileText size={13} /> Thư viện phản hồi
                 </button>
                 <button onClick={() => void handleCloseConversation()} style={{ padding: "7px 14px", borderRadius: "6px", backgroundColor: "#fff", border: "1px solid #e2e8f0", color: "#475569", fontSize: "13px", fontWeight: 500, cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}>
                   <CheckCircle size={14} /> Đánh dấu đã xử lý
@@ -363,7 +363,7 @@ export function MyWorkspace() {
               ...data,
               addedBy: user?.name || "Nhân viên",
             });
-            toast.success("Đã thêm dữ liệu vào Sheet Chatbot");
+            toast.success("Đã thêm phản hồi vào thư viện");
           }}
         />
       )}

@@ -46,6 +46,7 @@ interface Props {
   showGrid: boolean;
   showTooltip: boolean;
   palette: string[];
+  seriesDisplayByKey?: Record<string, Partial<ChartSeries>>;
 }
 
 const numberFormat = new Intl.NumberFormat("vi-VN", {
@@ -67,6 +68,7 @@ export function ChartPreview({
   showGrid,
   showTooltip,
   palette,
+  seriesDisplayByKey = {},
 }: Props) {
   if (!configured) {
     return (
@@ -119,7 +121,7 @@ export function ChartPreview({
     ...new Set([groupBy, ...(data.dimensionKeys || [])].filter(Boolean)),
   ];
   const chartRows = normalizeChartRows(data.rows, dimensionKeys);
-  const chartSeries = normalizeChartSeries(data.series);
+  const chartSeries = normalizeChartSeries(data.series, palette, seriesDisplayByKey);
   const dimensionKey = groupBy || dimensionKeys[0] || "";
   const common = {
     data: chartRows,
@@ -666,10 +668,16 @@ function normalizeChartRows(
   });
 }
 
-function normalizeChartSeries(series: ChartSeries[]) {
-  return series.map((item) => ({
+function normalizeChartSeries(
+  series: ChartSeries[],
+  palette: string[],
+  seriesDisplayByKey: Record<string, Partial<ChartSeries>>,
+) {
+  return series.map((item, index) => ({
     ...item,
-    label: safeText(item.label),
+    ...seriesDisplayByKey[item.key],
+    label: safeText(seriesDisplayByKey[item.key]?.label || item.label || item.key),
+    color: seriesDisplayByKey[item.key]?.color || palette[index % palette.length] || item.color,
   }));
 }
 
@@ -682,6 +690,15 @@ function formatDimensionValue(value: unknown): string {
   }
   if (value === null || value === undefined || value === "") {
     return "Không xác định";
+  }
+  if (value === "ZaloBusiness") {
+    return "Zalo Business";
+  }
+  if (value === "ZaloOA") {
+    return "Zalo OA";
+  }
+  if (value === "ChatWidget") {
+    return "Chat Widget";
   }
   if (Array.isArray(value)) {
     const values = value.map((item) => safeText(item)).filter(Boolean);

@@ -13,6 +13,11 @@ import { ChartTypeSelector } from "./ChartTypeSelector";
 import { SeriesSettings } from "./SeriesSettings";
 import { ToggleSetting } from "./ToggleSetting";
 import {
+  CHART_BUILDER_PALETTE_LABELS,
+  getChartBuilderPalette,
+  paletteColor,
+} from "./chartBuilderPalettes";
+import {
   CHART_BUILDER_LABELS,
   DATE_GRAIN_LABELS,
   DIMENSION_GUIDANCE,
@@ -50,12 +55,7 @@ export function ChartSettingsPanel({
   const primaryField = dimensionFields.find(
     (field) => field.id === primaryDimension?.fieldId,
   );
-  const selectedAliases = [
-    ...state.dimensions.map((item) => item.alias || item.fieldId),
-    ...state.metrics.map(
-      (item) => item.alias || `${item.aggregation}_${item.fieldId}`,
-    ),
-  ];
+  const sortOptions = buildSortOptions(state, dataset);
 
   const updateSettings = (
     changes: Partial<ChartSettings>,
@@ -186,7 +186,7 @@ export function ChartSettingsPanel({
                   <option value="include">Giữ lại</option>
                   <option value="exclude">Loại bỏ</option>
                   {primaryField?.dataType === "string" && (
-                    <option value="label">Gán nhãn “Không xác định”</option>
+                    <option value="label">Gắn nhãn "Không xác định"</option>
                   )}
                 </select>
               </label>
@@ -198,6 +198,7 @@ export function ChartSettingsPanel({
               fields={dataset?.fields || []}
               metrics={state.metrics}
               chartType={state.chartType}
+              theme={state.chartSettings.theme}
               onChange={(metrics) => onChange({ metrics })}
             />
           </SettingsSection>
@@ -250,8 +251,8 @@ export function ChartSettingsPanel({
                   })}
                 >
                   <option value="">Mặc định</option>
-                  {selectedAliases.map((alias) => (
-                    <option key={alias} value={alias}>{alias}</option>
+                  {sortOptions.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
                   ))}
                 </select>
               </label>
@@ -316,19 +317,25 @@ export function ChartSettingsPanel({
               <span>Bảng màu</span>
               <select
                 value={state.chartSettings.theme}
-                onChange={(event) => updateSettings({
-                  theme: event.target.value as ChartTheme,
-                })}
+                onChange={(event) => {
+                  const theme = event.target.value as ChartTheme;
+                  onChange({
+                    chartSettings: { ...state.chartSettings, theme },
+                    metrics: state.metrics.map((metric, index) => ({
+                      ...metric,
+                      color: paletteColor(theme, index),
+                    })),
+                  });
+                }}
               >
-                <option value="flic">FLIC Brand</option>
-                <option value="navy">Xanh Navy</option>
-                <option value="warm">Gam màu ấm</option>
-                <option value="monochrome">Đơn sắc</option>
+                {Object.entries(CHART_BUILDER_PALETTE_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
               </select>
             </label>
             <div className="chart-builder-theme-swatches">
-              {themePalettes[state.chartSettings.theme].map((color) => (
-                <span key={color} style={{ backgroundColor: color }} />
+              {getChartBuilderPalette(state.chartSettings.theme).map((color, index) => (
+                <span key={`${color}-${index}`} style={{ backgroundColor: color }} />
               ))}
             </div>
           </SettingsSection>
@@ -524,17 +531,22 @@ function recommendChart(
   return "Biểu đồ cột cho nhóm dữ liệu; hình tròn khi cần xem tỷ trọng.";
 }
 
-export const themePalettes: Record<ChartTheme, string[]> = {
-  flic: [
-    "#003865",
-    "#ED5206",
-    "#D73C01",
-    "#1565C0",
-    "#228A61",
-    "#F59E0B",
-    "#42A5F5",
-  ],
-  navy: ["#003865", "#1565C0", "#42A5F5", "#0F6C8D", "#5B8DB8", "#8BB9D9"],
-  warm: ["#D73C01", "#ED5206", "#F59E0B", "#C24173", "#E76F51", "#F4A261"],
-  monochrome: ["#0F172A", "#334155", "#475569", "#64748B", "#94A3B8", "#CBD5E1"],
-};
+function buildSortOptions(
+  state: ChartBuilderState,
+  dataset: CatalogDatasetMeta | null,
+) {
+  const fieldLabels = new Map(
+    dataset?.fields.map((field) => [field.id, field.label]) || [],
+  );
+
+  return [
+    ...state.dimensions.map((dimension) => ({
+      value: dimension.alias || dimension.fieldId,
+      label: dimension.label || fieldLabels.get(dimension.fieldId) || "Chiều phân tích",
+    })),
+    ...state.metrics.map((metric) => ({
+      value: metric.alias || `${metric.aggregation}_${metric.fieldId}`,
+      label: metric.label || fieldLabels.get(metric.fieldId) || "Chỉ số",
+    })),
+  ];
+}

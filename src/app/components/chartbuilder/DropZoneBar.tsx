@@ -257,7 +257,7 @@ function FieldChip({
           style={{ backgroundColor: color }}
         />
       )}
-      <span>{label}{detail ? ` · ${detail}` : ""}</span>
+      <span>{label}{detail ? ` - ${detail}` : ""}</span>
       <button type="button" aria-label={`Xóa ${label}`} onClick={onRemove}>
         <X size={12} />
       </button>
