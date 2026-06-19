@@ -132,7 +132,7 @@ export function PersonalInfo({ onNavigate }: PersonalInfoProps) {
             <h3 style={{ fontSize: "14px", fontWeight: 700, color: NAVY, margin: 0 }}>Quyền truy cập hệ thống</h3>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-            {["Tổng quan", "Phân tích kênh", "Quản lý hội thoại", "AI Insights", "Keywords & Sentiment", "Sheet Chatbot", "Cài đặt hệ thống", "Quản lý người dùng"].map(perm => (
+            {["Tổng quan", "Phân tích kênh", "Quản lý hội thoại", "AI Insights", "Keywords & Sentiment", "Thư viện phản hồi", "Cài đặt hệ thống", "Quản lý người dùng"].map(perm => (
               <div key={perm} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: NAVY }}>
                 <CheckCircle size={14} style={{ color: "#228A61", flexShrink: 0 }} />
                 {perm}

@@ -31,7 +31,12 @@ export function ChartToolbar({
   return (
     <header className="chart-builder-toolbar">
       <div className="chart-builder-toolbar-leading">
-        <button type="button" className="chart-builder-icon-button chart-builder-panel-toggle" onClick={onToggleDataPanel} aria-label="Mở trường dữ liệu">
+        <button
+          type="button"
+          className="chart-builder-icon-button chart-builder-panel-toggle"
+          onClick={onToggleDataPanel}
+          aria-label="Mở trường dữ liệu"
+        >
           <PanelLeft size={17} />
         </button>
         <button type="button" className="chart-builder-back-button" onClick={onBack}>
@@ -55,7 +60,12 @@ export function ChartToolbar({
           <RefreshCw size={15} />
           <span>{CHART_BUILDER_LABELS.reset}</span>
         </button>
-        <button type="button" className="chart-builder-icon-button chart-builder-panel-toggle" onClick={onToggleSettings} aria-label="Mở cài đặt biểu đồ">
+        <button
+          type="button"
+          className="chart-builder-icon-button chart-builder-panel-toggle"
+          onClick={onToggleSettings}
+          aria-label="Mở cài đặt biểu đồ"
+        >
           <SlidersHorizontal size={17} />
         </button>
         <button type="button" className="chart-builder-primary-button" disabled={saveDisabled} onClick={onSave}>

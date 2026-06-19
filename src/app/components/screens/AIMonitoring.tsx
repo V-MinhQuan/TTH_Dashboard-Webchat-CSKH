@@ -333,7 +333,7 @@ export function AIMonitoring({ filters }: AIMonitoringProps) {
                     onClick={() => setShowSheetModal(true)}
                     style={{ padding: "8px 16px", borderRadius: "8px", backgroundColor: "rgba(56, 189, 248, 0.1)", color: CYAN, border: `1px solid ${CYAN}30`, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: "6px", fontSize: "12px" }}
                   >
-                    <FileText size={13} /> Thêm vào Sheet Chatbot
+                    <FileText size={13} /> Thêm phản hồi
                   </button>
 
                   <button
@@ -374,7 +374,7 @@ export function AIMonitoring({ filters }: AIMonitoringProps) {
               ...data,
               addedBy: "Đề xuất tự động (AI)",
             });
-            toast.success("Đã thêm dữ liệu vào Sheet Chatbot");
+            toast.success("Đã thêm phản hồi vào thư viện");
           }}
         />
       )}

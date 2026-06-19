@@ -611,7 +611,7 @@ export function FAQ() {
               {role === "staff" ? (
                 <>
                   <button onClick={() => { setSuggestedAnswer(selectedFaq.answer); setSuggestionReason(""); setShowEditSuggestModal(true); }} style={{ padding: "9px 18px", borderRadius: "9px", border: `1px solid ${ORANGE}`, background: "#fff", color: ORANGE, cursor: "pointer", fontWeight: 600, fontSize: "13px" }}>Đề xuất chỉnh sửa</button>
-                  <button onClick={() => { toast.info("FAQ này đã được lấy trực tiếp từ Sheet Chatbot trong database."); setShowDetailModal(false); }} style={{ padding: "9px 18px", borderRadius: "9px", border: "none", background: `linear-gradient(135deg, ${CTA} 0%, ${CTA_SOFT} 100%)`, color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: "13px", boxShadow: "0 4px 12px rgba(237,82,6,0.18)" }}>Đã có trong Sheet Chatbot</button>
+                  <button onClick={() => { toast.info("FAQ này đã được lấy trực tiếp từ thư viện phản hồi trong database."); setShowDetailModal(false); }} style={{ padding: "9px 18px", borderRadius: "9px", border: "none", background: `linear-gradient(135deg, ${CTA} 0%, ${CTA_SOFT} 100%)`, color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: "13px", boxShadow: "0 4px 12px rgba(237,82,6,0.18)" }}>Đã có trong thư viện phản hồi</button>
                 </>
               ) : (
                 <>

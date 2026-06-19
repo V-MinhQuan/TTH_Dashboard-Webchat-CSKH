@@ -124,7 +124,7 @@ export function describeFieldSlotRejection(
   context: FieldSlotContext,
 ): string {
   if (slot === "tooltip") {
-    return `Trường “${field.label}” chỉ thêm vào Tooltip sau khi đã nằm trong Trục X, Giá trị Y hoặc Chú giải.`;
+    return `Trường "${field.label}" chỉ thêm vào Tooltip sau khi đã nằm trong Trục X, Giá trị Y hoặc Chú giải.`;
   }
   if (
     slot === "metric"
@@ -134,7 +134,7 @@ export function describeFieldSlotRejection(
   ) {
     return `Biểu đồ phân tán chỉ nhận chỉ số số ở Giá trị Y.`;
   }
-  return `Trường “${field.label}” không phù hợp với vị trí ${FIELD_SLOT_META[slot].label}.`;
+  return `Trường "${field.label}" không phù hợp với vị trí ${FIELD_SLOT_META[slot].label}.`;
 }
 
 export function toSlotCapableField(field: CatalogFieldMeta): SlotCapableField {

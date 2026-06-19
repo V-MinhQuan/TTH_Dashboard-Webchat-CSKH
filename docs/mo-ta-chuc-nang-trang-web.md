@@ -14,7 +14,7 @@ Tai lieu nay tom tat cac chuc nang chinh cua FLIC AI Operations Dashboard theo n
 | 8 | Phan tich tu khoa | Keywords | Admin | Nhom va thong ke cac chu de quan tam nhu TOEIC, VSTEP, Tin hoc / MOS / IC3 va Chuan dau ra / Chung chi. |
 | 9 | Phan tich cam xuc | Cam xuc | Admin | Theo doi ty le tich cuc, trung lap, tieu cuc va cac dau hieu bat thuong trong hoi thoai khach hang. |
 | 10 | Tao bieu do | Bieu do | Admin | Cho phep chon truong du lieu, cau hinh truc, gia tri, bo loc va xem truoc bieu do truoc khi luu vao dashboard. |
-| 11 | Quan ly Sheet Chatbot | Sheet Chatbot | Admin, Staff | Luu tru cau hoi - cau tra loi dung, theo doi trang thai duyet va ho tro cap nhat tri thuc chatbot. |
+| 11 | Quan ly thu vien phan hoi | Thu vien phan hoi | Admin, Staff | Luu tru cau hoi - cau tra loi dung, theo doi trang thai duyet va ho tro cap nhat tri thuc chatbot. |
 | 12 | Quan ly FAQ | FAQ | Staff | Cho phep xem chi tiet FAQ, de xuat chinh sua noi dung va tham khao cau tra loi AI theo tung chu de. |
 | 13 | Hieu suat ca nhan | Hieu suat | Staff | Hien thi so lieu xu ly hoi thoai, toc do phan hoi, muc do hai long va xu huong hieu suat cua nhan vien. |
 | 14 | Ho so ca nhan | Ho so / Thong tin ca nhan | Admin, Staff | Quan ly thong tin nguoi dung, cau hinh thong bao, kenh phu trach va tuy chon hien thi hoi thoai. |
@@ -26,5 +26,5 @@ Tai lieu nay tom tat cac chuc nang chinh cua FLIC AI Operations Dashboard theo n
 ## Ghi chu
 
 - Admin / Manager tap trung vao tong quan he thong, phan tich du lieu, quan ly tri thuc chatbot va cau hinh van hanh.
-- Staff tap trung vao hoi thoai duoc giao, FAQ, Sheet Chatbot, hieu suat ca nhan va ho so lam viec.
+- Staff tap trung vao hoi thoai duoc giao, FAQ, thu vien phan hoi, hieu suat ca nhan va ho so lam viec.
 - Du lieu hien tai la du lieu demo phuc vu trinh bay va kiem thu giao dien.

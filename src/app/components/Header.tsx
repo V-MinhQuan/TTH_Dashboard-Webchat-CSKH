@@ -106,7 +106,7 @@ export function Header({ activeScreen, onNavigate }: HeaderProps) {
           return null;
         }),
         getSheetChatbotRows({ pageSize: 1, role }).catch((error) => {
-          console.warn("Không thể tải Sheet Chatbot cho thông báo hệ thống", error);
+          console.warn("Không thể tải thư viện phản hồi cho thông báo hệ thống", error);
           return null;
         }),
       ]);
@@ -149,9 +149,9 @@ export function Header({ activeScreen, onNavigate }: HeaderProps) {
         const id = `sheet-chatbot:pending:${pendingManager}`;
         items.push({
           id,
-          text: `${pendingManager} dòng Sheet Chatbot chờ quản lý duyệt`,
+          text: `${pendingManager} phản hồi chờ quản lý duyệt`,
           type: "info",
-          time: "Cập nhật theo Sheet Chatbot",
+          time: "Cập nhật theo thư viện phản hồi",
           status: "pending",
           targetScreen: "chatbot_sheet",
         });
@@ -161,9 +161,9 @@ export function Header({ activeScreen, onNavigate }: HeaderProps) {
         const id = `sheet-chatbot:needs-edit:${needsEdit}`;
         items.push({
           id,
-          text: `${needsEdit} dòng Sheet Chatbot cần chỉnh sửa`,
+          text: `${needsEdit} phản hồi cần chỉnh sửa`,
           type: "warning",
-          time: "Cập nhật theo Sheet Chatbot",
+          time: "Cập nhật theo thư viện phản hồi",
           status: "pending",
           targetScreen: "chatbot_sheet",
         });

@@ -3,8 +3,8 @@ import {
   CalendarDays,
   ChevronDown,
   ChevronRight,
-  CircleHelp,
   CircleGauge,
+  CircleHelp,
   GripVertical,
   Hash,
   MessageSquareText,
@@ -301,7 +301,7 @@ export function DataFieldsPanel({
                               <button
                                 type="button"
                                 draggable
-                                title={`${field.label} · ${slotSummary}`}
+                                title={`${field.label} - ${slotSummary}`}
                                 aria-expanded={active}
                                 className={[
                                   "chart-builder-field-item",

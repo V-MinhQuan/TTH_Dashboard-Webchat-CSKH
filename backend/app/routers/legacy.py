@@ -483,7 +483,7 @@ async def get_sheet_chatbot_rows(
         })
         return {
             "success": True,
-            "message": "Get Sheet Chatbot rows successfully",
+            "message": "Get response library rows successfully",
             "data": res["rows"],
             "total": res["total"],
             "page": res["page"],
@@ -498,7 +498,7 @@ async def get_sheet_chatbot_stats():
     try:
         return {
             "success": True,
-            "message": "Get Sheet Chatbot stats successfully",
+            "message": "Get response library stats successfully",
             "data": sheet_chatbot_service.get_stats()
         }
     except Exception as e:
@@ -518,7 +518,7 @@ async def get_sheet_chatbot_duplicates(
         )
         return {
             "success": True,
-            "message": "Find duplicate Sheet Chatbot rows successfully",
+            "message": "Find duplicate response library rows successfully",
             "data": res
         }
     except Exception as e:
@@ -530,7 +530,7 @@ async def get_sheet_chatbot_row_by_id(id: str):
         res = await sheet_chatbot_service.get_row_by_id(id)
         return {
             "success": True,
-            "message": "Get Sheet Chatbot row successfully",
+            "message": "Get response library row successfully",
             "data": res
         }
     except Exception as e:
@@ -542,7 +542,7 @@ async def create_sheet_chatbot_row(body: SheetChatbotCreateBody):
         res = await sheet_chatbot_service.create_row(body.model_dump(exclude_none=True))
         return {
             "success": True,
-            "message": "Create Sheet Chatbot row successfully",
+            "message": "Create response library row successfully",
             "data": res
         }
     except Exception as e:
@@ -554,7 +554,7 @@ async def update_sheet_chatbot_row(id: str, body: SheetChatbotUpdateBody):
         res = await sheet_chatbot_service.update_row(id, body.model_dump(exclude_none=True))
         return {
             "success": True,
-            "message": "Update Sheet Chatbot row successfully",
+            "message": "Update response library row successfully",
             "data": res
         }
     except Exception as e:
@@ -572,7 +572,7 @@ async def update_sheet_chatbot_status(id: str, body: SheetChatbotStatusBody):
         )
         return {
             "success": True,
-            "message": "Update Sheet Chatbot status successfully",
+            "message": "Update response library status successfully",
             "data": res
         }
     except Exception as e:
@@ -586,7 +586,7 @@ async def merge_sheet_chatbot_to_faq(id: str, body: SheetChatbotMergeBody = None
         res = await sheet_chatbot_service.merge_to_faq(id, reviewer=reviewer)
         return {
             "success": True,
-            "message": "Merge Sheet Chatbot row to FAQ successfully",
+            "message": "Merge response library row to FAQ successfully",
             "data": res
         }
     except Exception as e:
@@ -598,7 +598,7 @@ async def delete_sheet_chatbot_row(id: str):
         await sheet_chatbot_service.delete_row(id)
         return {
             "success": True,
-            "message": "Delete Sheet Chatbot row successfully"
+            "message": "Delete response library row successfully"
         }
     except Exception as e:
         raise HTTPException(status_code=404, detail=str(e))

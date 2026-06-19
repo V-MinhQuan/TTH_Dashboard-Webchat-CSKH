@@ -176,13 +176,13 @@ export function AddSheetModal({ prefillQuestion = "", prefillAnswer = "", initia
       setIsSaving(true);
       await onSave?.({ question, correctAnswer: answer, topic, source, risk, status, notes });
       if (risk === "Cao") {
-        toast.success("Đã thêm vào Sheet Chatbot và chờ xử lý");
+        toast.success("Đã thêm phản hồi và chờ xử lý");
       } else {
-        toast.success("Đã thêm dữ liệu vào Sheet Chatbot");
+        toast.success("Đã thêm phản hồi vào thư viện");
       }
       onClose();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Không thể lưu dữ liệu vào Sheet Chatbot");
+      toast.error(error instanceof Error ? error.message : "Không thể lưu phản hồi vào thư viện");
     } finally {
       setIsSaving(false);
     }
@@ -193,7 +193,7 @@ export function AddSheetModal({ prefillQuestion = "", prefillAnswer = "", initia
       <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 150, display: "flex", alignItems: "center", justifyContent: "center" }}>
         <div style={{ background: "#fff", borderRadius: "18px", width: "560px", maxHeight: "90vh", overflowY: "auto", padding: "28px", boxShadow: "0 16px 48px rgba(0,0,0,0.15)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
-            <h3 style={{ fontSize: "16px", fontWeight: 700, color: NAVY, margin: 0 }}>{initialValues ? "Chỉnh sửa dữ liệu thêm vào chatbot" : "Thêm dữ liệu vào Sheet Chatbot"}</h3>
+            <h3 style={{ fontSize: "16px", fontWeight: 700, color: NAVY, margin: 0 }}>{initialValues ? "Chỉnh sửa phản hồi" : "Thêm phản hồi"}</h3>
             <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(0,56,101,0.4)" }}><X size={18} /></button>
           </div>
 
@@ -251,7 +251,7 @@ export function AddSheetModal({ prefillQuestion = "", prefillAnswer = "", initia
           <div style={{ display: "flex", gap: "10px", marginTop: "20px" }}>
             <button onClick={onClose} style={{ flex: 1, padding: "10px", borderRadius: "10px", border: "1px solid rgba(0,56,101,0.12)", background: "#fff", color: NAVY, cursor: "pointer", fontWeight: 600, fontSize: "13px" }}>Hủy</button>
             <button onClick={handleSave} disabled={!question.trim() || !answer.trim() || isSaving} style={{ flex: 2, padding: "10px", borderRadius: "10px", border: "none", background: (!question.trim() || !answer.trim() || isSaving) ? "#ccc" : NAVY, color: "#fff", cursor: (!question.trim() || !answer.trim() || isSaving) ? "not-allowed" : "pointer", fontWeight: 600, fontSize: "13px" }}>
-              {isSaving ? "Đang lưu..." : "Lưu vào Sheet Chatbot"}
+              {isSaving ? "Đang lưu..." : "Lưu phản hồi"}
             </button>
           </div>
         </div>
@@ -342,7 +342,7 @@ export function SheetChatbot() {
       });
       setRows(response.data);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Không thể tải dữ liệu Sheet Chatbot";
+      const message = error instanceof Error ? error.message : "Không thể tải thư viện phản hồi";
       setLoadError(message);
       setRows([]);
       toast.error(message);
@@ -440,17 +440,17 @@ export function SheetChatbot() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
           <h1 style={{ fontSize: "20px", fontWeight: 700, color: NAVY, marginBottom: "4px" }}>
-            {role === "manager" ? "Quản lý thư viện phản hồi" : "Sheet Chatbot của tôi"}
+            {role === "manager" ? "Quản lý thư viện phản hồi" : "Thư viện phản hồi của tôi"}
           </h1>
           <p style={{ fontSize: "13px", color: "rgba(0,56,101,0.5)", margin: 0 }}>
-            {role === "manager" ? "Quản lý, duyệt và cập nhật dữ liệu chatbot từ tất cả nhân viên" : "Câu hỏi đúng bạn đã thêm vào Sheet Chatbot"}
+            {role === "manager" ? "Quản lý, duyệt và cập nhật các phản hồi do nhân viên đề xuất để bổ sung vào kho tri thức của chatbot." : "Các phản hồi bạn đã đề xuất để bổ sung vào kho tri thức của chatbot."}
           </p>
         </div>
         <button
           onClick={() => { setEditingRow(null); setShowAddModal(true); }}
           style={{ padding: "9px 18px", borderRadius: "10px", backgroundColor: NAVY, color: "#fff", border: "none", display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontWeight: 600, fontSize: "13px" }}
         >
-          <Plus size={15} /> Thêm vào Sheet Chatbot
+          <Plus size={15} /> Thêm phản hồi
         </button>
       </div>
 

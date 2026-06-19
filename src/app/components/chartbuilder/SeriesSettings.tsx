@@ -2,15 +2,18 @@ import { Plus, Trash2 } from "lucide-react";
 
 import {
   CatalogFieldMeta,
+  ChartTheme,
   ChartType,
   MetricSelection,
 } from "../../types/chartBuilder";
 import { AGGREGATION_LABELS } from "./chartBuilderLabels";
+import { getChartBuilderPalette, paletteColor } from "./chartBuilderPalettes";
 
 interface Props {
   fields: CatalogFieldMeta[];
   metrics: MetricSelection[];
   chartType: ChartType;
+  theme: ChartTheme;
   onChange: (metrics: MetricSelection[]) => void;
 }
 
@@ -18,8 +21,10 @@ export function SeriesSettings({
   fields,
   metrics,
   chartType,
+  theme,
   onChange,
 }: Props) {
+  const palette = getChartBuilderPalette(theme);
   const metricFields = fields.filter(
     (field) => field.available && field.roles.includes("metric"),
   );
@@ -43,10 +48,10 @@ export function SeriesSettings({
             className="chart-builder-series-row"
           >
             <div className="chart-builder-series-heading">
-              <span>{field?.label || metric.fieldId}</span>
+              <span>{field?.label || metric.label || metric.fieldId}</span>
               <button
                 type="button"
-                aria-label={`Xóa ${field?.label || metric.fieldId}`}
+                aria-label={`Xóa ${field?.label || metric.label || metric.fieldId}`}
                 onClick={() => onChange(
                   metrics.filter((_, itemIndex) => itemIndex !== index),
                 )}
@@ -131,13 +136,13 @@ export function SeriesSettings({
             <label className="chart-builder-color-control">
               <input
                 type="color"
-                value={metric.color || fallbackColors[index % fallbackColors.length]}
+                value={metric.color || paletteColor(theme, index)}
                 onChange={(event) => updateMetric(index, {
                   color: event.target.value,
                 })}
               />
               <span>
-                {metric.color || fallbackColors[index % fallbackColors.length]}
+                {metric.color || paletteColor(theme, index)}
               </span>
             </label>
           </div>
@@ -172,7 +177,7 @@ export function SeriesSettings({
                   fieldId: field.id,
                   aggregation,
                   alias: buildMetricAlias(field.id, metrics.length),
-                  color: fallbackColors[metrics.length % fallbackColors.length],
+                  color: palette[metrics.length % palette.length],
                   axisGroup: "left",
                   seriesType: chartType === "combo"
                     ? (metrics.length ? "line" : "bar")
@@ -198,13 +203,3 @@ function buildMetricAlias(
 ) {
   return `metric_${fieldId}_${index + 1}`;
 }
-
-const fallbackColors = [
-  "#003865",
-  "#ED5206",
-  "#D73C01",
-  "#1565C0",
-  "#228A61",
-  "#F59E0B",
-  "#42A5F5",
-];
