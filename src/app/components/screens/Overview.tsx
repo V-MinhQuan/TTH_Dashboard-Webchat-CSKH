@@ -1291,7 +1291,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                               try {
                                 if (conv.customerId && conv.source) {
                                   await handleCloseConversation(conv.customerId, conv.source);
-                                  toast.success("Đã đánh dấu xử lý thành công.");
+                                  toast.success("Đã chuyển hội thoại sang Hoàn thành.");
                                 } else {
                                   toast.error("Không tìm thấy thông tin hội thoại để xử lý.");
                                 }

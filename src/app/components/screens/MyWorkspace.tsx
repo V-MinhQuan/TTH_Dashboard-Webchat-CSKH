@@ -62,7 +62,7 @@ function formatDateLabel() {
 function mapStatus(status: string) {
   if (status === "closed") return "Hoàn thành";
   if (status === "open") return "Đang xử lý";
-  if (status === "new") return "Chờ xử lý";
+  if (status === "pending" || status === "new") return "Chờ xử lý";
   return "Chưa xác định";
 }
 

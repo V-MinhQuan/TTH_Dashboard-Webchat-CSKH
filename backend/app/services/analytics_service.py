@@ -139,17 +139,44 @@ class AnalyticsService:
     def get_keywords(self, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
         payload = self.repository.get_keyword_raw_data(filters)
         keyword_count: Dict[str, int] = {}
+        keyword_topic_count: Dict[str, Dict[str, int]] = {}
+
+        def add_keyword(
+            keyword: Any,
+            count: int,
+            topics: Iterable[Any],
+            context: str,
+        ) -> None:
+            key = str(keyword or "").strip()
+            if not key:
+                return
+            topic = _topic_label(
+                _infer_keyword_topic(
+                    topics=topics,
+                    question=" ".join([key, context]).strip(),
+                    suggested_answer="",
+                )
+            )
+            keyword_count[key] = keyword_count.get(key, 0) + count
+            topic_counts = keyword_topic_count.setdefault(key, {})
+            topic_counts[topic] = topic_counts.get(topic, 0) + count
+
         for row in payload.get("rows", []):
             count = int(row.get("msgCount") or 1)
+            topics = list(_json_array(row.get("detectedTopics")))
+            context = str(row.get("keywordContext") or "")
             for keyword in _json_array(row.get("matchedNegativeKeywords")):
-                key = str(keyword)
-                keyword_count[key] = keyword_count.get(key, 0) + count
+                add_keyword(keyword, count, topics, context)
             issue_type = row.get("issueType")
             if issue_type and issue_type != "none":
-                key = f"issue:{issue_type}"
-                keyword_count[key] = keyword_count.get(key, 0) + count
+                add_keyword(f"issue:{issue_type}", count, topics, context)
         return [
-            {"keyword": keyword, "count": count}
+            {
+                "keyword": keyword,
+                "count": count,
+                "topic": _dominant_topic(keyword_topic_count.get(keyword, {})),
+                "topicLabel": _dominant_topic(keyword_topic_count.get(keyword, {})),
+            }
             for keyword, count in sorted(keyword_count.items(), key=lambda item: item[1], reverse=True)[:50]
         ]
 
@@ -332,12 +359,45 @@ def _infer_keyword_topic(topics: Iterable[Any], question: str, suggested_answer:
         return "TOEIC"
     if "vstep" in text:
         return "VSTEP"
-    if any(token in text for token in ("tin hoc", "mos", "ic3", "cntt", "sat hach")):
+    if any(token in text for token in (
+        "tin hoc",
+        "tin co ban",
+        "tin nang cao",
+        "mos",
+        "ic3",
+        "cntt",
+        "sat hach",
+        "excel",
+        "word",
+        "powerpoint",
+    )):
         return "Tin học / MOS / IC3"
     if any(token in text for token in ("chuan dau ra", "dau ra", "chung chi")):
         return "Chuẩn đầu ra / Chứng chỉ"
     topics_list = list(topics)
     return str(topics_list[0]) if topics_list else "Khác"
+
+
+def _topic_label(topic: Any) -> str:
+    value = str(topic or "").strip()
+    if not value:
+        return "Khác"
+    if value.lower() in {"khac", "khác", "other", "unknown", "none"}:
+        return "Khác"
+    return TOPIC_LABELS.get(value, value)
+
+
+def _dominant_topic(topic_counts: Dict[str, int]) -> str:
+    if not topic_counts:
+        return "Khác"
+    specific_topics = {
+        topic: count
+        for topic, count in topic_counts.items()
+        if _normalize_topic_text(topic) not in {"khac", "other", "unknown", "none"}
+    }
+    if specific_topics:
+        return max(specific_topics.items(), key=lambda item: item[1])[0]
+    return "Khác"
 
 def _json_array(value: Any) -> Iterable[Any]:
     if value is None:

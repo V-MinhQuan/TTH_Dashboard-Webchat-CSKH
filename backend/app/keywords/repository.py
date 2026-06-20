@@ -2,6 +2,7 @@ import os
 import json
 from datetime import datetime, time
 from app.core.legacy_db_executor import execute_query
+from app.repositories.display_filters import valid_conversation_condition, valid_message_condition
 
 # File JSON stored in data/crm_keywords.json relative to backend root
 JSON_FILE_PATH = os.path.join(os.path.dirname(__file__), "../data/crm_keywords.json")
@@ -107,7 +108,7 @@ def _build_message_filters(
 ):
     """Build SQL joins, WHERE fragments and params for WebChat_MessageLogs alias m."""
     joins = []
-    clauses = []
+    clauses = [valid_message_condition("m")]
     params = []
 
     if start_date:
@@ -139,11 +140,11 @@ def _build_message_filters(
         active_sql = "(s.NoResponseNeeded IS NULL OR s.NoResponseNeeded = 0 OR c.LastCustomerMessageAt > s.MarkedAt)"
 
         if conversation_status == "Chờ xử lý":
-            clauses.append(f"c.CustomerId IS NOT NULL AND {active_sql} AND (c.LastHostMessageAt IS NULL OR c.LastCustomerMessageAt > c.LastHostMessageAt)")
+            clauses.append(f"c.CustomerId IS NOT NULL AND {valid_conversation_condition('c')} AND {active_sql} AND (c.LastHostMessageAt IS NULL OR c.LastCustomerMessageAt > c.LastHostMessageAt)")
         elif conversation_status == "Đang xử lý":
-            clauses.append(f"c.CustomerId IS NOT NULL AND {active_sql} AND c.LastHostMessageAt IS NOT NULL AND c.LastCustomerMessageAt <= c.LastHostMessageAt")
+            clauses.append(f"c.CustomerId IS NOT NULL AND {valid_conversation_condition('c')} AND {active_sql} AND c.LastHostMessageAt IS NOT NULL AND c.LastCustomerMessageAt <= c.LastHostMessageAt")
         elif conversation_status == "Hoàn thành":
-            clauses.append(f"c.CustomerId IS NOT NULL AND {closed_sql}")
+            clauses.append(f"c.CustomerId IS NOT NULL AND {valid_conversation_condition('c')} AND {closed_sql}")
 
     if needs_ai_status:
         failure_sql = _ai_failure_condition("m")

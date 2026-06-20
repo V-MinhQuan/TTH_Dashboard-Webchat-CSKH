@@ -32,6 +32,7 @@ import {
   ChartType,
 } from "../../types/chartBuilder";
 import { CHART_BUILDER_LABELS } from "./chartBuilderLabels";
+import { isChartBuilderPaletteColor } from "./chartBuilderPalettes";
 
 interface Props {
   chartType: ChartType;
@@ -344,6 +345,9 @@ export function ChartPreview({
               fill={series.color}
               radius={[0, 5, 5, 0]}
             >
+              {chartSeries.length === 1
+                && shouldUsePaletteCells(series, palette)
+                && renderPaletteCells(chartRows, palette, series.color, series.key)}
               {showDataLabels && <DataLabel dataKey={series.key} />}
             </Bar>
           ))}
@@ -457,6 +461,10 @@ export function ChartPreview({
             radius={chartType === "stacked_bar" ? 0 : [5, 5, 0, 0]}
             stackId={chartType === "stacked_bar" ? "chart-builder-stack" : undefined}
           >
+            {chartType !== "stacked_bar"
+              && chartSeries.length === 1
+              && shouldUsePaletteCells(series, palette)
+              && renderPaletteCells(chartRows, palette, series.color, series.key)}
             {showDataLabels && <DataLabel dataKey={series.key} />}
           </Bar>
         ))}
@@ -679,6 +687,27 @@ function normalizeChartSeries(
     label: safeText(seriesDisplayByKey[item.key]?.label || item.label || item.key),
     color: seriesDisplayByKey[item.key]?.color || palette[index % palette.length] || item.color,
   }));
+}
+
+function shouldUsePaletteCells(
+  series: ChartSeries,
+  palette: string[],
+): boolean {
+  return palette.length > 1 && isChartBuilderPaletteColor(series.color);
+}
+
+function renderPaletteCells(
+  rows: ChartDataResponse["rows"],
+  palette: string[],
+  fallbackColor: string,
+  keyPrefix: string,
+) {
+  return rows.map((_, index) => (
+    <Cell
+      key={`${keyPrefix}-palette-cell-${index}`}
+      fill={palette[index % palette.length] || fallbackColor}
+    />
+  ));
 }
 
 function formatDimensionValue(value: unknown): string {

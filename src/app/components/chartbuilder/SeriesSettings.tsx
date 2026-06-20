@@ -7,7 +7,7 @@ import {
   MetricSelection,
 } from "../../types/chartBuilder";
 import { AGGREGATION_LABELS } from "./chartBuilderLabels";
-import { getChartBuilderPalette, paletteColor } from "./chartBuilderPalettes";
+import { paletteColor } from "./chartBuilderPalettes";
 
 interface Props {
   fields: CatalogFieldMeta[];
@@ -24,7 +24,6 @@ export function SeriesSettings({
   theme,
   onChange,
 }: Props) {
-  const palette = getChartBuilderPalette(theme);
   const metricFields = fields.filter(
     (field) => field.available && field.roles.includes("metric"),
   );
@@ -42,6 +41,7 @@ export function SeriesSettings({
     <div className="chart-builder-series-settings">
       {metrics.map((metric, index) => {
         const field = metricFields.find((item) => item.id === metric.fieldId);
+        const resolvedColor = metric.color || paletteColor(theme, index);
         return (
           <div
             key={metric.alias || `${metric.fieldId}-${index}`}
@@ -136,13 +136,13 @@ export function SeriesSettings({
             <label className="chart-builder-color-control">
               <input
                 type="color"
-                value={metric.color || paletteColor(theme, index)}
+                value={resolvedColor}
                 onChange={(event) => updateMetric(index, {
                   color: event.target.value,
                 })}
               />
               <span>
-                {metric.color || paletteColor(theme, index)}
+                {resolvedColor}
               </span>
             </label>
           </div>
@@ -177,7 +177,7 @@ export function SeriesSettings({
                   fieldId: field.id,
                   aggregation,
                   alias: buildMetricAlias(field.id, metrics.length),
-                  color: palette[metrics.length % palette.length],
+                  color: null,
                   axisGroup: "left",
                   seriesType: chartType === "combo"
                     ? (metrics.length ? "line" : "bar")

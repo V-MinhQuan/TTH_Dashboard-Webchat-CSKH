@@ -3,12 +3,10 @@ import logging
 from datetime import datetime
 
 from app.db.session import get_connection
+from app.repositories.display_filters import valid_message_condition
+from app.services.ai_issue_classifier import classify_ai_issue
 
 logger = logging.getLogger(__name__)
-
-NO_DATA_KWS = ['không tìm thấy', 'chưa có', 'chưa hỗ trợ', 'không thể', 'trợ lý ai', 'không thể tiếp nhận thông tin', 'không thể xác nhận trực tiếp']
-UNCERTAIN_KWS = ['chưa hiểu', 'chưa rõ', 'không chắc chắn', 'chưa có thông tin cụ thể', 'độ tin cậy', 'chưa xác nhận']
-HALLUCINATION_KWS = ['có vẻ như', 'chắc là', 'có lẽ', 'hình như', 'tôi đoán']
 
 def process_new_messages():
     """Finds new AI messages, analyzes text, and inserts them into WebChat_MessageAnalytics."""
@@ -17,7 +15,7 @@ def process_new_messages():
         
         # Select AI messages that are NOT YET in WebChat_MessageAnalytics
         # We also need conversationId from WebChat_Conversations
-        c.execute("""
+        c.execute(f"""
             SELECT 
                 m.id_webchat_messageLogs AS messageId,
                 m.TextContent,
@@ -38,6 +36,7 @@ def process_new_messages():
             WHERE m.FromHost = 1 
               AND m.HostDisplayName = 'AI Assistant'
               AND m.TextContent IS NOT NULL
+              AND {valid_message_condition("m")}
               AND a.messageId IS NULL
         """)
         
@@ -48,34 +47,17 @@ def process_new_messages():
         inserts = []
         for msg in messages:
             msg_id = msg[0]
-            text = msg[1].lower() if msg[1] else ""
+            classification = classify_ai_issue(msg[1])
             sent_at = msg[2]
             source = msg[4]
             receiver_id = msg[5]
             conv_id = msg[6]
-            
-            issue_type = None
-            issue_reason = None
-            confidence = None
-            
-            if any(kw in text for kw in NO_DATA_KWS):
-                issue_type = 'Không tìm thấy dữ liệu'
-                issue_reason = 'Dựa trên phân tích từ khóa: không tìm thấy, chưa có, không thể...'
-                confidence = 0.85
-            elif any(kw in text for kw in UNCERTAIN_KWS):
-                issue_type = 'AI không chắc chắn'
-                issue_reason = 'Dựa trên phân tích từ khóa: chưa hiểu, chưa rõ, không chắc chắn...'
-                confidence = 0.75
-            elif any(kw in text for kw in HALLUCINATION_KWS):
-                issue_type = 'AI có nguy cơ tự tạo thông tin'
-                issue_reason = 'Dựa trên phân tích từ khóa: có vẻ như, chắc là, hình như...'
-                confidence = 0.65
-                
-            issue_flag = 1 if issue_type else 0
+            issue_flag = 1 if classification.issue_flag else 0
             
             inserts.append((
                 msg_id, conv_id, receiver_id, source, 'neutral', 0.0, issue_flag,
-                sent_at, datetime.now(), issue_flag, issue_type, issue_reason, confidence
+                sent_at, datetime.now(), issue_flag, classification.issue_type,
+                classification.issue_reason, classification.issue_confidence
             ))
             
         # Apply inserts

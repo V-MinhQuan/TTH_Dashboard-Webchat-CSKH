@@ -44,7 +44,6 @@ export function KpiCard({
         cursor: "default",
         transition: "box-shadow 0.2s ease",
         border: "1px solid rgba(0,59,185,0.07)",
-        borderLeft: isWarning ? `4px solid ${ORANGE}` : "1px solid rgba(0,59,185,0.07)",
         position: "relative",
         overflow: "hidden",
         display: "flex",

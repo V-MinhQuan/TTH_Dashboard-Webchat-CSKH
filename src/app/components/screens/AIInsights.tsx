@@ -191,6 +191,24 @@ function displayDateTime(value: unknown) {
   return date.toLocaleString("vi-VN");
 }
 
+function csvCell(value: unknown) {
+  const text = value === null || value === undefined ? "" : String(value);
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function downloadCsv(filename: string, rows: Array<Array<unknown>>) {
+  const csv = rows.map(row => row.map(csvCell).join(",")).join("\r\n");
+  const blob = new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsProps) {
   const { user } = useAuth();
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
@@ -287,6 +305,43 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
     if (showToast) {
       toast.info("Backend hiện chưa có API lưu trạng thái xử lý lỗi AI; chỉ ẩn dòng trong phiên hiện tại.");
     }
+  };
+
+  const handleExportFailedConversations = () => {
+    if (!failedConversations.length) {
+      toast.warning("Không có dữ liệu lỗi AI để xuất.");
+      return;
+    }
+
+    const rows = [
+      [
+        "STT",
+        "Câu hỏi khách hàng",
+        "Câu trả lời AI",
+        "Mã khách hàng",
+        "Chủ đề",
+        "Kênh",
+        "Lý do lỗi AI",
+        "Mức độ tin cậy (%)",
+        "Mức ảnh hưởng",
+        "Gợi ý tri thức",
+      ],
+      ...failedConversations.map((item, index) => [
+        index + 1,
+        item.question,
+        item.aiAnswer,
+        item.customerId,
+        item.topic,
+        item.channel,
+        item.failReason,
+        `${Math.round((Number(item.confidence) || 0) * 100)}%`,
+        item.impact,
+        item.kbSuggestion,
+      ]),
+    ];
+    const date = new Date().toISOString().slice(0, 10);
+    downloadCsv(`cau-hoi-ai-chua-xu-ly-${date}.csv`, rows);
+    toast.success(`Đã xuất ${failedConversations.length} dòng lỗi AI.`);
   };
 
   return (
@@ -544,7 +599,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
               </div>
               <div style={{ display: "flex", gap: "8px" }}>
                 <button
-                  onClick={() => toast.info("Chưa có chức năng xuất file cho danh sách lỗi AI trong backend hiện tại.")}
+                  onClick={handleExportFailedConversations}
                   style={{ padding: "6px 14px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.12)", background: "#f8fafc", color: NAVY, cursor: "pointer", fontSize: "12px" }}
                 >
                   Xuất danh sách

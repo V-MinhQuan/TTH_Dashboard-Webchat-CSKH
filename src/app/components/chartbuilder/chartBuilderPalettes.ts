@@ -10,10 +10,16 @@ export const CHART_BUILDER_PALETTES: Record<ChartTheme, string[]> = {
     "#F59E0B",
     "#42A5F5",
   ],
-  navy: ["#003865", "#1565C0", "#42A5F5", "#0F6C8D", "#5B8DB8", "#8BB9D9"],
+  navy: ["#1565C0", "#003865", "#42A5F5", "#0F6C8D", "#5B8DB8", "#8BB9D9"],
   warm: ["#D73C01", "#ED5206", "#F59E0B", "#C24173", "#E76F51", "#F4A261"],
-  monochrome: ["#003865", "#245679", "#507999", "#7C9CB8", "#A8C1D6", "#D2E0EC"],
+  monochrome: ["#507999", "#003865", "#245679", "#7C9CB8", "#A8C1D6", "#D2E0EC"],
 };
+
+const AUTO_PALETTE_COLORS = new Set(
+  Object.values(CHART_BUILDER_PALETTES)
+    .flat()
+    .map((color) => color.toLowerCase()),
+);
 
 export const CHART_BUILDER_PALETTE_LABELS: Record<ChartTheme, string> = {
   flic: "FLIC Brand",
@@ -29,4 +35,10 @@ export function getChartBuilderPalette(theme: ChartTheme): string[] {
 export function paletteColor(theme: ChartTheme, index: number): string {
   const palette = getChartBuilderPalette(theme);
   return palette[index % palette.length] || CHART_BUILDER_PALETTES.flic[0];
+}
+
+export function isChartBuilderPaletteColor(
+  color: string | null | undefined,
+): boolean {
+  return Boolean(color && AUTO_PALETTE_COLORS.has(color.toLowerCase()));
 }

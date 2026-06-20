@@ -3,16 +3,13 @@ from __future__ import annotations
 from typing import Any, Callable, Dict, List, Tuple
 
 from app.db.session import execute_all, execute_one, get_connection
+from app.repositories.display_filters import conversation_status_case, valid_analytics_condition
 from app.repositories.schema_inspector import inspect_message_analytics_columns
 from app.utils.date_filters import build_date_filter
 from app.utils.pagination import normalize_pagination
 
 
-_STATUS_EXPR = (
-    "CASE WHEN latestStatus.NoResponseNeeded = 1 "
-    "AND (c.LastCustomerMessageAt IS NULL OR c.LastCustomerMessageAt <= latestStatus.MarkedAt) THEN 'closed' "
-    "WHEN latestStatus.NoResponseNeeded = 0 THEN 'open' ELSE 'new' END"
-)
+_STATUS_EXPR = conversation_status_case("c", "latestStatus")
 
 class AnalyticsRepository:
     def __init__(self, connection_factory: Callable = get_connection):
@@ -163,20 +160,50 @@ class AnalyticsRepository:
                 return {"rows": [], "optionalColumns": columns}
 
             issue_type_expr = "a.issueType" if columns.get("issueType") else "CAST(NULL AS NVARCHAR(100))"
+            standardized_question_expr = (
+                "NULLIF(LTRIM(RTRIM(a.standardizedQuestion)), '')"
+                if columns.get("standardizedQuestion")
+                else "CAST(NULL AS NVARCHAR(4000))"
+            )
+            keyword_context_expr = f"""
+              CAST(
+                COALESCE(
+                  {standardized_question_expr},
+                  CAST(cmsg.TextContent AS NVARCHAR(4000)),
+                  CAST(m.TextContent AS NVARCHAR(4000)),
+                  N''
+                ) AS NVARCHAR(4000)
+              )
+            """
             rows = execute_all(
                 conn,
                 f"""
                 SELECT
                   a.matchedNegativeKeywords,
+                  a.detectedTopics,
                   {issue_type_expr} AS issueType,
+                  MAX({keyword_context_expr}) AS keywordContext,
                   COUNT(*) AS msgCount
                 FROM dbo.WebChat_MessageAnalytics a
+                LEFT JOIN dbo.WebChat_MessageLogs m
+                  ON m.id_webchat_messagelogs = a.messageId
+                LEFT JOIN dbo.WebChat_Conversations c
+                  ON c.Id = a.conversationId
+                OUTER APPLY (
+                  SELECT TOP 1 cmsg.TextContent
+                  FROM dbo.WebChat_MessageLogs cmsg
+                  WHERE cmsg.Source = c.Source
+                    AND cmsg.SenderId = c.CustomerId
+                    AND cmsg.FromHost = 0
+                    AND cmsg.SentAt <= COALESCE(m.SentAt, a.messageAt)
+                  ORDER BY cmsg.SentAt DESC
+                ) cmsg
                 {where + " AND" if where else "WHERE"} {extra_condition}
                   AND (
                     (a.matchedNegativeKeywords IS NOT NULL AND a.matchedNegativeKeywords <> '[]')
                     {"OR a.issueType IS NOT NULL" if columns.get("issueType") and mode != "negative" else ""}
                   )
-                GROUP BY a.matchedNegativeKeywords, {issue_type_expr}
+                GROUP BY a.matchedNegativeKeywords, a.detectedTopics, {issue_type_expr}
                 ORDER BY msgCount DESC
                 """,
                 params,
@@ -348,7 +375,6 @@ class AnalyticsRepository:
                 SELECT
                   a.detectedTopics,
                   SUM(CASE WHEN a.issueType = N'Không tìm thấy dữ liệu' THEN 1 ELSE 0 END) AS thieuDL,
-                  SUM(CASE WHEN a.issueType = N'Không hiểu intent' THEN 1 ELSE 0 END) AS khongHieu,
                   SUM(CASE WHEN a.issueType = N'AI không chắc chắn' THEN 1 ELSE 0 END) AS khongChac,
                   SUM(CASE WHEN a.issueType = N'Câu hỏi ngoài phạm vi' THEN 1 ELSE 0 END) AS ngoaiPhamVi,
                   SUM(CASE WHEN a.issueType = N'AI có nguy cơ tự tạo thông tin' THEN 1 ELSE 0 END) AS hallucination
@@ -656,7 +682,7 @@ class AnalyticsRepository:
         return rows
 
     def _build_read_where(self, filters: Dict[str, Any], columns: Dict[str, bool]) -> Tuple[str, List[Any]]:
-        conditions: List[str] = []
+        conditions: List[str] = [valid_analytics_condition("a")]
         params: List[Any] = []
         date_filter = build_date_filter(
             column="a.messageAt",

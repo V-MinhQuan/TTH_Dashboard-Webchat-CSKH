@@ -8,6 +8,7 @@ from app.routers import analytics, auth, chart_builder, conversations, dashboard
 from app.routers.legacy import router as legacy_router
 import asyncio
 from app.worker.ai_analytics_worker import start_analytics_worker
+from app.worker.ai_issue_sync_scheduler import start_ai_issue_sync_scheduler
 
 configure_logging()
 settings_obj = get_settings()
@@ -59,4 +60,5 @@ def root():
 @app.on_event("startup")
 async def startup_event():
     asyncio.create_task(start_analytics_worker())
+    asyncio.create_task(start_ai_issue_sync_scheduler())
 

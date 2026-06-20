@@ -1,70 +1,36 @@
-import os
-from dotenv import load_dotenv
-load_dotenv()
-from app.db.session import get_connection
+import argparse
+import sys
+from pathlib import Path
 
-def sync_analytics():
-    print("Starting sync...")
-    with get_connection() as conn:
-        c = conn.cursor()
-        
-        # Reset current AI issues
-        c.execute("""
-            UPDATE dbo.WebChat_MessageAnalytics 
-            SET issueFlag = 0, issueType = NULL, issueConfidence = NULL, issueReason = NULL
-        """)
-        
-        # 1. Update 'Không tìm thấy dữ liệu'
-        # based on _ai_no_data_condition
-        c.execute("""
-            UPDATE a
-            SET a.issueFlag = 1,
-                a.issueType = N'Không tìm thấy dữ liệu',
-                a.issueConfidence = 0.85,
-                a.issueReason = N'Dựa trên phân tích từ khóa: không tìm thấy / chưa có / không thể'
-            FROM dbo.WebChat_MessageAnalytics a
-            INNER JOIN dbo.WebChat_MessageLogs m ON a.messageId = m.id_webchat_messageLogs
-            WHERE m.FromHost = 1 AND m.HostDisplayName = 'AI Assistant'
-              AND (
-                m.TextContent LIKE N'%không tìm thấy%'
-                OR m.TextContent LIKE N'%chưa có%'
-                OR m.TextContent LIKE N'%chưa hỗ trợ%'
-                OR m.TextContent LIKE N'%không thể%'
-                OR m.TextContent LIKE N'%Trợ lý AI%'
-                OR m.TextContent LIKE N'%Không thể tiếp nhận thông tin%'
-                OR m.TextContent LIKE N'%Không thể xác nhận trực tiếp%'
-              )
-        """)
-        
-        # 2. Update 'AI không chắc chắn'
-        # based on _ai_uncertain_condition
-        c.execute("""
-            UPDATE a
-            SET a.issueFlag = 1,
-                a.issueType = N'AI không chắc chắn',
-                a.issueConfidence = 0.75,
-                a.issueReason = N'Dựa trên phân tích từ khóa: chưa hiểu / chưa rõ / không chắc chắn'
-            FROM dbo.WebChat_MessageAnalytics a
-            INNER JOIN dbo.WebChat_MessageLogs m ON a.messageId = m.id_webchat_messageLogs
-            WHERE m.FromHost = 1 AND m.HostDisplayName = 'AI Assistant'
-              AND a.issueFlag = 0 -- Don't overwrite if already flagged
-              AND (
-                m.TextContent LIKE N'%chưa hiểu%'
-                OR m.TextContent LIKE N'%chưa rõ%'
-                OR m.TextContent LIKE N'%không chắc chắn%'
-                OR m.TextContent LIKE N'%chưa có thông tin cụ thể%'
-                OR m.TextContent LIKE N'%độ tin cậy%'
-                OR m.TextContent LIKE N'%chưa xác nhận%'
-              )
-        """)
-        
-        # Also let's set a few 'AI có nguy cơ tự tạo thông tin' 
-        # (Since there is no legacy rule for this, we will find long messages that start with certain phrases, or we can just leave it 0 since it's "do not mock data")
-        
-        # We MUST NOT MOCK DATA. The user explicitly said: "Không được giả lập dữ liệu phải làm đúng theo dữ liệu"
-        
-        conn.commit()
-        print("Sync completed!")
+from dotenv import load_dotenv
+
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = BACKEND_ROOT.parent
+sys.path.insert(0, str(BACKEND_ROOT))
+load_dotenv(REPO_ROOT / ".env")
+
+from app.services.ai_issue_sync_service import sync_ai_issue_flags
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Sync AI answer issue flags into dbo.WebChat_MessageAnalytics."
+    )
+    parser.add_argument("--apply", action="store_true", help="Commit changes to the database.")
+    parser.add_argument("--since", help="Only scan AI messages from this date/time, e.g. 2026-06-01.")
+    args = parser.parse_args()
+
+    result = sync_ai_issue_flags(apply=args.apply, since=args.since)
+    mode = "APPLY" if args.apply else "DRY-RUN"
+    print(f"[{mode}] AI messages scanned: {result.total_ai_messages}")
+    print(f"[{mode}] Rows to update: {result.would_update_rows}")
+    print(f"[{mode}] Rows to insert: {result.would_insert_rows}")
+    print(f"[{mode}] Flagged AI answers: {result.flagged_rows}")
+    for issue_type, count in sorted(result.issue_counts.items()):
+        print(f"  - {issue_type}: {count}")
+    if not args.apply:
+        print("No database changes were committed. Re-run with --apply to update the database.")
+
 
 if __name__ == "__main__":
-    sync_analytics()
+    main()

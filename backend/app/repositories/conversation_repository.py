@@ -3,6 +3,11 @@ from __future__ import annotations
 from typing import Any, Callable, Dict, List, Tuple
 
 from app.db.session import execute_all, execute_one, get_connection
+from app.repositories.display_filters import (
+    conversation_status_case,
+    valid_conversation_condition,
+    valid_message_condition,
+)
 from app.utils.date_filters import build_date_filter
 from app.utils.pagination import normalize_pagination
 
@@ -38,11 +43,7 @@ class ConversationRepository:
                   c.Id AS id,
                   c.CustomerId AS customer_id,
                   u.DisplayName AS customer_name,
-                  CASE
-                    WHEN s.NoResponseNeeded = 1 THEN 'closed'
-                    WHEN s.NoResponseNeeded = 0 THEN 'open'
-                    ELSE 'new'
-                  END AS status,
+                  {conversation_status_case("c", "latestStatus")} AS status,
                   c.Source AS source,
                   c.LastCustomerMessageAt AS created_at,
                   c.LastHostMessageAt AS first_response_at,
@@ -50,8 +51,13 @@ class ConversationRepository:
                 FROM dbo.WebChat_Conversations c
                 LEFT JOIN dbo.WebChat_Messagelogs_User_Info u
                   ON c.CustomerId = u.SenderId AND c.Source = u.Source
-                LEFT JOIN dbo.WebChat_ConversationStatus s
-                  ON c.CustomerId = s.CustomerId AND c.Source = s.Source
+                OUTER APPLY (
+                  SELECT TOP 1 s.NoResponseNeeded, s.MarkedAt
+                  FROM dbo.WebChat_ConversationStatus s
+                  WHERE s.CustomerId = c.CustomerId
+                    AND s.Source = c.Source
+                  ORDER BY CASE WHEN s.MarkedAt IS NULL THEN 0 ELSE 1 END DESC, s.MarkedAt DESC, s.Id DESC
+                ) latestStatus
                 {where}
                 ORDER BY c.LastCustomerMessageAt DESC
                 OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
@@ -71,7 +77,7 @@ class ConversationRepository:
         with self._connection_factory() as conn:
             conversation = execute_one(
                 conn,
-                """
+                f"""
                 SELECT
                   c.Id AS id,
                   c.CustomerId AS customer_id,
@@ -81,6 +87,7 @@ class ConversationRepository:
                   c.LastMessageAt AS updated_at
                 FROM dbo.WebChat_Conversations c
                 WHERE c.Id = ?
+                  AND {valid_conversation_condition("c")}
                 """,
                 [conversation_id],
             )
@@ -88,7 +95,7 @@ class ConversationRepository:
                 return {}
             messages = execute_all(
                 conn,
-                """
+                f"""
                 SELECT TOP 200
                   m.id_webchat_messagelogs AS messageId,
                   m.TextContent AS textContent,
@@ -98,6 +105,7 @@ class ConversationRepository:
                 FROM dbo.WebChat_MessageLogs m
                 WHERE m.Source = ?
                   AND (m.SenderId = ? OR m.ReceiverId = ?)
+                  AND {valid_message_condition("m")}
                 ORDER BY m.SentAt ASC
                 """,
                 [
@@ -112,13 +120,14 @@ class ConversationRepository:
         with self._connection_factory() as conn:
             row = execute_one(
                 conn,
-                """
+                f"""
                 SELECT TOP 1 c.Id AS conversationId
                 FROM dbo.WebChat_MessageLogs m
                 LEFT JOIN dbo.WebChat_Conversations c
                   ON c.CustomerId = CASE WHEN m.FromHost = 1 THEN m.ReceiverId ELSE m.SenderId END
                  AND c.Source = m.Source
                 WHERE m.id_webchat_messagelogs = ?
+                  AND {valid_message_condition("m")}
                 """,
                 [message_id],
             )
@@ -127,7 +136,7 @@ class ConversationRepository:
         return self.get_conversation(int(row["conversationId"]))
 
     def _where(self, filters: Dict[str, Any]) -> Tuple[str, List[Any]]:
-        conditions = ["c.LastCustomerMessageAt IS NOT NULL"]
+        conditions = ["c.LastCustomerMessageAt IS NOT NULL", valid_conversation_condition("c")]
         params: List[Any] = []
         date_filter = build_date_filter(
             column="c.LastCustomerMessageAt",

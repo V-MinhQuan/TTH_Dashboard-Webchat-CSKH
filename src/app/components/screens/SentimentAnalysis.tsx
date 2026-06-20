@@ -243,7 +243,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
           setNegKeywords(rawKw.slice(0, 10).map(d => ({
             word: d.keyword,
             count: d.count,
-            topic: d.issueType || "Không phân loại trong database"
+            topic: d.topicLabel || d.topic || "Khác"
           })));
         }
 

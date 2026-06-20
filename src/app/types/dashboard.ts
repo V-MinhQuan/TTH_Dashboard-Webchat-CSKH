@@ -59,6 +59,8 @@ export interface TopQuestion {
 
 export interface PriorityConversation {
   id: string;
+  customerId?: string;
+  source?: string;
   customer: string;
   channel: string;
   topic: string;

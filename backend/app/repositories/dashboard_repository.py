@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Callable, Dict, List, Tuple
 
 from app.db.session import execute_all, execute_one, get_connection
+from app.repositories.display_filters import conversation_status_case, valid_conversation_condition
 from app.repositories.schema_inspector import inspect_message_analytics_columns
 from app.utils.date_filters import build_date_filter
 
@@ -32,6 +33,7 @@ class DashboardRepository:
             conversation_where, conversation_params = self._conversation_where(filters)
             message_where, message_params = self._date_where(filters, "m.SentAt")
             analytics_where, analytics_params = self._date_where(filters, "a.messageAt")
+            status_expr = conversation_status_case("c", "latestStatus")
             optional_columns = inspect_message_analytics_columns(conn)
             issue_review_expr = "a.needStaffReview = 1 OR a.sentimentLabel = 'negative'"
             if optional_columns.get("issueFlag"):
@@ -60,22 +62,18 @@ class DashboardRepository:
                 conn,
                 f"""
                 SELECT
-                  CASE
-                    WHEN s.NoResponseNeeded = 1 THEN 'closed'
-                    WHEN s.NoResponseNeeded = 0 THEN 'open'
-                    ELSE 'new'
-                  END AS status,
+                  {status_expr} AS status,
                   COUNT(DISTINCT c.Id) AS total
                 FROM dbo.WebChat_Conversations c
-                LEFT JOIN dbo.WebChat_ConversationStatus s
-                  ON c.CustomerId = s.CustomerId AND c.Source = s.Source
+                OUTER APPLY (
+                  SELECT TOP 1 s.NoResponseNeeded, s.MarkedAt
+                  FROM dbo.WebChat_ConversationStatus s
+                  WHERE s.CustomerId = c.CustomerId
+                    AND s.Source = c.Source
+                  ORDER BY CASE WHEN s.MarkedAt IS NULL THEN 0 ELSE 1 END DESC, s.MarkedAt DESC, s.Id DESC
+                ) latestStatus
                 {conversation_where}
-                GROUP BY
-                  CASE
-                    WHEN s.NoResponseNeeded = 1 THEN 'closed'
-                    WHEN s.NoResponseNeeded = 0 THEN 'open'
-                    ELSE 'new'
-                  END
+                GROUP BY {status_expr}
                 """,
                 conversation_params,
             )
@@ -107,16 +105,28 @@ class DashboardRepository:
             trend_rows = execute_all(
                 conn,
                 f"""
+                WITH scoped AS (
+                  SELECT
+                    c.Id,
+                    CONVERT(date, c.LastCustomerMessageAt) AS dateKey,
+                    {status_expr} AS status
+                  FROM dbo.WebChat_Conversations c
+                  OUTER APPLY (
+                    SELECT TOP 1 s.NoResponseNeeded, s.MarkedAt
+                    FROM dbo.WebChat_ConversationStatus s
+                    WHERE s.CustomerId = c.CustomerId
+                      AND s.Source = c.Source
+                    ORDER BY CASE WHEN s.MarkedAt IS NULL THEN 0 ELSE 1 END DESC, s.MarkedAt DESC, s.Id DESC
+                  ) latestStatus
+                  {conversation_where}
+                )
                 SELECT
-                  CONVERT(date, c.LastCustomerMessageAt) AS dateKey,
-                  COUNT(DISTINCT c.Id) AS total,
-                  SUM(CASE WHEN s.NoResponseNeeded = 1 THEN 1 ELSE 0 END) AS processed,
-                  SUM(CASE WHEN ISNULL(s.NoResponseNeeded, 0) <> 1 THEN 1 ELSE 0 END) AS unprocessed
-                FROM dbo.WebChat_Conversations c
-                LEFT JOIN dbo.WebChat_ConversationStatus s
-                  ON c.CustomerId = s.CustomerId AND c.Source = s.Source
-                {conversation_where}
-                GROUP BY CONVERT(date, c.LastCustomerMessageAt)
+                  dateKey,
+                  COUNT(DISTINCT Id) AS total,
+                  SUM(CASE WHEN status = 'closed' THEN 1 ELSE 0 END) AS processed,
+                  SUM(CASE WHEN status <> 'closed' THEN 1 ELSE 0 END) AS unprocessed
+                FROM scoped
+                GROUP BY dateKey
                 ORDER BY dateKey ASC
                 """,
                 conversation_params,
@@ -141,7 +151,7 @@ class DashboardRepository:
         return {
             "totalConversations": int(totals.get("totalConversations") or 0),
             "totalMessages": int(total_messages.get("totalMessages") or 0),
-            "pendingConversations": int(status_summary.get("open", 0) + status_summary.get("new", 0)),
+            "pendingConversations": int(status_summary.get("pending", 0) + status_summary.get("open", 0) + status_summary.get("new", 0)),
             "completedConversations": int(status_summary.get("closed", 0)),
             "aiFailedCount": 0,
             "needStaffReviewCount": int(need_review.get("needStaffReviewCount") or 0),
@@ -169,7 +179,7 @@ class DashboardRepository:
             start_date=filters.get("startDate"),
             end_date=filters.get("endDate"),
         )
-        conditions = ["c.LastCustomerMessageAt IS NOT NULL"]
+        conditions = ["c.LastCustomerMessageAt IS NOT NULL", valid_conversation_condition("c")]
         params: List[Any] = []
         if date_filter.condition:
             conditions.append(date_filter.condition)

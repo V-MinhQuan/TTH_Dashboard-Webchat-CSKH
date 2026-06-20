@@ -15,7 +15,7 @@ import { ToggleSetting } from "./ToggleSetting";
 import {
   CHART_BUILDER_PALETTE_LABELS,
   getChartBuilderPalette,
-  paletteColor,
+  isChartBuilderPaletteColor,
 } from "./chartBuilderPalettes";
 import {
   CHART_BUILDER_LABELS,
@@ -321,9 +321,11 @@ export function ChartSettingsPanel({
                   const theme = event.target.value as ChartTheme;
                   onChange({
                     chartSettings: { ...state.chartSettings, theme },
-                    metrics: state.metrics.map((metric, index) => ({
+                    metrics: state.metrics.map((metric) => ({
                       ...metric,
-                      color: paletteColor(theme, index),
+                      color: isChartBuilderPaletteColor(metric.color)
+                        ? null
+                        : metric.color,
                     })),
                   });
                 }}

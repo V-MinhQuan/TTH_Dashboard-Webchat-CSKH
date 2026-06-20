@@ -2,6 +2,11 @@ import os
 from datetime import datetime, timedelta
 import pymssql
 from app.core.legacy_db import get_db_connection
+from app.repositories.display_filters import (
+    valid_analytics_condition,
+    valid_conversation_condition,
+    valid_message_condition,
+)
 
 class ConversationRepository:
     def _normalized_source_expr(self, source_column):
@@ -18,6 +23,25 @@ class ConversationRepository:
               ELSE 'other'
             END
         """
+
+    def _source_match_values(self, source):
+        normalized = str(source or "").strip().lower()
+        values = {
+            "zalo oa": ("zalooa", "zalo"),
+            "zalooa": ("zalooa", "zalo"),
+            "zalo": ("zalooa", "zalo"),
+            "zalo business": ("zalobusiness", "zalobiz"),
+            "zalobusiness": ("zalobusiness", "zalobiz"),
+            "zalobiz": ("zalobusiness", "zalobiz"),
+            "facebook": ("facebook", "fb", "messenger"),
+            "fb": ("facebook", "fb", "messenger"),
+            "messenger": ("facebook", "fb", "messenger"),
+            "chat widget": ("chatwidget", "website", "web"),
+            "chatwidget": ("chatwidget", "website", "web"),
+            "website": ("chatwidget", "website", "web"),
+            "web": ("chatwidget", "website", "web"),
+        }.get(normalized, (normalized,))
+        return tuple(dict.fromkeys(value for value in values if value))
 
     def _message_customer_expr(self, message_alias="m"):
         return f"CASE WHEN {message_alias}.FromHost = 1 THEN {message_alias}.ReceiverId ELSE {message_alias}.SenderId END"
@@ -214,6 +238,7 @@ class ConversationRepository:
         conversation_alias="c",
         status_alias="s",
     ):
+        conditions.append(valid_conversation_condition(conversation_alias))
         self._append_date_and_channel_filters(
             conditions,
             params,
@@ -238,6 +263,7 @@ class ConversationRepository:
                     OR (topic_msg.FromHost = 0 AND topic_msg.SenderId = {conversation_alias}.CustomerId)
                 )""",
                 "topic_msg.TextContent IS NOT NULL",
+                valid_message_condition("topic_msg"),
                 topic_sql,
             ]
             if start_date:
@@ -259,6 +285,7 @@ class ConversationRepository:
             exists_conditions = [
                 f"{self._normalized_source_expr('ai_msg.Source')} = {self._normalized_source_expr(f'{conversation_alias}.Source')}",
                 f"ai_msg.ReceiverId = {conversation_alias}.CustomerId",
+                valid_message_condition("ai_msg"),
                 ai_sql,
             ]
             if start_date:
@@ -287,6 +314,7 @@ class ConversationRepository:
         ai_status=None,
         message_alias="m",
     ):
+        conditions.append(valid_message_condition(message_alias))
         self._append_date_and_channel_filters(
             conditions,
             params,
@@ -316,6 +344,7 @@ class ConversationRepository:
                     ON status_conv.CustomerId = status_meta.CustomerId
                    AND {self._normalized_source_expr('status_conv.Source')} = {self._normalized_source_expr('status_meta.Source')}
                   WHERE {self._normalized_source_expr('status_conv.Source')} = {self._normalized_source_expr(f'{message_alias}.Source')}
+                    AND {valid_conversation_condition("status_conv")}
                     AND status_conv.CustomerId = CASE
                       WHEN {message_alias}.FromHost = 1 THEN {message_alias}.ReceiverId
                       ELSE {message_alias}.SenderId
@@ -1086,7 +1115,7 @@ class ConversationRepository:
                 LEFT JOIN WebChat_ConversationStatus s 
                   ON c.CustomerId = s.CustomerId AND c.Source = s.Source
             """
-            conditions = []
+            conditions = [valid_conversation_condition("c")]
             params = []
             
             if start_date:
@@ -1119,7 +1148,7 @@ class ConversationRepository:
                   MAX(SentAt) AS max_date
                 FROM WebChat_MessageLogs
             """
-            conditions = []
+            conditions = [valid_message_condition("WebChat_MessageLogs")]
             params = []
             
             if start_date:
@@ -1181,11 +1210,12 @@ class ConversationRepository:
     def get_ai_failures_count(self, start_date=None, end_date=None):
         conn = get_db_connection()
         try:
-            query = """
+            query = f"""
                 SELECT COUNT(*) AS count 
                 FROM WebChat_MessageLogs
                 WHERE FromHost = 1 
                   AND HostDisplayName = 'AI Assistant' 
+                  AND {valid_message_condition("WebChat_MessageLogs")}
                   AND (
                     TextContent LIKE N'%chưa hiểu%' 
                     OR TextContent LIKE N'%chưa rõ%' 
@@ -1206,6 +1236,7 @@ class ConversationRepository:
                     OR EXISTS (
                         SELECT 1 FROM WebChat_MessageAnalytics ma
                         WHERE ma.messageId = WebChat_MessageLogs.id_webchat_messageLogs
+                          AND {valid_analytics_condition("ma")}
                           AND ma.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin')
                     )
                   )
@@ -1236,7 +1267,11 @@ class ConversationRepository:
         try:
             # 1. Tìm ngày lớn nhất có dữ liệu
             with conn.cursor(as_dict=True) as cursor:
-                cursor.execute("SELECT MAX(LastCustomerMessageAt) AS max_date FROM WebChat_Conversations")
+                cursor.execute(f"""
+                    SELECT MAX(LastCustomerMessageAt) AS max_date
+                    FROM WebChat_Conversations
+                    WHERE {valid_conversation_condition("WebChat_Conversations")}
+                """)
                 row = cursor.fetchone()
                 db_max_date = row['max_date'] if row else None
             
@@ -1249,10 +1284,12 @@ class ConversationRepository:
                     ref_end_date_str = db_max_date_str
                 else:
                     # Kiểm tra xem khoảng lọc có bản ghi nào không
-                    check_query = """
+                    check_query = f"""
                         SELECT COUNT(*) AS count 
                         FROM WebChat_Conversations 
-                        WHERE LastCustomerMessageAt >= %s AND LastCustomerMessageAt <= %s
+                        WHERE {valid_conversation_condition("WebChat_Conversations")}
+                          AND LastCustomerMessageAt >= %s
+                          AND LastCustomerMessageAt <= %s
                     """
                     with conn.cursor(as_dict=True) as cursor:
                         cursor.execute(check_query, (start_date, f"{end_date} 23:59:59.999"))
@@ -1286,7 +1323,7 @@ class ConversationRepository:
             prev_start = prev_end - timedelta(days=days-1)
             prev_start = prev_start.replace(hour=0, minute=0, second=0, microsecond=0)
             
-            query = """
+            query = f"""
                 SELECT
                   SUM(CASE WHEN type = 'conv' AND date >= %s AND date <= %s THEN 1 ELSE 0 END) AS today_convs,
                   SUM(CASE WHEN type = 'msg' AND date >= %s AND date <= %s THEN 1 ELSE 0 END) AS today_msgs,
@@ -1300,24 +1337,40 @@ class ConversationRepository:
                   SUM(CASE WHEN type = 'closed_conv' AND date >= %s AND date <= %s THEN 1 ELSE 0 END) AS prev_closed_convs,
                   SUM(CASE WHEN type = 'ai_fail' AND date >= %s AND date <= %s THEN 1 ELSE 0 END) AS prev_ai_fails
                 FROM (
-                  SELECT 'conv' AS type, LastCustomerMessageAt AS date FROM WebChat_Conversations WHERE LastCustomerMessageAt >= %s AND LastCustomerMessageAt <= %s
+                  SELECT 'conv' AS type, LastCustomerMessageAt AS date
+                  FROM WebChat_Conversations
+                  WHERE {valid_conversation_condition("WebChat_Conversations")}
+                    AND LastCustomerMessageAt >= %s
+                    AND LastCustomerMessageAt <= %s
                   UNION ALL
-                  SELECT 'msg' AS type, SentAt AS date FROM WebChat_MessageLogs WHERE SentAt >= %s AND SentAt <= %s
+                  SELECT 'msg' AS type, SentAt AS date
+                  FROM WebChat_MessageLogs
+                  WHERE {valid_message_condition("WebChat_MessageLogs")}
+                    AND SentAt >= %s
+                    AND SentAt <= %s
                   UNION ALL
                   SELECT 'active_conv' AS type, c.LastCustomerMessageAt AS date 
                   FROM WebChat_Conversations c
                   LEFT JOIN WebChat_ConversationStatus s ON c.CustomerId = s.CustomerId AND c.Source = s.Source
-                  WHERE (s.NoResponseNeeded IS NULL OR s.NoResponseNeeded = 0 OR c.LastCustomerMessageAt > s.MarkedAt) AND c.LastCustomerMessageAt >= %s AND c.LastCustomerMessageAt <= %s
+                  WHERE {valid_conversation_condition("c")}
+                    AND (s.NoResponseNeeded IS NULL OR s.NoResponseNeeded = 0 OR c.LastCustomerMessageAt > s.MarkedAt)
+                    AND c.LastCustomerMessageAt >= %s
+                    AND c.LastCustomerMessageAt <= %s
                   UNION ALL
                   SELECT 'closed_conv' AS type, c.LastCustomerMessageAt AS date 
                   FROM WebChat_Conversations c
                   LEFT JOIN WebChat_ConversationStatus s ON c.CustomerId = s.CustomerId AND c.Source = s.Source
-                  WHERE s.NoResponseNeeded = 1 AND (s.MarkedAt IS NULL OR c.LastCustomerMessageAt <= s.MarkedAt) AND c.LastCustomerMessageAt >= %s AND c.LastCustomerMessageAt <= %s
+                  WHERE {valid_conversation_condition("c")}
+                    AND s.NoResponseNeeded = 1
+                    AND (s.MarkedAt IS NULL OR c.LastCustomerMessageAt <= s.MarkedAt)
+                    AND c.LastCustomerMessageAt >= %s
+                    AND c.LastCustomerMessageAt <= %s
                   UNION ALL
                   SELECT 'ai_fail' AS type, SentAt AS date 
                   FROM WebChat_MessageLogs
                   WHERE FromHost = 1 
                     AND HostDisplayName = 'AI Assistant' 
+                    AND {valid_message_condition("WebChat_MessageLogs")}
                     AND (
                       TextContent LIKE N'%chưa hiểu%' 
                       OR TextContent LIKE N'%chưa rõ%' 
@@ -1338,6 +1391,7 @@ class ConversationRepository:
                       OR EXISTS (
                           SELECT 1 FROM WebChat_MessageAnalytics ma
                           WHERE ma.messageId = WebChat_MessageLogs.id_webchat_messageLogs
+                            AND {valid_analytics_condition("ma")}
                             AND ma.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin')
                       )
                     )
@@ -1392,7 +1446,7 @@ class ConversationRepository:
             rows = []
             with conn.cursor(as_dict=True) as cursor:
                 if include_overtime:
-                    overtime_query = """
+                    overtime_query = f"""
                         DECLARE @dbNow DATETIME;
                         SET @dbNow = GETDATE();
 
@@ -1401,12 +1455,14 @@ class ConversationRepository:
                                  ROW_NUMBER() OVER (PARTITION BY ReceiverId, Source ORDER BY SentAt DESC) as rn
                           FROM WebChat_MessageLogs
                           WHERE FromHost = 1 AND HostDisplayName = 'AI Assistant'
+                            AND {valid_message_condition("WebChat_MessageLogs")}
                         ),
                         LatestCust AS (
                           SELECT SenderId, Source, TextContent,
                                  ROW_NUMBER() OVER (PARTITION BY SenderId, Source ORDER BY SentAt DESC) as rn
                           FROM WebChat_MessageLogs
                           WHERE FromHost = 0
+                            AND {valid_message_condition("WebChat_MessageLogs")}
                         )
                         SELECT TOP 100
                           c.Id AS id,
@@ -1436,6 +1492,7 @@ class ConversationRepository:
                          AND ai.rn = 1
                     """
                     overtime_conditions = [
+                        valid_conversation_condition("c"),
                         "(s.NoResponseNeeded IS NULL OR s.NoResponseNeeded = 0 OR c.LastCustomerMessageAt > s.MarkedAt)",
                         "c.LastMessageId > 0",
                         "(c.LastHostMessageAt IS NULL OR c.LastCustomerMessageAt > c.LastHostMessageAt)",
@@ -1461,6 +1518,7 @@ class ConversationRepository:
                     ai_conditions = [
                         "m.FromHost = 1",
                         "m.HostDisplayName = 'AI Assistant'",
+                        valid_message_condition("m"),
                         "m.Source IS NOT NULL",
                         "m.TextContent IS NOT NULL",
                         "m.TextContent != ''",
@@ -1507,6 +1565,7 @@ class ConversationRepository:
                             SELECT TOP 1 customer.SentAt, customer.TextContent
                             FROM WebChat_MessageLogs customer
                             WHERE customer.FromHost = 0
+                              AND {valid_message_condition("customer")}
                               AND {self._normalized_source_expr('customer.Source')} = {self._normalized_source_expr('m.Source')}
                               AND customer.SenderId = m.ReceiverId
                               AND customer.SentAt <= m.SentAt
@@ -1532,6 +1591,7 @@ class ConversationRepository:
                             a.issueType AS issue_type
                           FROM WebChat_MessageAnalytics a
                           WHERE a.issueFlag = 1
+                            AND {valid_analytics_condition("a")}
                         ),
                         flagged AS (
                           SELECT
@@ -1639,6 +1699,7 @@ class ConversationRepository:
             """
             conditions = [
                 "FromHost = 0",
+                valid_message_condition("WebChat_MessageLogs"),
                 "(TextContent LIKE N'%?%' OR TextContent LIKE N'%phải không ạ%' OR TextContent LIKE N'%đúng không ạ%')",
                 "LEN(TextContent) > 20",
                 "TextContent NOT LIKE N'%http%'"
@@ -1848,25 +1909,43 @@ class ConversationRepository:
     def close_conversation(self, customer_id, source, user_name='Staff_Dashboard'):
         conn = get_db_connection()
         try:
-            check_query = "SELECT COUNT(*) AS count FROM WebChat_ConversationStatus WHERE CustomerId = %s AND Source = %s"
+            source_values = self._source_match_values(source)
+            placeholders = ", ".join(["%s"] * len(source_values))
+            conversation_query = f"""
+                SELECT TOP 1 c.CustomerId, c.Source
+                FROM WebChat_Conversations c
+                WHERE c.CustomerId = %s
+                  AND {self._normalized_source_expr("c.Source")} IN ({placeholders})
+                  AND {valid_conversation_condition("c")}
+                ORDER BY c.LastCustomerMessageAt DESC, c.LastMessageAt DESC, c.Id DESC
+            """
             with conn.cursor(as_dict=True) as cursor:
-                cursor.execute(check_query, (customer_id, source))
+                cursor.execute(conversation_query, (customer_id, *source_values))
+                conversation = cursor.fetchone()
+                if not conversation:
+                    raise ValueError("Không tìm thấy hội thoại tương ứng để cập nhật trạng thái.")
+
+                canonical_customer_id = conversation["CustomerId"]
+                canonical_source = conversation["Source"]
+
+                check_query = "SELECT COUNT(*) AS count FROM WebChat_ConversationStatus WHERE CustomerId = %s AND Source = %s"
+                cursor.execute(check_query, (canonical_customer_id, canonical_source))
                 row = cursor.fetchone()
                 exists = row['count'] > 0 if row else False
-                
+
                 if exists:
                     update_query = """
                         UPDATE WebChat_ConversationStatus 
                         SET NoResponseNeeded = 1, MarkedAt = GETDATE(), MarkedBy = %s 
                         WHERE CustomerId = %s AND Source = %s
                     """
-                    cursor.execute(update_query, (user_name, customer_id, source))
+                    cursor.execute(update_query, (user_name, canonical_customer_id, canonical_source))
                 else:
                     insert_query = """
                         INSERT INTO WebChat_ConversationStatus (CustomerId, Source, NoResponseNeeded, MarkedAt, MarkedBy)
                         VALUES (%s, %s, 1, GETDATE(), %s)
                     """
-                    cursor.execute(insert_query, (customer_id, source, user_name))
+                    cursor.execute(insert_query, (canonical_customer_id, canonical_source, user_name))
             conn.commit()
             return True
         except Exception as e:

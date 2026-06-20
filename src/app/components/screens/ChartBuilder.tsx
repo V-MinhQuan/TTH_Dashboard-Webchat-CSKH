@@ -383,7 +383,6 @@ export function ChartBuilder({
         fieldMeta,
         current.metrics.length,
         current.chartType,
-        current.chartSettings.theme,
       );
       return {
         ...current,
@@ -736,7 +735,6 @@ function configureForDataset(
       metricField,
       0,
       chartType,
-      current.chartSettings.theme,
     )
     : null;
   return {
@@ -764,7 +762,6 @@ function createMetric(
   field: CatalogFieldMeta,
   index: number,
   chartType: ChartBuilderState["chartType"],
-  theme: ChartBuilderState["chartSettings"]["theme"],
 ): MetricSelection {
   const aggregation = (
     field.defaultAggregation
@@ -776,7 +773,7 @@ function createMetric(
     aggregation,
     alias: `metric_${field.id}_${index + 1}`,
     label: field.label,
-    color: paletteColor(theme, index),
+    color: null,
     axisGroup: "left",
     seriesType: chartType === "combo"
       ? (index === 0 ? "bar" : "line")

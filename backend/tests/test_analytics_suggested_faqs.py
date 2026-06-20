@@ -18,6 +18,22 @@ class FakeSuggestedFaqRepository:
         return self.rows
 
 
+class FakeKeywordRepository:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def get_keyword_raw_data(self, filters):
+        return {
+            "rows": self.rows,
+            "optionalColumns": {
+                "issueFlag": True,
+                "issueType": True,
+                "issueReason": True,
+                "issueConfidence": True,
+            },
+        }
+
+
 def test_suggested_faqs_skip_blank_questions_without_fake_fallback():
     service = AnalyticsService(
         repository=FakeSuggestedFaqRepository([
@@ -43,6 +59,38 @@ def test_suggested_faqs_skip_blank_questions_without_fake_fallback():
     assert data[0]["suggestedAnswer"] == "Answer from DB"
     assert data[0]["topic"] == "Tin học / MOS / IC3"
     assert data[0]["detectedTopic"] == "Lich thi"
+
+
+def test_negative_keywords_include_dominant_topic_from_database_context():
+    service = AnalyticsService(
+        repository=FakeKeywordRepository([
+            {
+                "matchedNegativeKeywords": '["chua nhan duoc mail"]',
+                "detectedTopics": '["Lệ phí / Học phí"]',
+                "keywordContext": "Chưa nhận được mail có mã QR để thanh toán lệ phí",
+                "msgCount": 3,
+            },
+            {
+                "matchedNegativeKeywords": '["chua nhan duoc mail"]',
+                "detectedTopics": '["Khác"]',
+                "keywordContext": "Chưa nhận được mail có mã QR",
+                "msgCount": 1,
+            },
+            {
+                "matchedNegativeKeywords": '["rot"]',
+                "detectedTopics": '["Khac"]',
+                "keywordContext": "Em thi đợt 4/4 tin cơ bản và bị rớt",
+                "msgCount": 2,
+            },
+        ])
+    )
+
+    data = service.get_keywords({"mode": "negative"})
+
+    by_keyword = {item["keyword"]: item for item in data}
+    assert by_keyword["chua nhan duoc mail"]["count"] == 4
+    assert by_keyword["chua nhan duoc mail"]["topicLabel"] == "Lệ phí / Học phí"
+    assert by_keyword["rot"]["topicLabel"] == "Tin học / MOS / IC3"
 
 
 def test_suggested_faqs_sql_uses_real_question_filters_and_status_filters():

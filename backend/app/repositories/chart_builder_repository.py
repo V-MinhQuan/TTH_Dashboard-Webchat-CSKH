@@ -7,6 +7,7 @@ from uuid import UUID
 from app.config.chart_builder_catalog import get_dataset_catalog
 from app.core.config import get_settings
 from app.db.session import execute_all, execute_one, get_connection
+from app.repositories.display_filters import valid_analytics_condition, valid_message_condition
 from app.schemas.chart_builder import ChartDataRequest, SavedChartConfigCreate
 
 
@@ -391,7 +392,7 @@ class ChartBuilderRepository:
         *,
         include_topic: bool,
     ) -> Tuple[str, Sequence[Any]]:
-        conditions: List[str] = []
+        conditions: List[str] = [valid_analytics_condition("a")]
         params: List[Any] = []
         filters = request.filters
         if filters.from_date:
@@ -410,7 +411,7 @@ class ChartBuilderRepository:
 
     @staticmethod
     def _conversation_filters(request: ChartDataRequest) -> Tuple[str, Sequence[Any]]:
-        conditions: List[str] = []
+        conditions: List[str] = [valid_message_condition("m")]
         params: List[Any] = []
         filters = request.filters
         if filters.from_date:
