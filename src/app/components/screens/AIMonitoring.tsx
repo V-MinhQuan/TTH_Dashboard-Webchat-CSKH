@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { Brain, Cpu, Zap, Activity, AlertOctagon, Shield, Terminal, FileText, Flag, Send, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
 import { AddSheetModal } from "./SheetChatbot";
+import { ErrorSourceBadge } from "../common/ErrorSourceBadge";
 import { createSheetChatbotRow } from "../../services/sheetChatbotApi";
 import { buildApiUrl, fetchApiJson, formatChannelParam } from "../../services/dashboardApi";
+import { getAiFailureDefinition } from "../../constants/aiFailureTaxonomy";
 import { FilterValues } from "../FilterPanel";
 import { getDateParamsFromFilters } from "../../utils/dateFilters";
 
@@ -20,7 +22,8 @@ interface AnomalyItem {
   conversationId?: number;
   type: AIStatus;
   confidence: number;
-  customer: string;
+  customerName: string;
+  customerReference: string;
   question: string;
   aiAnswer: string;
   reason: string;
@@ -68,6 +71,32 @@ function formatWaitTime(value?: string) {
   return `${diffMins} phút`;
 }
 
+function normalizeFailureLabel(value: unknown) {
+  const rawValue = typeof value === "string" ? value.trim() : "";
+  const canonical = getAiFailureDefinition(rawValue);
+  if (canonical) return canonical.apiValue;
+  if (/^ai\s+(?:tự tạo|bịa)\s+thông tin$/iu.test(rawValue)) {
+    return getAiFailureDefinition("hallucination_risk")?.apiValue ?? "AI có nguy cơ tự tạo thông tin";
+  }
+  return rawValue || "Cần kiểm duyệt";
+}
+
+function maskCustomerReference(value: unknown) {
+  const reference = typeof value === "string" ? value.trim() : "";
+  if (!reference) return "Không có mã tham chiếu khách hàng";
+  if (/^KH\s+•{4}\S{4}$/u.test(reference)) return reference;
+  const suffix = reference.replace(/\s/g, "").slice(-4);
+  return suffix ? `KH ••••${suffix}` : "Không có mã tham chiếu khách hàng";
+}
+
+function buildFailureNotes(item: AnomalyItem) {
+  return [
+    `Nguồn gốc lỗi sai: ${item.type}`,
+    `Câu trả lời AI liên quan: ${item.aiAnswer}`,
+    `Lý do ghi nhận: ${item.reason}`,
+  ].join("\n");
+}
+
 function mapAnomaly(row: any): AnomalyItem {
   const confidenceRaw = Number(row.issueConfidence ?? 0);
   const confidence = confidenceRaw <= 1 ? Math.round(confidenceRaw * 100) : Math.round(confidenceRaw);
@@ -75,9 +104,12 @@ function mapAnomaly(row: any): AnomalyItem {
     id: String(row.id ?? row.messageId ?? crypto.randomUUID()),
     messageId: row.messageId,
     conversationId: row.conversationId,
-    type: row.issueType || "Cần kiểm duyệt",
+    type: normalizeFailureLabel(row.issueType),
     confidence,
-    customer: row.customerId || "Không có mã khách hàng trong database",
+    customerName: row.customerName || row.customer_name || "Khách hàng chưa cung cấp tên",
+    customerReference: maskCustomerReference(
+      row.maskedReference || row.masked_reference || row.customerReference || row.customer_reference || row.customerId,
+    ),
     question: row.textContent || "Tin nhắn khách hàng đang trống trong database",
     aiAnswer: row.aiAnswer || "Câu trả lời AI đang trống trong database",
     reason: row.issueReason || "Chưa có lý do lỗi AI trong database",
@@ -237,9 +269,12 @@ export function AIMonitoring({ filters }: AIMonitoringProps) {
                   </div>
 
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "6px", backgroundColor: sc.bg, color: sc.color, fontWeight: 600 }}>
-                      {item.type}
-                    </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                      <ErrorSourceBadge source="ai" />
+                      <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "6px", backgroundColor: sc.bg, color: sc.color, fontWeight: 600 }}>
+                        {item.type}
+                      </span>
+                    </div>
                     <span style={{ fontSize: "10px", color: "#64748b" }}>{item.waitTime}</span>
                   </div>
                 </div>
@@ -283,7 +318,10 @@ export function AIMonitoring({ filters }: AIMonitoringProps) {
                   <div style={{ fontSize: "14px", color: "#fff", lineHeight: 1.6, padding: "14px", backgroundColor: "rgba(0,0,0,0.3)", borderRadius: "8px", borderLeft: "3px solid #94a3b8" }}>
                     "{activeAnomaly.question}"
                   </div>
-                  <div style={{ fontSize: "11px", color: "#64748b", marginTop: "8px" }}>Khách hàng: {activeAnomaly.customer}</div>
+                  <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "8px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                    <span>{activeAnomaly.customerName}</span>
+                    <span aria-label="Mã tham chiếu khách hàng">{activeAnomaly.customerReference}</span>
+                  </div>
                 </div>
 
                 <div style={{ backgroundColor: PANEL_BG, borderRadius: "12px", border: "1px solid rgba(255,255,255,0.08)", padding: "18px" }}>
@@ -367,7 +405,9 @@ export function AIMonitoring({ filters }: AIMonitoringProps) {
       {showSheetModal && activeAnomaly && (
         <AddSheetModal
           prefillQuestion={activeAnomaly.question}
-          prefillAnswer={currentAnswer}
+          prefillAnswer=""
+          prefillNotes={buildFailureNotes({ ...activeAnomaly, aiAnswer: currentAnswer })}
+          prefillSource={activeAnomaly.type}
           onClose={() => setShowSheetModal(false)}
           onSave={async (data) => {
             await createSheetChatbotRow({

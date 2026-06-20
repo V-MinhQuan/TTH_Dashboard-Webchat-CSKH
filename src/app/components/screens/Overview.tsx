@@ -40,6 +40,8 @@ const alertTypeIcon: Record<string, typeof AlertTriangle> = {
 const statusColors: Record<string, { bg: string; color: string }> = {
   "Chờ quản lý xác nhận": { bg: "#FFF4EE", color: "#D73C01" },
   "Chờ xử lý": { bg: "#FFF7E6", color: "#B7791F" },
+  "Đang tư vấn / Chờ phản hồi": { bg: "#dbeafe", color: "#3b82f6" },
+  // Legacy alias
   "Đang xử lý": { bg: "#dbeafe", color: "#3b82f6" },
   "Hoàn thành": { bg: "#EAF8F1", color: "#228A61" },
 };
@@ -404,7 +406,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
       isWarning: true
     },
     {
-      title: "Đã xử lý",
+      title: "Hoàn thành",
       value: viNum(closedConversations),
       icon: CheckCircle,
       change: kpiData?.trends.closedConversations,
@@ -438,7 +440,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
     : filters.dateRange;
   const reportStatusRows = [
     { label: "Chờ xử lý", value: kpiData?.statusSummary.pending || 0, color: "#D73C01" },
-    { label: "Đang xử lý", value: kpiData?.statusSummary.open || 0, color: "#003BB9" },
+    { label: "Đang tư vấn / Chờ phản hồi", value: kpiData?.statusSummary.open || 0, color: "#003BB9" },
     { label: "Hoàn thành", value: kpiData?.statusSummary.closed || 0, color: "#228A61" },
   ];
   const maxStatusValue = Math.max(...reportStatusRows.map((row) => row.value), 1);

@@ -63,13 +63,13 @@ export function KpiCard({
             width: "38px",
             height: "38px",
             borderRadius: "50%",
-            backgroundColor: isWarning ? WARN_ICON_BG : `${NAVY}0f`,
+            backgroundColor: "transparent",
             display: "flex",
             alignItems: "center",
             justifyContent: "center"
           }}
         >
-          <Icon size={18} style={{ color: isWarning ? ORANGE : NAVY }} strokeWidth={1.5} />
+          <Icon size={24} style={{ color: isWarning ? ORANGE : NAVY }} strokeWidth={1.5} />
         </div>
         <div style={{ marginTop: "14px" }}>
           <div style={{ fontSize: "13px", fontWeight: 500, color: "rgba(0,59,185,0.6)", lineHeight: 1.3 }}>{title}</div>

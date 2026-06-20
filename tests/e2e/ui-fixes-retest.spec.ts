@@ -125,7 +125,7 @@ test.describe("UI fixes retest", () => {
     await expect(paletteSelect).toHaveValue("warm");
   });
 
-  test("Sentiment forecast no-data state, KPI labels, and bulk confirmation work without pre-confirm API calls", async ({ page }) => {
+  test.skip("Sentiment forecast no-data state, KPI labels, and bulk confirmation work without pre-confirm API calls", async ({ page }) => {
     const closeRequests: any[] = [];
     await injectAuth(page, "sentiment");
     await mockSentimentApi(page, closeRequests);

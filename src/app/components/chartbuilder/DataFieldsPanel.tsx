@@ -201,7 +201,7 @@ export function DataFieldsPanel({
             <div className="chart-builder-field-legend">
               <span>
                 <Hash size={11} />
-                {CHART_BUILDER_LABELS.dimension}
+                {CHART_BUILDER_LABELS.dimension} (Dimension)
                 <HelpButton
                   label="Giải thích chiều phân tích"
                   description={DIMENSION_GUIDANCE}
@@ -209,7 +209,7 @@ export function DataFieldsPanel({
               </span>
               <span>
                 <Sigma size={11} />
-                {CHART_BUILDER_LABELS.metric}
+                {CHART_BUILDER_LABELS.metric} (Metric)
                 <HelpButton
                   label="Giải thích chỉ số đo lường"
                   description={METRIC_GUIDANCE}

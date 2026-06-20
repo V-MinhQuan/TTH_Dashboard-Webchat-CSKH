@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 
 import { cn } from "./utils";
 
@@ -65,16 +66,50 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
   );
 }
 
-function TableHead({ className, ...props }: React.ComponentProps<"th">) {
+export interface TableHeadProps extends React.ComponentProps<"th"> {
+  sortDirection?: "ascending" | "descending" | "none";
+  sortLabel?: string;
+  onSort?: () => void;
+}
+
+function TableHead({
+  className,
+  children,
+  sortDirection,
+  sortLabel,
+  onSort,
+  ...props
+}: TableHeadProps) {
+  const SortIcon = sortDirection === "ascending"
+    ? ArrowUp
+    : sortDirection === "descending"
+      ? ArrowDown
+      : ArrowUpDown;
+  const headerLabel = typeof children === "string" ? children : sortLabel;
+
   return (
     <th
       data-slot="table-head"
       className={cn(
-        "text-foreground h-10 px-2 text-left align-middle font-medium whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+        "text-foreground h-10 px-2 text-center align-middle font-medium whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
         className,
       )}
+      aria-label={props["aria-label"] ?? headerLabel}
+      aria-sort={onSort ? (sortDirection ?? "none") : props["aria-sort"]}
       {...props}
-    />
+    >
+      {onSort ? (
+        <button
+          type="button"
+          onClick={onSort}
+          aria-label={`Sắp xếp theo ${sortLabel ?? headerLabel ?? "cột này"}`}
+          className="table-sort-button"
+        >
+          <span aria-hidden="true">{children}</span>
+          <SortIcon size={13} aria-hidden="true" />
+        </button>
+      ) : children}
+    </th>
   );
 }
 

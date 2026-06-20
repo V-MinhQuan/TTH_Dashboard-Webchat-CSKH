@@ -10,6 +10,17 @@ class Settings(BaseSettings):
     app_env: str = Field(default="development", validation_alias="APP_ENV")
     app_name: str = Field(default="FLIC FastAPI Backend", validation_alias="APP_NAME")
     app_version: str = Field(default="fastapi-v1", validation_alias="APP_VERSION")
+    app_auth_secret: str = Field(default="", validation_alias="APP_AUTH_SECRET")
+    app_auth_ttl_seconds: int = Field(
+        default=3600,
+        ge=60,
+        le=86400,
+        validation_alias="APP_AUTH_TTL_SECONDS",
+    )
+    manager_usernames: str = Field(
+        default="test,thuynt",
+        validation_alias="MANAGER_USERNAMES",
+    )
 
     db_server: str = Field(default="localhost", validation_alias="DB_SERVER")
     db_port: int = Field(default=1433, validation_alias="DB_PORT")
@@ -56,6 +67,14 @@ class Settings(BaseSettings):
         if self.cors_origins.strip() == "*":
             return ["*"]
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def manager_username_list(self) -> List[str]:
+        return [
+            username.strip().lower()
+            for username in self.manager_usernames.split(",")
+            if username.strip()
+        ]
 
 
 # Not using lru_cache so env changes are picked up without restarting the process

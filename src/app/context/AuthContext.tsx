@@ -8,6 +8,8 @@ export interface UserInfo {
   email: string;
   phone?: string;
   role: 'manager' | 'staff';
+  accessToken?: string;
+  tokenExpiresAt?: string;
   lastLogin?: string;
 }
 
@@ -36,7 +38,8 @@ function isStoredAuth(value: any): value is StoredAuth {
     (value.user.role === 'manager' || value.user.role === 'staff') &&
     typeof value.user.username === 'string' &&
     typeof value.user.name === 'string' &&
-    typeof value.user.email === 'string'
+    typeof value.user.email === 'string' &&
+    (value.user.accessToken === undefined || typeof value.user.accessToken === 'string')
   );
 }
 

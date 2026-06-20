@@ -17,6 +17,7 @@ type CacheEntry<T> = {
 type DashboardKpiPayload = Partial<DashboardKpiData> & Record<string, any>;
 
 const inFlightGetRequests = new Map<string, Promise<any>>();
+const AUTH_STORAGE_KEY = "flic_dashboard_auth";
 
 const DEFAULT_STATUS_SUMMARY = {
   new: 0,
@@ -141,6 +142,21 @@ function getCacheStorage() {
   }
 }
 
+function getAuthToken(): string | null {
+  if (typeof window === "undefined") return null;
+  for (const storage of [window.sessionStorage, window.localStorage]) {
+    try {
+      const raw = storage.getItem(AUTH_STORAGE_KEY);
+      if (!raw) continue;
+      const token = JSON.parse(raw)?.user?.accessToken;
+      if (typeof token === "string" && token.trim()) return token;
+    } catch {
+      // Ignore malformed or unavailable browser storage.
+    }
+  }
+  return null;
+}
+
 function readCache<T>(key: string, allowExpired = false): T | null {
   const storage = getCacheStorage();
   if (!storage) return null;
@@ -224,6 +240,7 @@ export async function fetchApiJson<T>(
     signal: controller.signal,
     headers: {
       "Content-Type": "application/json",
+      ...(getAuthToken() ? { Authorization: `Bearer ${getAuthToken()}` } : {}),
       ...(fetchOptions.headers || {}),
     },
   })

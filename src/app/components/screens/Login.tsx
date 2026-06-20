@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
-import flicLogo from '../../../imports/image.png';
+import flicLogo from '../../../assets/flic-logo-transparent.png';
 import { Eye, EyeOff, Lock, User } from 'lucide-react';
 
 const NAVY = "#003865";
@@ -11,7 +11,7 @@ const ORANGE = "#D73C01";
 export function LoginScreen() {
   const { login } = useAuth();
   const [username, setUsername] = useState(() => localStorage.getItem("saved_username") || "");
-  const [password, setPassword] = useState(() => localStorage.getItem("saved_password") || "");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [rememberLogin, setRememberLogin] = useState(() => localStorage.getItem("saved_username") ? true : false);
   const [error, setError] = useState("");
@@ -44,14 +44,17 @@ export function LoginScreen() {
         return;
       }
 
-      const userData = resJson.data;
+      const userData = {
+        ...resJson.data,
+        accessToken: resJson.data?.accessToken || resJson.accessToken || resJson.token,
+        tokenExpiresAt: resJson.data?.tokenExpiresAt || resJson.tokenExpiresAt,
+      };
       if (rememberLogin) {
         localStorage.setItem("saved_username", username.trim());
-        localStorage.setItem("saved_password", password);
       } else {
         localStorage.removeItem("saved_username");
-        localStorage.removeItem("saved_password");
       }
+      localStorage.removeItem("saved_password");
       login(userData, rememberLogin);
     } catch (err: any) {
       setError("Không thể kết nối tới máy chủ. Vui lòng thử lại sau.");

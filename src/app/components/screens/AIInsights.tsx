@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { Brain, AlertTriangle, CheckCircle, XCircle, HelpCircle, ShieldAlert, TrendingUp, ChevronDown, ChevronUp, FilePlus2, Clock, Table2, Activity } from "lucide-react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
+import { AlertTriangle, CheckCircle, XCircle, ShieldAlert, ChevronDown, ChevronUp, FilePlus2, Clock, Table2, Activity, Download } from "lucide-react";
 import {
   LineChart, Line, BarChart, Bar, AreaChart, Area, XAxis, YAxis,
   CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine,
@@ -9,8 +9,12 @@ import { FilterPanel, FilterValues } from "../FilterPanel";
 import { toast } from "sonner";
 import { fetchApiJson, buildApiUrl, formatChannelParam } from "../../services/dashboardApi";
 import { AddSheetModal } from "./SheetChatbot";
-import { createSheetChatbotRow, getSheetChatbotRows, type SheetChatbotStats, type SheetChatbotStatus } from "../../services/sheetChatbotApi";
+import { createSheetChatbotRow, getSheetChatbotRows, type SheetChatbotStats } from "../../services/sheetChatbotApi";
 import { useAuth } from "../../context/AuthContext";
+import { bulkCloseConversations, getCustomerPresentation } from "../../services/conversationApi";
+import { getFailedConversations, getTopicFailures, type TopicFailureRecord } from "../../services/round3Api";
+import { AI_FAILURE_TAXONOMY, getAiFailureDefinition } from "../../constants/aiFailureTaxonomy";
+import { StatusBadge } from "../common/StatusBadge";
 
 const NAVY = "#003865";
 const ORANGE = "#D73C01";
@@ -27,37 +31,29 @@ const RED_TEXT = "#B42318";
 const BLUE_50 = "#EBF2FF";
 const BLUE_200 = "#B9DCFF";
 
-type FailReason = "Không tìm thấy dữ liệu" | "Không hiểu intent" | "AI không chắc chắn" | "Câu hỏi ngoài phạm vi" | "AI có nguy cơ tự tạo thông tin" | "AI trả lời sai" | string;
+type FailReason = "Không tìm thấy dữ liệu" | "Không hiểu câu hỏi" | "Thiếu thông tin" | "Thông tin không chính xác" | "Lỗi nguồn tri thức" | "Lỗi hệ thống" | "AI trả lời sai" | "Khác" | string;
 
 const failReasonColor: Record<FailReason, string> = {
   "Không tìm thấy dữ liệu": ORANGE,
-  "Không hiểu intent": "#8b5cf6",
-  "AI không chắc chắn": AMBER_TEXT,
-  "Câu hỏi ngoài phạm vi": "#64748b",
-  "AI có nguy cơ tự tạo thông tin": RED_TEXT,
+  "Không hiểu câu hỏi": "#8b5cf6",
+  "Thiếu thông tin": AMBER_TEXT,
+  "Thông tin không chính xác": RED_TEXT,
+  "Lỗi nguồn tri thức": "#64748b",
+  "Lỗi hệ thống": RED_TEXT,
   "AI trả lời sai": RED_TEXT,
+  "Khác": "#64748b",
 };
 
-const priorityColor: Record<string, { bg: string; color: string }> = {
-  "Ưu tiên cao": { bg: ORANGE_50, color: ORANGE },
-  "Ưu tiên trung bình": { bg: AMBER_50, color: AMBER_TEXT },
-  "Ưu tiên thấp": { bg: "#EAF8F1", color: "#228A61" },
-};
+function displayFailureType(value: unknown): FailReason {
+  const raw = String(value || "").trim();
+  return getAiFailureDefinition(raw)?.label || raw || "Khác";
+}
 
 const impactColor: Record<string, { bg: string; color: string }> = {
   "Ưu tiên cao": { bg: RED_50, color: RED_TEXT },
   "Ưu tiên trung bình": { bg: AMBER_50, color: AMBER_TEXT },
   "Ưu tiên thấp": { bg: "#f1f5f9", color: "#64748b" },
 };
-
-const sheetStatusColor: Record<SheetChatbotStatus, { bg: string; color: string; border: string }> = {
-  "Từ chối": { bg: RED_50, color: RED_TEXT, border: RED_100 },
-  "Chờ xử lý": { bg: AMBER_50, color: AMBER_TEXT, border: AMBER_100 },
-  "Đã duyệt": { bg: BLUE_50, color: NAVY, border: BLUE_200 },
-  "Cần chỉnh sửa": { bg: AMBER_50, color: AMBER_TEXT, border: AMBER_100 },
-};
-
-const defaultSheetStatusColor = { bg: "#f1f5f9", color: "#64748b", border: "#e2e8f0" };
 
 interface AIInsightsProps {
   filters: FilterValues;
@@ -193,7 +189,8 @@ function displayDateTime(value: unknown) {
 
 function csvCell(value: unknown) {
   const text = value === null || value === undefined ? "" : String(value);
-  return `"${text.replace(/"/g, '""')}"`;
+  const safeText = /^[=+@-]/.test(text.trimStart()) ? `'${text}` : text;
+  return `"${safeText.replace(/"/g, '""')}"`;
 }
 
 function downloadCsv(filename: string, rows: Array<Array<unknown>>) {
@@ -209,6 +206,22 @@ function downloadCsv(filename: string, rows: Array<Array<unknown>>) {
   URL.revokeObjectURL(url);
 }
 
+function downloadJson(filename: string, value: unknown) {
+  const blob = new Blob([JSON.stringify(value, null, 2)], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function topicFailureTotal(row: TopicFailureRecord) {
+  return AI_FAILURE_TAXONOMY.reduce((total, definition) => total + row[definition.analyticsKey], 0);
+}
+
 export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsProps) {
   const { user } = useAuth();
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
@@ -216,11 +229,17 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
   const [loading, setLoading] = useState(true);
   const [faqModalConv, setFaqModalConv] = useState<any>(null);
   const [showConfirmAllModal, setShowConfirmAllModal] = useState(false);
+  const [selectedFailureIds, setSelectedFailureIds] = useState<Set<number>>(() => new Set());
+  const [bulkSubmitting, setBulkSubmitting] = useState(false);
+  const [topN, setTopN] = useState(5);
+  const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const bulkSubmitGuard = useRef(false);
 
   const [qualityMetrics, setQualityMetrics] = useState<any>({ total_messages: 0, success_rate: 0, failure_count: 0, hallucination_count: 0, avg_confidence: 0 });
   const [staffActivity, setStaffActivity] = useState<any>({ reported_errors: 0, pending_review: 0 });
   const [failureTrend, setFailureTrend] = useState<any[]>([]);
-  const [failureByTopic, setFailureByTopic] = useState<any[]>([]);
+  const [failureByTopic, setFailureByTopic] = useState<TopicFailureRecord[]>([]);
   const [failedConversations, setFailedConversations] = useState<any[]>([]);
   const [staffReportedErrors, setStaffReportedErrors] = useState<any[]>([]);
   const [suggestedFAQs, setSuggestedFAQs] = useState<any[]>([]);
@@ -245,8 +264,8 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
           fetchApiJson<any>(buildApiUrl(`/api/analytics/ai/quality-metrics?${qs}`)),
           fetchApiJson<any>(buildApiUrl(`/api/analytics/ai/staff-activity?${qs}`)),
           fetchApiJson<any>(buildApiUrl(`/api/analytics/ai/failure-trend?${qs}`)),
-          fetchApiJson<any>(buildApiUrl(`/api/analytics/ai/failure-by-topic?${qs}`)),
-          fetchApiJson<any>(buildApiUrl(`/api/analytics/ai/failed-conversations?${qs}`)),
+          getTopicFailures(queryParams),
+          getFailedConversations(queryParams),
           fetchApiJson<any>(buildApiUrl(`/api/analytics/ai/staff-reported-errors?${qs}`)),
           fetchApiJson<any>(buildApiUrl(`/api/analytics/ai/suggested-faqs?${qs}`)),
           getSheetChatbotRows({ pageSize: 5 })
@@ -255,13 +274,28 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
         if (qm.success) setQualityMetrics(qm.data);
         if (sa.success) setStaffActivity(sa.data);
         if (ft.success) setFailureTrend(ft.data);
-        if (fbt.success) setFailureByTopic(fbt.data);
-        if (fc.success) setFailedConversations(fc.data.records.map((r: any) => ({
-          id: r.id, question: r.textContent || "Tin nhắn khách hàng đang trống trong database", aiAnswer: r.aiAnswer || "Câu trả lời AI đang trống trong database",
-          topic: displayTopic(r.detectedTopics), channel: r.source || "Không có kênh trong database", failReason: r.issueType || "Không có loại lỗi trong database",
-          confidence: r.issueConfidence || 0, impact: "Ưu tiên cao", kbSuggestion: r.issueReason || "Chưa có gợi ý tri thức trong database",
-          customerId: r.customerId || "Không có mã khách hàng trong database"
-        })));
+        setFailureByTopic(fbt);
+        setSelectedTopic((current) => current && fbt.some((row) => row.topic === current) ? current : fbt[0]?.topic ?? null);
+        setFailedConversations(fc.records.map((r) => {
+          const customer = getCustomerPresentation(r.customerName || r.customer_name, r.customerId);
+          return {
+            id: r.id,
+            question: r.textContent || "Tin nhắn khách hàng đang trống trong database",
+            aiAnswer: r.aiAnswer || "Câu trả lời AI đang trống trong database",
+            conversationId: Number(r.conversationId),
+            topic: displayTopic(r.detectedTopics),
+            channel: r.source || "Không có kênh trong database",
+            failReason: displayFailureType(r.issueType),
+            confidence: r.issueConfidence || 0,
+            impact: "Ưu tiên cao",
+            kbSuggestion: r.issueReason || "Chưa có gợi ý tri thức trong database",
+            customerId: r.customerId || "Không có mã khách hàng trong database",
+            customerName: customer.primary,
+            customerReference: customer.secondary,
+          };
+        }));
+        setSelectedFailureIds(new Set());
+        setShowConfirmAllModal(false);
         if (sre.success) setStaffReportedErrors(sre.data.records.map((r: any) => ({
           id: r.id, time: displayDateTime(r.messageAt), staff: "Từ database MessageAnalytics", channel: r.source || "Không có kênh trong database",
           topic: displayTopic(r.detectedTopics), question: r.textContent || "Tin nhắn khách hàng đang trống trong database", aiAnswer: r.aiAnswer || "Câu trả lời AI đang trống trong database",
@@ -282,6 +316,23 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
     fetchData();
   }, [filters]);
 
+  const topFailureTopics = useMemo(
+    () => [...failureByTopic]
+      .sort((left, right) => topicFailureTotal(right) - topicFailureTotal(left))
+      .slice(0, topN),
+    [failureByTopic, topN],
+  );
+  const selectedTopicFailure = useMemo(
+    () => failureByTopic.find((row) => row.topic === selectedTopic) ?? null,
+    [failureByTopic, selectedTopic],
+  );
+  const relatedConversations = useMemo(
+    () => selectedTopic
+      ? failedConversations.filter((conversation) => conversation.topic === selectedTopic)
+      : [],
+    [failedConversations, selectedTopic],
+  );
+
   const handleAddFaq = async (question: string, topic: string) => {
     try {
       await createSheetChatbotRow({
@@ -300,16 +351,71 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
     }
   };
 
-  const handleMarkAsProcessed = (id: string, showToast = true) => {
-    setFailedConversations(prev => prev.filter(c => c.id !== id));
-    if (showToast) {
-      toast.info("Backend hiện chưa có API lưu trạng thái xử lý lỗi AI; chỉ ẩn dòng trong phiên hiện tại.");
+  const handleMarkAsProcessed = async (id: string | number, showToast = true) => {
+    const row = failedConversations.find((conversation) => conversation.id === id);
+    if (!row || !Number.isInteger(row.conversationId) || row.conversationId <= 0) {
+      toast.error("Bản ghi chưa liên kết với hội thoại hợp lệ.");
+      return;
+    }
+    try {
+      const result = await bulkCloseConversations([row.conversationId]);
+      setFailedConversations((current) => current.filter((conversation) => conversation.id !== id));
+      setSelectedFailureIds((current) => {
+        const next = new Set(current);
+        next.delete(row.conversationId);
+        return next;
+      });
+      if (showToast) toast.success(`Đã cập nhật ${result.affected} hội thoại.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không thể cập nhật hội thoại.");
     }
   };
 
-  const handleExportFailedConversations = () => {
-    if (!failedConversations.length) {
+  const selectableFailureIds = failedConversations
+    .map((conversation) => conversation.conversationId)
+    .filter((id): id is number => Number.isInteger(id) && id > 0);
+  const allFailuresSelected =
+    selectableFailureIds.length > 0 &&
+    selectableFailureIds.every((id) => selectedFailureIds.has(id));
+
+  const submitSelectedFailures = async () => {
+    if (bulkSubmitGuard.current || bulkSubmitting || selectedFailureIds.size === 0) return;
+    bulkSubmitGuard.current = true;
+    const selectedIds = new Set(selectedFailureIds);
+    setBulkSubmitting(true);
+    try {
+      const ids = Array.from(selectedIds);
+      const result = await bulkCloseConversations(ids);
+      setFailedConversations((current) => current.filter((row) => !selectedIds.has(row.conversationId)));
+      setSelectedFailureIds(new Set());
+      setShowConfirmAllModal(false);
+      toast.success(`Đã cập nhật ${result.affected} hội thoại trên ${result.requested} hội thoại được chọn.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không thể cập nhật các hội thoại đã chọn.");
+    } finally {
+      bulkSubmitGuard.current = false;
+      setBulkSubmitting(false);
+    }
+  };
+
+  const handleExportFailedConversations = (format: "csv" | "json") => {
+    const exportRows = selectedTopic ? relatedConversations : failedConversations;
+    if (!exportRows.length) {
       toast.warning("Không có dữ liệu lỗi AI để xuất.");
+      return;
+    }
+
+    const date = new Date().toISOString().slice(0, 10);
+    const scope = selectedTopic ? `-${selectedTopic
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLocaleLowerCase("vi-VN")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")}` : "";
+    if (format === "json") {
+      downloadJson(`cau-hoi-ai-chua-xu-ly${scope}-${date}.json`, exportRows);
+      setExportMenuOpen(false);
+      toast.success(`Đã xuất ${exportRows.length} dòng lỗi AI.`);
       return;
     }
 
@@ -326,7 +432,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
         "Mức ảnh hưởng",
         "Gợi ý tri thức",
       ],
-      ...failedConversations.map((item, index) => [
+      ...exportRows.map((item, index) => [
         index + 1,
         item.question,
         item.aiAnswer,
@@ -339,9 +445,16 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
         item.kbSuggestion,
       ]),
     ];
-    const date = new Date().toISOString().slice(0, 10);
-    downloadCsv(`cau-hoi-ai-chua-xu-ly-${date}.csv`, rows);
-    toast.success(`Đã xuất ${failedConversations.length} dòng lỗi AI.`);
+
+    downloadCsv(`cau-hoi-ai-chua-xu-ly${scope}-${date}.csv`, rows);
+    setExportMenuOpen(false);
+    toast.success(`Đã xuất ${exportRows.length} dòng lỗi AI.`);
+  };
+  const kpiStats = {
+    ai_success: (qualityMetrics?.total_messages || 0) - (qualityMetrics?.failure_count || 0),
+    ai_failure: qualityMetrics?.failure_count || 0,
+    kb_updates_needed: staffActivity?.pending_review || 0,
+    ai_accuracy: qualityMetrics?.success_rate || 0,
   };
 
   return (
@@ -350,28 +463,16 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
 
       {loading ? <AIInsightsSkeleton /> : (
         <>
-          {/* Section Label */}
-          <div style={{ marginBottom: "16px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <div style={{ width: "4px", height: "22px", borderRadius: "2px", background: `linear-gradient(180deg, ${ORANGE}, #ED5206)` }} />
-              <h2 style={{ fontSize: "16px", fontWeight: 700, color: NAVY, margin: 0 }}>Phân tích AI</h2>
-            </div>
-            <p style={{ fontSize: "12px", color: "rgba(0,56,101,0.5)", marginLeft: "14px", marginTop: "4px" }}>Phân tích câu hỏi, chủ đề và lỗi AI theo từng kênh</p>
-          </div>
-
-          {/* KPI Row - AI quality */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "14px", marginBottom: "16px" }}>
+          {/* KPI Row - AI insights */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "14px", marginBottom: "24px" }}>
             {[
-              { icon: CheckCircle, label: "Độ chính xác phản hồi của AI", value: `${qualityMetrics.success_rate}%`, change: "+2,1%", isWarning: false },
-              { icon: XCircle, label: "Số lượt AI phản hồi thất bại", value: qualityMetrics.failure_count.toString(), change: "+24", isWarning: true },
-              { icon: ShieldAlert, label: "Cảnh báo AI tự tạo thông tin", value: qualityMetrics.hallucination_count.toString(), change: "+5", isWarning: true },
-              { icon: Activity, label: "Độ tin cậy trung bình", value: `${qualityMetrics.avg_confidence.toFixed(1)}%`, change: "+3%", isWarning: false },
-            ].map(({ icon: Icon, label, value, change, isWarning }) => {
-              const isNegative = change.startsWith("-");
-              const badgeBg = isNegative ? "#FFF1F1" : "#EAF8F1";
-              const badgeColor = isNegative ? "#B42318" : "#228A61";
-
-              // Theme colors for icon circles
+              { icon: CheckCircle, label: "AI trả lời thành công", value: kpiStats.ai_success.toString(), change: "Theo bộ lọc" },
+              { icon: XCircle, label: "AI trả lời thất bại", value: kpiStats.ai_failure.toString(), change: "Theo bộ lọc" },
+              { icon: ShieldAlert, label: "Cần cập nhật tri thức", value: kpiStats.kb_updates_needed.toString(), change: "Theo bộ lọc" },
+              { icon: Activity, label: "Tỷ lệ chính xác", value: `${Math.round(kpiStats.ai_accuracy)}%`, change: "Theo bộ lọc" },
+            ].map(({ icon: Icon, label, value, change }) => {
+              const badgeBg = "#f8fafc";
+              const badgeColor = "#64748b";
               let iconBg = "#EBF2FF";
               let iconColor = NAVY;
               if (Icon === CheckCircle) {
@@ -412,84 +513,8 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
                 >
                   {/* Left Column: Icon (top) and Label (bottom) */}
                   <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", height: "100%", minHeight: "72px" }}>
-                    <div style={{ width: "38px", height: "38px", borderRadius: "50%", backgroundColor: iconBg, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      <Icon size={18} style={{ color: iconColor }} />
-                    </div>
-                    <div style={{ fontSize: "13px", fontWeight: 500, color: "rgba(0,56,101,0.55)", lineHeight: 1.3 }}>{label}</div>
-                  </div>
-
-                  {/* Right Column: Change badge (top) and Value (bottom, under Change badge) */}
-                  <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", alignItems: "flex-end", height: "100%", minHeight: "72px" }}>
-                    <span
-                      style={{
-                        fontSize: "11px",
-                        padding: "4px 10px",
-                        borderRadius: "20px",
-                        backgroundColor: badgeBg,
-                        color: badgeColor,
-                        fontWeight: 600,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        lineHeight: 1,
-                      }}
-                    >
-                      {change}
-                    </span>
-                    <div style={{ fontSize: "24px", fontWeight: 700, color: NAVY, lineHeight: 1 }}>{value}</div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* KPI Row - Staff activity */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "14px", marginBottom: "24px" }}>
-            {[
-              { icon: AlertTriangle, label: "Lỗi AI nhân viên ghi nhận", value: staffActivity.reported_errors.toString(), isWarning: true },
-              { icon: FilePlus2, label: "FAQ nhân viên đã thêm", value: String(sheetStats.total ?? recentChatbotRows.length), isWarning: false },
-              { icon: Clock, label: "Dữ liệu FAQ chờ duyệt", value: String(sheetStats.pending ?? staffActivity.pending_review ?? 0), isWarning: true },
-              { icon: Table2, label: "Đã cập nhật vào thư viện", value: String(sheetStats.approved ?? 0), isWarning: false },
-            ].map(({ icon: Icon, label, value, isWarning }) => {
-              let iconBg = "#EBF2FF";
-              let iconColor = NAVY;
-              if (Icon === AlertTriangle || Icon === Clock) {
-                iconBg = "#FFF4EE";
-                iconColor = ORANGE;
-              } else if (Icon === FilePlus2) {
-                iconBg = "#EAF8F1";
-                iconColor = "#228A61";
-              } else if (Icon === Table2) {
-                iconBg = "#EBF2FF";
-                iconColor = NAVY;
-              }
-
-              return (
-                <div
-                  key={label}
-                  style={{
-                    backgroundColor: "#fff",
-                    borderRadius: "16px",
-                    border: "1px solid rgba(0,56,101,0.08)",
-                    boxShadow: "0 2px 10px rgba(0,62,154,0.06)",
-                    padding: "20px 22px",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "stretch",
-                    transition: "box-shadow 0.2s ease",
-                    cursor: "default",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.boxShadow = "0 6px 20px rgba(0,62,154,0.11)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.boxShadow = "0 2px 10px rgba(0,62,154,0.06)";
-                  }}
-                >
-                  {/* Left Column: Icon (top) and Label (bottom) */}
-                  <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", height: "100%", minHeight: "72px" }}>
-                    <div style={{ width: "38px", height: "38px", borderRadius: "50%", backgroundColor: iconBg, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      <Icon size={18} style={{ color: iconColor }} />
+                    <div style={{ width: "38px", height: "38px", borderRadius: "50%", backgroundColor: "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <Icon size={24} style={{ color: iconColor }} />
                     </div>
                     <div style={{ fontSize: "13px", fontWeight: 500, color: "rgba(0,56,101,0.55)", lineHeight: 1.3 }}>{label}</div>
                   </div>
@@ -547,47 +572,130 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
               }}
             </ChartCard>
 
-            <ChartCard title="Lỗi về AI theo chủ đề" onOpenBuilder={() => onNavigate("chartbuilder")} data={failureByTopic} defaultChartType="hbar" supportedChartTypes={["line", "area", "bar", "hbar"]}>
-              {({ chartType, chartData, editValues }: any) => {
-                const isBar = chartType === "bar" || chartType === "hbar";
-                const isArea = chartType === "area";
-                const ChartComp = isBar ? BarChart : isArea ? AreaChart : LineChart;
-                const layout = chartType === "hbar" || chartType === "pie" || chartType === "donut" ? "vertical" : "horizontal";
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "8px" }}>
+                <label htmlFor="top-n-topics-select" style={{ display: "inline-flex", alignItems: "center", gap: "8px", color: NAVY, fontSize: "12px", fontWeight: 600 }}>
+                  Số chủ đề hiển thị
+                  <select id="top-n-topics-select" aria-label="Số chủ đề hiển thị" value={topN} onChange={(event) => setTopN(Number(event.target.value))} style={{ padding: "6px 9px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.16)", color: NAVY, background: "#fff" }}>
+                    {[5, 10, 20].map((value) => <option key={value} value={value}>{value}</option>)}
+                  </select>
+                </label>
+              </div>
+              <ChartCard title="Lỗi về AI theo chủ đề" onOpenBuilder={() => onNavigate("chartbuilder")} data={topFailureTopics} defaultChartType="hbar" supportedChartTypes={["line", "area", "bar", "hbar"]}>
+                {({ chartType, chartData, editValues }: any) => {
+                  const isBar = chartType === "bar" || chartType === "hbar";
+                  const isArea = chartType === "area";
+                  const ChartComp = isBar ? BarChart : isArea ? AreaChart : LineChart;
+                  const layout = chartType === "hbar" || chartType === "pie" || chartType === "donut" ? "vertical" : "horizontal";
 
-                return (
-                  <ResponsiveContainer width="100%" height={210}>
-                    <ChartComp data={chartData} layout={layout} barSize={layout === "vertical" ? 8 : 20}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" horizontal={layout === "horizontal"} vertical={layout === "vertical"} />
-                      <XAxis dataKey={layout === "vertical" ? undefined : "topic"} type={layout === "vertical" ? "number" : "category"} tick={{ fontSize: 10, fill: "rgba(0,56,101,0.5)" }} />
-                      <YAxis dataKey={layout === "vertical" ? "topic" : undefined} type={layout === "vertical" ? "category" : "number"} tick={{ fontSize: 10, fill: "rgba(0,56,101,0.6)" }} width={layout === "vertical" ? 70 : undefined} />
-                      <Tooltip />
-                      {editValues?.legend !== false && <Legend />}
+                  return (
+                    <ResponsiveContainer width="100%" height={210}>
+                      <ChartComp
+                        data={chartData}
+                        layout={layout}
+                        barSize={layout === "vertical" ? 8 : 20}
+                        onClick={(state: any) => {
+                          const topic = String(state?.activeLabel || "").trim();
+                          if (topic) setSelectedTopic(topic);
+                        }}
+                        style={{ cursor: "pointer" }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" horizontal={layout === "horizontal"} vertical={layout === "vertical"} />
+                        <XAxis dataKey={layout === "vertical" ? undefined : "topic"} type={layout === "vertical" ? "number" : "category"} tick={{ fontSize: 10, fill: "rgba(0,56,101,0.5)" }} />
+                        <YAxis dataKey={layout === "vertical" ? "topic" : undefined} type={layout === "vertical" ? "category" : "number"} tick={{ fontSize: 10, fill: "rgba(0,56,101,0.6)" }} width={layout === "vertical" ? 90 : undefined} />
+                        <Tooltip />
+                        {editValues?.legend !== false && <Legend />}
 
-                      {isBar ? (
-                        <>
-                          <Bar dataKey="thieuDL" name="Không tìm thấy dữ liệu" stackId="a" fill={ORANGE} />
-                          <Bar dataKey="khongChac" name="AI phản hồi không chắc chắn" stackId="a" fill="#f59e0b" />
-                          <Bar dataKey="hallucination" name="AI tự tạo thông tin" stackId="a" fill="#ef4444" radius={layout === "vertical" ? [0, 4, 4, 0] : [4, 4, 0, 0]} />
-                        </>
-                      ) : isArea ? (
-                        <>
-                          <Area type="monotone" dataKey="thieuDL" name="Không tìm thấy dữ liệu" stackId="a" fill={ORANGE} stroke={ORANGE} />
-                          <Area type="monotone" dataKey="khongChac" name="AI phản hồi không chắc chắn" stackId="a" fill="#f59e0b" stroke="#f59e0b" />
-                          <Area type="monotone" dataKey="hallucination" name="AI tự tạo thông tin" stackId="a" fill="#ef4444" stroke="#ef4444" />
-                        </>
-                      ) : (
-                        <>
-                          <Line type="monotone" dataKey="thieuDL" name="Không tìm thấy dữ liệu" stroke={ORANGE} dot={{ r: 2 }} />
-                          <Line type="monotone" dataKey="khongChac" name="AI phản hồi không chắc chắn" stroke="#f59e0b" dot={{ r: 2 }} />
-                          <Line type="monotone" dataKey="hallucination" name="AI tự tạo thông tin" stroke="#ef4444" dot={{ r: 2 }} />
-                        </>
-                      )}
-                    </ChartComp>
-                  </ResponsiveContainer>
-                );
-              }}
-            </ChartCard>
+                        {isBar ? (
+                          <>
+                            <Bar dataKey="thieuDL" name="Không tìm thấy dữ liệu" stackId="a" fill={ORANGE} />
+                            <Bar dataKey="khongChac" name="AI không chắc chắn" stackId="a" fill="#f59e0b" />
+                            <Bar dataKey="ngoaiPhamVi" name="Câu hỏi ngoài phạm vi" stackId="a" fill="#64748b" />
+                            <Bar dataKey="hallucination" name="AI có nguy cơ tự tạo thông tin" stackId="a" fill="#ef4444" radius={layout === "vertical" ? [0, 4, 4, 0] : [4, 4, 0, 0]} />
+                          </>
+                        ) : isArea ? (
+                          <>
+                            <Area type="monotone" dataKey="thieuDL" name="Không tìm thấy dữ liệu" stackId="a" fill={ORANGE} stroke={ORANGE} />
+                            <Area type="monotone" dataKey="khongChac" name="AI không chắc chắn" stackId="a" fill="#f59e0b" stroke="#f59e0b" />
+                            <Area type="monotone" dataKey="ngoaiPhamVi" name="Câu hỏi ngoài phạm vi" stackId="a" fill="#64748b" stroke="#64748b" />
+                            <Area type="monotone" dataKey="hallucination" name="AI có nguy cơ tự tạo thông tin" stackId="a" fill="#ef4444" stroke="#ef4444" />
+                          </>
+                        ) : (
+                          <>
+                            <Line type="monotone" dataKey="thieuDL" name="Không tìm thấy dữ liệu" stroke={ORANGE} dot={{ r: 2 }} />
+                            <Line type="monotone" dataKey="khongChac" name="AI không chắc chắn" stroke="#f59e0b" dot={{ r: 2 }} />
+                            <Line type="monotone" dataKey="ngoaiPhamVi" name="Câu hỏi ngoài phạm vi" stroke="#64748b" dot={{ r: 2 }} />
+                            <Line type="monotone" dataKey="hallucination" name="AI có nguy cơ tự tạo thông tin" stroke="#ef4444" dot={{ r: 2 }} />
+                          </>
+                        )}
+                      </ChartComp>
+                    </ResponsiveContainer>
+                  );
+                }}
+              </ChartCard>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "8px" }}>
+                {topFailureTopics.map((item) => (
+                  <button
+                    key={item.topic}
+                    type="button"
+                    aria-label={`Xem chi tiết chủ đề ${item.topic}`}
+                    aria-pressed={selectedTopic === item.topic}
+                    onClick={() => setSelectedTopic(item.topic)}
+                    style={{ padding: "5px 9px", borderRadius: "999px", border: `1px solid ${selectedTopic === item.topic ? ORANGE : "rgba(0,56,101,0.14)"}`, background: selectedTopic === item.topic ? ORANGE_50 : "#fff", color: selectedTopic === item.topic ? ORANGE : NAVY, fontSize: "11px", cursor: "pointer" }}
+                  >
+                    {item.topic} · {topicFailureTotal(item)}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
+
+          {selectedTopic && selectedTopicFailure && (
+            <section aria-labelledby="topic-drilldown-title" style={{ background: "#fff", border: "1px solid rgba(0,56,101,0.08)", borderRadius: "20px", boxShadow: "0 2px 12px rgba(0,56,101,0.06)", padding: "20px 24px", marginBottom: "24px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", marginBottom: "16px" }}>
+                <h3 id="topic-drilldown-title" style={{ color: NAVY, fontSize: "15px", fontWeight: 700, margin: 0 }}>Chi tiết chủ đề: {selectedTopic}</h3>
+                <span style={{ color: ORANGE, fontWeight: 700, fontSize: "12px" }}>{topicFailureTotal(selectedTopicFailure)} lỗi</span>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "minmax(280px, 2fr) minmax(320px, 3fr)", gap: "20px", alignItems: "start" }}>
+                <div style={{ overflowX: "auto" }}>
+                  <table aria-label={`Phân loại lỗi của chủ đề ${selectedTopic}`} style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+                    <thead>
+                      <tr style={{ background: "#f8fafc" }}>
+                        <th style={{ padding: "9px 10px", textAlign: "left", color: "rgba(0,56,101,0.6)" }}>Phân loại lỗi</th>
+                        <th style={{ padding: "9px 10px", textAlign: "right", color: "rgba(0,56,101,0.6)" }}>Số lượng</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {AI_FAILURE_TAXONOMY.map((definition) => (
+                        <tr key={definition.id} style={{ borderTop: "1px solid rgba(0,56,101,0.06)" }}>
+                          <td style={{ padding: "9px 10px", color: NAVY }}>{definition.label}</td>
+                          <td style={{ padding: "9px 10px", textAlign: "right", color: NAVY, fontWeight: 700 }}>{selectedTopicFailure[definition.analyticsKey]}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div role="region" aria-label={`Hội thoại liên quan đến chủ đề ${selectedTopic}`}>
+                  <div style={{ color: NAVY, fontSize: "12px", fontWeight: 700, marginBottom: "8px" }}>Hội thoại liên quan ({relatedConversations.length})</div>
+                  {relatedConversations.length === 0 ? (
+                    <div style={{ padding: "18px", borderRadius: "10px", background: "#f8fafc", color: "rgba(0,56,101,0.55)", fontSize: "12px" }}>Chưa có hội thoại liên quan trong dữ liệu API hiện tại.</div>
+                  ) : (
+                    <div style={{ display: "grid", gap: "8px" }}>
+                      {relatedConversations.map((conversation) => (
+                        <div key={conversation.id} style={{ display: "grid", gridTemplateColumns: "minmax(120px, 1fr) minmax(180px, 2fr)", gap: "10px", padding: "10px 12px", borderRadius: "10px", border: "1px solid rgba(0,56,101,0.08)", background: "#fbfdff" }}>
+                          <div>
+                            <div style={{ color: NAVY, fontWeight: 700, fontSize: "12px" }}>{conversation.customerName}</div>
+                            {conversation.customerReference && <div style={{ color: "rgba(0,56,101,0.48)", fontSize: "10px", marginTop: "2px" }}>{conversation.customerReference}</div>}
+                          </div>
+                          <div style={{ color: "rgba(0,56,101,0.72)", fontSize: "12px", lineHeight: 1.45 }}>{conversation.question}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+          )}
 
           {/* AI Failed Conversations Table */}
           <div style={{ backgroundColor: "#fff", borderRadius: "20px", border: "1px solid rgba(0,56,101,0.08)", boxShadow: "0 2px 12px rgba(0,56,101,0.06)", overflow: "hidden", marginBottom: "24px" }}>
@@ -598,37 +706,61 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
                 <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "20px", backgroundColor: ORANGE_50, color: ORANGE, border: `1px solid ${ORANGE_200}`, fontWeight: 600 }}>{failedConversations.length} câu hỏi</span>
               </div>
               <div style={{ display: "flex", gap: "8px" }}>
-                <button
-                  onClick={handleExportFailedConversations}
-                  style={{ padding: "6px 14px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.12)", background: "#f8fafc", color: NAVY, cursor: "pointer", fontSize: "12px" }}
-                >
-                  Xuất danh sách
-                </button>
-                <button
-                  onClick={() => {
-                    setShowConfirmAllModal(true);
-                  }}
-                  style={{ padding: "6px 14px", borderRadius: "8px", border: "none", background: `linear-gradient(135deg, ${CTA} 0%, ${CTA_SOFT} 100%)`, color: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 600, boxShadow: "0 4px 12px rgba(237,82,6,0.18)" }}
-                >
-                  Đánh dấu xử lý (tất cả)
-                </button>
+                <div style={{ position: "relative" }}>
+                  <button
+                    type="button"
+                    aria-label="Mở menu xuất dữ liệu"
+                    aria-haspopup="menu"
+                    aria-expanded={exportMenuOpen}
+                    onClick={() => setExportMenuOpen((current) => !current)}
+                    style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "6px 14px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.12)", background: "#f8fafc", color: NAVY, cursor: "pointer", fontSize: "12px" }}
+                  >
+                    <Download size={13} aria-hidden="true" /> Xuất dữ liệu <ChevronDown size={12} aria-hidden="true" />
+                  </button>
+                  {exportMenuOpen && (
+                    <div role="menu" aria-label="Định dạng xuất dữ liệu" style={{ position: "absolute", right: 0, top: "calc(100% + 6px)", zIndex: 20, minWidth: "130px", padding: "6px", borderRadius: "10px", border: "1px solid rgba(0,56,101,0.12)", background: "#fff", boxShadow: "0 10px 28px rgba(0,56,101,0.14)" }}>
+                      <button role="menuitem" type="button" onClick={() => handleExportFailedConversations("csv")} style={{ width: "100%", padding: "8px 10px", border: 0, borderRadius: "6px", background: "transparent", color: NAVY, textAlign: "left", cursor: "pointer" }}>Xuất CSV</button>
+                      <button role="menuitem" type="button" onClick={() => handleExportFailedConversations("json")} style={{ width: "100%", padding: "8px 10px", border: 0, borderRadius: "6px", background: "transparent", color: NAVY, textAlign: "left", cursor: "pointer" }}>Xuất JSON</button>
+                    </div>
+                  )}
+                </div>
+                <span style={{ fontSize: "11px", color: "rgba(0,56,101,0.58)" }}>Phạm vi: trang hiện tại</span>
               </div>
             </div>
+            {selectedFailureIds.size > 0 && (
+              <div role="toolbar" aria-label="Thao tác hàng loạt lỗi AI" style={{ padding: "10px 24px", background: ORANGE_50, borderBottom: `1px solid ${ORANGE_200}`, display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px" }}>
+                <strong style={{ color: NAVY, fontSize: "12px" }}>{selectedFailureIds.size} hội thoại đã chọn</strong>
+                <button onClick={() => setShowConfirmAllModal(true)} disabled={bulkSubmitting} style={{ padding: "7px 14px", borderRadius: "8px", border: "none", background: CTA, color: "#fff", fontWeight: 700 }}>
+                  Đánh dấu đã xử lý
+                </button>
+              </div>
+            )}
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
                 <thead>
-                  <tr style={{ backgroundColor: "#f8fafc" }}>
+                  <tr>
+                    <th className="flic-th" style={{ width: "40px" }}>
+                      <input
+                        type="checkbox"
+                        aria-label="Chọn tất cả hội thoại lỗi AI trên trang hiện tại"
+                        checked={allFailuresSelected}
+                        onChange={() =>
+                          setSelectedFailureIds((current) => {
+                            if (allFailuresSelected) return new Set();
+                            return new Set([...current, ...selectableFailureIds]);
+                          })
+                        }
+                      />
+                    </th>
                     {["Câu trả lời của AI", "Mã KH", "Chủ đề", "Kênh", "Lý do lỗi AI", "Mức độ tin cậy", "Mức ảnh hưởng", "Hành động"].map((h) => (
-                      <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontWeight: 600, color: "rgba(0,56,101,0.5)", fontSize: "10px", letterSpacing: "0.04em", borderBottom: "1px solid rgba(0,56,101,0.06)", whiteSpace: "nowrap" }}>
-                        {h}
-                      </th>
+                      <th key={h} className="flic-th">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {failedConversations.map((conv) => {
                     const isExpanded = expandedRow === conv.id;
-                    const fc = failReasonColor[conv.failReason];
+                    const fc = failReasonColor[conv.failReason] || "#64748b";
                     const ic = impactColor[conv.impact];
                     return (
                       <React.Fragment key={conv.id}>
@@ -637,6 +769,22 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
                           onMouseEnter={(e) => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "#fafbfc"}
                           onMouseLeave={(e) => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "transparent"}
                         >
+                          <td style={{ padding: "12px 14px", textAlign: "center" }}>
+                            <input
+                              type="checkbox"
+                              aria-label={`Chọn hội thoại lỗi AI ${conv.id}`}
+                              checked={selectedFailureIds.has(conv.conversationId)}
+                              disabled={!Number.isInteger(conv.conversationId)}
+                              onChange={() =>
+                                setSelectedFailureIds((current) => {
+                                  const next = new Set(current);
+                                  if (next.has(conv.conversationId)) next.delete(conv.conversationId);
+                                  else next.add(conv.conversationId);
+                                  return next;
+                                })
+                              }
+                            />
+                          </td>
                           <td style={{ padding: "12px 14px", maxWidth: "220px" }}>
                             <div style={{ color: NAVY, fontWeight: 500, fontSize: "12px", lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", textOverflow: "ellipsis" }}>{conv.question}</div>
                             <div
@@ -647,7 +795,8 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
                             </div>
                           </td>
                           <td style={{ padding: "12px 14px", color: NAVY, fontWeight: 600, fontSize: "11px", whiteSpace: "nowrap" }}>
-                            {conv.customerId}
+                            <div>{conv.customerName}</div>
+                            {conv.customerReference && <div style={{ color: "rgba(0,56,101,0.48)", fontWeight: 500 }}>{conv.customerReference}</div>}
                           </td>
                           <td style={{ padding: "12px 14px" }}>
                             <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: "#eff6ff", color: "#3b82f6", whiteSpace: "nowrap" }}>{conv.topic}</span>
@@ -670,7 +819,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
                           <td style={{ padding: "12px 14px" }}>
                             <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
                               <button
-                                onClick={() => handleMarkAsProcessed(conv.id)}
+                                onClick={() => { void handleMarkAsProcessed(conv.id); }}
                                 style={{ padding: "4px 10px", borderRadius: "6px", border: `1px solid ${ORANGE}30`, background: "#fff3ef", color: ORANGE, cursor: "pointer", fontSize: "10px", fontWeight: 600, whiteSpace: "nowrap" }}
                               >
                                 Đánh dấu xử lý
@@ -686,7 +835,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
                         </tr>
                         {isExpanded && (
                           <tr key={`${conv.id}-expanded`} style={{ backgroundColor: "#fff8f6" }}>
-                            <td colSpan={8} style={{ padding: "12px 14px 14px 28px" }}>
+                            <td colSpan={9} style={{ padding: "12px 14px 14px 28px" }}>
                               <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                                 <div style={{ display: "flex", gap: "8px", alignItems: "flex-start" }}>
                                   <span style={{ fontSize: "10px", color: ORANGE, fontWeight: 700, whiteSpace: "nowrap", paddingTop: "2px" }}>CÂU HỎI KHÁCH HÀNG:</span>
@@ -755,9 +904,9 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
                 <thead>
-                  <tr style={{ backgroundColor: "#f8fafc" }}>
+                  <tr>
                     {["Câu hỏi khách hàng", "Câu trả lời đúng đã bổ sung", "Người bổ sung", "Chủ đề", "Trạng thái", "Ghi chú nội bộ", "Ngày cập nhật", "Hành động"].map(h => (
-                      <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontWeight: 600, color: "rgba(0,56,101,0.5)", fontSize: "10px", letterSpacing: "0.04em", borderBottom: "1px solid rgba(0,56,101,0.06)", whiteSpace: "nowrap" }}>{h}</th>
+                      <th key={h} className="flic-th" style={{ textAlign: "left" }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -772,8 +921,6 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
                     const isToday = new Date().toDateString() === dateObj.toDateString();
                     const formattedDate = isToday ? "Hôm nay" : dateObj.toLocaleDateString("vi-VN");
                     const isExpanded = expandedChatbotRow === (item.id || String(i));
-                    const statusTone = sheetStatusColor[item.status as SheetChatbotStatus] || defaultSheetStatusColor;
-
                     return (
                       <React.Fragment key={item.id || i}>
                         <tr style={{ borderBottom: "1px solid rgba(0,56,101,0.04)" }}
@@ -784,7 +931,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
                           <td style={{ padding: "12px 14px", color: "#16a34a", maxWidth: "180px", fontSize: "11px" }}>{item.correctAnswer}</td>
                           <td style={{ padding: "12px 14px", color: NAVY, fontWeight: 600 }}>{item.addedBy}</td>
                           <td style={{ padding: "12px 14px" }}><span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: "#eff6ff", color: "#3b82f6" }}>{item.topic}</span></td>
-                          <td style={{ padding: "12px 14px" }}><span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: statusTone.bg, color: statusTone.color, border: `1px solid ${statusTone.border}`, fontWeight: 600 }}>{item.status}</span></td>
+                          <td style={{ padding: "12px 14px" }}><StatusBadge status={item.status} /></td>
                           <td style={{ padding: "12px 14px", color: ORANGE, fontStyle: "italic", maxWidth: "160px", fontSize: "11px" }}>
                             <div style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", textOverflow: "ellipsis" }}>
                               {item.notes || "---"}
@@ -844,31 +991,29 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
       )}
 
       {showConfirmAllModal && (
-        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,56,101,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
-          <div style={{ backgroundColor: "#fff", borderRadius: "16px", padding: "24px", width: "100%", maxWidth: "400px", boxShadow: "0 10px 40px rgba(0,56,101,0.15)", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
+        <div role="presentation" onKeyDown={(event) => { if (event.key === "Escape" && !bulkSubmitting) setShowConfirmAllModal(false); }} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,56,101,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999, padding: "16px" }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="ai-bulk-title" aria-describedby="ai-bulk-description" style={{ backgroundColor: "#fff", borderRadius: "16px", padding: "24px", width: "100%", maxWidth: "400px", boxShadow: "0 10px 40px rgba(0,56,101,0.15)", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
             <div style={{ width: "48px", height: "48px", borderRadius: "50%", backgroundColor: "#FFF4EE", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "16px" }}>
               <AlertTriangle size={24} style={{ color: ORANGE }} />
             </div>
-            <h3 style={{ margin: "0 0 12px 0", fontSize: "18px", fontWeight: 700, color: NAVY }}>Xác nhận đánh dấu xử lý</h3>
-            <p style={{ fontSize: "14px", color: "rgba(0,56,101,0.7)", lineHeight: 1.5, marginBottom: "24px", padding: "0 10px" }}>
-              Bạn có chắc chắn muốn đánh dấu xử lý toàn bộ các câu hỏi trong danh sách này không? Hành động này không thể hoàn tác.
+            <h3 id="ai-bulk-title" style={{ margin: "0 0 12px 0", fontSize: "18px", fontWeight: 700, color: NAVY }}>Xác nhận đánh dấu xử lý</h3>
+            <p id="ai-bulk-description" style={{ fontSize: "14px", color: "rgba(0,56,101,0.7)", lineHeight: 1.5, marginBottom: "24px", padding: "0 10px" }}>
+              Thao tác chỉ áp dụng cho chính xác {selectedFailureIds.size} hội thoại đã chọn trên trang hiện tại.
             </p>
             <div style={{ display: "flex", justifyContent: "center", gap: "12px", width: "100%" }}>
               <button
                 onClick={() => setShowConfirmAllModal(false)}
+                disabled={bulkSubmitting}
                 style={{ flex: 1, padding: "10px 0", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.15)", background: "#fff", color: NAVY, cursor: "pointer", fontSize: "14px", fontWeight: 600 }}
               >
                 Hủy bỏ
               </button>
               <button
-                onClick={() => {
-                  setFailedConversations([]);
-                  toast.info("Backend hiện chưa có API lưu trạng thái xử lý hàng loạt; danh sách chỉ được ẩn trong phiên hiện tại.");
-                  setShowConfirmAllModal(false);
-                }}
+                onClick={() => { void submitSelectedFailures(); }}
+                disabled={bulkSubmitting}
                 style={{ flex: 1, padding: "10px 0", borderRadius: "8px", border: "none", background: ORANGE, color: "#fff", cursor: "pointer", fontSize: "14px", fontWeight: 600 }}
               >
-                Đồng ý
+                {bulkSubmitting ? "Đang xử lý..." : `Xác nhận ${selectedFailureIds.size} hội thoại`}
               </button>
             </div>
           </div>

@@ -1,4 +1,5 @@
 import { buildApiUrl, fetchApiJson } from "./dashboardApi";
+import { getAiFailureDefinition } from "../constants/aiFailureTaxonomy";
 
 export type SheetChatbotStatus =
   | "Chờ xử lý"
@@ -92,7 +93,7 @@ export interface SheetChatbotDuplicateResponse {
   data: Array<SheetChatbotRow & { similarity: number }>;
 }
 
-export function getSheetChatbotRows(params?: {
+export async function getSheetChatbotRows(params?: {
   page?: number;
   pageSize?: number;
   search?: string;
@@ -110,25 +111,31 @@ export function getSheetChatbotRows(params?: {
     addedBy: params?.addedBy,
     role: params?.role || undefined,
   });
-  return fetchApiJson<SheetChatbotListResponse>(url, { cache: false });
+  const response = await fetchApiJson<SheetChatbotListResponse>(url, { cache: false });
+  return {
+    ...response,
+    data: response.data.map(normalizeSheetChatbotRow),
+  };
 }
 
 export async function createSheetChatbotRow(payload: SheetChatbotCreatePayload) {
+  const normalizedPayload = normalizeCreatePayload(payload);
   const response = await fetchApiJson<SheetChatbotRowResponse>(buildApiUrl("/api/admin/sheet-chatbot"), {
     method: "POST",
     cache: false,
-    body: JSON.stringify(payload),
+    body: JSON.stringify(normalizedPayload),
   });
-  return response.data;
+  return normalizeSheetChatbotRow(response.data);
 }
 
 export async function updateSheetChatbotRow(id: string, payload: SheetChatbotUpdatePayload) {
+  const normalizedPayload = normalizeUpdatePayload(payload);
   const response = await fetchApiJson<SheetChatbotRowResponse>(buildApiUrl(`/api/admin/sheet-chatbot/${id}`), {
     method: "PUT",
     cache: false,
-    body: JSON.stringify(payload),
+    body: JSON.stringify(normalizedPayload),
   });
-  return response.data;
+  return normalizeSheetChatbotRow(response.data);
 }
 
 export async function updateSheetChatbotStatus(id: string, status: SheetChatbotStatus, reviewer?: string) {
@@ -137,7 +144,7 @@ export async function updateSheetChatbotStatus(id: string, status: SheetChatbotS
     cache: false,
     body: JSON.stringify({ status, reviewer }),
   });
-  return response.data;
+  return normalizeSheetChatbotRow(response.data);
 }
 
 export async function mergeSheetChatbotToFaq(id: string, reviewer?: string) {
@@ -163,5 +170,53 @@ export async function getSheetChatbotDuplicates(question: string, minSimilarity 
     throw new Error(response.message || "Không thể kiểm tra FAQ tương tự.");
   }
 
-  return response.data;
+  return response.data.map((row) => ({
+    ...normalizeSheetChatbotRow(row),
+    similarity: row.similarity,
+  }));
+}
+
+function normalizeCreatePayload(payload: SheetChatbotCreatePayload): SheetChatbotCreatePayload {
+  const question = requiredText(payload.question, "Câu hỏi khách hàng");
+  const correctAnswer = requiredText(payload.correctAnswer, "Câu trả lời đúng");
+  const topic = requiredText(payload.topic, "Chủ đề");
+  const sourceDefinition = getAiFailureDefinition(payload.source);
+
+  if (!sourceDefinition) {
+    throw new Error("Nguồn gốc lỗi sai không thuộc taxonomy lỗi AI được hỗ trợ.");
+  }
+
+  return {
+    ...payload,
+    question,
+    correctAnswer,
+    topic,
+    source: sourceDefinition.apiValue,
+    notes: payload.notes.trim(),
+    addedBy: payload.addedBy?.trim() || undefined,
+  };
+}
+
+function normalizeUpdatePayload(payload: SheetChatbotUpdatePayload): SheetChatbotUpdatePayload {
+  const sourceDefinition = payload.source ? getAiFailureDefinition(payload.source) : null;
+  return {
+    ...payload,
+    question: payload.question === undefined ? undefined : requiredText(payload.question, "Câu hỏi khách hàng"),
+    correctAnswer: payload.correctAnswer === undefined ? undefined : requiredText(payload.correctAnswer, "Câu trả lời đúng"),
+    topic: payload.topic === undefined ? undefined : requiredText(payload.topic, "Chủ đề"),
+    source: payload.source === undefined ? undefined : sourceDefinition?.apiValue ?? payload.source.trim(),
+    notes: payload.notes?.trim(),
+    addedBy: payload.addedBy?.trim(),
+  };
+}
+
+function normalizeSheetChatbotRow(row: SheetChatbotRow): SheetChatbotRow {
+  const source = getAiFailureDefinition(row.source)?.apiValue ?? row.source;
+  return { ...row, source };
+}
+
+function requiredText(value: string, label: string) {
+  const normalized = value.trim();
+  if (!normalized) throw new Error(`${label} không được để trống.`);
+  return normalized;
 }

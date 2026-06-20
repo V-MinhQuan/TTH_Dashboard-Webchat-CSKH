@@ -1,32 +1,38 @@
-"""
-Service for authentication and role resolution.
-Xác thực user và phân quyền từ database.
-"""
+"""Xác thực người dùng và phát hành phiên bearer không trạng thái."""
 from __future__ import annotations
 
-import os
-from typing import Any, Dict, Optional
+from collections.abc import Iterable
+from datetime import datetime, timezone
+from typing import Any, Dict
 
+from app.core.auth import HMACBearerSessions, create_session_manager
+from app.core.config import get_settings
 from app.repositories.auth_repository import AuthRepository
-
-# Danh sách manager cấu hình qua env.
-# Phân quyền được xử lý trong code theo yêu cầu, không dùng cột Role ở DB.
-_FALLBACK_MANAGER_USERNAMES = {
-    u.strip().lower()
-    for u in os.getenv("MANAGER_USERNAMES", "test,thuynt").split(",")
-    if u.strip()
-}
 
 
 class AuthService:
-    def __init__(self, repository: AuthRepository | None = None):
+    def __init__(
+        self,
+        repository: AuthRepository | None = None,
+        sessions: HMACBearerSessions | None = None,
+        manager_usernames: Iterable[str] | None = None,
+    ) -> None:
+        settings = get_settings()
         self.repository = repository or AuthRepository()
+        self.sessions = sessions or create_session_manager()
+        configured_managers = (
+            settings.manager_username_list
+            if manager_usernames is None
+            else manager_usernames
+        )
+        self.manager_usernames = frozenset(
+            username.strip().lower()
+            for username in configured_managers
+            if username.strip()
+        )
 
     def login(self, username: str, password: str) -> Dict[str, Any]:
-        """
-        Thực hiện đăng nhập.
-        Returns dict với 'success', 'message', và 'data' nếu thành công.
-        """
+        """Xác thực thông tin đăng nhập và trả về bearer token có thời hạn."""
         if not username or not password:
             return {
                 "success": False,
@@ -35,14 +41,12 @@ class AuthService:
             }
 
         row = self.repository.find_user(username.strip(), password)
-
         if row is None:
             return {
                 "success": False,
                 "status_code": 401,
                 "message": "Tên đăng nhập hoặc mật khẩu không đúng.",
             }
-
         if not row.get("DangHoatDong"):
             return {
                 "success": False,
@@ -50,11 +54,14 @@ class AuthService:
                 "message": "Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên.",
             }
 
-        # Phân quyền hoàn toàn trong code, đọc từ biến môi trường MANAGER_USERNAMES
-        user_lower = (row.get("UserName") or "").strip().lower()
-        role = "manager" if user_lower in _FALLBACK_MANAGER_USERNAMES else "staff"
-
-        user_name = row.get("UserName", "")
+        user_name = str(row.get("UserName") or "").strip()
+        role = "manager" if user_name.lower() in self.manager_usernames else "staff"
+        token = self.sessions.issue(username=user_name, role=role)
+        token_claims = self.sessions.verify(token)
+        token_expires_at = datetime.fromtimestamp(
+            token_claims.expires_at,
+            tz=timezone.utc,
+        ).isoformat().replace("+00:00", "Z")
         return {
             "success": True,
             "status_code": 200,
@@ -66,5 +73,10 @@ class AuthService:
                 "phone": row.get("DienThoai") or "",
                 "role": role,
                 "shortName": row.get("ShortName") or "",
+                "token": token,
+                "accessToken": token,
+                "tokenType": "Bearer",
+                "expiresIn": self.sessions.ttl_seconds,
+                "tokenExpiresAt": token_expires_at,
             },
         }

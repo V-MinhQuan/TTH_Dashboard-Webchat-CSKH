@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { Plus, Search, CheckCircle2, XCircle, Clock, X, Filter } from "lucide-react";
 import { toast } from "sonner";
+import { ErrorSourceBadge } from "../common/ErrorSourceBadge";
+import { AI_FAILURE_TAXONOMY, getAiFailureDefinition } from "../../constants/aiFailureTaxonomy";
 import {
   createSheetChatbotRow,
   getSheetChatbotRows,
@@ -26,7 +28,7 @@ const FAQ_TOPICS_COMPUTER = ["MOS", "IC3", "Tin học cơ bản"];
 const RISK_LEVELS = ["Cao", "Trung bình", "Thấp"];
 const FAQ_STATUSES: SheetChatbotStatus[] = ["Chờ xử lý", "Đã duyệt", "Cần chỉnh sửa", "Từ chối"];
 const TIME_PERIODS = ["Hôm nay", "7 ngày qua", "30 ngày qua", "Tháng này", "Tùy chỉnh"];
-const SOURCES = ["AI trả lời sai", "AI không chắc chắn", "Không tìm thấy dữ liệu", "AI có nguy cơ tự tạo thông tin", "Nhân viên đề xuất", "Phản hồi từ khách hàng"];
+const SOURCES = AI_FAILURE_TAXONOMY.map((item) => item.apiValue);
 
 interface Faq {
   id: string;
@@ -45,7 +47,7 @@ const emptyFaqForm = {
   question: "",
   answer: "",
   topic: "TOEIC",
-  source: "Phản hồi từ khách hàng",
+  source: SOURCES[0],
   riskLevel: "Thấp",
   notes: "",
   status: "Chờ xử lý" as SheetChatbotStatus,
@@ -64,6 +66,17 @@ function mapSheetRowToFaq(row: SheetChatbotRow): Faq {
     date: (row.addedAt || row.createdAt || "").slice(0, 10),
     notes: row.notes || "",
   };
+}
+
+function displayFailureSource(source: string) {
+  return getAiFailureDefinition(source)?.label ?? "Chưa phân loại lỗi AI";
+}
+
+function errorOriginForFaq(faq: Faq): "ai" | "staff" | "system" {
+  const proposer = faq.proposer.toLocaleLowerCase("vi-VN");
+  if (proposer.includes("ai") || proposer.includes("tự động")) return "ai";
+  if (proposer.includes("hệ thống")) return "system";
+  return "staff";
 }
 
 function matchesTimePeriod(dateValue: string, period: string) {
@@ -223,10 +236,14 @@ export function FAQ() {
         question: selectedFaq.question,
         correctAnswer: suggestedAnswer.trim(),
         topic: selectedFaq.topic,
-        source: "Nhân viên đề xuất",
+        source: getAiFailureDefinition(selectedFaq.source)?.apiValue ?? SOURCES[0],
         risk: selectedFaq.riskLevel as "Thấp" | "Trung bình" | "Cao",
         status: "Chờ xử lý",
-        notes: `Đề xuất chỉnh sửa cho ${selectedFaq.id}${suggestionReason.trim() ? `: ${suggestionReason.trim()}` : ""}`,
+        notes: [
+          `Đề xuất chỉnh sửa cho ${selectedFaq.id}.`,
+          `Câu trả lời liên quan: ${selectedFaq.answer || "Chưa có câu trả lời."}`,
+          suggestionReason.trim() ? `Lý do đề xuất: ${suggestionReason.trim()}` : "Lý do đề xuất: Chưa cung cấp.",
+        ].join("\n"),
         addedBy: currentUserName,
       });
       await loadFaqs();
@@ -503,7 +520,7 @@ export function FAQ() {
       {/* Admin: Tạo FAQ Modal */}
       {showCreateModal && role === "manager" && (
         <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.5)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div style={{ backgroundColor: "#fff", width: "520px", borderRadius: "18px", padding: "28px", boxShadow: "0 20px 60px rgba(0,0,0,0.15)", maxHeight: "90vh", overflowY: "auto" }}>
+          <div role="dialog" aria-label={editingFaqId ? "Chỉnh sửa FAQ" : "Tạo FAQ"} style={{ backgroundColor: "#fff", width: "520px", borderRadius: "18px", padding: "28px", boxShadow: "0 20px 60px rgba(0,0,0,0.15)", maxHeight: "90vh", overflowY: "auto" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "22px" }}>
               <h3 style={{ fontSize: "17px", fontWeight: 700, color: NAVY, margin: 0 }}>{editingFaqId ? "Chỉnh sửa FAQ" : "Tạo FAQ"}</h3>
               <button onClick={closeCreateModal} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(0,56,101,0.4)" }}><X size={18} /></button>
@@ -542,8 +559,8 @@ export function FAQ() {
                 </select>
               </div>
               <div>
-                <label style={labelStyle}>Nguồn dữ liệu</label>
-                <select value={faqForm.source} onChange={(e) => setFaqForm({ ...faqForm, source: e.target.value })} style={fieldStyle}>
+                <label style={labelStyle}>Nguồn gốc lỗi sai</label>
+                <select aria-label="Nguồn gốc lỗi sai" value={faqForm.source} onChange={(e) => setFaqForm({ ...faqForm, source: e.target.value })} style={fieldStyle}>
                   {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
@@ -596,8 +613,11 @@ export function FAQ() {
                 </div>
               </div>
               <div>
-                <label style={labelStyle}>Nguồn hội thoại</label>
-                <div style={{ padding: "8px 12px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.1)", backgroundColor: "#f8fafc", fontSize: "13px", color: NAVY, fontFamily: "monospace" }}>{selectedFaq.source}</div>
+                <label style={labelStyle}>Nguồn gốc lỗi sai</label>
+                <div style={{ padding: "8px 12px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.1)", backgroundColor: "#f8fafc", fontSize: "13px", color: NAVY, display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                  <ErrorSourceBadge source={errorOriginForFaq(selectedFaq)} />
+                  <span>{displayFailureSource(selectedFaq.source)}</span>
+                </div>
               </div>
               {selectedFaq.notes && (
                 <div>

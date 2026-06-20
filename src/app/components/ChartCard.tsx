@@ -311,7 +311,7 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
           return Object.keys(item).reduce((acc: any, key) => {
             if (key === "channel" || key === "date" || key === "name") {
               acc[key] = item[key];
-            } else if (["Chờ xử lý", "Đang xử lý", "Hoàn thành"].includes(key)) {
+            } else if (["Chờ xử lý", "Đang tư vấn / Chờ phản hồi", "Đang xử lý", "Hoàn thành"].includes(key)) {
               acc[key] = key === target ? item[key] : 0;
             } else {
               acc[key] = item[key];
@@ -566,7 +566,7 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
                 { label: "Khoảng thời gian", key: "dateRange", options: ["30 ngày qua", "7 ngày qua", "Hôm nay", "Tháng này"] },
                 { label: "Kênh", key: "channel", options: channels },
                 { label: "Chủ đề", key: "topic", options: ["Tất cả", ...topics] },
-                { label: "Trạng thái hội thoại", key: "status", options: ["Tất cả", "Chờ xử lý", "Đang xử lý", "Hoàn thành"] },
+                { label: "Trạng thái hội thoại", key: "status", options: ["Tất cả", "Chờ xử lý", "Đang tư vấn / Chờ phản hồi", "Hoàn thành"] },
                 { label: "Trạng thái AI", key: "aiStatus", options: ["Tất cả", "AI trả lời thành công", "AI trả lời thất bại", "AI không chắc chắn"] },
               ].map(({ label, key, options }) => (
                 <div key={key}>

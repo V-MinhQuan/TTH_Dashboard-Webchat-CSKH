@@ -12,7 +12,7 @@ class ErrorBoundary extends React.Component<any, any> {
     return this.props.children; 
   }
 }
-import { Heart, Meh, Frown, TrendingUp, AlertTriangle, Lightbulb, Star } from "lucide-react";
+import { Heart, Meh, Frown, TrendingUp, AlertTriangle, Lightbulb, Star, MessageCircle, Smile, AlertCircle, Activity } from "lucide-react";
 import {
   PieChart, Pie, Cell, LineChart, Line, BarChart, Bar, XAxis, YAxis,
   CartesianGrid, Tooltip, ResponsiveContainer, Legend, AreaChart, Area
@@ -21,6 +21,7 @@ import { ChartCard } from "../ChartCard";
 import { FilterPanel, FilterValues } from "../FilterPanel";
 import { toast } from "sonner";
 import { closeConversation, fetchApiJson, buildApiUrl, formatChannelParam } from "../../services/dashboardApi";
+import { bulkCloseConversations, getCustomerPresentation } from "../../services/conversationApi";
 
 const NAVY = "#003865";
 const ORANGE = "#D73C01";
@@ -162,8 +163,13 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
   const [negKeywords, setNegKeywords] = useState<any[]>([]);
   const [negativeConversations, setNegativeConversations] = useState<any[]>([]);
   const [sentimentKpiTrend, setSentimentKpiTrend] = useState<{ pos: string; neu: string; neg: string }>({ pos: "", neu: "", neg: "" });
+  const [selectedConvIds, setSelectedConvIds] = useState<Set<number>>(new Set());
+  const [bulkSubmitting, setBulkSubmitting] = useState(false);
+  const [showBulkConfirm, setShowBulkConfirm] = useState(false);
+  const bulkGuard = React.useRef(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
-  useEffect(() => {
+  useEffect(() => { // eslint-disable-line react-hooks/exhaustive-deps
     async function loadData() {
       setLoading(true);
       try {
@@ -187,11 +193,11 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
         }
 
         const [sumRes, trendRes, topicRes, kwRes, convRes] = await Promise.all([
-          fetchApiJson<any>(buildApiUrl("/api/analytics/sentiment-summary", queryParams)),
-          fetchApiJson<any>(buildApiUrl("/api/analytics/sentiment-trend", queryParams)),
-          fetchApiJson<any>(buildApiUrl("/api/analytics/topics", queryParams)),
-          fetchApiJson<any>(buildApiUrl("/api/analytics/negative-keywords", queryParams)),
-          fetchApiJson<any>(buildApiUrl("/api/analytics/negative-conversations", queryParams))
+          fetchApiJson<any>(buildApiUrl("/api/analytics/sentiment-summary", queryParams), { cache: false }),
+          fetchApiJson<any>(buildApiUrl("/api/analytics/sentiment-trend", queryParams), { cache: false }),
+          fetchApiJson<any>(buildApiUrl("/api/analytics/topics", queryParams), { cache: false }),
+          fetchApiJson<any>(buildApiUrl("/api/analytics/negative-keywords", queryParams), { cache: false }),
+          fetchApiJson<any>(buildApiUrl("/api/analytics/negative-conversations", queryParams), { cache: false })
         ]);
 
         if (sumRes.success) {
@@ -250,16 +256,24 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
         if (convRes.success) {
           const rawConv = Array.isArray(convRes.data?.records) ? convRes.data.records : [];
           const negativeReviewConversations = rawConv.filter(
-            (conv) => String(conv.sentimentLabel || "").toLowerCase() === "negative" && Boolean(conv.needStaffReview)
+            (conv) => Boolean(conv.needStaffReview)
           );
+          setSelectedConvIds(new Set());
           setNegativeConversations(negativeReviewConversations.map(conv => {
             const waitTimeRaw = Date.now() - new Date(conv.messageAt).getTime();
+            const waitDays = Math.floor(waitTimeRaw / (1000 * 60 * 60 * 24));
             const waitHours = Math.floor(waitTimeRaw / (1000 * 60 * 60));
             const waitMins = Math.floor((waitTimeRaw / (1000 * 60)) % 60);
-            const waitTimeStr = !isNaN(waitHours) && waitHours > 0 ? `${waitHours}g ${waitMins}p` : !isNaN(waitMins) ? `${waitMins}p` : "0p";
+            const waitTimeStr = waitDays >= 1 ? `${waitDays} ngày` : waitHours > 0 ? `${waitHours}g ${waitMins}p` : !isNaN(waitMins) ? `${waitMins}p` : "0p";
+            const customer = getCustomerPresentation(
+              conv.customerName || conv.customer_name,
+              conv.customerId,
+            );
             return {
               id: `#${conv.messageId || conv.id_webchat_messagelogs || "N/A"}`,
-              customer: conv.customerId || "Không có mã khách hàng trong database",
+              conversationId: Number(conv.conversationId),
+              customer: customer.primary,
+              customerReference: customer.secondary,
               complaint: conv.textContent || "Tin nhắn khách hàng đang trống trong database",
               topic: Array.isArray(conv.detectedTopics) && conv.detectedTopics.length > 0 ? conv.detectedTopics.join(", ") : (conv.detectedTopics || "Không phân loại trong database"),
               channel: conv.source || "Không có kênh trong database",
@@ -295,13 +309,14 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
       }
     }
     loadData();
-  }, [filters]);
+  }, [filters, refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const posPctStr = summaryData?.summary?.total ? Math.round((summaryData.summary.positive / summaryData.summary.total) * 100) + "%" : "0%";
   const neuPctStr = summaryData?.summary?.total ? Math.round((summaryData.summary.neutral / summaryData.summary.total) * 100) + "%" : "0%";
   const negPctStr = summaryData?.summary?.total ? Math.round((summaryData.summary.negative / summaryData.summary.total) * 100) + "%" : "0%";
   const satisfactionValue = summaryData?.avgSatisfaction ? (summaryData.avgSatisfaction > 5 ? summaryData.avgSatisfaction / 20 : summaryData.avgSatisfaction) : 0;
   const satisfactionStr = satisfactionValue > 0 ? satisfactionValue.toFixed(1) + "/5" : "0/5";
+  const satisfactionPctLabel = satisfactionValue > 0 ? `${Math.round(satisfactionValue * 20)} điểm %` : "0 điểm %";
 
   // Dữ liệu chủ đề từ API thực — hiển thị empty state nếu chưa có dữ liệu
   const dynamicTopicData = topicSentiment && topicSentiment.length > 0 ? topicSentiment : [];
@@ -321,22 +336,52 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
     }
   };
 
-  const handleCloseAllNegativeConversations = async () => {
-    const pending = negativeConversations.filter((conv) => conv.status !== "Đã xử lý");
-    const closable = pending.filter((conv) => conv.customerId && conv.source);
+  const selectableIds = negativeConversations
+    .filter((conv) => Number.isInteger(conv.conversationId) && conv.conversationId > 0 && conv.status !== "Đã xử lý")
+    .map((conv) => conv.conversationId as number);
+  const allPageSelected = selectableIds.length > 0 && selectableIds.every((id) => selectedConvIds.has(id));
+
+  const toggleAllPage = () => {
+    setSelectedConvIds((prev) => {
+      const next = new Set(prev);
+      if (allPageSelected) selectableIds.forEach((id) => next.delete(id));
+      else selectableIds.forEach((id) => next.add(id));
+      return next;
+    });
+  };
+
+  const handleBulkClose = async () => {
+    if (bulkGuard.current || bulkSubmitting) return;
+    bulkGuard.current = true;
+    const selectedIds = new Set(selectedConvIds);
+    const closable = negativeConversations.filter(
+      (conv) => selectedIds.has(conv.conversationId) && conv.status !== "Đã xử lý"
+    );
     if (closable.length === 0) {
-      toast.error("Không có hội thoại đủ customerId/source trong database để đóng.");
+      bulkGuard.current = false;
+      toast.error("Không có hội thoại hợp lệ để xử lý.");
       return;
     }
-
+    setBulkSubmitting(true);
     try {
-      await Promise.all(closable.map((conv) => closeConversation(conv.customerId, conv.source)));
-      const closedIds = new Set(closable.map((conv) => conv.id));
-      setNegativeConversations(prev => prev.map(c => closedIds.has(c.id) ? { ...c, status: "Đã xử lý" } : c));
-      toast.success(`Đã đóng ${closable.length} hội thoại trong database`);
+      const result = await bulkCloseConversations(closable.map((c) => c.conversationId));
+      setNegativeConversations((prev) =>
+        prev.map((c) => selectedIds.has(c.conversationId) ? { ...c, status: "Đã xử lý" } : c)
+      );
+      setSelectedConvIds(new Set());
+      setShowBulkConfirm(false);
+      toast.success(`Đã cập nhật ${result.affected} hội thoại.`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Không thể đóng toàn bộ hội thoại");
+      toast.error(error instanceof Error ? error.message : "Không thể cập nhật hội thoại.");
+    } finally {
+      bulkGuard.current = false;
+      setBulkSubmitting(false);
     }
+  };
+
+  const refreshNegConversations = () => {
+    setSelectedConvIds(new Set());
+    setRefreshKey((k) => k + 1);
   };
 
   return (
@@ -357,18 +402,19 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
           </div>
 
           {/* KPI Cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px", marginBottom: "24px" }}>
-        {[
-          { icon: Heart, label: "Tỷ lệ tích cực", value: posPctStr, change: sentimentKpiTrend.pos || "—", color: "#228A61", bg: "#f0fdf4", trend: sentimentKpiTrend.pos ? `${sentimentKpiTrend.pos} so với kỳ trước` : "Chưa đủ dữ liệu xu hướng" },
-          { icon: Meh, label: "Tỷ lệ trung lập", value: neuPctStr, change: sentimentKpiTrend.neu || "—", color: "#f59e0b", bg: "#fffbeb", trend: sentimentKpiTrend.neu ? `${sentimentKpiTrend.neu} so với kỳ trước` : "Chưa đủ dữ liệu xu hướng" },
-          { icon: Frown, label: "Tỷ lệ tiêu cực", value: negPctStr, change: sentimentKpiTrend.neg || "—", color: ORANGE, bg: "#fff5f5", trend: sentimentKpiTrend.neg ? `${sentimentKpiTrend.neg} so với kỳ trước` : "Chưa đủ dữ liệu xu hướng" },
-          { icon: Star, label: "Mức độ hài lòng", value: satisfactionStr, change: "—", color: "#a855f7", bg: "#faf5ff", trend: "Từ dữ liệu MessageAnalytics" },
-        ].map(({ icon: Icon, label, value, change, color, bg, trend }) => (
-          <div key={label} style={{ backgroundColor: "#fff", borderRadius: "20px", border: "1px solid rgba(0,56,101,0.08)", boxShadow: "0 2px 12px rgba(0,56,101,0.06)", padding: "24px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "16px" }}>
-              <div style={{ width: "48px", height: "48px", borderRadius: "14px", backgroundColor: bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <Icon size={22} style={{ color }} />
-              </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "16px", marginBottom: "24px" }}>
+            {[
+              { icon: MessageCircle, label: "Tổng số hội thoại", value: summaryData?.summary?.total?.toString() || "0", change: "Theo bộ lọc", color: "#003BB9", bg: "#eff6ff", trend: "Số lượng hội thoại đã phân tích" },
+              { icon: Smile, label: "Tỷ lệ Tích cực", value: posPctStr, change: "Theo bộ lọc", color: "#228A61", bg: "#f0fdf4", trend: "Phần trăm cảm xúc hài lòng" },
+              { icon: Meh, label: "Tỷ lệ Trung lập", value: neuPctStr, change: "Theo bộ lọc", color: "#E5A850", bg: "#fffbeb", trend: "Phần trăm cảm xúc bình thường" },
+              { icon: AlertCircle, label: "Tỷ lệ Tiêu cực", value: negPctStr, change: "Theo bộ lọc", color: ORANGE, bg: "#fff5f5", trend: "Phần trăm cảm xúc cần chú ý" },
+              { icon: Activity, label: "Mức độ hài lòng chung", value: satisfactionStr, change: `(${satisfactionPctLabel})`, color: "#a855f7", bg: "#faf5ff", trend: "Điểm trung bình (quy đổi)" },
+            ].map(({ icon: Icon, label, value, change, color, bg, trend }) => (
+              <div key={label} style={{ backgroundColor: "#fff", borderRadius: "20px", border: "1px solid rgba(0,56,101,0.08)", boxShadow: "0 2px 12px rgba(0,56,101,0.06)", padding: "24px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "16px" }}>
+                  <div style={{ width: "48px", height: "48px", borderRadius: "14px", backgroundColor: "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <Icon size={28} style={{ color }} />
+                  </div>
               <div>
                 <div style={{ fontSize: "13px", color: "rgba(0,56,101,0.55)", fontWeight: 500 }}>{label}</div>
                 <div style={{ fontSize: "28px", fontWeight: 700, color: NAVY, lineHeight: 1.2 }}>{value}</div>
@@ -387,6 +433,14 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
           {({ chartType, chartData, editValues }: any) => {
             const showLegend = editValues?.legend !== false;
             const safeData = Array.isArray(chartData) ? chartData : [];
+            
+            if (safeData.length < 14) {
+              return (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "220px", color: "rgba(0,56,101,0.4)", fontSize: "13px", fontStyle: "italic" }}>
+                  Chưa đủ dữ liệu để dự báo. Cần tối thiểu 14 ngày lịch sử liên tục.
+                </div>
+              );
+            }
             
             if (chartType === "pie" || chartType === "donut") {
               const pieData = [
@@ -594,17 +648,40 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
             <h3 style={{ color: NAVY, fontSize: "14px", fontWeight: 700, margin: 0 }}>Hội thoại có cảm xúc tiêu cực cần xử lý</h3>
             <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "20px", backgroundColor: "#FFF4EE", border: "1px solid #FBCBB8", color: ORANGE, fontWeight: 600 }}>{negativeConversations.length} hội thoại</span>
           </div>
-          <button
-            onClick={() => { void handleCloseAllNegativeConversations(); }}
-            style={{ padding: "6px 14px", borderRadius: "8px", border: "none", background: `linear-gradient(135deg, #ED5206 0%, #F36C2E 100%)`, color: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 600, boxShadow: "0 4px 12px rgba(237,82,6,0.18)" }}
-          >
-            Đánh dấu xử lý (tất cả)
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <button
+              aria-label="Làm mới danh sách hội thoại tiêu cực"
+              onClick={refreshNegConversations}
+              style={{ padding: "6px 14px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.15)", background: "#fff", color: NAVY, cursor: "pointer", fontSize: "12px", fontWeight: 600 }}
+            >
+              Làm mới
+            </button>
+          </div>
+          {selectedConvIds.size > 0 && (
+            <div role="toolbar" aria-label="Thao tác hàng loạt" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <span style={{ fontSize: "12px", color: NAVY, fontWeight: 600 }}>Đã chọn {selectedConvIds.size} hội thoại</span>
+              <button
+                onClick={() => setShowBulkConfirm(true)}
+                style={{ padding: "6px 14px", borderRadius: "8px", border: "none", background: `linear-gradient(135deg, #ED5206 0%, #F36C2E 100%)`, color: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 600, boxShadow: "0 4px 12px rgba(237,82,6,0.18)" }}
+              >
+                Đánh dấu đã xử lý {selectedConvIds.size} hội thoại
+              </button>
+            </div>
+          )}
         </div>
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
             <thead>
               <tr style={{ backgroundColor: "#f8fafc" }}>
+                <th style={{ padding: "10px 12px", width: "40px", textAlign: "center", borderBottom: "1px solid rgba(0,56,101,0.06)" }}>
+                  <input
+                    type="checkbox"
+                    aria-label="Chọn tất cả hội thoại trên trang"
+                    checked={allPageSelected}
+                    onChange={toggleAllPage}
+                    disabled={selectableIds.length === 0}
+                  />
+                </th>
                 {["Khách hàng", "Nội dung phàn nàn", "Chủ đề", "Kênh", "Mức độ tiêu cực", "Thời gian chờ", "Trạng thái", "Hành động"].map((h) => (
                   <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontWeight: 600, color: "rgba(0,56,101,0.5)", fontSize: "10px", letterSpacing: "0.04em", borderBottom: "1px solid rgba(0,56,101,0.06)", whiteSpace: "nowrap" }}>
                     {h}
@@ -615,7 +692,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
             <tbody>
               {negativeConversations.length === 0 && (
                 <tr>
-                  <td colSpan={8} style={{ padding: "22px 14px", textAlign: "center", color: "rgba(0,56,101,0.55)", fontSize: "12px" }}>
+                  <td colSpan={9} style={{ padding: "22px 14px", textAlign: "center", color: "rgba(0,56,101,0.55)", fontSize: "12px" }}>
                     Không có hội thoại có cảm xúc tiêu cực cần xử lý trong khoảng lọc.
                   </td>
                 </tr>
@@ -629,9 +706,23 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
                     onMouseEnter={(e) => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "#fafbfc"}
                     onMouseLeave={(e) => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "transparent"}
                   >
+                    <td style={{ padding: "10px 12px", textAlign: "center" }}>
+                      <input
+                        type="checkbox"
+                        aria-label={`Chọn hội thoại ${conv.id}`}
+                        checked={selectedConvIds.has(conv.conversationId)}
+                        disabled={!Number.isInteger(conv.conversationId) || conv.status === "Đã xử lý"}
+                        onChange={() => setSelectedConvIds((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(conv.conversationId)) next.delete(conv.conversationId);
+                          else next.add(conv.conversationId);
+                          return next;
+                        })}
+                      />
+                    </td>
                     <td style={{ padding: "12px 14px" }}>
                       <div style={{ fontWeight: 600, color: NAVY, fontSize: "12px" }}>{conv.customer}</div>
-                      <div style={{ fontSize: "10px", color: "rgba(0,56,101,0.4)", fontFamily: "monospace", marginTop: "2px" }}>{conv.id}</div>
+                      {conv.customerReference && <div style={{ fontSize: "10px", color: "rgba(0,56,101,0.4)", fontFamily: "monospace", marginTop: "2px" }}>{conv.customerReference}</div>}
                     </td>
                     <td style={{ padding: "12px 14px", maxWidth: "240px" }}>
                       <div style={{ fontSize: "12px", color: "rgba(0,56,101,0.7)", lineHeight: 1.5, fontStyle: "italic" }}>"{conv.complaint}"</div>
@@ -679,59 +770,63 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
         </div>
       </div>
 
-      {/* Keywords & AI */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
-        <div style={{ backgroundColor: "#fff", borderRadius: "20px", border: "1px solid rgba(0,56,101,0.08)", boxShadow: "0 2px 12px rgba(0,56,101,0.06)", padding: "20px" }}>
-          <h3 style={{ color: NAVY, fontSize: "14px", fontWeight: 700, marginBottom: "16px", margin: "0 0 16px", display: "flex", alignItems: "center", gap: "8px" }}>
-            <AlertTriangle size={15} style={{ color: ORANGE }} /> Từ khóa gây cảm xúc tiêu cực
-          </h3>
-          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-            {negKeywords.map((kw, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px 12px", borderRadius: "10px", backgroundColor: "#FFF4EE" }}>
-                <span style={{ fontSize: "11px", color: ORANGE, fontWeight: 700 }}>#{i + 1}</span>
-                <span style={{ flex: 1, fontSize: "13px", color: NAVY }}>"{kw.word}"</span>
-                <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "20px", backgroundColor: "#eff6ff", color: "#3b82f6" }}>{kw.topic}</span>
-                <span style={{ fontSize: "13px", fontWeight: 600, color: ORANGE }}>{kw.count}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-          <div style={{ backgroundColor: "#fff", borderRadius: "16px", border: "1px solid rgba(0,56,101,0.08)", boxShadow: "0 2px 8px rgba(0,56,101,0.05)", padding: "20px", flex: 1 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
-              <TrendingUp size={16} style={{ color: NAVY }} />
-              <span style={{ fontWeight: 700, fontSize: "14px", color: NAVY }}>Dự báo xu hướng cảm xúc</span>
+      {/* Keywords */}
+      <div style={{ backgroundColor: "#fff", borderRadius: "20px", border: "1px solid rgba(0,56,101,0.08)", boxShadow: "0 2px 12px rgba(0,56,101,0.06)", padding: "20px", marginBottom: "24px" }}>
+        <h3 style={{ color: NAVY, fontSize: "14px", fontWeight: 700, marginBottom: "16px", margin: "0 0 16px", display: "flex", alignItems: "center", gap: "8px" }}>
+          <AlertTriangle size={15} style={{ color: ORANGE }} /> Từ khóa gây cảm xúc tiêu cực
+        </h3>
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+          {negKeywords.map((kw, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px 12px", borderRadius: "10px", backgroundColor: "#FFF4EE" }}>
+              <span style={{ fontSize: "11px", color: ORANGE, fontWeight: 700 }}>#{i + 1}</span>
+              <span style={{ flex: 1, fontSize: "13px", color: NAVY }}>"{kw.word}"</span>
+              <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "20px", backgroundColor: "#eff6ff", color: "#3b82f6" }}>{kw.topic}</span>
+              <span style={{ fontSize: "13px", fontWeight: 600, color: ORANGE }}>{kw.count}</span>
             </div>
-            <p style={{ fontSize: "13px", color: "rgba(0,56,101,0.55)", lineHeight: 1.6, margin: 0, fontStyle: "italic" }}>
-              Tính năng dự báo AI sẽ được bổ sung sau khi có đủ dữ liệu sentiment từ database.
-              Hiện tại, xem xu hướng thực tế qua biểu đồ "Xu hướng cảm xúc theo thời gian" ở trên.
-            </p>
-          </div>
-          <div style={{ backgroundColor: "#fff", borderRadius: "16px", border: "1px solid rgba(0,56,101,0.08)", boxShadow: "0 2px 8px rgba(0,56,101,0.05)", padding: "20px", flex: 1 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
-              <Lightbulb size={16} style={{ color: "#228A61" }} />
-              <span style={{ fontWeight: 700, fontSize: "14px", color: NAVY }}>Khuyến nghị cải thiện</span>
-            </div>
-            {negKeywords.length > 0 ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                <p style={{ fontSize: "12px", color: "rgba(0,56,101,0.55)", margin: "0 0 8px" }}>Dựa trên từ khóa tiêu cực phổ biến nhất:</p>
-                {negKeywords.slice(0, 4).map((kw, i) => (
-                  <div key={i} style={{ display: "flex", gap: "8px", fontSize: "13px", color: "rgba(0,56,101,0.75)" }}>
-                    <span style={{ color: "#228A61", fontWeight: 700 }}>•</span>
-                    Xem xét cải thiện phản hồi liên quan đến "{kw.word}" ({kw.count} lần xuất hiện)
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p style={{ fontSize: "13px", color: "rgba(0,56,101,0.55)", lineHeight: 1.6, margin: 0, fontStyle: "italic" }}>
-                Chưa có đủ dữ liệu từ khóa tiêu cực để đưa ra khuyến nghị.
-                Các khuyến nghị sẽ tự động hiển thị khi ML service phân tích xong tin nhắn.
-              </p>
-            )}
-          </div>
+          ))}
+          {negKeywords.length === 0 && (
+            <p style={{ fontSize: "13px", color: "rgba(0,56,101,0.55)", margin: 0, fontStyle: "italic" }}>Chưa có dữ liệu từ khóa tiêu cực.</p>
+          )}
         </div>
       </div>
+
+      {showBulkConfirm && (
+        <div
+          role="presentation"
+          onKeyDown={(e) => { if (e.key === "Escape" && !bulkSubmitting) setShowBulkConfirm(false); }}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,56,101,0.45)", zIndex: 1000, display: "grid", placeItems: "center", padding: "16px" }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="bulk-confirm-title"
+            aria-describedby="bulk-confirm-desc"
+            style={{ width: "min(440px, 100%)", background: "#fff", borderRadius: "16px", padding: "24px", boxShadow: "0 20px 55px rgba(0,56,101,0.24)" }}
+          >
+            <h3 id="bulk-confirm-title" style={{ margin: "0 0 10px", color: NAVY, fontSize: "18px" }}>Xác nhận đánh dấu đã xử lý</h3>
+            <p id="bulk-confirm-desc" style={{ margin: "0 0 20px", color: "rgba(0,56,101,0.72)", lineHeight: 1.55 }}>
+              Thao tác sẽ áp dụng cho chính xác {selectedConvIds.size} hội thoại đã chọn trên trang hiện tại.
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+              <button
+                autoFocus
+                onClick={() => setShowBulkConfirm(false)}
+                disabled={bulkSubmitting}
+                style={{ padding: "9px 14px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.2)", background: "#fff", color: NAVY, cursor: "pointer" }}
+              >
+                Hủy
+              </button>
+              <button
+                onClick={() => { void handleBulkClose(); }}
+                disabled={bulkSubmitting}
+                style={{ padding: "9px 14px", borderRadius: "8px", border: "none", background: "#ED5206", color: "#fff", fontWeight: 700, cursor: bulkSubmitting ? "not-allowed" : "pointer" }}
+              >
+                {bulkSubmitting ? "Đang xử lý..." : `Xác nhận xử lý ${selectedConvIds.size} hội thoại`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
         </>
       )}
     </div>

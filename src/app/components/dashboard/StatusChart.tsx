@@ -14,7 +14,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 const STATUS_LABELS: Record<string, string> = {
   new: "Mới (New)",
-  open: "Đang xử lý (Open)",
+  open: "Đang tư vấn / Chờ phản hồi",
   pending: "Chờ xử lý (Pending)",
   closed: "Đã đóng (Closed)",
   unknown: "Không xác định"

@@ -374,11 +374,20 @@ class AnalyticsRepository:
                 f"""
                 SELECT
                   a.detectedTopics,
+                  SUM(CASE WHEN a.issueType = N'Câu trả lời sai' THEN 1 ELSE 0 END) AS saiCauTra,
+                  SUM(CASE WHEN a.issueType = N'Không hiểu ý khách hàng' THEN 1 ELSE 0 END) AS khongHieu,
+                  SUM(CASE WHEN a.issueType = N'Câu trả lời thiếu thông tin' THEN 1 ELSE 0 END) AS thieuThongTin,
+                  SUM(CASE WHEN a.issueType = N'Thông tin không chính xác' THEN 1 ELSE 0 END) AS khongChinhXac,
                   SUM(CASE WHEN a.issueType = N'Không tìm thấy dữ liệu' THEN 1 ELSE 0 END) AS thieuDL,
+                  SUM(CASE WHEN a.issueType = N'Lỗi hệ thống/mạng' THEN 1 ELSE 0 END) AS loiHeThong,
+                  SUM(CASE WHEN a.issueType = N'Lỗi tri thức hệ thống' THEN 1 ELSE 0 END) AS loiTriThuc,
+                  SUM(CASE WHEN a.issueType = N'Khác' THEN 1 ELSE 0 END) AS khac,
+                  -- Legacy fields
                   SUM(CASE WHEN a.issueType = N'AI không chắc chắn' THEN 1 ELSE 0 END) AS khongChac,
                   SUM(CASE WHEN a.issueType = N'Câu hỏi ngoài phạm vi' THEN 1 ELSE 0 END) AS ngoaiPhamVi,
                   SUM(CASE WHEN a.issueType = N'AI có nguy cơ tự tạo thông tin' THEN 1 ELSE 0 END) AS hallucination
                 FROM dbo.WebChat_MessageAnalytics a
+                LEFT JOIN dbo.WebChat_Conversations c ON c.Id = a.conversationId
                 {where + " AND" if where else "WHERE"} a.issueFlag = 1
                 GROUP BY a.detectedTopics
                 """,

@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { Plus, Search, Filter, CheckCircle2, XCircle, Clock, AlertTriangle, Edit2, Check, X, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
+import { ErrorSourceBadge } from "../common/ErrorSourceBadge";
+import { AI_FAILURE_TAXONOMY, getAiFailureDefinition } from "../../constants/aiFailureTaxonomy";
 import {
   createSheetChatbotRow,
   getSheetChatbotDuplicates,
@@ -21,7 +23,7 @@ const AMBER_TEXT= "#B7791F";
 
 type SheetStatus = "Chờ xử lý" | "Đã duyệt" | "Cần chỉnh sửa" | "Từ chối";
 type RiskLevel = "Thấp" | "Trung bình" | "Cao";
-type SourceType = "AI trả lời sai" | "Không tìm thấy dữ liệu" | "AI không chắc chắn" | "Câu hỏi lặp lại nhiều lần" | "Nhân viên đề xuất" | (string & {});
+type SourceType = string;
 
 interface SheetRow {
   id: string;
@@ -37,7 +39,12 @@ interface SheetRow {
 }
 
 const TOPICS = ["TOEIC", "VSTEP", "CNTT Cơ bản", "CNTT Nâng cao", "Chuẩn đầu ra ngoại ngữ", "MOS/IC3", "Lịch thi", "Lệ phí", "Hồ sơ đăng ký", "Tra cứu điểm", "Cấp chứng chỉ"];
-const SOURCES: SourceType[] = ["AI trả lời sai", "Không tìm thấy dữ liệu", "AI không chắc chắn", "Câu hỏi lặp lại nhiều lần", "Nhân viên đề xuất"];
+const SOURCES: SourceType[] = [
+  "Không tìm thấy dữ liệu",
+  "AI không chắc chắn",
+  "Câu hỏi ngoài phạm vi",
+  "AI có nguy cơ tự tạo thông tin",
+];
 
 const statusConfig: Record<SheetStatus, { bg: string; color: string; icon: typeof CheckCircle2 }> = {
   "Chờ xử lý":     { bg: ORANGE_50, color: ORANGE, icon: Clock },
@@ -54,6 +61,20 @@ const riskConfig: Record<RiskLevel, { bg: string; color: string }> = {
 
 function statusFromRisk(risk: RiskLevel): SheetStatus {
   return "Chờ xử lý";
+}
+
+function displayFailureSource(source: string) {
+  const definition = getAiFailureDefinition(source);
+  if (definition) return definition.label;
+  if (source.trim().toLocaleLowerCase("vi-VN") === "nhân viên đề xuất") return "Chưa phân loại lỗi AI";
+  return source;
+}
+
+function errorOriginForRow(row: Pick<SheetRow, "addedBy" | "source">): "ai" | "staff" | "system" {
+  const addedBy = row.addedBy.toLocaleLowerCase("vi-VN");
+  if (addedBy.includes("ai") || addedBy.includes("tự động")) return "ai";
+  if (addedBy.includes("hệ thống")) return "system";
+  return "staff";
 }
 
 function formatAddedAt(value: string) {
@@ -132,18 +153,21 @@ function DuplicateModal({ question, matches, onAddNew, onClose }: DuplicateModal
 interface AddSheetModalProps {
   prefillQuestion?: string;
   prefillAnswer?: string;
+  prefillNotes?: string;
+  prefillSource?: string;
   initialValues?: Partial<Omit<SheetRow, "id" | "addedAt" | "addedBy">>;
   onClose: () => void;
   onSave?: (row: Omit<SheetRow, "id" | "addedAt" | "addedBy">) => void | Promise<void>;
 }
 
-export function AddSheetModal({ prefillQuestion = "", prefillAnswer = "", initialValues, onClose, onSave }: AddSheetModalProps) {
+export function AddSheetModal({ prefillQuestion = "", prefillAnswer = "", prefillNotes = "", prefillSource, initialValues, onClose, onSave }: AddSheetModalProps) {
+  const initialSource = getAiFailureDefinition(initialValues?.source ?? prefillSource)?.apiValue ?? SOURCES[0];
   const [question, setQuestion] = useState(initialValues?.question ?? prefillQuestion);
   const [answer, setAnswer] = useState(initialValues?.correctAnswer ?? prefillAnswer);
   const [topic, setTopic] = useState(initialValues?.topic ?? TOPICS[0]);
-  const [source, setSource] = useState<SourceType>((initialValues?.source as SourceType) ?? SOURCES[0]);
+  const [source, setSource] = useState<SourceType>(initialSource);
   const [risk, setRisk] = useState<RiskLevel>((initialValues?.risk as RiskLevel) ?? "Thấp");
-  const [notes, setNotes] = useState(initialValues?.notes ?? "");
+  const [notes, setNotes] = useState(initialValues?.notes ?? prefillNotes);
   const [showDuplicate, setShowDuplicate] = useState(false);
   const [duplicateMatches, setDuplicateMatches] = useState<Array<SheetRow & { similarity: number }>>([]);
   const [isSaving, setIsSaving] = useState(false);
@@ -191,7 +215,7 @@ export function AddSheetModal({ prefillQuestion = "", prefillAnswer = "", initia
   return (
     <>
       <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 150, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ background: "#fff", borderRadius: "18px", width: "560px", maxHeight: "90vh", overflowY: "auto", padding: "28px", boxShadow: "0 16px 48px rgba(0,0,0,0.15)" }}>
+        <div role="dialog" aria-label={initialValues ? "Chỉnh sửa phản hồi" : "Thêm phản hồi"} style={{ background: "#fff", borderRadius: "18px", width: "560px", maxHeight: "90vh", overflowY: "auto", padding: "28px", boxShadow: "0 16px 48px rgba(0,0,0,0.15)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
             <h3 style={{ fontSize: "16px", fontWeight: 700, color: NAVY, margin: 0 }}>{initialValues ? "Chỉnh sửa phản hồi" : "Thêm phản hồi"}</h3>
             <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(0,56,101,0.4)" }}><X size={18} /></button>
@@ -200,11 +224,11 @@ export function AddSheetModal({ prefillQuestion = "", prefillAnswer = "", initia
           <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
             <div>
               <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "6px" }}>Câu hỏi khách hàng <span style={{ color: ORANGE }}>*</span></label>
-              <textarea value={question} onChange={e => setQuestion(e.target.value)} rows={2} style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.12)", outline: "none", fontSize: "13px", resize: "none", boxSizing: "border-box" }} />
+              <textarea aria-label="Câu hỏi khách hàng" value={question} onChange={e => setQuestion(e.target.value)} rows={2} style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.12)", outline: "none", fontSize: "13px", resize: "none", boxSizing: "border-box" }} />
             </div>
             <div>
               <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "6px" }}>Câu trả lời đúng <span style={{ color: ORANGE }}>*</span></label>
-              <textarea value={answer} onChange={e => setAnswer(e.target.value)} rows={3} style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.12)", outline: "none", fontSize: "13px", resize: "none", boxSizing: "border-box" }} />
+              <textarea aria-label="Câu trả lời đúng" value={answer} onChange={e => setAnswer(e.target.value)} rows={3} style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.12)", outline: "none", fontSize: "13px", resize: "none", boxSizing: "border-box" }} />
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
@@ -215,8 +239,8 @@ export function AddSheetModal({ prefillQuestion = "", prefillAnswer = "", initia
                 </select>
               </div>
               <div>
-                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "6px" }}>Nguồn bổ sung</label>
-                <select value={source} onChange={e => setSource(e.target.value as SourceType)} style={{ width: "100%", padding: "9px 10px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.12)", outline: "none", fontSize: "13px", color: NAVY, background: "#fff" }}>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "6px" }}>Nguồn gốc lỗi sai</label>
+                <select aria-label="Nguồn gốc lỗi sai" value={source} onChange={e => setSource(e.target.value as SourceType)} style={{ width: "100%", padding: "9px 10px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.12)", outline: "none", fontSize: "13px", color: NAVY, background: "#fff" }}>
                   {SOURCES.map(s => <option key={s}>{s}</option>)}
                 </select>
               </div>
@@ -244,7 +268,7 @@ export function AddSheetModal({ prefillQuestion = "", prefillAnswer = "", initia
 
             <div>
               <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "6px" }}>Ghi chú nội bộ</label>
-              <input value={notes} onChange={e => setNotes(e.target.value)} style={{ width: "100%", padding: "9px 10px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.12)", outline: "none", fontSize: "13px", boxSizing: "border-box" }} placeholder="Ghi chú về lỗi AI, nguồn thông tin..." />
+              <textarea aria-label="Ghi chú nội bộ" value={notes} onChange={e => setNotes(e.target.value)} rows={3} style={{ width: "100%", padding: "9px 10px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.12)", outline: "none", fontSize: "13px", boxSizing: "border-box", resize: "vertical" }} placeholder="Ghi chú về lỗi AI, nguồn thông tin..." />
             </div>
           </div>
 
@@ -531,7 +555,10 @@ export function SheetChatbot() {
                       <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: "#eff6ff", color: "#3b82f6", whiteSpace: "nowrap" }}>{row.topic}</span>
                     </td>
                     <td style={{ padding: "12px 14px" }}>
-                      <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: "#f1f5f9", color: "rgba(0,62,154,0.6)", whiteSpace: "nowrap" }}>{row.source}</span>
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "4px", whiteSpace: "nowrap" }}>
+                        <ErrorSourceBadge source={errorOriginForRow(row)} />
+                        <span style={{ fontSize: "10px", color: "rgba(0,62,154,0.6)" }}>{displayFailureSource(row.source)}</span>
+                      </div>
                     </td>
                     <td style={{ padding: "12px 14px" }}>
                       <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: rc.bg, color: rc.color, fontWeight: 600 }}>{row.risk}</span>

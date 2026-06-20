@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Hash, Brain, X, HelpCircle, CheckCircle } from "lucide-react";
+import { Hash, Brain, X, HelpCircle, CheckCircle, Plus } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
   LineChart, Line,
@@ -10,11 +10,34 @@ import { toast } from "sonner";
 import { buildApiUrl, fetchApiJson } from "../../services/dashboardApi";
 import { createSheetChatbotRow } from "../../services/sheetChatbotApi";
 import { useAuth } from "../../context/AuthContext";
+import { ErrorSourceBadge } from "../common/ErrorSourceBadge";
+import { AI_FAILURE_TAXONOMY, getAiFailureDefinition } from "../../constants/aiFailureTaxonomy";
+import * as round3Api from "../../services/round3Api";
 
 const NAVY = "#003865";
 const ORANGE = "#D73C01";
 const CTA = "#ED5206";
 const TOPIC_DONUT_COLORS = [NAVY, "#1565C0", "#1D7FF2", "#00AEEF"];
+
+type AiErrorKeywordPayload = {
+  keyword: string;
+  error_group: string;
+  topic: string;
+  care_hub: null;
+  description: string;
+  status: "active";
+};
+
+type Round3KeywordApi = typeof round3Api & {
+  createAiErrorKeyword?: (payload: AiErrorKeywordPayload) => Promise<unknown>;
+};
+
+const emptyAiErrorKeywordForm = {
+  keyword: "",
+  errorGroup: getAiFailureDefinition("missing_data")!.apiValue,
+  topic: "",
+  description: "",
+};
 
 type KeywordItem = {
   word: string;
@@ -111,6 +134,30 @@ function normalizeFaqText(value: string) {
     .toLowerCase()
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function failureSourceFromSuggestion(source: string) {
+  const normalized = source.toLocaleLowerCase("vi-VN");
+  if (normalized.includes("không chắc chắn")) return getAiFailureDefinition("uncertain")!.apiValue;
+  if (normalized.includes("ngoài phạm vi")) return getAiFailureDefinition("out_of_scope")!.apiValue;
+  if (normalized.includes("tự tạo thông tin") || normalized.includes("bịa thông tin")) {
+    return getAiFailureDefinition("hallucination_risk")!.apiValue;
+  }
+  return getAiFailureDefinition("missing_data")!.apiValue;
+}
+
+async function persistAiErrorKeyword(payload: AiErrorKeywordPayload) {
+  const api = round3Api as Round3KeywordApi;
+  if (typeof api.createAiErrorKeyword === "function") {
+    return api.createAiErrorKeyword(payload);
+  }
+
+  const response = await fetchApiJson<{ success: boolean; message?: string; data: unknown }>(
+    buildApiUrl("/api/ai-error-keywords"),
+    { method: "POST", cache: false, body: JSON.stringify(payload) },
+  );
+  if (!response.success) throw new Error(response.message || "Không thể lưu từ khóa lỗi AI.");
+  return response.data;
 }
 
 interface Props {
@@ -335,7 +382,7 @@ function KeywordErrorState({ message, onRetry }: { message: string; onRetry: () 
 }
 
 export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNavigate }: Props) {
-  const { user } = useAuth();
+  const { user, role } = useAuth();
   // appliedFilters chỉ cập nhật khi bấm "Áp dụng", không re-fetch khi thay đổi bộ lọc chưa áp dụng
   const [appliedFilters, setAppliedFilters] = useState<FilterValues>(filters);
   const [missingFaqs, setMissingFaqs] = useState<Record<string, MissingFaqItem[]>>({});
@@ -343,6 +390,52 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [composingIndex, setComposingIndex] = useState<number | null>(null);
   const [composeAnswer, setComposeAnswer] = useState("");
+  const [showAiErrorKeywordModal, setShowAiErrorKeywordModal] = useState(false);
+  const [isSavingAiErrorKeyword, setIsSavingAiErrorKeyword] = useState(false);
+  const [aiErrorKeywordForm, setAiErrorKeywordForm] = useState(emptyAiErrorKeywordForm);
+
+  const handleCreateAiErrorKeyword = async () => {
+    const normalized = {
+      keyword: aiErrorKeywordForm.keyword.trim(),
+      errorGroup: aiErrorKeywordForm.errorGroup,
+      topic: aiErrorKeywordForm.topic.trim(),
+      description: aiErrorKeywordForm.description.trim(),
+    };
+
+    if (!normalized.keyword || !normalized.topic || !normalized.description) {
+      toast.error("Vui lòng nhập đầy đủ từ khóa, chủ đề và mô tả.");
+      return;
+    }
+    if (normalized.keyword.length > 200 || normalized.description.length > 1000) {
+      toast.error("Từ khóa hoặc mô tả vượt quá độ dài cho phép.");
+      return;
+    }
+    if ([normalized.keyword, normalized.topic, normalized.description].some((value) => /<[^>]*>|javascript:/iu.test(value))) {
+      toast.error("Nội dung chứa HTML hoặc mã không an toàn.");
+      return;
+    }
+
+    const payload: AiErrorKeywordPayload = {
+      keyword: normalized.keyword,
+      error_group: normalized.errorGroup,
+      topic: normalized.topic,
+      care_hub: null,
+      description: normalized.description,
+      status: "active",
+    };
+
+    try {
+      setIsSavingAiErrorKeyword(true);
+      await persistAiErrorKeyword(payload);
+      setAiErrorKeywordForm(emptyAiErrorKeywordForm);
+      setShowAiErrorKeywordModal(false);
+      toast.success("Đã thêm từ khóa lỗi AI");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không thể lưu từ khóa lỗi AI.");
+    } finally {
+      setIsSavingAiErrorKeyword(false);
+    }
+  };
 
   const getFaqNeededCount = (groupId: string) => {
     const items = missingFaqs[groupId] || [];
@@ -364,17 +457,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
         chuandaura: "Chuẩn đầu ra ngoại ngữ"
       };
 
-      // Map source string to SourceType
-      let sheetSource: any = "Nhân viên đề xuất";
-      if (source.toLowerCase().includes("không trả lời được") || source.toLowerCase().includes("không tìm thấy")) {
-        sheetSource = "Không tìm thấy dữ liệu";
-      } else if (source.toLowerCase().includes("không chắc chắn")) {
-        sheetSource = "AI không chắc chắn";
-      } else if (source.toLowerCase().includes("hội thoại")) {
-        sheetSource = "Câu hỏi lặp lại nhiều lần";
-      } else if (source.toLowerCase().includes("trả lời sai")) {
-        sheetSource = "AI trả lời sai";
-      }
+      const sheetSource = failureSourceFromSuggestion(source);
 
       await createSheetChatbotRow({
         addedBy: user?.name || "Người dùng ẩn danh",
@@ -384,7 +467,11 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
         source: sheetSource,
         risk: "Trung bình",
         status: "Chờ xử lý",
-        notes: "Thêm từ Phân tích Keywords"
+        notes: [
+          "Thêm từ Phân tích từ khóa.",
+          `Nội dung lỗi liên quan: ${question}`,
+          `Nguồn phát hiện: ${source}`,
+        ].join("\n"),
       });
 
       // 1. Mark as added in missingFaqs
@@ -569,20 +656,33 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
   const finalGroups = filteredGroups;
   const finalTrendRows = trendRows;
   const finalHeatmapRows = heatmapRows;
+
+
   const hasAiFailedMetric = finalGroups.some((g) => g.aiFailed !== null);
 
   const barData = finalGroups.map((g) => ({ name: g.name.split(" / ")[0], "Số câu hỏi": g.totalQuestions, "Số câu AI phản hồi không chính xác": g.aiFailed }));
   const donutData = finalGroups.map((g) => ({ name: g.name.split(" / ")[0], value: g.totalQuestions }));
 
   return (
-    <div style={{ padding: "24px" }}>
+    <div style={{ padding: "24px" }} data-export-target="true">
       {/* Truyền handleApplyFilters để chỉ fetch khi bấm "Áp dụng" */}
       <FilterPanel filters={filters} onFiltersChange={handleApplyFilters} />
 
       {/* Page title */}
-      <div style={{ marginBottom: "20px" }}>
-        <h1 style={{ fontSize: "20px", fontWeight: 700, color: NAVY, marginBottom: "4px" }}>Phân tích từ khóa</h1>
-        <p style={{ fontSize: "13px", color: "rgba(0,56,101,0.5)" }}>Phân tích theo 4 nhóm chủ đề chính</p>
+      <div style={{ marginBottom: "20px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "16px" }}>
+        <div>
+          <h1 style={{ fontSize: "20px", fontWeight: 700, color: NAVY, marginBottom: "4px" }}>Phân tích từ khóa</h1>
+          <p style={{ fontSize: "13px", color: "rgba(0,56,101,0.5)", margin: 0 }}>Phân tích theo 4 nhóm chủ đề chính</p>
+        </div>
+        {role === "manager" && (
+          <button
+            type="button"
+            onClick={() => setShowAiErrorKeywordModal(true)}
+            style={{ padding: "9px 16px", borderRadius: "9px", border: "none", backgroundColor: NAVY, color: "#fff", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "7px", fontSize: "12px", fontWeight: 700 }}
+          >
+            <Plus size={14} /> Thêm từ khóa lỗi AI
+          </button>
+        )}
       </div>
 
       {/* Summary cards */}
@@ -787,6 +887,75 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
         ))}
       </div>
 
+      {showAiErrorKeywordModal && (
+        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,56,101,0.45)", backdropFilter: "blur(4px)", zIndex: 220, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
+          <div role="dialog" aria-label="Thêm từ khóa lỗi AI" style={{ backgroundColor: "#fff", width: "520px", maxWidth: "100%", borderRadius: "18px", padding: "26px", boxShadow: "0 20px 60px rgba(0,0,0,0.18)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+              <div>
+                <h3 style={{ margin: 0, color: NAVY, fontSize: "17px", fontWeight: 700 }}>Thêm từ khóa lỗi AI</h3>
+                <p style={{ margin: "5px 0 0", color: "rgba(0,56,101,0.55)", fontSize: "12px" }}>Từ khóa sẽ được lưu vào database sau khi kiểm tra hợp lệ.</p>
+              </div>
+              <button type="button" aria-label="Đóng" onClick={() => { setShowAiErrorKeywordModal(false); setAiErrorKeywordForm(emptyAiErrorKeywordForm); }} style={{ border: "none", background: "transparent", color: "rgba(0,56,101,0.5)", cursor: "pointer", padding: "4px" }}><X size={20} /></button>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+              <label style={{ color: NAVY, fontSize: "12px", fontWeight: 600 }}>
+                Từ khóa lỗi AI
+                <input
+                  aria-label="Từ khóa lỗi AI"
+                  maxLength={200}
+                  value={aiErrorKeywordForm.keyword}
+                  onChange={(event) => setAiErrorKeywordForm((current) => ({ ...current, keyword: event.target.value }))}
+                  style={{ marginTop: "6px", width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.16)", color: NAVY, outline: "none" }}
+                />
+              </label>
+
+              <label style={{ color: NAVY, fontSize: "12px", fontWeight: 600 }}>
+                Nhóm lỗi AI
+                <select
+                  aria-label="Nhóm lỗi AI"
+                  value={aiErrorKeywordForm.errorGroup}
+                  onChange={(event) => setAiErrorKeywordForm((current) => ({ ...current, errorGroup: event.target.value }))}
+                  style={{ marginTop: "6px", width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.16)", color: NAVY, backgroundColor: "#fff", outline: "none" }}
+                >
+                  {AI_FAILURE_TAXONOMY.map((item) => <option key={item.id} value={item.apiValue}>{item.label}</option>)}
+                </select>
+              </label>
+
+              <label style={{ color: NAVY, fontSize: "12px", fontWeight: 600 }}>
+                Chủ đề
+                <input
+                  aria-label="Chủ đề"
+                  maxLength={200}
+                  value={aiErrorKeywordForm.topic}
+                  onChange={(event) => setAiErrorKeywordForm((current) => ({ ...current, topic: event.target.value }))}
+                  style={{ marginTop: "6px", width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.16)", color: NAVY, outline: "none" }}
+                />
+              </label>
+
+              <label style={{ color: NAVY, fontSize: "12px", fontWeight: 600 }}>
+                Mô tả
+                <textarea
+                  aria-label="Mô tả"
+                  maxLength={1000}
+                  rows={4}
+                  value={aiErrorKeywordForm.description}
+                  onChange={(event) => setAiErrorKeywordForm((current) => ({ ...current, description: event.target.value }))}
+                  style={{ marginTop: "6px", width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.16)", color: NAVY, outline: "none", resize: "vertical", fontFamily: "inherit" }}
+                />
+              </label>
+            </div>
+
+            <div style={{ marginTop: "22px", display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+              <button type="button" onClick={() => { setShowAiErrorKeywordModal(false); setAiErrorKeywordForm(emptyAiErrorKeywordForm); }} style={{ padding: "9px 16px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.16)", backgroundColor: "#fff", color: NAVY, cursor: "pointer", fontWeight: 600 }}>Hủy</button>
+              <button type="button" disabled={isSavingAiErrorKeyword} onClick={() => void handleCreateAiErrorKeyword()} style={{ padding: "9px 18px", borderRadius: "8px", border: "none", backgroundColor: isSavingAiErrorKeyword ? "#94a3b8" : CTA, color: "#fff", cursor: isSavingAiErrorKeyword ? "not-allowed" : "pointer", fontWeight: 700 }}>
+                {isSavingAiErrorKeyword ? "Đang lưu..." : "Lưu từ khóa"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal đề xuất FAQ bổ sung */}
       {selectedGroupId && (
         <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,56,101,0.45)", backdropFilter: "blur(4px)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -823,7 +992,10 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px" }}>
                         <div style={{ flex: 1 }}>
                           <div style={{ fontWeight: 600, color: NAVY, fontSize: "13px", lineHeight: 1.4 }}>{item.question}</div>
-                          <div style={{ fontSize: "11px", color: "rgba(0,56,101,0.45)", marginTop: "4px" }}>Nguồn: {item.source}</div>
+                          <div style={{ fontSize: "11px", color: "rgba(0,56,101,0.45)", marginTop: "6px", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                            <ErrorSourceBadge source="ai" />
+                            <span>Nguồn phát hiện: {item.source}</span>
+                          </div>
                         </div>
                         <div>
                           {composingIndex !== index && (

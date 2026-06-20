@@ -61,15 +61,19 @@ export const BTN_PRIMARY_SHADOW = "0 4px 12px rgba(237, 82, 6, 0.18)";
 
 // ── Status chip palette ───────────────────────────────────────────
 export const STATUS_COLORS: Record<string, { bg: string; color: string; border: string }> = {
-  "AI thất bại":           { bg: RED_50,    color: RED_TEXT,   border: RED_100    },
-  "Chưa xử lý":            { bg: ORANGE_50, color: ORANGE,     border: ORANGE_200 },
-  "Cần kiểm duyệt":        { bg: AMBER_50,  color: AMBER_TEXT, border: AMBER_100  },
-  "Chờ admin xác nhận":    { bg: ORANGE_50, color: ORANGE,     border: ORANGE_200 },
-  "Đã xử lý":              { bg: GREEN_SOFT,color: GREEN,      border: GREEN_BORDER},
-  "Thành công":             { bg: GREEN_SOFT,color: GREEN,      border: GREEN_BORDER},
-  "AI thành công":          { bg: GREEN_SOFT,color: GREEN,      border: GREEN_BORDER},
-  "Hoàn thành":             { bg: GREEN_SOFT,color: GREEN,      border: GREEN_BORDER},
-  "Đang xử lý":            { bg: BLUE_SOFT, color: BLUE_TEXT,  border: "#BFDBFE" },
-  "AI không chắc chắn":    { bg: AMBER_50,  color: AMBER_TEXT, border: AMBER_100  },
-  "Không tìm thấy dữ liệu":{ bg: ORANGE_50, color: ORANGE,     border: ORANGE_200 },
+  "AI thất bại":                        { bg: RED_50,    color: RED_TEXT,   border: RED_100    },
+  "Chưa xử lý":                         { bg: ORANGE_50, color: ORANGE,     border: ORANGE_200 },
+  "Cần kiểm duyệt":                     { bg: AMBER_50,  color: AMBER_TEXT, border: AMBER_100  },
+  "Chờ admin xác nhận":                 { bg: ORANGE_50, color: ORANGE,     border: ORANGE_200 },
+  "Đã xử lý":                           { bg: GREEN_SOFT,color: GREEN,      border: GREEN_BORDER},
+  "Thành công":                          { bg: GREEN_SOFT,color: GREEN,      border: GREEN_BORDER},
+  "AI thành công":                       { bg: GREEN_SOFT,color: GREEN,      border: GREEN_BORDER},
+  "Hoàn thành":                          { bg: GREEN_SOFT,color: GREEN,      border: GREEN_BORDER},
+  // Canonical label – Req #1
+  "Đang tư vấn / Chờ phản hồi":         { bg: BLUE_SOFT, color: BLUE_TEXT,  border: "#BFDBFE" },
+  // Legacy alias kept for backward compatibility (historical records / API values)
+  "Đang xử lý":                         { bg: BLUE_SOFT, color: BLUE_TEXT,  border: "#BFDBFE" },
+  "AI không chắc chắn":                 { bg: AMBER_50,  color: AMBER_TEXT, border: AMBER_100  },
+  "Không tìm thấy dữ liệu":             { bg: ORANGE_50, color: ORANGE,     border: ORANGE_200 },
 };
+

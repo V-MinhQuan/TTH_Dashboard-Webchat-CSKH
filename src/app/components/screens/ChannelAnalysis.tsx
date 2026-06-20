@@ -73,7 +73,8 @@ const getInsightData = (ch: any) => {
 };
 const STATUS_COLORS: Record<string, string> = {
   "Chờ xử lý": ORANGE,
-  "Đang xử lý": "#42A5F5",
+  "Đang tư vấn / Chờ phản hồi": "#42A5F5",
+  "Đang xử lý": "#42A5F5", // legacy alias
   "Hoàn thành": GREEN,
   "AI thành công": NAVY,
   "AI thất bại": ORANGE,

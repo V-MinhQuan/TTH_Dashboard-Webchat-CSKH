@@ -10,6 +10,7 @@ import { getDateParamsFromFilters } from "../../utils/dateFilters";
 import {
   getConversationDetail,
   getConversations,
+  bulkCloseConversations,
   type ConversationDetailRecord,
   type ConversationListRecord,
   type ConversationMessage,
@@ -23,7 +24,8 @@ const RED_50 = "#FFF1F1";
 const RED_TEXT = "#B42318";
 
 const statusColors: Record<string, { bg: string; color: string }> = {
-  "Đang xử lý": { bg: AMBER_50, color: AMBER_TEXT },
+  "Đang tư vấn / Chờ phản hồi": { bg: AMBER_50, color: AMBER_TEXT },
+  "Đang xử lý": { bg: AMBER_50, color: AMBER_TEXT }, // legacy alias
   "Chờ xử lý": { bg: "#f3e8ff", color: "#7c3aed" },
   "Hoàn thành": { bg: "#EAF8F1", color: "#16a34a" },
   "Chưa xác định": { bg: RED_50, color: RED_TEXT },
@@ -61,7 +63,7 @@ function formatDateLabel() {
 
 function mapStatus(status: string) {
   if (status === "closed") return "Hoàn thành";
-  if (status === "open") return "Đang xử lý";
+  if (status === "open") return "Đang tư vấn / Chờ phản hồi";
   if (status === "pending" || status === "new") return "Chờ xử lý";
   return "Chưa xác định";
 }
@@ -95,16 +97,24 @@ export function MyWorkspace({ filters }: MyWorkspaceProps) {
   const [replyText, setReplyText] = useState("");
   const [showSheetModal, setShowSheetModal] = useState(false);
 
+  // Req #5: Bulk handling state
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<number>>(new Set());
+  const [bulkSubmitting, setBulkSubmitting] = useState(false);
+  const [showConfirmBulkModal, setShowConfirmBulkModal] = useState(false);
+
   const activeTask = tasks.find((task) => task.id === activeTaskId) || tasks[0] || null;
 
   const stats = useMemo(() => {
     const closed = tasks.filter((task) => task.status === "closed").length;
+    // Req #2: count only customer-sent messages (fromHost === false/0)
+    const customerMessages = (activeDetail?.messages ?? []).filter((m) => !isHostMessage(m)).length;
     return {
       total: tasks.length,
       closed,
       waiting: tasks.filter((task) => task.status !== "closed").length,
+      customerMessages,
     };
-  }, [tasks]);
+  }, [tasks, activeDetail]);
 
   const filteredTasks = useMemo(() => {
     const keyword = search.trim().toLowerCase();
@@ -130,10 +140,12 @@ export function MyWorkspace({ filters }: MyWorkspaceProps) {
       const mapped = response.records.map(toTask);
       setTasks(mapped);
       setActiveTaskId((current) => current && mapped.some((task) => task.id === current) ? current : mapped[0]?.id ?? null);
+      setSelectedTaskIds(new Set());
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Không thể tải danh sách hội thoại");
       setTasks([]);
       setActiveTaskId(null);
+      setSelectedTaskIds(new Set());
     } finally {
       setLoading(false);
     }
@@ -193,6 +205,23 @@ export function MyWorkspace({ filters }: MyWorkspaceProps) {
     }
   };
 
+  const handleBulkClose = async () => {
+    if (selectedTaskIds.size === 0) return;
+    try {
+      setBulkSubmitting(true);
+      const ids = Array.from(selectedTaskIds);
+      await bulkCloseConversations(ids);
+      toast.success(`Đã đánh dấu hoàn thành ${ids.length} hội thoại`);
+      setSelectedTaskIds(new Set());
+      setShowConfirmBulkModal(false);
+      await loadTasks();
+    } catch (error) {
+      toast.error("Không thể đóng hàng loạt: " + (error instanceof Error ? error.message : "Lỗi không xác định"));
+    } finally {
+      setBulkSubmitting(false);
+    }
+  };
+
   return (
     <div style={{ display: "flex", height: "calc(100vh - 72px)", backgroundColor: "#f8fafc", overflow: "hidden" }}>
       <div style={{ width: "280px", borderRight: "1px solid #e2e8f0", backgroundColor: "#fff", padding: "20px", display: "flex", flexDirection: "column", gap: "24px", overflowY: "auto" }}>
@@ -212,13 +241,20 @@ export function MyWorkspace({ filters }: MyWorkspaceProps) {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
             <div style={{ backgroundColor: "#fff", padding: "12px", borderRadius: "8px", textAlign: "center", boxShadow: "0 1px 2px rgba(0,0,0,0.02)" }}>
               <div style={{ fontSize: "20px", fontWeight: 700, color: NAVY }}>{stats.closed}</div>
-              <div style={{ fontSize: "11px", color: "#64748b", fontWeight: 500 }}>Đã xử lý</div>
+              <div style={{ fontSize: "11px", color: "#64748b", fontWeight: 500 }}>Hoàn thành</div>
             </div>
             <div style={{ backgroundColor: "#fff", padding: "12px", borderRadius: "8px", textAlign: "center", boxShadow: "0 1px 2px rgba(0,0,0,0.02)" }}>
               <div style={{ fontSize: "20px", fontWeight: 700, color: AMBER_TEXT }}>{stats.waiting}</div>
               <div style={{ fontSize: "11px", color: "#64748b", fontWeight: 500 }}>Đang chờ</div>
             </div>
           </div>
+          {/* Req #2: Số tin nhắn khách hàng (không tính agent/AI) */}
+          {stats.customerMessages > 0 && (
+            <div style={{ marginTop: "10px", backgroundColor: "#fff", padding: "10px 12px", borderRadius: "8px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: "11px", color: "#64748b" }}>Tin nhắn khách hàng (hội thoại đang chọn)</span>
+              <span style={{ fontSize: "16px", fontWeight: 700, color: NAVY }}>{stats.customerMessages}</span>
+            </div>
+          )}
         </div>
 
         <div>
@@ -260,9 +296,35 @@ export function MyWorkspace({ filters }: MyWorkspaceProps) {
               style={{ width: "100%", padding: "10px 10px 10px 36px", borderRadius: "8px", border: "1px solid #e2e8f0", outline: "none", fontSize: "13px", boxSizing: "border-box", backgroundColor: "#fff" }}
             />
           </div>
+          
+          {/* Req #5: Bulk handling controls */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", padding: "0 4px" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", color: NAVY, cursor: "pointer" }}>
+              <input 
+                type="checkbox" 
+                checked={filteredTasks.length > 0 && selectedTaskIds.size === filteredTasks.length}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    setSelectedTaskIds(new Set(filteredTasks.map(t => t.id)));
+                  } else {
+                    setSelectedTaskIds(new Set());
+                  }
+                }}
+              />
+              Chọn tất cả
+            </label>
+            {selectedTaskIds.size > 0 && (
+              <button 
+                onClick={() => setShowConfirmBulkModal(true)}
+                style={{ padding: "4px 10px", fontSize: "11px", backgroundColor: NAVY, color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: 600 }}
+              >
+                Đánh dấu hoàn thành ({selectedTaskIds.size})
+              </button>
+            )}
+          </div>
         </div>
 
-        <div style={{ flex: 1, overflowY: "auto", padding: "0 12px 20px 12px", display: "flex", flexDirection: "column", gap: "8px" }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: "0 12px 20px 12px", display: "flex", flexDirection: "column", gap: "8px" }} data-export-target="true">
           {loading && <div style={{ padding: "24px", color: "#64748b", fontSize: "13px", textAlign: "center" }}>Đang tải hội thoại từ database...</div>}
           {!loading && filteredTasks.length === 0 && <div style={{ padding: "24px", color: "#64748b", fontSize: "13px", textAlign: "center" }}>Không có hội thoại phù hợp trong database.</div>}
           {filteredTasks.map((task) => (
@@ -279,6 +341,21 @@ export function MyWorkspace({ filters }: MyWorkspaceProps) {
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "10px" }}>
                 <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                  <input 
+                    type="checkbox" 
+                    checked={selectedTaskIds.has(task.id)}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      setSelectedTaskIds(prev => {
+                        const next = new Set(prev);
+                        if (next.has(task.id)) next.delete(task.id);
+                        else next.add(task.id);
+                        return next;
+                      });
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{ cursor: "pointer" }}
+                  />
                   <div style={{ width: "32px", height: "32px", borderRadius: "50%", backgroundColor: LIGHT_NAVY, color: NAVY, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "13px", fontWeight: 600 }}>
                     {task.avatar}
                   </div>
@@ -376,9 +453,28 @@ export function MyWorkspace({ filters }: MyWorkspaceProps) {
               ...data,
               addedBy: user?.name || "Nhân viên",
             });
-            toast.success("Đã thêm phản hồi vào thư viện");
+            setShowSheetModal(false);
+            toast.success("Đã thêm câu hỏi vào Sheet Chatbot thành công");
           }}
         />
+      )}
+
+      {/* Req #5: Bulk Confirm Modal */}
+      {showConfirmBulkModal && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,56,101,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
+          <div style={{ backgroundColor: "#fff", borderRadius: "16px", padding: "24px", width: "400px", textAlign: "center" }}>
+            <h3 style={{ margin: "0 0 12px", color: NAVY, fontSize: "16px", fontWeight: 700 }}>Xác nhận hoàn thành</h3>
+            <p style={{ color: "rgba(0,56,101,0.7)", fontSize: "14px", marginBottom: "24px" }}>
+              Bạn đang đánh dấu hoàn thành cho {selectedTaskIds.size} hội thoại. Khách hàng vẫn có thể nhắn lại và hội thoại sẽ được mở lại tự động.
+            </p>
+            <div style={{ display: "flex", gap: "12px", justifyContent: "center" }}>
+              <button onClick={() => setShowConfirmBulkModal(false)} disabled={bulkSubmitting} style={{ flex: 1, padding: "10px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.15)", background: "#fff", color: NAVY, fontWeight: 600 }}>Hủy</button>
+              <button onClick={handleBulkClose} disabled={bulkSubmitting} style={{ flex: 1, padding: "10px", borderRadius: "8px", border: "none", background: NAVY, color: "#fff", fontWeight: 600 }}>
+                {bulkSubmitting ? "Đang xử lý..." : "Xác nhận"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

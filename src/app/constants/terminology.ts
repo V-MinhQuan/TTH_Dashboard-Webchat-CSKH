@@ -1,3 +1,6 @@
+import type { SemanticTone } from "../styles/semanticTokens";
+import { STATUS_TONES } from "../styles/semanticTokens";
+
 export const TERMINOLOGY = {
   PAGE_NAMES: {
     // Admin page titles
@@ -28,7 +31,7 @@ export const TERMINOLOGY = {
     chartbuilder: "Biểu đồ",
     chatbot_sheet: "Thư viện phản hồi",
     settings: "Cài đặt",
-    
+
     // Staff extra
     faq: "FAQ",
     performance: "Hiệu suất",
@@ -42,7 +45,7 @@ export const TERMINOLOGY = {
   },
   STATUS: {
     pending: "Chờ xử lý",
-    processing: "Đang xử lý",
+    processing: "Đang tư vấn / Chờ phản hồi",
     completed: "Hoàn thành",
     waiting_manager: "Chờ quản lý xác nhận",
     waiting_approval: "Chờ duyệt",
@@ -88,8 +91,14 @@ export const TERMINOLOGY = {
     failed: "AI trả lời thất bại",
     wrong: "AI trả lời sai",
     uncertain: "AI không chắc chắn",
-    hallucination: "AI có nguy cơ tự tạo thông tin",
     missing_data: "Không tìm thấy dữ liệu",
+    incorrect_answer: "Câu trả lời sai",
+    inaccurate_info: "Thông tin không chính xác",
+    not_understood: "Không hiểu câu hỏi",
+    missing_info: "Thiếu thông tin",
+    kb_issue: "Lỗi nguồn tri thức",
+    system_issue: "Lỗi hệ thống",
+    other: "Khác",
     need_review: "Cần kiểm duyệt",
     confidence: "Mức độ tin cậy",
     error_reason: "Lý do lỗi AI",
@@ -98,5 +107,61 @@ export const TERMINOLOGY = {
     add_kb: "Bổ sung vào cơ sở tri thức",
     suggested_faq: "FAQ đề xuất",
     missing_faq: "FAQ cần bổ sung",
-  }
-};
+  },
+  /** Taxonomy thống nhất cho lỗi AI – dùng trên tất cả màn hình */
+  AI_FAILURE_TAXONOMY: [
+    "Không tìm thấy dữ liệu",
+    "Câu trả lời sai",
+    "Thông tin không chính xác",
+    "Không hiểu câu hỏi",
+    "Thiếu thông tin",
+    "Lỗi nguồn tri thức",
+    "Lỗi hệ thống",
+    "Khác",
+  ] as const,
+} as const;
+
+export type StatusKey = keyof typeof TERMINOLOGY.STATUS;
+
+export interface StatusDefinition {
+  readonly key: StatusKey;
+  readonly label: (typeof TERMINOLOGY.STATUS)[StatusKey];
+  readonly tone: SemanticTone;
+}
+
+export const STATUS_DEFINITIONS: Readonly<Record<StatusKey, StatusDefinition>> = Object.freeze(
+  Object.fromEntries(
+    Object.entries(TERMINOLOGY.STATUS).map(([key, label]) => [
+      key,
+      Object.freeze({
+        key: key as StatusKey,
+        label,
+        tone: STATUS_TONES[key as StatusKey],
+      }),
+    ]),
+  ) as unknown as Record<StatusKey, StatusDefinition>,
+);
+
+export function getStatusDefinition(value: string): StatusDefinition | null {
+  const direct = STATUS_DEFINITIONS[value as StatusKey];
+  if (direct) return direct;
+  return Object.values(STATUS_DEFINITIONS).find((item) => item.label === value) ?? null;
+}
+
+/**
+ * Chuyển đổi giá trị trạng thái raw (từ DB/API) sang label hiển thị chuẩn.
+ * Backward compatible: "Đang xử lý" → "Đang tư vấn / Chờ phản hồi"
+ * "Đã xử lý" → "Hoàn thành"
+ */
+export function getDisplayStatus(raw: string): string {
+  const legacyMap: Record<string, string> = {
+    "Đang xử lý": "Đang tư vấn / Chờ phản hồi",
+    "Đã xử lý": "Hoàn thành",
+    open: "Đang tư vấn / Chờ phản hồi",
+    processing: "Đang tư vấn / Chờ phản hồi",
+    completed: "Hoàn thành",
+    pending: "Chờ xử lý",
+    done: "Hoàn thành",
+  };
+  return legacyMap[raw] ?? raw;
+}
