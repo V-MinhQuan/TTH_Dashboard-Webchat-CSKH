@@ -31,10 +31,9 @@ describe("Sidebar", () => {
     expect(screen.getByTestId("sidebar-logo-frame")).toHaveStyle({ borderRadius: "50%" });
   });
 
-  it("uses the wide transparent logo when expanded", () => {
+  it("uses the current wide logo when expanded", () => {
     /**
-     * When expanded, Sidebar renders flicLogo (flic-logo-transparent.png)
-     * to show the full-width brand logo without a white background.
+     * When expanded, Sidebar renders the current long-form brand asset.
      */
     render(
       <Sidebar
@@ -47,7 +46,7 @@ describe("Sidebar", () => {
 
     expect(screen.getByRole("img", { name: "Logo FLIC" })).toHaveAttribute(
       "src",
-      expect.stringContaining("flic-logo-transparent.png"),
+      expect.stringContaining("flic-logo-long.png"),
     );
   });
 

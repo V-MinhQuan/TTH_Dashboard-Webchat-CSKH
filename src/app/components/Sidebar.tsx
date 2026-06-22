@@ -13,7 +13,6 @@ import {
 } from "lucide-react";
 
 import { ImageWithFallback } from "./figma/ImageWithFallback";
-import flicLogo from "../../assets/flic-logo-transparent.png";
 import flicLogoCircle from "../../assets/flic-logo-circle.png";
 import flicLogoLong from "../../assets/flic-logo-long.png";
 import "../../styles/globals.css";

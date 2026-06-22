@@ -2,8 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Search, CheckCircle, Target, Activity, Send, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../../context/AuthContext";
-import { AddSheetModal } from "./SheetChatbot";
-import { createSheetChatbotRow } from "../../services/sheetChatbotApi";
+import { FeedbackFormDialog } from "../feedback/FeedbackFormDialog";
 import { closeConversation } from "../../services/dashboardApi";
 import { FilterValues } from "../FilterPanel";
 import { getDateParamsFromFilters } from "../../utils/dateFilters";
@@ -11,6 +10,7 @@ import {
   getConversationDetail,
   getConversations,
   bulkCloseConversations,
+  getCustomerPresentation,
   type ConversationDetailRecord,
   type ConversationListRecord,
   type ConversationMessage,
@@ -69,7 +69,12 @@ function mapStatus(status: string) {
 }
 
 function toTask(row: ConversationListRecord): WorkspaceTask {
-  const name = row.customer_name || row.customer_id || "Không có tên khách hàng trong database";
+  const customer = getCustomerPresentation(
+    row.customerDisplayName || row.customer_name,
+    row.customer_id,
+    row.phoneNumber,
+  );
+  const name = customer.primary;
   const firstChar = name.trim().charAt(0).toUpperCase() || "?";
   return {
     ...row,
@@ -78,7 +83,7 @@ function toTask(row: ConversationListRecord): WorkspaceTask {
     avatar: firstChar,
     statusLabel: mapStatus(row.status),
     timeLabel: formatDateTime(row.updated_at || row.created_at),
-    topicLabel: row.source ? `Nguồn: ${row.source}` : "Không có nguồn trong database",
+    topicLabel: row.source ? `Nguồn: ${row.source}` : "Chưa xác định",
   };
 }
 
@@ -444,20 +449,19 @@ export function MyWorkspace({ filters }: MyWorkspaceProps) {
         )}
       </div>
 
-      {showSheetModal && activeTask && (
-        <AddSheetModal
-          prefillQuestion={lastCustomerMessage?.textContent || activeTask.topicLabel}
-          onClose={() => setShowSheetModal(false)}
-          onSave={async (data) => {
-            await createSheetChatbotRow({
-              ...data,
-              addedBy: user?.name || "Nhân viên",
-            });
-            setShowSheetModal(false);
-            toast.success("Đã thêm câu hỏi vào Sheet Chatbot thành công");
-          }}
-        />
-      )}
+      <FeedbackFormDialog
+        open={showSheetModal && Boolean(activeTask)}
+        mode="create"
+        prefillData={activeTask ? {
+          question: lastCustomerMessage?.textContent || "",
+          topic: "Chưa xác định",
+          source: "Nhân viên đề xuất",
+          conversationId: activeTask.id,
+          messageId: lastCustomerMessage?.messageId,
+        } : undefined}
+        onClose={() => setShowSheetModal(false)}
+        onSaved={() => setShowSheetModal(false)}
+      />
 
       {/* Req #5: Bulk Confirm Modal */}
       {showConfirmBulkModal && (

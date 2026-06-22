@@ -3,11 +3,11 @@ import { useAuth } from "../../context/AuthContext";
 import { Plus, Search, CheckCircle2, XCircle, Clock, X, Filter } from "lucide-react";
 import { toast } from "sonner";
 import { ErrorSourceBadge } from "../common/ErrorSourceBadge";
+import { FeedbackFormDialog } from "../feedback/FeedbackFormDialog";
 import { AI_FAILURE_TAXONOMY, getAiFailureDefinition } from "../../constants/aiFailureTaxonomy";
 import {
   createSheetChatbotRow,
   getSheetChatbotRows,
-  updateSheetChatbotRow,
   updateSheetChatbotStatus,
   type SheetChatbotRow,
   type SheetChatbotStatus,
@@ -163,53 +163,6 @@ export function FAQ() {
       return matchSearch && matchTopic && matchRisk && matchStatus && matchTime;
     }
   );
-
-  const handleCreateFaq = async () => {
-    if (!faqForm.question.trim()) {
-      toast.error("Vui lòng nhập câu hỏi");
-      return;
-    }
-
-    if (!faqForm.answer.trim()) {
-      toast.error("Vui lòng nhập câu trả lời chính thức trước khi lưu vào database");
-      return;
-    }
-
-    try {
-      if (editingFaqId) {
-        await updateSheetChatbotRow(editingFaqId, {
-          question: faqForm.question.trim(),
-          correctAnswer: faqForm.answer.trim(),
-          topic: faqForm.topic,
-          source: faqForm.source,
-          risk: faqForm.riskLevel as "Thấp" | "Trung bình" | "Cao",
-          status: faqForm.status,
-          notes: faqForm.notes,
-          addedBy: currentUserName,
-        });
-        toast.success("Đã cập nhật FAQ trong database");
-        setEditingFaqId(null);
-      } else {
-        await createSheetChatbotRow({
-          question: faqForm.question.trim(),
-          correctAnswer: faqForm.answer.trim(),
-          topic: faqForm.topic,
-          source: faqForm.source,
-          risk: faqForm.riskLevel as "Thấp" | "Trung bình" | "Cao",
-          status: faqForm.status,
-          notes: faqForm.notes,
-          addedBy: currentUserName,
-        });
-        toast.success("Đã tạo FAQ trong database");
-      }
-
-      await loadFaqs();
-      setShowCreateModal(false);
-      setFaqForm(emptyFaqForm);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Không thể lưu FAQ vào database");
-    }
-  };
 
   const handleApproveFaq = async (faq: Faq) => {
     try {
@@ -519,68 +472,26 @@ export function FAQ() {
 
       {/* Admin: Tạo FAQ Modal */}
       {showCreateModal && role === "manager" && (
-        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.5)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div role="dialog" aria-label={editingFaqId ? "Chỉnh sửa FAQ" : "Tạo FAQ"} style={{ backgroundColor: "#fff", width: "520px", borderRadius: "18px", padding: "28px", boxShadow: "0 20px 60px rgba(0,0,0,0.15)", maxHeight: "90vh", overflowY: "auto" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "22px" }}>
-              <h3 style={{ fontSize: "17px", fontWeight: 700, color: NAVY, margin: 0 }}>{editingFaqId ? "Chỉnh sửa FAQ" : "Tạo FAQ"}</h3>
-              <button onClick={closeCreateModal} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(0,56,101,0.4)" }}><X size={18} /></button>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-              <div>
-                <label style={labelStyle}>Câu hỏi <span style={{ color: ORANGE }}>*</span></label>
-                <input value={faqForm.question} onChange={(e) => setFaqForm({ ...faqForm, question: e.target.value })} placeholder="Nhập câu hỏi từ khách hàng..." style={fieldStyle} />
-              </div>
-              <div>
-                <label style={labelStyle}>Câu trả lời</label>
-                <textarea
-                  value={faqForm.answer}
-                  onChange={(e) => setFaqForm({ ...faqForm, answer: e.target.value })}
-                  rows={4}
-                  placeholder="Nhập câu trả lời chính thức (để trống nếu chưa có câu trả lời xác nhận)"
-                  style={{ ...fieldStyle, resize: "vertical" }}
-                />
-                <div style={{ fontSize: "11px", color: "rgba(0,56,101,0.4)", marginTop: "4px" }}>Không điền nếu chưa có câu trả lời chính thức đã được xác nhận</div>
-              </div>
-              <div>
-                <label style={labelStyle}>Chủ đề</label>
-                <select value={faqForm.topic} onChange={(e) => setFaqForm({ ...faqForm, topic: e.target.value })} style={fieldStyle}>
-                  <optgroup label="Chương trình Ngoại ngữ">
-                    {FAQ_TOPICS_LANGUAGE.map((t) => <option key={t} value={t}>{t}</option>)}
-                  </optgroup>
-                  <optgroup label="Chương trình Tin học">
-                    {FAQ_TOPICS_COMPUTER.map((t) => <option key={t} value={t}>{t}</option>)}
-                  </optgroup>
-                </select>
-              </div>
-              <div>
-                <label style={labelStyle}>Mức độ rủi ro</label>
-                <select value={faqForm.riskLevel} onChange={(e) => setFaqForm({ ...faqForm, riskLevel: e.target.value })} style={fieldStyle}>
-                  {RISK_LEVELS.map(r => <option key={r} value={r}>{r}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={labelStyle}>Nguồn gốc lỗi sai</label>
-                <select aria-label="Nguồn gốc lỗi sai" value={faqForm.source} onChange={(e) => setFaqForm({ ...faqForm, source: e.target.value })} style={fieldStyle}>
-                  {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={labelStyle}>Ghi chú nội bộ</label>
-                <textarea value={faqForm.notes} onChange={(e) => setFaqForm({ ...faqForm, notes: e.target.value })} rows={2} placeholder="Ghi chú nội bộ (không hiển thị với khách hàng)" style={{ ...fieldStyle, resize: "none" }} />
-              </div>
-              <div>
-                <label style={labelStyle}>Trạng thái</label>
-                <select value={faqForm.status} onChange={(e) => setFaqForm({ ...faqForm, status: e.target.value as SheetChatbotStatus })} style={fieldStyle}>
-                  {FAQ_STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}
-                </select>
-              </div>
-            </div>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px", marginTop: "24px" }}>
-              <button onClick={closeCreateModal} style={{ padding: "9px 20px", borderRadius: "9px", border: "1px solid rgba(0,56,101,0.12)", background: "#fff", color: NAVY, cursor: "pointer", fontWeight: 600, fontSize: "13px" }}>Hủy</button>
-              <button onClick={handleCreateFaq} style={{ padding: "9px 20px", borderRadius: "9px", border: "none", background: `linear-gradient(135deg, ${CTA} 0%, ${CTA_SOFT} 100%)`, color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: "13px", boxShadow: "0 4px 12px rgba(237,82,6,0.18)" }}>{editingFaqId ? "Cập nhật" : "Lưu FAQ"}</button>
-            </div>
-          </div>
-        </div>
+        <FeedbackFormDialog
+          open
+          mode={editingFaqId ? "edit" : "create"}
+          editingId={editingFaqId ?? undefined}
+          prefillData={{
+            question: faqForm.question,
+            answer: faqForm.answer,
+            topic: faqForm.topic,
+            source: faqForm.source,
+            notes: faqForm.notes,
+            risk: faqForm.riskLevel as "Thấp" | "Trung bình" | "Cao",
+            status: faqForm.status,
+          }}
+          onClose={closeCreateModal}
+          onSaved={async () => {
+            await loadFaqs();
+            setEditingFaqId(null);
+            setFaqForm(emptyFaqForm);
+          }}
+        />
       )}
 
       {/* Xem chi tiết FAQ Modal */}

@@ -2,8 +2,10 @@ import { buildApiUrl, fetchApiJson } from "./dashboardApi";
 
 export interface ConversationListRecord {
   id: number;
-  customer_id: string;
+  customer_id?: string | null;
   customer_name?: string | null;
+  customerDisplayName?: string | null;
+  phoneNumber?: string | null;
   status: "new" | "open" | "closed" | string;
   source: string;
   created_at?: string | null;
@@ -125,14 +127,20 @@ export async function bulkCloseConversations(
   return response.data;
 }
 
-export function getCustomerPresentation(customerName: unknown, customerId: unknown) {
-  const name = typeof customerName === "string" ? customerName.trim() : "";
-  const reference = typeof customerId === "string" ? customerId.trim() : String(customerId || "").trim();
-  const suffix = reference.slice(-4);
-  const shortReference = suffix ? `KH ••••${suffix}` : "KH chưa có mã";
+function safeIdentityText(value: unknown) {
+  if (typeof value === "string" || typeof value === "number") {
+    const normalized = String(value).trim();
+    return normalized && normalized !== "[object Object]" ? normalized : "";
+  }
+  return "";
+}
 
-  return {
-    primary: name || shortReference,
-    secondary: name ? shortReference : null,
-  } as const;
+export function getCustomerPresentation(customerName: unknown, customerId: unknown, phoneNumber?: unknown) {
+  const name = safeIdentityText(customerName);
+  const id = safeIdentityText(customerId);
+  const phone = safeIdentityText(phoneNumber);
+  const primary = name || id || phone || "Không xác định";
+  const secondary = name ? (id || phone || null) : id && phone && phone !== id ? phone : null;
+
+  return { primary, secondary } as const;
 }

@@ -117,5 +117,7 @@ class ConversationListItem(BaseModel):
     customer_id: str | None = None
     customer_name: str | None = None
     customer_reference: str | None = None
+    customer_display_name: str = Field(alias="customerDisplayName")
+    phone_number: str | None = Field(default=None, alias="phoneNumber")
     status: str | None = None
     source: str | None = None

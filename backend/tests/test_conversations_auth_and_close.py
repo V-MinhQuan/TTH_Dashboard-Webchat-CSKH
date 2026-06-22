@@ -158,7 +158,7 @@ def test_valid_conversation_filters_are_normalized_before_service_call():
     assert filters["source"] == "Facebook"
 
 
-def test_service_adds_short_masked_reference_immutably():
+def test_service_adds_customer_identity_immutably():
     record = {"id": 5, "customer_id": "customer-12345678", "customer_name": "Nguyễn An"}
     repository = MagicMock()
     repository.list_conversations.return_value = {
@@ -169,7 +169,8 @@ def test_service_adds_short_masked_reference_immutably():
 
     result = service.list_conversations({})
 
-    assert result["records"][0]["customer_reference"] == "***5678"
+    assert result["records"][0]["customer_reference"] == "customer-12345678"
+    assert result["records"][0]["customerDisplayName"] == "Nguyễn An"
     assert "customer_reference" not in record
 
 

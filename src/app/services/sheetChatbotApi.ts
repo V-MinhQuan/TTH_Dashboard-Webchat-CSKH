@@ -182,7 +182,7 @@ function normalizeCreatePayload(payload: SheetChatbotCreatePayload): SheetChatbo
   const topic = requiredText(payload.topic, "Chủ đề");
   const sourceDefinition = getAiFailureDefinition(payload.source);
 
-  if (!sourceDefinition) {
+  if (!sourceDefinition && payload.source !== "Nhân viên đề xuất") {
     throw new Error("Nguồn gốc lỗi sai không thuộc taxonomy lỗi AI được hỗ trợ.");
   }
 
@@ -191,7 +191,7 @@ function normalizeCreatePayload(payload: SheetChatbotCreatePayload): SheetChatbo
     question,
     correctAnswer,
     topic,
-    source: sourceDefinition.apiValue,
+    source: sourceDefinition?.apiValue ?? "Nhân viên đề xuất",
     notes: payload.notes.trim(),
     addedBy: payload.addedBy?.trim() || undefined,
   };

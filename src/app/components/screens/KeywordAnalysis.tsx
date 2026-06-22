@@ -657,6 +657,9 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
   const finalTrendRows = trendRows;
   const finalHeatmapRows = heatmapRows;
 
+  const displayedGroups = activeGroup ? finalGroups.filter(g => g.id === activeGroup) : finalGroups;
+  const displayedHeatmapRows = activeGroup ? finalHeatmapRows.filter(r => mapTopicToGroupId(r.topic) === activeGroup) : finalHeatmapRows;
+
 
   const hasAiFailedMetric = finalGroups.some((g) => g.aiFailed !== null);
 
@@ -757,10 +760,10 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
             <YAxis tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
             <Tooltip />
             <Legend iconSize={10} />
-            <Line type="monotone" dataKey="TOEIC" stroke={NAVY} strokeWidth={2} dot={{ r: 3 }} />
-            <Line type="monotone" dataKey="VSTEP" stroke="#1565C0" strokeWidth={2} dot={{ r: 3 }} />
-            <Line type="monotone" dataKey="Tin học" stroke={CTA} strokeWidth={2} dot={{ r: 3 }} />
-            <Line type="monotone" dataKey="Chuẩn đầu ra" stroke={ORANGE} strokeWidth={2} dot={{ r: 3 }} />
+            {(!activeGroup || activeGroup === "toeic") && <Line type="monotone" dataKey="TOEIC" stroke={NAVY} strokeWidth={2} dot={{ r: 3 }} />}
+            {(!activeGroup || activeGroup === "vstep") && <Line type="monotone" dataKey="VSTEP" stroke="#1565C0" strokeWidth={2} dot={{ r: 3 }} />}
+            {(!activeGroup || activeGroup === "tinhoc") && <Line type="monotone" dataKey="Tin học" stroke={CTA} strokeWidth={2} dot={{ r: 3 }} />}
+            {(!activeGroup || activeGroup === "chuandaura") && <Line type="monotone" dataKey="Chuẩn đầu ra" stroke={ORANGE} strokeWidth={2} dot={{ r: 3 }} />}
           </LineChart>
         </ResponsiveContainer>
       </div>
@@ -783,7 +786,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
               </tr>
             </thead>
             <tbody>
-              {finalHeatmapRows.map((row: any) => (
+              {displayedHeatmapRows.map((row: any) => (
                 <tr key={row.topic}>
                   <td style={{ padding: "6px 8px", fontSize: "12px", fontWeight: 600, color: NAVY }}>{row.topic}</td>
                   {heatmapColsDyn.map((col) => {
@@ -825,8 +828,8 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
       </div>
 
       {/* Keyword detail cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "20px" }}>
-        {finalGroups.map((group) => (
+      <div style={{ display: "grid", gridTemplateColumns: activeGroup ? "1fr" : "repeat(2, 1fr)", gap: "20px" }}>
+        {displayedGroups.map((group) => (
           <div
             key={group.id}
             style={{

@@ -31,39 +31,6 @@ const chartTypes = [
   { id: "hbar", label: "Cột ngang", icon: BarChart },
 ];
 
-const topics = ["TOEIC", "VSTEP", "Chuẩn đầu ra", "MOS/IC3", "Tin học cơ sở"];
-
-const baseData = [
-  { name: "TOEIC", hoidthoai: 420, ai_ok: 360, ai_fail: 60, sentiment: 72 },
-  { name: "VSTEP", hoidthoai: 280, ai_ok: 230, ai_fail: 50, sentiment: 68 },
-  { name: "Chuẩn đầu ra", hoidthoai: 350, ai_ok: 295, ai_fail: 55, sentiment: 75 },
-  { name: "MOS/IC3", hoidthoai: 190, ai_ok: 158, ai_fail: 32, sentiment: 80 },
-  { name: "Tin học", hoidthoai: 240, ai_ok: 195, ai_fail: 45, sentiment: 65 },
-  { name: "Lệ phí", hoidthoai: 310, ai_ok: 250, ai_fail: 60, sentiment: 60 },
-  { name: "Lịch thi", hoidthoai: 380, ai_ok: 312, ai_fail: 68, sentiment: 78 },
-];
-
-const filteredData = [
-  { name: "TOEIC", hoidthoai: 180, ai_ok: 155, ai_fail: 25, sentiment: 79 },
-  { name: "VSTEP", hoidthoai: 120, ai_ok: 100, ai_fail: 20, sentiment: 71 },
-  { name: "Chuẩn đầu ra", hoidthoai: 145, ai_ok: 128, ai_fail: 17, sentiment: 82 },
-  { name: "MOS/IC3", hoidthoai: 80, ai_ok: 70, ai_fail: 10, sentiment: 85 },
-  { name: "Tin học", hoidthoai: 95, ai_ok: 78, ai_fail: 17, sentiment: 68 },
-  { name: "Lệ phí", hoidthoai: 130, ai_ok: 105, ai_fail: 25, sentiment: 62 },
-  { name: "Lịch thi", hoidthoai: 160, ai_ok: 132, ai_fail: 28, sentiment: 80 },
-];
-
-const sourceTableData = [
-  { date: "2025-01-15", channel: "Facebook", topic: "TOEIC", count: 48, ai_ok: 42, ai_fail: 6, sentiment: "Tích cực", status: "Đã xử lý" },
-  { date: "2025-01-15", channel: "Zalo OA", topic: "VSTEP", count: 32, ai_ok: 28, ai_fail: 4, sentiment: "Trung lập", status: "Đang xử lý" },
-  { date: "2025-01-14", channel: "Chat Widget", topic: "Chuẩn đầu ra", count: 41, ai_ok: 35, ai_fail: 6, sentiment: "Tích cực", status: "Đã xử lý" },
-  { date: "2025-01-14", channel: "Facebook", topic: "MOS/IC3", count: 22, ai_ok: 20, ai_fail: 2, sentiment: "Tích cực", status: "Đã xử lý" },
-  { date: "2025-01-13", channel: "Zalo Business", topic: "Tin học cơ sở", count: 28, ai_ok: 22, ai_fail: 6, sentiment: "Tiêu cực", status: "Chờ quản lý xác nhận" },
-  { date: "2025-01-13", channel: "Zalo OA", topic: "Lệ phí thi", count: 35, ai_ok: 28, ai_fail: 7, sentiment: "Trung lập", status: "Đã xử lý" },
-  { date: "2025-01-12", channel: "Chat Widget", topic: "Lịch thi", count: 44, ai_ok: 37, ai_fail: 7, sentiment: "Tích cực", status: "Đã xử lý" },
-  { date: "2025-01-12", channel: "Facebook", topic: "Tra cứu điểm", count: 19, ai_ok: 14, ai_fail: 5, sentiment: "Tiêu cực", status: "Chờ quản lý xác nhận" },
-];
-
 const COLORS = [NAVY, CTA, "rgba(0,59,185,0.6)", CTA_SOFT, "rgba(0,59,185,0.3)", ORANGE_200];
 
 function normalizeValue(value: string) {
@@ -85,7 +52,7 @@ function toTableRows(data: any) {
   if (data && typeof data === "object") {
     return Object.entries(data).map(([key, value]) => ({ name: key, value }));
   }
-  return sourceTableData;
+  return [];
 }
 
 function formatCellValue(value: any) {
@@ -94,7 +61,7 @@ function formatCellValue(value: any) {
   return String(value);
 }
 
-function ChartRenderer({ type, data }: { type: string; data: typeof baseData }) {
+function ChartRenderer({ type, data }: { type: string; data: any[] }) {
   if (type === "donut" || type === "pie") {
     const pieData = data.map((d) => ({ name: d.name, value: d.hoidthoai }));
     return (
@@ -185,7 +152,7 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
   const [chartTitle, setChartTitle] = useState(title);
   const [isEdited, setIsEdited] = useState(false);
   const [filterActive, setFilterActive] = useState(false);
-  const [chartData, setChartData] = useState(data || baseData);
+  const [chartData, setChartData] = useState(data ?? []);
   const { settings } = useSettings();
 
   const channels = ["Tất cả"];
@@ -205,7 +172,7 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
   const popoverRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setChartData(data || baseData);
+    setChartData(data ?? []);
     setFilterActive(false);
   }, [data]);
 
@@ -336,7 +303,7 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
 
   const applyLocalFiltersToObject = (rawObj: Record<string, number>, filters: typeof filterValues) => {
     if (!rawObj || typeof rawObj !== "object" || Array.isArray(rawObj)) return rawObj;
-    let processed = { ...rawObj };
+    const processed = { ...rawObj };
 
     if (filters.channel !== "Tất cả") {
       const matchKey = Object.keys(processed).find(k => k.toLowerCase().includes(filters.channel.toLowerCase().replace(" ", "")));
@@ -347,29 +314,13 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
       });
     }
 
-    let scale = 1.0;
-    if (filters.topic !== "Tất cả") {
-      if (filters.topic.includes("TOEIC")) scale = 0.3;
-      else if (filters.topic.includes("VSTEP")) scale = 0.2;
-      else if (filters.topic.includes("Chuẩn đầu ra")) scale = 0.25;
-      else if (filters.topic.includes("MOS/IC3")) scale = 0.15;
-      else if (filters.topic.includes("Tin học")) scale = 0.1;
-      else scale = 0.05;
-    }
-
-    if (scale !== 1.0) {
-      Object.keys(processed).forEach(key => {
-        processed[key] = Math.round(processed[key] * scale);
-      });
-    }
-
     return processed;
   };
 
   const handleFilterApply = () => {
     setFilterPanelOpen(false);
     setFilterActive(true);
-    const sourceData = data || baseData;
+    const sourceData = data ?? [];
     if (Array.isArray(sourceData)) {
       setChartData(applyLocalFilters(sourceData, filterValues));
     } else {
@@ -380,7 +331,7 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
 
   const handleFilterReset = () => {
     setFilterActive(false);
-    setChartData(data || baseData);
+    setChartData(data ?? []);
     setFilterValues({ dateRange: "30 ngày qua", channel: "Tất cả", topic: "Tất cả", status: "Tất cả", aiStatus: "Tất cả" });
     setFilterPanelOpen(false);
     toast.info("Đã đặt lại bộ lọc biểu đồ");
@@ -395,6 +346,11 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
 
   const sentimentColors: Record<string, string> = { "Tích cực": "#228A61", "Trung lập": AMBER_TEXT, "Tiêu cực": RED_TEXT };
   const tableRows = toTableRows(chartData);
+  const topics = Array.from(new Set(
+    tableRows
+      .map((row: any) => typeof row?.topic === "string" ? row.topic.trim() : "")
+      .filter(Boolean),
+  ));
   const tableColumns = Array.from(
     new Set(tableRows.flatMap((row: any) => row && typeof row === "object" ? Object.keys(row) : []))
   );
@@ -525,7 +481,7 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
         {/* Chart Content */}
         <div style={{ padding: "16px 20px 20px" }}>
           {typeof children === "function" ? (
-            (children as Function)({ chartType, chartData, editValues, filterValues })
+            children({ chartType, chartData, editValues, filterValues })
           ) : useDefaultChart ? (
             <ChartRenderer type={chartType} data={chartData} />
           ) : (

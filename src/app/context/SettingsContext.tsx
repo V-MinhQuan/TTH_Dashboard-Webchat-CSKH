@@ -1,11 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { getSettings as fetchSettings, updateSettings as persistSettings } from '../services/dashboardApi';
+import { useAuth } from './AuthContext';
 
 export interface GlobalSettings {
   emailNotif: boolean;
   slackNotif: boolean;
   aiFailAlert: boolean;
-  weeklyReport: boolean;
   autoEscalate: boolean;
   hallucinationDetect: boolean;
   autoFAQ: boolean;
@@ -31,7 +31,7 @@ export interface GlobalSettings {
 }
 
 const defaultSettings: GlobalSettings = {
-  emailNotif: true, slackNotif: false, aiFailAlert: true, weeklyReport: true,
+  emailNotif: true, slackNotif: false, aiFailAlert: true,
   autoEscalate: true, hallucinationDetect: true, autoFAQ: false,
   compactView: false, language: "vi", exportFormat: "xlsx", dataRetention: "90",
   showAiFailed: true, sortBy: "newest", pageSize: "20",
@@ -61,6 +61,7 @@ function cacheSettings(settings: GlobalSettings) {
 }
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
   const [settings, setSettings] = useState<GlobalSettings>(() => {
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem(SETTINGS_STORAGE_KEY);
@@ -94,6 +95,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
+    if (!user?.accessToken) {
+      setLoadingSettings(false);
+      return;
+    }
     let cancelled = false;
     setLoadingSettings(true);
     fetchSettings()
@@ -110,7 +115,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [user?.accessToken]);
 
   const updateSetting = (key: keyof GlobalSettings, value: any) => {
     setSettings((prev) => {

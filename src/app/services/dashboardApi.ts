@@ -19,6 +19,13 @@ type DashboardKpiPayload = Partial<DashboardKpiData> & Record<string, any>;
 const inFlightGetRequests = new Map<string, Promise<any>>();
 const AUTH_STORAGE_KEY = "flic_dashboard_auth";
 
+export class ApiRequestError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = "ApiRequestError";
+  }
+}
+
 const DEFAULT_STATUS_SUMMARY = {
   new: 0,
   open: 0,
@@ -97,8 +104,8 @@ function normalizeStatusSummary(value: unknown) {
 
 function normalizeDashboardKpiData(value: DashboardKpiPayload | null | undefined): DashboardKpiData {
   const raw: DashboardKpiPayload = value && typeof value === "object" ? value : {};
-  const rawDateRange = raw.dateRange && typeof raw.dateRange === "object" ? raw.dateRange : {};
-  const rawTrends = raw.trends && typeof raw.trends === "object" ? raw.trends : {};
+  const rawDateRange: Record<string, any> = raw.dateRange && typeof raw.dateRange === "object" ? raw.dateRange : {};
+  const rawTrends: Record<string, any> = raw.trends && typeof raw.trends === "object" ? raw.trends : {};
 
   return {
     ...raw,
@@ -234,26 +241,34 @@ export async function fetchApiJson<T>(
   const timeoutValue = timeoutMs || API_TIMEOUT_MS;
   const timeoutId = window.setTimeout(() => controller.abort(), timeoutValue);
 
+  const authToken = getAuthToken();
   const request = fetch(url, {
     ...fetchOptions,
     method,
     signal: controller.signal,
     headers: {
       "Content-Type": "application/json",
-      ...(getAuthToken() ? { Authorization: `Bearer ${getAuthToken()}` } : {}),
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
       ...(fetchOptions.headers || {}),
     },
   })
     .then(async (response) => {
       const payload = await response.json().catch(() => null);
       if (!response.ok || payload?.success === false) {
-        throw new Error(payload?.message || payload?.detail || `API trả về lỗi ${response.status}.`);
+        const error = new ApiRequestError(
+          payload?.message || payload?.detail || `API trả về lỗi ${response.status}.`,
+          response.status,
+        );
+        if (response.status === 401 && typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("flic:auth-expired", { detail: error.message }));
+        }
+        throw error;
       }
       if (useCache) writeCache(cacheKey, payload);
       return payload;
     })
     .catch((err: any) => {
-      if (useCache) {
+      if (useCache && !(err instanceof ApiRequestError)) {
         const stale = readCache<T>(cacheKey, true);
         if (stale) return stale;
       }
@@ -361,22 +376,50 @@ export async function getChannelAnalytics(params?: {
  * @param source Nguồn kênh của cuộc hội thoại
  */
 export async function closeConversation(customerId: string, source: string): Promise<boolean> {
-  const response = await fetch(`${API_BASE_URL}/api/conversations/close`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
+  const resJson = await fetchApiJson<{ success: boolean; message?: string }>(
+    buildApiUrl("/api/conversations/close"),
+    {
+      method: "POST",
+      cache: false,
+      body: JSON.stringify({ customerId, source }),
     },
-    body: JSON.stringify({ customerId, source })
-  });
-
-  const resJson: { success: boolean; message?: string } = await response.json();
-
-  if (!response.ok || !resJson.success) {
+  );
+  if (!resJson.success) {
     throw new Error(resJson.message || "Không thể cập nhật trạng thái cuộc hội thoại.");
   }
 
   clearApiCache();
   return true;
+}
+
+export async function getProfile(username: string) {
+  const response = await fetchApiJson<{ success: boolean; data: Record<string, any>; message?: string }>(
+    buildApiUrl("/api/settings/profile", { username }),
+    { cache: false },
+  );
+  return response.data;
+}
+
+export async function updateProfile(payload: { username: string; name: string; email: string; phone: string }) {
+  const response = await fetchApiJson<{ success: boolean; data: Record<string, any>; message?: string }>(
+    buildApiUrl("/api/settings/profile"),
+    { method: "PUT", cache: false, body: JSON.stringify(payload) },
+  );
+  return response.data;
+}
+
+export async function requestPasswordChange(payload: { username: string; currentPassword: string }) {
+  return fetchApiJson<{ success: boolean; message?: string }>(
+    buildApiUrl("/api/settings/profile/change-password/request"),
+    { method: "POST", cache: false, body: JSON.stringify(payload) },
+  );
+}
+
+export async function confirmPasswordChange(payload: { username: string; otp: string; newPassword: string }) {
+  return fetchApiJson<{ success: boolean; message?: string }>(
+    buildApiUrl("/api/settings/profile/change-password/confirm"),
+    { method: "POST", cache: false, body: JSON.stringify(payload) },
+  );
 }
 
 /**

@@ -4,6 +4,7 @@ from typing import Any, Dict
 
 from app.core.exceptions import AppError
 from app.repositories.conversation_repository import ConversationRepository
+from app.utils.customer_identity import customer_display_name, identity_text
 
 
 class ConversationService:
@@ -48,6 +49,15 @@ class ConversationService:
 
     @staticmethod
     def _with_customer_reference(record: Dict[str, Any]) -> Dict[str, Any]:
-        customer_id = str(record.get("customer_id") or "").strip()
-        reference = f"***{customer_id[-4:]}" if customer_id else None
-        return {**record, "customer_reference": reference}
+        customer_id = identity_text(record.get("customer_id")) or None
+        customer_name = identity_text(record.get("customer_name")) or None
+        phone_number = identity_text(record.get("phone_number")) or None
+        return {
+            **record,
+            "customer_id": customer_id,
+            "customer_name": customer_name,
+            "phone_number": phone_number,
+            "customer_reference": customer_id,
+            "customerDisplayName": customer_display_name(customer_name, customer_id, phone_number),
+            "phoneNumber": phone_number,
+        }

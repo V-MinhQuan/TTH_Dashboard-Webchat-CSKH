@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Brain, Cpu, Zap, Activity, AlertOctagon, Shield, Terminal, FileText, Flag, Send, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
-import { AddSheetModal } from "./SheetChatbot";
+import { FeedbackFormDialog } from "../feedback/FeedbackFormDialog";
+import { getCustomerPresentation } from "../../services/conversationApi";
 import { ErrorSourceBadge } from "../common/ErrorSourceBadge";
-import { createSheetChatbotRow } from "../../services/sheetChatbotApi";
 import { buildApiUrl, fetchApiJson, formatChannelParam } from "../../services/dashboardApi";
 import { getAiFailureDefinition } from "../../constants/aiFailureTaxonomy";
 import { FilterValues } from "../FilterPanel";
@@ -100,20 +100,23 @@ function buildFailureNotes(item: AnomalyItem) {
 function mapAnomaly(row: any): AnomalyItem {
   const confidenceRaw = Number(row.issueConfidence ?? 0);
   const confidence = confidenceRaw <= 1 ? Math.round(confidenceRaw * 100) : Math.round(confidenceRaw);
+  const customer = getCustomerPresentation(
+    row.customerDisplayName || row.customerName || row.customer_name,
+    row.customerId,
+    row.phoneNumber,
+  );
   return {
     id: String(row.id ?? row.messageId ?? crypto.randomUUID()),
     messageId: row.messageId,
     conversationId: row.conversationId,
     type: normalizeFailureLabel(row.issueType),
     confidence,
-    customerName: row.customerName || row.customer_name || "Khách hàng chưa cung cấp tên",
-    customerReference: maskCustomerReference(
-      row.maskedReference || row.masked_reference || row.customerReference || row.customer_reference || row.customerId,
-    ),
-    question: row.textContent || "Tin nhắn khách hàng đang trống trong database",
-    aiAnswer: row.aiAnswer || "Câu trả lời AI đang trống trong database",
-    reason: row.issueReason || "Chưa có lý do lỗi AI trong database",
-    channel: row.source || "Không có kênh trong database",
+    customerName: customer.primary,
+    customerReference: customer.secondary,
+    question: row.textContent || "Chưa có dữ liệu",
+    aiAnswer: row.aiAnswer || "Không tìm thấy câu trả lời AI tương ứng",
+    reason: row.issueReason || "Chưa xác định",
+    channel: row.source || "Chưa xác định",
     topic: parseTopics(row.detectedTopics),
     waitTime: formatWaitTime(row.messageAt),
   };
@@ -402,22 +405,20 @@ export function AIMonitoring({ filters }: AIMonitoringProps) {
         </div>
       </div>
 
-      {showSheetModal && activeAnomaly && (
-        <AddSheetModal
-          prefillQuestion={activeAnomaly.question}
-          prefillAnswer=""
-          prefillNotes={buildFailureNotes({ ...activeAnomaly, aiAnswer: currentAnswer })}
-          prefillSource={activeAnomaly.type}
-          onClose={() => setShowSheetModal(false)}
-          onSave={async (data) => {
-            await createSheetChatbotRow({
-              ...data,
-              addedBy: "Đề xuất tự động (AI)",
-            });
-            toast.success("Đã thêm phản hồi vào thư viện");
-          }}
-        />
-      )}
+      <FeedbackFormDialog
+        open={showSheetModal && Boolean(activeAnomaly)}
+        mode="create"
+        prefillData={activeAnomaly ? {
+          question: activeAnomaly.question,
+          topic: activeAnomaly.topic,
+          source: activeAnomaly.type,
+          conversationId: activeAnomaly.conversationId,
+          messageId: activeAnomaly.messageId,
+          notes: buildFailureNotes({ ...activeAnomaly, aiAnswer: currentAnswer }),
+        } : undefined}
+        onClose={() => setShowSheetModal(false)}
+        onSaved={() => setShowSheetModal(false)}
+      />
 
       {showErrorReasonModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>

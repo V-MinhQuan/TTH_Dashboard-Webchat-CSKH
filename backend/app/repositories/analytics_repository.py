@@ -10,6 +10,13 @@ from app.utils.pagination import normalize_pagination
 
 
 _STATUS_EXPR = conversation_status_case("c", "latestStatus")
+_CUSTOMER_INFO_APPLY = """
+    OUTER APPLY (
+      SELECT MAX(NULLIF(LTRIM(RTRIM(ui.DisplayName)), N'')) AS customerName
+      FROM dbo.WebChat_Messagelogs_User_Info ui
+      WHERE ui.SenderId = c.CustomerId AND ui.Source = c.Source
+    ) customerInfo
+"""
 
 class AnalyticsRepository:
     def __init__(self, connection_factory: Callable = get_connection):
@@ -216,6 +223,116 @@ class AnalyticsRepository:
     def get_negative_review_conversations(self, filters: Dict[str, Any]) -> Dict[str, Any]:
         return self._get_review_conversations(filters, self._build_negative_review_where)
 
+    def get_positive_conversations(self, filters: Dict[str, Any]) -> Dict[str, Any]:
+        pagination = normalize_pagination(
+            page=int(filters.get("page") or 1),
+            page_size=int(filters.get("pageSize") or 20),
+        )
+        with self._connection_factory() as conn:
+            columns = inspect_message_analytics_columns(conn)
+            base_filters = dict(filters)
+            base_filters.pop("sentiment", None)
+            base_filters.pop("sentimentLabel", None)
+            base_filters.pop("search", None)
+            base_filters.pop("conversationStatus", None)
+            base_filters.pop("aiStatus", None)
+            where, params = self._build_read_where(base_filters, columns)
+            conditions = ["ranked.rn = 1", "ranked.sentimentLabel = 'positive'"]
+            if filters.get("conversationStatus"):
+                conditions.append("ranked.conversationStatus = ?")
+                params.append(filters["conversationStatus"])
+            search = str(filters.get("search") or "").strip()
+            if search:
+                conditions.append("(ranked.textContent LIKE ? OR ranked.customerId LIKE ? OR ranked.customerName LIKE ?)")
+                params.extend([f"%{search}%", f"%{search}%", f"%{search}%"])
+            ranked_where = "WHERE " + " AND ".join(conditions)
+            cte = f"""
+                WITH RankedPositiveCandidates AS (
+                  SELECT
+                    a.id,
+                    a.messageId,
+                    cmsg.TextContent AS textContent,
+                    m.TextContent AS aiAnswer,
+                    a.conversationId,
+                    c.CustomerId AS customerId,
+                    customerInfo.customerName,
+                    CAST(NULL AS NVARCHAR(50)) AS phoneNumber,
+                    a.source,
+                    a.sentimentLabel,
+                    a.sentimentScore,
+                    a.detectedTopics,
+                    a.messageAt,
+                    {_STATUS_EXPR} AS conversationStatus,
+                    ROW_NUMBER() OVER (
+                      PARTITION BY a.conversationId
+                      ORDER BY a.messageAt DESC, a.id DESC
+                    ) AS rn
+                  FROM dbo.WebChat_MessageAnalytics a
+                  LEFT JOIN dbo.WebChat_MessageLogs m
+                    ON m.id_webchat_messagelogs = a.messageId
+                  LEFT JOIN dbo.WebChat_Conversations c
+                    ON c.Id = a.conversationId
+                  OUTER APPLY (
+                    SELECT TOP 1 s.NoResponseNeeded, s.MarkedAt
+                    FROM dbo.WebChat_ConversationStatus s
+                    WHERE s.CustomerId = c.CustomerId AND s.Source = c.Source
+                    ORDER BY s.MarkedAt DESC, s.Id DESC
+                  ) latestStatus
+                  {_CUSTOMER_INFO_APPLY}
+                  OUTER APPLY (
+                    SELECT TOP 1 customerMessage.TextContent
+                    FROM dbo.WebChat_MessageLogs customerMessage
+                    WHERE customerMessage.Source = c.Source
+                      AND customerMessage.SenderId = c.CustomerId
+                      AND customerMessage.FromHost = 0
+                      AND customerMessage.SentAt <= COALESCE(m.SentAt, a.messageAt)
+                    ORDER BY customerMessage.SentAt DESC, customerMessage.id_webchat_messagelogs DESC
+                  ) cmsg
+                  {where}
+                    {"AND" if where else "WHERE"} a.conversationId IS NOT NULL
+                )
+            """
+            total_row = execute_one(
+                conn,
+                f"{cte} SELECT COUNT(*) AS total FROM RankedPositiveCandidates ranked {ranked_where}",
+                params,
+            )
+            rows = execute_all(
+                conn,
+                f"""
+                {cte}
+                SELECT
+                  ranked.id,
+                  ranked.messageId,
+                  ranked.textContent,
+                  ranked.aiAnswer,
+                  ranked.conversationId,
+                  ranked.customerId,
+                  ranked.customerName,
+                  ranked.phoneNumber,
+                  ranked.source,
+                  ranked.sentimentLabel,
+                  ranked.sentimentScore,
+                  ranked.detectedTopics,
+                  ranked.messageAt,
+                  ranked.conversationStatus
+                FROM RankedPositiveCandidates ranked
+                {ranked_where}
+                ORDER BY ranked.messageAt DESC, ranked.id DESC
+                OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
+                """,
+                [*params, pagination.offset, pagination.page_size],
+            )
+        return {
+            "records": rows,
+            "pagination": {
+                "page": pagination.page,
+                "pageSize": pagination.page_size,
+                "total": int(total_row.get("total") or 0),
+            },
+            "optionalColumns": columns,
+        }
+
     def _get_review_conversations(
         self,
         filters: Dict[str, Any],
@@ -253,6 +370,8 @@ class AnalyticsRepository:
                   m.TextContent AS aiAnswer,
                   a.conversationId,
                   c.CustomerId AS customerId,
+                  customerInfo.customerName,
+                  CAST(NULL AS NVARCHAR(50)) AS phoneNumber,
                   a.source,
                   a.sentimentLabel,
                   a.sentimentScore,
@@ -273,6 +392,7 @@ class AnalyticsRepository:
                   ON m.id_webchat_messagelogs = a.messageId
                 LEFT JOIN dbo.WebChat_Conversations c
                   ON c.Id = a.conversationId
+                {_CUSTOMER_INFO_APPLY}
                 OUTER APPLY (
                   SELECT TOP 1 cmsg.TextContent
                   FROM dbo.WebChat_MessageLogs cmsg
@@ -418,6 +538,83 @@ class AnalyticsRepository:
             issue_reason_expr = "a.issueReason" if columns.get("issueReason") else "CAST(NULL AS NVARCHAR(1000))"
             issue_conf_expr = "a.issueConfidence" if columns.get("issueConfidence") else "CAST(NULL AS FLOAT)"
 
+            if filters.get("uniqueConversations"):
+                where = f"{where} AND a.conversationId IS NOT NULL" if where else "WHERE a.conversationId IS NOT NULL"
+                ranked_cte = f"""
+                    WITH RankedFailures AS (
+                      SELECT
+                        a.id,
+                        a.messageId,
+                        cmsg.TextContent AS textContent,
+                        m.TextContent AS aiAnswer,
+                        a.conversationId,
+                        c.CustomerId AS customerId,
+                        customerInfo.customerName,
+                        CAST(NULL AS NVARCHAR(50)) AS phoneNumber,
+                        a.source,
+                        a.sentimentLabel,
+                        a.sentimentScore,
+                        a.sentimentReason,
+                        a.satisfactionScore,
+                        a.satisfactionLevel,
+                        a.satisfactionReason,
+                        a.needStaffReview,
+                        {issue_flag_expr} AS issueFlag,
+                        {issue_type_expr} AS issueType,
+                        {issue_reason_expr} AS issueReason,
+                        {issue_conf_expr} AS issueConfidence,
+                        a.detectedTopics,
+                        a.matchedNegativeKeywords,
+                        a.messageAt,
+                        ROW_NUMBER() OVER (
+                          PARTITION BY a.conversationId
+                          ORDER BY a.messageAt DESC, a.id DESC
+                        ) AS conversationRank
+                      FROM dbo.WebChat_MessageAnalytics a
+                      LEFT JOIN dbo.WebChat_MessageLogs m
+                        ON m.id_webchat_messagelogs = a.messageId
+                      LEFT JOIN dbo.WebChat_Conversations c
+                        ON c.Id = a.conversationId
+                      {_CUSTOMER_INFO_APPLY}
+                      OUTER APPLY (
+                        SELECT TOP 1 customerMessage.TextContent
+                        FROM dbo.WebChat_MessageLogs customerMessage
+                        WHERE customerMessage.Source = c.Source
+                          AND customerMessage.SenderId = c.CustomerId
+                          AND customerMessage.FromHost = 0
+                          AND customerMessage.SentAt <= COALESCE(m.SentAt, a.messageAt)
+                        ORDER BY customerMessage.SentAt DESC, customerMessage.id_webchat_messagelogs DESC
+                      ) cmsg
+                      {where}
+                    )
+                """
+                total_row = execute_one(
+                    conn,
+                    f"{ranked_cte} SELECT COUNT(*) AS total FROM RankedFailures WHERE conversationRank = 1",
+                    params,
+                )
+                records = execute_all(
+                    conn,
+                    f"""
+                    {ranked_cte}
+                    SELECT *
+                    FROM RankedFailures
+                    WHERE conversationRank = 1
+                    ORDER BY messageAt DESC, id DESC
+                    OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
+                    """,
+                    [*params, pagination.offset, pagination.page_size],
+                )
+                return {
+                    "records": records,
+                    "pagination": {
+                        "page": pagination.page,
+                        "pageSize": pagination.page_size,
+                        "total": int(total_row.get("total") or 0),
+                    },
+                    "optionalColumns": columns,
+                }
+
             total_row = execute_one(
                 conn,
                 f"""
@@ -439,6 +636,8 @@ class AnalyticsRepository:
                   m.TextContent AS aiAnswer,
                   a.conversationId,
                   c.CustomerId AS customerId,
+                  customerInfo.customerName,
+                  CAST(NULL AS NVARCHAR(50)) AS phoneNumber,
                   a.source,
                   a.sentimentLabel,
                   a.sentimentScore,
@@ -459,6 +658,7 @@ class AnalyticsRepository:
                   ON m.id_webchat_messagelogs = a.messageId
                 LEFT JOIN dbo.WebChat_Conversations c
                   ON c.Id = a.conversationId
+                {_CUSTOMER_INFO_APPLY}
                 OUTER APPLY (
                   SELECT TOP 1 cmsg.TextContent
                   FROM dbo.WebChat_MessageLogs cmsg
@@ -525,6 +725,8 @@ class AnalyticsRepository:
                   m.TextContent AS aiAnswer,
                   a.conversationId,
                   c.CustomerId AS customerId,
+                  customerInfo.customerName,
+                  CAST(NULL AS NVARCHAR(50)) AS phoneNumber,
                   a.source,
                   a.sentimentLabel,
                   a.sentimentScore,
@@ -545,6 +747,7 @@ class AnalyticsRepository:
                   ON m.id_webchat_messagelogs = a.messageId
                 LEFT JOIN dbo.WebChat_Conversations c
                   ON c.Id = a.conversationId
+                {_CUSTOMER_INFO_APPLY}
                 OUTER APPLY (
                   SELECT TOP 1 cmsg.TextContent
                   FROM dbo.WebChat_MessageLogs cmsg
@@ -714,8 +917,14 @@ class AnalyticsRepository:
             params.append(sentiment)
         topic = filters.get("topic")
         if topic:
-            conditions.append("a.detectedTopics LIKE ?")
-            params.append(f"%{topic}%")
+            conditions.append("""
+                (
+                  LTRIM(RTRIM(a.detectedTopics)) = ?
+                  OR a.detectedTopics LIKE ? ESCAPE '~'
+                )
+            """)
+            escaped_topic = str(topic).replace("~", "~~").replace("%", "~%").replace("_", "~_").replace("[", "~[")
+            params.extend([topic, f'%"{escaped_topic}"%'])
         issue_type = filters.get("issueType")
         if issue_type:
             conditions.append("a.issueType = ?" if columns.get("issueType") else "1 = 0")

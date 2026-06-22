@@ -98,7 +98,7 @@ describe("FilterPanel", () => {
     // Select one of the 8 canonical failure types
     await user.selectOptions(
       screen.getByRole("combobox", { name: "Loại lỗi AI (8 nhóm)" }),
-      "Không hiểu câu hỏi",
+      "AI không chắc chắn",
     );
 
     // Switching to success hides the subfilter
@@ -119,23 +119,22 @@ describe("FilterPanel", () => {
     );
   });
 
-  it("offers the positive sentiment filter and exposes active filters as removable badges", async () => {
+  it("does not expose sentiment in the global filter and keeps active filters removable", async () => {
     const user = userEvent.setup();
     const onFiltersChange = renderPanel({
       ...defaultFilterValues,
       channel: "Facebook",
-      sentiment: "Tích cực",
     });
 
     expect(screen.getByRole("button", { name: "Xóa bộ lọc Kênh: Facebook" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "Xóa bộ lọc Cảm xúc: Tích cực" })).toBeVisible();
-    expect(screen.getByRole("option", { name: "Tích cực" })).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Cảm xúc" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Tích cực" })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Xóa bộ lọc Cảm xúc: Tích cực" }));
+    await user.click(screen.getByRole("button", { name: "Xóa bộ lọc Kênh: Facebook" }));
     await user.click(screen.getByRole("button", { name: "Áp dụng bộ lọc" }));
 
     expect(onFiltersChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({ sentiment: "Tất cả" }),
+      expect.objectContaining({ channel: "Tất cả" }),
     );
   });
 
@@ -203,7 +202,7 @@ describe("FilterPanel", () => {
 
   it("resets all filters and can collapse the field region", async () => {
     const user = userEvent.setup();
-    const onFiltersChange = renderPanel({ ...defaultFilterValues, sentiment: "Tiêu cực" });
+    const onFiltersChange = renderPanel({ ...defaultFilterValues, channel: "Facebook" });
 
     await user.click(screen.getByRole("button", { name: "Đặt lại" }));
     expect(onFiltersChange).toHaveBeenLastCalledWith(defaultFilterValues);
@@ -211,6 +210,22 @@ describe("FilterPanel", () => {
 
     await user.click(screen.getByRole("button", { name: "Bộ lọc dữ liệu" }));
     expect(screen.queryByRole("combobox", { name: "Khoảng thời gian" })).not.toBeInTheDocument();
+  });
+
+  it("toggles from the empty header area with keyboard support and export does not toggle it", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    const header = screen.getByRole("button", { name: "Bộ lọc dữ liệu" });
+    header.focus();
+    await user.keyboard(" ");
+    expect(header).toHaveAttribute("aria-expanded", "false");
+
+    await user.keyboard("{Enter}");
+    expect(header).toHaveAttribute("aria-expanded", "true");
+
+    await user.click(screen.getByRole("button", { name: /Xuất dữ liệu/i }));
+    expect(header).toHaveAttribute("aria-expanded", "true");
   });
 
   it("reports when the export target is unavailable after opening the dropdown", async () => {

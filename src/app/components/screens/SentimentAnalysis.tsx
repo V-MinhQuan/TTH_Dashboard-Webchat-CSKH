@@ -12,7 +12,7 @@ class ErrorBoundary extends React.Component<any, any> {
     return this.props.children; 
   }
 }
-import { Heart, Meh, Frown, TrendingUp, AlertTriangle, Lightbulb, Star, MessageCircle, Smile, AlertCircle, Activity } from "lucide-react";
+import { Heart, Meh, Frown, TrendingUp, AlertTriangle, Lightbulb, Star, MessageCircle, Smile, AlertCircle, Activity, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   PieChart, Pie, Cell, LineChart, Line, BarChart, Bar, XAxis, YAxis,
   CartesianGrid, Tooltip, ResponsiveContainer, Legend, AreaChart, Area
@@ -94,6 +94,42 @@ function getDatesFromRange(range: string, customFrom?: string, customTo?: string
   return {};
 }
 
+function buildSentimentQueryParams(filters: FilterValues) {
+  const queryParams = new URLSearchParams();
+  const dates = getDatesFromRange(filters.dateRange, filters.customDateFrom, filters.customDateTo);
+  if (dates.startDate && dates.endDate) {
+    queryParams.set("startDate", dates.startDate);
+    queryParams.set("endDate", dates.endDate);
+  }
+  if (filters.channel && filters.channel !== "Tất cả") queryParams.set("channel", formatChannelParam(filters.channel));
+  if (filters.topic && filters.topic !== "Tất cả") queryParams.set("topic", filters.topic);
+  if (filters.conversationStatus && filters.conversationStatus !== "Tất cả") queryParams.set("conversationStatus", filters.conversationStatus);
+  if (filters.aiStatus && filters.aiStatus !== "Tất cả") queryParams.set("aiStatus", filters.aiStatus);
+  return queryParams;
+}
+
+function mapPositiveConversation(conv: any) {
+  const customer = getCustomerPresentation(
+    conv.customerDisplayName || conv.customerName || conv.customer_name,
+    conv.customerId,
+    conv.phoneNumber,
+  );
+  return {
+    id: conv.id,
+    conversationId: Number(conv.conversationId),
+    customer: customer.primary,
+    customerReference: customer.secondary,
+    content: conv.textContent || "Chưa có dữ liệu",
+    topic: Array.isArray(conv.detectedTopics) && conv.detectedTopics.length > 0
+      ? conv.detectedTopics.join(", ")
+      : "Chưa xác định",
+    channel: conv.source || "Chưa xác định",
+    label: "Tích cực",
+    score: Number.isFinite(Number(conv.sentimentScore)) ? Number(conv.sentimentScore) : null,
+    messageAt: conv.messageAt || null,
+  };
+}
+
 interface SentimentAnalysisProps {
   filters: FilterValues;
   onFiltersChange: (f: FilterValues) => void;
@@ -162,6 +198,11 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
   ]);
   const [negKeywords, setNegKeywords] = useState<any[]>([]);
   const [negativeConversations, setNegativeConversations] = useState<any[]>([]);
+  const [positiveConversations, setPositiveConversations] = useState<any[]>([]);
+  const [positivePage, setPositivePage] = useState(1);
+  const [positiveTotal, setPositiveTotal] = useState(0);
+  const [positiveError, setPositiveError] = useState<string | null>(null);
+  const [positiveLoading, setPositiveLoading] = useState(false);
   const [sentimentKpiTrend, setSentimentKpiTrend] = useState<{ pos: string; neu: string; neg: string }>({ pos: "", neu: "", neg: "" });
   const [selectedConvIds, setSelectedConvIds] = useState<Set<number>>(new Set());
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
@@ -169,38 +210,25 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
   const bulkGuard = React.useRef(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  useEffect(() => { // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    setPositivePage(1);
+  }, [filters]);
+
+  useEffect(() => {
     async function loadData() {
       setLoading(true);
       try {
-        const queryParams = new URLSearchParams();
-        const dates = getDatesFromRange(filters.dateRange, filters.customDateFrom, filters.customDateTo);
-        if (dates.startDate && dates.endDate) {
-          queryParams.set("startDate", dates.startDate);
-          queryParams.set("endDate", dates.endDate);
-        }
-        if (filters.channel && filters.channel !== "Tất cả") {
-          queryParams.set("channel", formatChannelParam(filters.channel));
-        }
-        if (filters.topic && filters.topic !== "Tất cả") {
-          queryParams.set("topic", filters.topic);
-        }
-        if (filters.conversationStatus && filters.conversationStatus !== "Tất cả") {
-          queryParams.set("conversationStatus", filters.conversationStatus);
-        }
-        if (filters.aiStatus && filters.aiStatus !== "Tất cả") {
-          queryParams.set("aiStatus", filters.aiStatus);
-        }
+        const queryParams = buildSentimentQueryParams(filters);
 
         const [sumRes, trendRes, topicRes, kwRes, convRes] = await Promise.all([
           fetchApiJson<any>(buildApiUrl("/api/analytics/sentiment-summary", queryParams), { cache: false }),
           fetchApiJson<any>(buildApiUrl("/api/analytics/sentiment-trend", queryParams), { cache: false }),
           fetchApiJson<any>(buildApiUrl("/api/analytics/topics", queryParams), { cache: false }),
           fetchApiJson<any>(buildApiUrl("/api/analytics/negative-keywords", queryParams), { cache: false }),
-          fetchApiJson<any>(buildApiUrl("/api/analytics/negative-conversations", queryParams), { cache: false })
+          fetchApiJson<any>(buildApiUrl("/api/analytics/negative-conversations", queryParams), { cache: false }),
         ]);
 
-        if (sumRes.success) {
+        if (sumRes?.success) {
           setSummaryData(sumRes.data);
           const total = sumRes.data.summary?.total || 1;
           const pos = sumRes.data.summary?.positive || 0;
@@ -214,7 +242,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
           ]);
         }
         
-        if (trendRes.success) {
+        if (trendRes?.success) {
           const rawTrend = Array.isArray(trendRes.data) ? trendRes.data : [];
           setSentimentTrend(rawTrend.map(d => {
             const total = (d.positive + d.neutral + d.negative) || 1;
@@ -228,7 +256,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
           }));
         }
 
-        if (topicRes.success) {
+        if (topicRes?.success) {
           const rawTopic = Array.isArray(topicRes.data) ? topicRes.data : [];
           setTopicSentiment(rawTopic.slice(0, 10).map(d => {
             const total = d.count || 1;
@@ -244,7 +272,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
           }));
         }
 
-        if (kwRes.success) {
+        if (kwRes?.success) {
           const rawKw = Array.isArray(kwRes.data) ? kwRes.data : [];
           setNegKeywords(rawKw.slice(0, 10).map(d => ({
             word: d.keyword,
@@ -253,7 +281,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
           })));
         }
 
-        if (convRes.success) {
+        if (convRes?.success) {
           const rawConv = Array.isArray(convRes.data?.records) ? convRes.data.records : [];
           const negativeReviewConversations = rawConv.filter(
             (conv) => Boolean(conv.needStaffReview)
@@ -274,9 +302,9 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
               conversationId: Number(conv.conversationId),
               customer: customer.primary,
               customerReference: customer.secondary,
-              complaint: conv.textContent || "Tin nhắn khách hàng đang trống trong database",
-              topic: Array.isArray(conv.detectedTopics) && conv.detectedTopics.length > 0 ? conv.detectedTopics.join(", ") : (conv.detectedTopics || "Không phân loại trong database"),
-              channel: conv.source || "Không có kênh trong database",
+              complaint: conv.textContent || "Chưa có dữ liệu",
+              topic: Array.isArray(conv.detectedTopics) && conv.detectedTopics.length > 0 ? conv.detectedTopics.join(", ") : (conv.detectedTopics || "Chưa xác định"),
+              channel: conv.source || "Chưa xác định",
               level: getNegativeLevel(conv.sentimentLabel, conv.sentimentScore),
               waitTime: waitTimeStr,
               status: conv.needStaffReview ? "Cần xử lý" : "Chờ xử lý",
@@ -288,7 +316,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
 
         // Tính toán xu hướng tích cực/trung lập/tiêu cực từ trend data thực
         // (so sánh nửa đầu và nửa sau của dữ liệu trend để xác định chiều hướng)
-        if (trendRes.success && Array.isArray(trendRes.data) && trendRes.data.length >= 2) {
+        if (trendRes?.success && Array.isArray(trendRes.data) && trendRes.data.length >= 2) {
           const half = Math.floor(trendRes.data.length / 2);
           const firstHalf = trendRes.data.slice(0, half);
           const secondHalf = trendRes.data.slice(half);
@@ -309,7 +337,43 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
       }
     }
     loadData();
-  }, [filters, refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [filters, refreshKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPositiveConversations() {
+      setPositiveLoading(true);
+      setPositiveError(null);
+      try {
+        const queryParams = buildSentimentQueryParams(filters);
+        queryParams.set("page", String(positivePage));
+        queryParams.set("pageSize", "10");
+        const response = await fetchApiJson<any>(
+          buildApiUrl("/api/analytics/positive-conversations", queryParams),
+          { cache: false },
+        );
+        if (cancelled) return;
+        if (!response?.success) throw new Error("API hội thoại tích cực trả về dữ liệu không hợp lệ.");
+
+        const records = Array.isArray(response.data?.records) ? response.data.records : [];
+        setPositiveConversations(records.map(mapPositiveConversation));
+        setPositiveTotal(Number(response.data?.pagination?.total) || 0);
+      } catch (error) {
+        if (cancelled) return;
+        setPositiveConversations([]);
+        setPositiveTotal(0);
+        setPositiveError(error instanceof Error ? error.message : "Không thể tải hội thoại tích cực.");
+      } finally {
+        if (!cancelled) setPositiveLoading(false);
+      }
+    }
+
+    void loadPositiveConversations();
+    return () => {
+      cancelled = true;
+    };
+  }, [filters, positivePage, refreshKey]);
 
   const posPctStr = summaryData?.summary?.total ? Math.round((summaryData.summary.positive / summaryData.summary.total) * 100) + "%" : "0%";
   const neuPctStr = summaryData?.summary?.total ? Math.round((summaryData.summary.neutral / summaryData.summary.total) * 100) + "%" : "0%";
@@ -478,8 +542,8 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
               );
             }
             
-            const ChartComponent = chartType === "area" ? AreaChart : LineChart;
-            const SeriesComponent = chartType === "area" ? Area : Line;
+            const ChartComponent: any = chartType === "area" ? AreaChart : LineChart;
+            const SeriesComponent: any = chartType === "area" ? Area : Line;
             
             return (
               <ResponsiveContainer width="100%" height={220}>
@@ -546,8 +610,8 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
               );
             }
             
-            const ChartComponent = chartType === "area" ? AreaChart : LineChart;
-            const SeriesComponent = chartType === "area" ? Area : Line;
+            const ChartComponent: any = chartType === "area" ? AreaChart : LineChart;
+            const SeriesComponent: any = chartType === "area" ? Area : Line;
             
             return (
               <ResponsiveContainer width="100%" height={220}>
@@ -618,8 +682,8 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
               );
             }
             
-            const ChartComponent = chartType === "area" ? AreaChart : LineChart;
-            const SeriesComponent = chartType === "area" ? Area : Line;
+            const ChartComponent: any = chartType === "area" ? AreaChart : LineChart;
+            const SeriesComponent: any = chartType === "area" ? Area : Line;
             
             return (
               <ResponsiveContainer width="100%" height={260}>
@@ -638,6 +702,67 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
           }}
         </ChartCard>
         </ErrorBoundary>
+      </div>
+
+      {/* Positive Conversations Table */}
+      <div style={{ backgroundColor: "#fff", borderRadius: "20px", border: "1px solid rgba(0,56,101,0.08)", boxShadow: "0 2px 12px rgba(0,56,101,0.06)", overflow: "hidden", marginBottom: "24px" }}>
+        <div style={{ padding: "18px 24px", borderBottom: "1px solid rgba(0,56,101,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <Smile size={16} style={{ color: "#228A61" }} />
+            <h3 style={{ color: NAVY, fontSize: "14px", fontWeight: 700, margin: 0 }}>Hội thoại có cảm xúc tích cực</h3>
+            <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "20px", backgroundColor: "#ecfdf3", color: "#16794f", fontWeight: 600 }}>{positiveTotal} hội thoại</span>
+          </div>
+          <span style={{ fontSize: "11px", color: "rgba(0,56,101,0.55)" }}>Quy tắc: cảm xúc của bản phân tích mới nhất trong mỗi hội thoại</span>
+        </div>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+            <thead><tr style={{ backgroundColor: "#f8fafc" }}>
+              {["Khách hàng", "Nội dung đại diện", "Thời gian", "Chủ đề", "Kênh", "Cảm xúc", "Điểm", "Hành động"].map((header) => (
+                <th key={header} className="flic-th">{header}</th>
+              ))}
+            </tr></thead>
+            <tbody>
+              {positiveLoading && <tr><td colSpan={8} style={{ padding: "22px", textAlign: "center", color: "rgba(0,56,101,0.55)" }}>Đang tải trang {positivePage}...</td></tr>}
+              {!positiveLoading && positiveError && <tr><td colSpan={8} style={{ padding: "22px", textAlign: "center", color: "#b42318" }}>{positiveError}</td></tr>}
+              {!positiveLoading && !positiveError && positiveConversations.length === 0 && <tr><td colSpan={8} style={{ padding: "22px", textAlign: "center", color: "rgba(0,56,101,0.55)" }}>Chưa có dữ liệu hội thoại tích cực trong khoảng lọc.</td></tr>}
+              {!positiveLoading && !positiveError && positiveConversations.map((conversation) => (
+                <tr key={conversation.id} style={{ borderBottom: "1px solid rgba(0,56,101,0.04)" }}>
+                  <td style={{ padding: "12px 14px", color: NAVY, fontWeight: 600 }}>{conversation.customer}{conversation.customerReference && <div style={{ fontSize: "10px", color: "rgba(0,56,101,0.45)" }}>{conversation.customerReference}</div>}</td>
+                  <td style={{ padding: "12px 14px", maxWidth: "300px", color: "rgba(0,56,101,0.72)" }}>{conversation.content}</td>
+                  <td style={{ padding: "12px 14px", whiteSpace: "nowrap" }}>{conversation.messageAt ? new Date(conversation.messageAt).toLocaleString("vi-VN") : "Chưa xác định"}</td>
+                  <td style={{ padding: "12px 14px" }}>{conversation.topic}</td>
+                  <td style={{ padding: "12px 14px" }}>{conversation.channel}</td>
+                  <td style={{ padding: "12px 14px", textAlign: "center" }}><span style={{ padding: "2px 8px", borderRadius: "999px", background: "#ecfdf3", color: "#16794f" }}>{conversation.label}</span></td>
+                  <td style={{ padding: "12px 14px", textAlign: "center" }}>{conversation.score === null ? "Chưa có dữ liệu" : conversation.score.toFixed(2)}</td>
+                  <td style={{ padding: "12px 14px", textAlign: "center" }}><button type="button" onClick={() => { sessionStorage.setItem("dashboard_open_conversation_id", String(conversation.conversationId)); onNavigate("conversation"); }} style={{ padding: "4px 9px", borderRadius: "6px", border: "1px solid rgba(0,56,101,0.16)", background: "#fff", color: NAVY, cursor: "pointer" }}>Xem chi tiết</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "10px", padding: "12px 18px" }}>
+          <button
+            type="button"
+            aria-label="Trang trước"
+            title="Trang trước"
+            disabled={positiveLoading || positivePage <= 1}
+            onClick={() => setPositivePage((page) => Math.max(1, page - 1))}
+            style={{ width: "32px", height: "32px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.14)", background: "#fff", color: NAVY, display: "grid", placeItems: "center", cursor: positiveLoading || positivePage <= 1 ? "not-allowed" : "pointer", opacity: positiveLoading || positivePage <= 1 ? 0.45 : 1 }}
+          >
+            <ChevronLeft size={17} aria-hidden="true" />
+          </button>
+          <span style={{ fontSize: "12px", color: NAVY }}>Trang {positivePage}/{Math.max(1, Math.ceil(positiveTotal / 10))}</span>
+          <button
+            type="button"
+            aria-label="Trang sau"
+            title="Trang sau"
+            disabled={positiveLoading || positivePage * 10 >= positiveTotal}
+            onClick={() => setPositivePage((page) => page + 1)}
+            style={{ width: "32px", height: "32px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.14)", background: "#fff", color: NAVY, display: "grid", placeItems: "center", cursor: positiveLoading || positivePage * 10 >= positiveTotal ? "not-allowed" : "pointer", opacity: positiveLoading || positivePage * 10 >= positiveTotal ? 0.45 : 1 }}
+          >
+            <ChevronRight size={17} aria-hidden="true" />
+          </button>
+        </div>
       </div>
 
       {/* Negative Conversations Table */}

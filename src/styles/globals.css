@@ -36,6 +36,12 @@
   gap: 12px;
   padding: 12px 20px;
   border-bottom: 1px solid rgba(0, 56, 101, 0.06);
+  cursor: pointer;
+}
+
+.filter-panel__header:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--flic-focus-ring) 35%, transparent);
+  outline-offset: -3px;
 }
 
 .filter-panel__toggle,
@@ -61,6 +67,15 @@
 
 .filter-panel__toggle > svg {
   color: #d73c01;
+}
+
+.filter-panel__chevron {
+  margin-left: 2px;
+  transition: transform 0.2s ease;
+}
+
+.filter-panel__chevron[data-expanded="true"] {
+  transform: rotate(180deg);
 }
 
 .filter-panel__count {
@@ -228,6 +243,18 @@
   cursor: pointer;
 }
 
+.app-main thead th,
+.app-main [data-slot="table-head"] {
+  text-align: center !important;
+  vertical-align: middle !important;
+}
+
+@media (max-width: 900px) {
+  .ai-insights-chart-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
 @media (max-width: 768px) {
   .app-sidebar {
     width: 68px !important;
@@ -259,6 +286,20 @@
   .filter-panel__body {
     padding-right: 14px;
     padding-left: 14px;
+  }
+
+  .filter-panel__header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .filter-panel__export {
+    min-height: 34px;
+  }
+
+  .app-main > div {
+    padding-right: 12px !important;
+    padding-left: 12px !important;
   }
 
   .filter-panel__grid {
@@ -384,4 +425,3 @@
 .error-source-badge--kb        { border-left-color: #10b981; background: #ecfdf5; color: #065f46; }
 .error-source-badge--system    { border-left-color: #64748b; background: #f1f5f9; color: #334155; }
 .error-source-badge--other     { border-left-color: #9ca3af; background: #f9fafb; color: #374151; }
-

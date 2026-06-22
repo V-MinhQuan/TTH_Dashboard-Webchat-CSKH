@@ -21,6 +21,8 @@ import { ErrorState } from "../common/ErrorState";
 import { EmptyState } from "../common/EmptyState";
 import { KpiCard } from "../dashboard/KpiCard";
 import { SourceChart } from "../dashboard/SourceChart";
+import { FeedbackFormDialog } from "../feedback/FeedbackFormDialog";
+import type { TopQuestion } from "../../types/dashboard";
 
 const NAVY = "#003BB9";
 const ORANGE = "#D73C01";
@@ -218,6 +220,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
   const [localRefreshing, setLocalRefreshing] = useState<boolean>(false);
   const [lastUpdatedTime, setLastUpdatedTime] = useState<string>(parentLastUpdated || "08:00");
   const [flaggedAlertIds, setFlaggedAlertIds] = useState<Set<string>>(new Set());
+  const [feedbackQuestion, setFeedbackQuestion] = useState<TopQuestion | null>(null);
 
   const handleFlagAlert = (alertId: string) => {
     setFlaggedAlertIds(prev => {
@@ -658,7 +661,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
         </section>
       </div>
 
-      <div style={{ backgroundColor: "#f4f6fa" }}>
+      <div style={{ backgroundColor: "transparent" }}>
         {/* Label đầu trang */}
         <div style={{ marginBottom: "16px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -781,7 +784,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
 
               const nameKey = "date";
 
-              let sortedData = [...chartData];
+              const sortedData = [...chartData];
               if (editValues.sort === "Tăng dần") {
                 sortedData.sort((a, b) => (a[valueKey] || 0) - (b[valueKey] || 0));
               } else if (editValues.sort === "Giảm dần") {
@@ -962,7 +965,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                 }
               });
 
-              let listData = Object.entries(normalizedData)
+              const listData = Object.entries(normalizedData)
                 .map(([name, value]) => ({
                   name,
                   value,
@@ -1217,7 +1220,9 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                     <td style={{ padding: "12px 16px", color: "rgba(0,59,185,0.6)", fontSize: "12px" }}>{q.channel}</td>
                     <td style={{ padding: "12px 16px" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                        {q.trend >= 0 ? (
+                        {q.trend === null ? (
+                          <span style={{ fontSize: "11px", color: "rgba(0,59,185,0.5)" }}>Chưa có dữ liệu so sánh</span>
+                        ) : q.trend >= 0 ? (
                           <>
                             <TrendingUp size={12} style={{ color: "#228A61" }} />
                             <span style={{ fontSize: "12px", fontWeight: 600, color: "#228A61" }}>+{q.trend}%</span>
@@ -1235,7 +1240,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                         <button onClick={() => onNavigate("question")} style={{ padding: "4px 9px", borderRadius: "7px", border: "1px solid rgba(0,59,185,0.2)", background: "#f8fafc", color: "#003BB9", cursor: "pointer", fontSize: "11px", display: "flex", alignItems: "center", gap: "3px" }}>
                           <Eye size={10} /> Chi tiết
                         </button>
-                        <button onClick={() => toast.success("Đã thêm vào FAQ đề xuất")} style={{ padding: "4px 9px", borderRadius: "7px", border: "1px solid rgba(0,59,185,0.15)", background: "#fff", color: "rgba(0,59,185,0.65)", cursor: "pointer", fontSize: "11px", display: "flex", alignItems: "center", gap: "3px" }}>
+                        <button onClick={() => setFeedbackQuestion(q)} style={{ padding: "4px 9px", borderRadius: "7px", border: "1px solid rgba(0,59,185,0.15)", background: "#fff", color: "rgba(0,59,185,0.65)", cursor: "pointer", fontSize: "11px", display: "flex", alignItems: "center", gap: "3px" }}>
                           <Plus size={10} /> Thêm FAQ
                         </button>
                       </div>
@@ -1314,6 +1319,19 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
             </table>
           </div>
         </div>
+
+        {feedbackQuestion && (
+          <FeedbackFormDialog
+            open
+            mode="create"
+            prefillData={{
+              question: feedbackQuestion.question,
+              topic: feedbackQuestion.topic,
+              notes: `Nguồn: Câu hỏi nổi bật; kênh: ${feedbackQuestion.channel}`,
+            }}
+            onClose={() => setFeedbackQuestion(null)}
+          />
+        )}
       </div>
     </div>
   );

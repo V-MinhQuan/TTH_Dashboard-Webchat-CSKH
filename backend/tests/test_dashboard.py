@@ -9,11 +9,17 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.services.conversation_cleaner import conversation_cleaner_service
-from app.services.legacy_dashboard_service import DashboardService, hash_str, classify_topic, clear_dashboard_cache
+from app.services.legacy_dashboard_service import DashboardService, clear_dashboard_cache
 from app.repositories.legacy_conversation_repository import ConversationRepository
+from app.core.auth import create_session_manager
 from app.main import app
 
 client = TestClient(app)
+
+
+def auth_headers(role="staff"):
+    token = create_session_manager().issue(username="dashboard-test", role=role)
+    return {"Authorization": f"Bearer {token}"}
 
 # ==========================================
 # 1. Tests for Conversation Cleaner Service
@@ -190,19 +196,30 @@ def test_api_unknown_route_returns_404():
     assert response.json()["success"] is False
     assert "không tồn tại" in response.json()["message"]
 
-@patch('app.services.legacy_dashboard_service.dashboard_service.close_conversation')
+@patch('app.services.conversation_service.ConversationService.close_conversation')
 def test_api_close_conversation_success(mock_close):
-    mock_close.return_value = True
-    response = client.post("/api/conversations/close", json={"customerId": "123", "source": "Facebook"})
+    mock_close.return_value = {
+        "requestedCount": 1,
+        "matchedCount": 1,
+        "affectedCount": 1,
+        "alreadyClosedCount": 0,
+    }
+    response = client.post(
+        "/api/conversations/close",
+        headers=auth_headers(),
+        json={"customerId": "123", "source": "Facebook"},
+    )
     assert response.status_code == 200
     assert response.json()["success"] is True
-    assert "xử lý thành công" in response.json()["message"]
+    assert "thành công" in response.json()["message"]
 
 def test_api_close_conversation_missing_params():
-    response = client.post("/api/conversations/close", json={"customerId": "", "source": "Facebook"})
-    assert response.status_code == 400
-    assert response.json()["success"] is False
-    assert "Thiếu" in response.json()["message"]
+    response = client.post(
+        "/api/conversations/close",
+        headers=auth_headers(),
+        json={"customerId": "", "source": "Facebook"},
+    )
+    assert response.status_code == 422
 
 @patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_conversation_summary')
 @patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_message_counts_filtered')

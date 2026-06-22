@@ -1,50 +1,10 @@
 from __future__ import annotations
 
-import html
-import re
-import unicodedata
 from typing import Any, Dict, Optional
 
 import httpx
 
 from app.core.config import Settings, get_settings
-
-
-FALLBACK_ISSUE_PATTERNS = {
-    "missing_email_or_notification": [
-        "chua nhan duoc email",
-        "chua nhan email",
-        "chua nhan mail",
-        "chx nhan dc mail",
-        "chua thay mail",
-    ],
-    "payment_or_qr_issue": [
-        "khong thay ma qr",
-        "khong co ma qr",
-        "khong thay ma",
-        "ko thay ma qr",
-    ],
-    "file_extract_or_document_issue": [
-        "khong mo duoc file",
-        "khong mo dc file",
-        "k mo dc file",
-        "extract",
-        "giai nen",
-        "yeu cau mat khau",
-    ],
-    "access_or_login_issue": [
-        "khong vao duoc",
-        "kh vao duoc",
-        "web bi sao",
-        "khong dang nhap duoc",
-    ],
-    "contact_failure": [
-        "tra loi dum",
-        "tra loi giup",
-        "khong ai tra loi",
-        "khong phan hoi",
-    ],
-}
 
 
 class SentimentService:
@@ -189,50 +149,23 @@ def _normalize_health_payload(payload: Dict[str, Any], *, reachable: bool) -> Di
 
 
 def _fallback_prediction(text: str, reason: str) -> Dict[str, Any]:
-    issue = _detect_fallback_issue(text)
-    label = "neutral"
     return {
-        "sentiment": {"label": label, "confidence": 0.0},
-        "issue": issue,
-        "needStaffReview": bool(issue["issueFlag"]),
-        "analyzerVersion": "rule-based-fallback-v1",
-        "actualAnalyzerVersion": "rule-based-fallback-v1",
+        "sentiment": {"label": None, "confidence": 0.0},
+        "issue": {
+            "issueFlag": False,
+            "issueType": None,
+            "issueReason": None,
+            "issueConfidence": 0.0,
+        },
+        "needStaffReview": False,
+        "analyzerVersion": "unavailable",
+        "actualAnalyzerVersion": "unavailable",
         "source": "fallback",
         "endpoint": "/predict-ensemble",
         "mlServiceReachable": False,
-        "fallbackSource": "fastapi-rule-based",
+        "fallbackSource": "unavailable",
         "fallbackReason": reason,
     }
-
-
-def _detect_fallback_issue(text: str) -> Dict[str, Any]:
-    normalized = f" {_normalize_for_match(text)} "
-    for issue_type, patterns in FALLBACK_ISSUE_PATTERNS.items():
-        for pattern in patterns:
-            candidate = _normalize_for_match(pattern)
-            if candidate and f" {candidate} " in normalized:
-                return {
-                    "issueFlag": True,
-                    "issueType": issue_type,
-                    "issueReason": f"fallback matched pattern: {pattern}",
-                    "issueConfidence": 0.7,
-                }
-    return {
-        "issueFlag": False,
-        "issueType": "none",
-        "issueReason": "fallback no issue pattern matched",
-        "issueConfidence": 0.0,
-    }
-
-
-def _normalize_for_match(value: str) -> str:
-    text = html.unescape(str(value or ""))
-    text = re.sub(r"<[^>]+>", " ", text)
-    text = unicodedata.normalize("NFD", text.lower())
-    text = "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
-    text = text.replace("đ", "d").replace("Đ", "D")
-    text = re.sub(r"[\W_]+", " ", text)
-    return re.sub(r"\s+", " ", text).strip()
 
 
 def _valid_label(value: Any) -> str:

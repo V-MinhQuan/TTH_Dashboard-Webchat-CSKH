@@ -14,10 +14,10 @@ describe("AI failure taxonomy", () => {
   it("matches the 8 issueType apiValues produced by the backend", () => {
     expect(AI_FAILURE_TAXONOMY.map((item) => item.apiValue)).toEqual([
       "Không tìm thấy dữ liệu",
-      "Câu trả lời sai",
+      "AI có nguy cơ tự tạo thông tin",
       "Thông tin không chính xác",
-      "Không hiểu câu hỏi",
-      "Thiếu thông tin",
+      "AI không chắc chắn",
+      "Câu hỏi ngoài phạm vi",
       "Lỗi nguồn tri thức",
       "Lỗi hệ thống",
       "Khác",

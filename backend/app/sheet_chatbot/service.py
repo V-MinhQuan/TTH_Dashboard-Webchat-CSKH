@@ -22,6 +22,18 @@ VALID_STATUS_KEYS = {
 VALID_RISK_KEYS = {"thap", "trung binh", "cao"}
 
 
+class SheetChatbotValidationError(ValueError):
+    pass
+
+
+class SheetChatbotNotFoundError(LookupError):
+    pass
+
+
+class SheetChatbotConflictError(ValueError):
+    pass
+
+
 def normalize_text(value=""):
     normalized = unicodedata.normalize("NFD", str(value or ""))
     without_marks = "".join(c for c in normalized if unicodedata.category(c) != "Mn")
@@ -123,22 +135,25 @@ class SheetChatbotService:
     async def get_row_by_id(self, row_id):
         row = self._find_row(row_id)
         if not row:
-            raise Exception(f"Không tìm thấy phản hồi có ID {row_id}.")
+            raise SheetChatbotNotFoundError(f"Không tìm thấy phản hồi có ID {row_id}.")
         return row
 
     async def create_row(self, data):
         question = (data.get("question") or "").strip()
         answer = (data.get("correctAnswer") or data.get("answer") or "").strip()
         if not question:
-            raise Exception("question là bắt buộc.")
+            raise SheetChatbotValidationError("question là bắt buộc.")
         if not answer:
-            raise Exception("correctAnswer là bắt buộc.")
+            raise SheetChatbotValidationError("correctAnswer là bắt buộc.")
 
         rows = self.repository.get_all()
+        normalized_question = normalize_text(question)
+        if any(normalize_text(row.get("question")) == normalized_question for row in rows):
+            raise SheetChatbotConflictError("Câu hỏi này đã tồn tại trong thư viện phản hồi.")
         now = self.repository.now_iso()
         risk = data.get("risk") or "Thấp"
         if not is_valid_risk(risk):
-            raise Exception("risk không hợp lệ.")
+            raise SheetChatbotValidationError("risk không hợp lệ.")
         risk = normalize_risk(risk)
         status = normalize_sheet_status(data.get("status") or status_from_risk(risk))
         row = {
@@ -147,7 +162,7 @@ class SheetChatbotService:
             "addedBy": (data.get("addedBy") or "Admin FLIC").strip(),
             "question": question,
             "correctAnswer": answer,
-            "topic": (data.get("topic") or "Khác").strip(),
+            "topic": (data.get("topic") or "Chưa xác định").strip(),
             "source": (data.get("source") or "Nhân viên đề xuất").strip(),
             "risk": risk,
             "status": status,
@@ -156,15 +171,14 @@ class SheetChatbotService:
             "updatedAt": now,
         }
 
-        rows.append(row)
-        self.repository.save_all(rows)
+        self.repository.save_all([*rows, row])
         return row
 
     async def update_row(self, row_id, data):
         rows = self.repository.get_all()
         index = self._find_index(rows, row_id)
         if index == -1:
-            raise Exception(f"Không tìm thấy phản hồi có ID {row_id}.")
+            raise SheetChatbotNotFoundError(f"Không tìm thấy phản hồi có ID {row_id}.")
 
         current = rows[index]
         allowed_fields = ["question", "correctAnswer", "topic", "source", "risk", "status", "notes", "addedBy"]
@@ -174,34 +188,40 @@ class SheetChatbotService:
                 updated[field] = data[field].strip() if isinstance(data[field], str) else data[field]
 
         if not updated.get("question"):
-            raise Exception("question là bắt buộc.")
+            raise SheetChatbotValidationError("question là bắt buộc.")
         if not updated.get("correctAnswer"):
-            raise Exception("correctAnswer là bắt buộc.")
+            raise SheetChatbotValidationError("correctAnswer là bắt buộc.")
+        normalized_question = normalize_text(updated["question"])
+        if any(
+            candidate_index != index
+            and normalize_text(candidate.get("question")) == normalized_question
+            for candidate_index, candidate in enumerate(rows)
+        ):
+            raise SheetChatbotConflictError("Câu hỏi này đã tồn tại trong thư viện phản hồi.")
         if updated.get("status"):
             if not is_valid_sheet_status(updated["status"]):
-                raise Exception("status không hợp lệ.")
+                raise SheetChatbotValidationError("status không hợp lệ.")
             updated["status"] = normalize_sheet_status(updated["status"])
         else:
             updated["status"] = "Chờ xử lý"
         if updated.get("risk"):
             if not is_valid_risk(updated["risk"]):
-                raise Exception("risk không hợp lệ.")
+                raise SheetChatbotValidationError("risk không hợp lệ.")
             updated["risk"] = normalize_risk(updated["risk"])
 
         updated["updatedAt"] = self.repository.now_iso()
-        rows[index] = updated
-        self.repository.save_all(rows)
+        self.repository.save_all([*rows[:index], updated, *rows[index + 1:]])
         return updated
 
     async def update_status(self, row_id, status, reviewer=None, notes=None):
         if not is_valid_sheet_status(status):
-            raise Exception("status không hợp lệ.")
+            raise SheetChatbotValidationError("status không hợp lệ.")
         normalized_status = normalize_sheet_status(status)
 
         rows = self.repository.get_all()
         index = self._find_index(rows, row_id)
         if index == -1:
-            raise Exception(f"Không tìm thấy phản hồi có ID {row_id}.")
+            raise SheetChatbotNotFoundError(f"Không tìm thấy phản hồi có ID {row_id}.")
 
         now = self.repository.now_iso()
         row = {
@@ -214,22 +234,20 @@ class SheetChatbotService:
         if notes is not None:
             row["notes"] = notes
 
-        rows[index] = row
-        self.repository.save_all(rows)
+        self.repository.save_all([*rows[:index], row, *rows[index + 1:]])
         return row
 
     async def delete_row(self, row_id):
         rows = self.repository.get_all()
         index = self._find_index(rows, row_id)
         if index == -1:
-            raise Exception(f"Không tìm thấy phản hồi có ID {row_id}.")
-        rows.pop(index)
-        self.repository.save_all(rows)
+            raise SheetChatbotNotFoundError(f"Không tìm thấy phản hồi có ID {row_id}.")
+        self.repository.save_all([*rows[:index], *rows[index + 1:]])
         return True
 
     async def find_duplicates(self, question, min_similarity=0.75, limit=5):
         if not question or not question.strip():
-            raise Exception("question là bắt buộc.")
+            raise SheetChatbotValidationError("question là bắt buộc.")
 
         target = normalize_text(question)
         matches = []

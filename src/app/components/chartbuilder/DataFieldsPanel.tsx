@@ -77,8 +77,10 @@ interface Props {
 
 type FieldSlotFilter = "all" | ChartBuilderFieldSlot;
 
+type FieldGroupId = "time" | "conversation" | "channel" | "topic" | "ai" | "sentiment" | "agent";
+
 interface FieldGroup {
-  id: string;
+  id: FieldGroupId;
   label: string;
   icon: typeof CalendarDays;
   fields: CatalogFieldMeta[];
@@ -458,7 +460,7 @@ function buildFieldGroups(
 ): FieldGroup[] {
   if (!dataset) return [];
   const query = search.trim().toLocaleLowerCase("vi");
-  const definitions = [
+  const definitions: ReadonlyArray<Omit<FieldGroup, "fields">> = [
     { id: "time", label: "Thời gian", icon: CalendarDays },
     { id: "conversation", label: "Hội thoại và tin nhắn", icon: MessageSquareText },
     { id: "channel", label: "Kênh", icon: Radio },
@@ -466,7 +468,7 @@ function buildFieldGroups(
     { id: "ai", label: "Hiệu suất AI", icon: Sparkles },
     { id: "sentiment", label: "Cảm xúc", icon: CircleGauge },
     { id: "agent", label: "Hiệu suất nhân viên", icon: UserRoundCog },
-  ] as const;
+  ];
   const buckets = new Map(
     definitions.map((group) => [group.id, [] as CatalogFieldMeta[]]),
   );

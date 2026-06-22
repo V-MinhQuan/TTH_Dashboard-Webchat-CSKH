@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState, ReactNode } from 'react';
 
 export type Role = 'manager' | 'staff' | null;
 
@@ -128,11 +128,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     updateStoredAuthUser(userData);
   };
 
-  const logout = () => {
+  const logout = useCallback(() => {
     setRole(null);
     setUserState(null);
     clearStoredAuth();
-  };
+  }, []);
+
+  useEffect(() => {
+    const handleExpiredSession = () => logout();
+    window.addEventListener('flic:auth-expired', handleExpiredSession);
+    return () => window.removeEventListener('flic:auth-expired', handleExpiredSession);
+  }, [logout]);
 
   return (
     <AuthContext.Provider value={{ role, user, login, setRole, setUser, logout }}>

@@ -21,5 +21,11 @@ def predict_sentiment(
     text = request.text.strip()
     if not text:
         raise AppError("text is required.", status_code=400)
-    return service.predict(text)
+    prediction = service.predict(text)
+    if prediction.get("source") == "fallback":
+        raise AppError(
+            "Dịch vụ phân tích cảm xúc chưa sẵn sàng; hệ thống không tự tạo kết quả thay thế.",
+            status_code=503,
+        )
+    return prediction
 

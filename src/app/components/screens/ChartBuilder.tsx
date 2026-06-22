@@ -42,6 +42,7 @@ import {
   ChartBuilderState,
   ChartConfigPayload,
   ChartDataResponse,
+  ChartSeries,
   CustomChartRequest,
   FilterSelection,
   isCustomChartConfig,
@@ -460,26 +461,27 @@ export function ChartBuilder({
   };
 
   const handleApplyConfig = (saved: SavedChartConfig) => {
-    if (isCustomChartConfig(saved.config)) {
+    const config = saved.config;
+    if (isCustomChartConfig(config)) {
       const dataset = datasets.find(
-        (item) => item.id === saved.config.datasetId && item.available,
+        (item) => item.id === config.datasetId && item.available,
       );
       if (!dataset) {
         toast.error("Bộ dữ liệu của cấu hình này hiện không khả dụng.");
         return;
       }
       setLegacyConfig(null);
-      setState(normalizeCustomConfig(saved.config, dataset));
+      setState(normalizeCustomConfig(config, dataset));
     } else {
       setLegacyConfig({
-        ...saved.config,
+        ...config,
         version: 1,
         mode: "predefined",
       });
       setState((current) => ({
         ...current,
-        title: saved.config.title || saved.name,
-        chartType: saved.config.chartType,
+        title: config.title || saved.name,
+        chartType: config.chartType,
       }));
     }
     setSettingsOpen(false);
@@ -808,7 +810,7 @@ function buildSeriesDisplayMap(
   const fieldLabels = new Map(
     dataset?.fields.map((field) => [field.id, field.label]) || [],
   );
-  const entries = state.metrics.map((metric, index) => {
+  const entries: Array<[string, Omit<ChartSeries, "key">]> = state.metrics.map((metric, index) => {
     const key = metric.alias || `${metric.aggregation}_${metric.fieldId}`;
     return [
       key,

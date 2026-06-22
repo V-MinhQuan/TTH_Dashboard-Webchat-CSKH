@@ -8,9 +8,8 @@ import { ChartCard } from "../ChartCard";
 import { FilterPanel, FilterValues } from "../FilterPanel";
 import { toast } from "sonner";
 import { fetchApiJson, buildApiUrl, formatChannelParam } from "../../services/dashboardApi";
-import { AddSheetModal } from "./SheetChatbot";
-import { createSheetChatbotRow, getSheetChatbotRows, type SheetChatbotStats } from "../../services/sheetChatbotApi";
-import { useAuth } from "../../context/AuthContext";
+import { getSheetChatbotRows, type SheetChatbotStats } from "../../services/sheetChatbotApi";
+import { FeedbackFormDialog } from "../feedback/FeedbackFormDialog";
 import { bulkCloseConversations, getCustomerPresentation } from "../../services/conversationApi";
 import { getFailedConversations, getTopicFailures, type TopicFailureRecord } from "../../services/round3Api";
 import { AI_FAILURE_TAXONOMY, getAiFailureDefinition } from "../../constants/aiFailureTaxonomy";
@@ -219,11 +218,35 @@ function downloadJson(filename: string, value: unknown) {
 }
 
 function topicFailureTotal(row: TopicFailureRecord) {
-  return AI_FAILURE_TAXONOMY.reduce((total, definition) => total + row[definition.analyticsKey], 0);
+  return AI_FAILURE_TAXONOMY.reduce((total, definition) => total + Number(row[definition.analyticsKey] || 0), 0);
+}
+
+function mapFailedConversation(record: any) {
+  const customer = getCustomerPresentation(
+    record.customerDisplayName || record.customerName || record.customer_name,
+    record.customerId,
+    record.phoneNumber,
+  );
+  return {
+    id: record.id,
+    messageId: record.messageId,
+    question: record.textContent || "Chưa có dữ liệu",
+    aiAnswer: record.aiAnswer || "Không tìm thấy câu trả lời AI tương ứng",
+    conversationId: Number(record.conversationId),
+    topic: displayTopic(record.detectedTopics),
+    channel: record.source || "Chưa xác định",
+    failReason: displayFailureType(record.issueType),
+    confidence: Number(record.issueConfidence) || 0,
+    impact: "Chưa xác định",
+    kbSuggestion: record.issueReason || "Chưa có dữ liệu",
+    customerId: record.customerId || null,
+    customerName: customer.primary,
+    customerReference: customer.secondary,
+    messageAt: record.messageAt || null,
+  };
 }
 
 export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsProps) {
-  const { user } = useAuth();
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [expandedChatbotRow, setExpandedChatbotRow] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -233,6 +256,9 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
   const [topN, setTopN] = useState(5);
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
+  const [relatedConversations, setRelatedConversations] = useState<any[]>([]);
+  const [relatedConversationTotal, setRelatedConversationTotal] = useState(0);
+  const [relatedLoading, setRelatedLoading] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const bulkSubmitGuard = useRef(false);
 
@@ -247,7 +273,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
   const [sheetStats, setSheetStats] = useState<Partial<SheetChatbotStats>>({});
 
   useEffect(() => {
-    let queryParams = new URLSearchParams();
+    const queryParams = new URLSearchParams();
     const dates = getDatesFromRange(filters.dateRange, filters.customDateFrom, filters.customDateTo);
     if (dates.startDate && dates.endDate) {
       queryParams.set("startDate", dates.startDate);
@@ -276,30 +302,13 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
         if (ft.success) setFailureTrend(ft.data);
         setFailureByTopic(fbt);
         setSelectedTopic((current) => current && fbt.some((row) => row.topic === current) ? current : fbt[0]?.topic ?? null);
-        setFailedConversations(fc.records.map((r) => {
-          const customer = getCustomerPresentation(r.customerName || r.customer_name, r.customerId);
-          return {
-            id: r.id,
-            question: r.textContent || "Tin nhắn khách hàng đang trống trong database",
-            aiAnswer: r.aiAnswer || "Câu trả lời AI đang trống trong database",
-            conversationId: Number(r.conversationId),
-            topic: displayTopic(r.detectedTopics),
-            channel: r.source || "Không có kênh trong database",
-            failReason: displayFailureType(r.issueType),
-            confidence: r.issueConfidence || 0,
-            impact: "Ưu tiên cao",
-            kbSuggestion: r.issueReason || "Chưa có gợi ý tri thức trong database",
-            customerId: r.customerId || "Không có mã khách hàng trong database",
-            customerName: customer.primary,
-            customerReference: customer.secondary,
-          };
-        }));
+        setFailedConversations(fc.records.map(mapFailedConversation));
         setSelectedFailureIds(new Set());
         setShowConfirmAllModal(false);
         if (sre.success) setStaffReportedErrors(sre.data.records.map((r: any) => ({
-          id: r.id, time: displayDateTime(r.messageAt), staff: "Từ database MessageAnalytics", channel: r.source || "Không có kênh trong database",
-          topic: displayTopic(r.detectedTopics), question: r.textContent || "Tin nhắn khách hàng đang trống trong database", aiAnswer: r.aiAnswer || "Câu trả lời AI đang trống trong database",
-          reason: r.issueType || "Không có loại lỗi trong database", impact: "Ưu tiên trung bình", status: r.needStaffReview ? "Chờ quản lý xác nhận" : "Không có trạng thái review trong database"
+          id: r.id, time: displayDateTime(r.messageAt), staff: "Chưa xác định", channel: r.source || "Chưa xác định",
+          topic: displayTopic(r.detectedTopics), question: r.textContent || "Chưa có dữ liệu", aiAnswer: r.aiAnswer || "Không tìm thấy câu trả lời AI tương ứng",
+          reason: r.issueType || "Chưa xác định", impact: "Chưa xác định", status: r.needStaffReview ? "Chờ quản lý xác nhận" : "Chưa xác định"
         })));
         if (sf.success) setSuggestedFAQs(sf.data);
         if (scRows.success) {
@@ -326,30 +335,35 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
     () => failureByTopic.find((row) => row.topic === selectedTopic) ?? null,
     [failureByTopic, selectedTopic],
   );
-  const relatedConversations = useMemo(
-    () => selectedTopic
-      ? failedConversations.filter((conversation) => conversation.topic === selectedTopic)
-      : [],
-    [failedConversations, selectedTopic],
-  );
-
-  const handleAddFaq = async (question: string, topic: string) => {
-    try {
-      await createSheetChatbotRow({
-        question,
-        correctAnswer: "Cần bổ sung câu trả lời chính thức từ quản lý.",
-        topic,
-        source: "AI trả lời sai",
-        risk: "Trung bình",
-        status: "Chờ xử lý",
-        notes: "Tạo từ màn Phân tích AI.",
-        addedBy: user?.name || "Dashboard",
-      });
-      toast.success("Đã thêm FAQ thành công vào Sheet Chatbot");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Lỗi khi thêm FAQ");
+  useEffect(() => {
+    if (!selectedTopic) {
+      setRelatedConversations([]);
+      setRelatedConversationTotal(0);
+      return;
     }
-  };
+    let cancelled = false;
+    const params = new URLSearchParams();
+    const dates = getDatesFromRange(filters.dateRange, filters.customDateFrom, filters.customDateTo);
+    if (dates.startDate) params.set("startDate", dates.startDate);
+    if (dates.endDate) params.set("endDate", dates.endDate);
+    if (filters.channel && filters.channel !== "Tất cả") params.set("channel", formatChannelParam(filters.channel));
+    params.set("topic", selectedTopic);
+    params.set("page", "1");
+    params.set("pageSize", "100");
+    params.set("uniqueConversations", "true");
+    setRelatedLoading(true);
+    getFailedConversations(params)
+      .then((page) => {
+        if (cancelled) return;
+        setRelatedConversations(page.records.map(mapFailedConversation));
+        setRelatedConversationTotal(page.pagination.total);
+      })
+      .catch((error) => {
+        if (!cancelled) toast.error(error instanceof Error ? error.message : "Không thể tải hội thoại liên quan.");
+      })
+      .finally(() => { if (!cancelled) setRelatedLoading(false); });
+    return () => { cancelled = true; };
+  }, [filters, selectedTopic]);
 
   const handleMarkAsProcessed = async (id: string | number, showToast = true) => {
     const row = failedConversations.find((conversation) => conversation.id === id);
@@ -529,7 +543,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
           </div>
 
           {/* Charts */}
-          <div style={{ display: "grid", gridTemplateColumns: "3fr 2fr", gap: "20px", marginBottom: "24px" }}>
+          <div className="ai-insights-chart-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0, 3fr) minmax(0, 2fr)", gap: "20px", marginBottom: "24px", alignItems: "stretch" }}>
             <ChartCard title="Xu hướng AI trả lời sai theo ngày (+ dự báo 3 ngày)" onOpenBuilder={() => onNavigate("chartbuilder")} data={failureTrend} defaultChartType="line" supportedChartTypes={["line", "area", "bar", "hbar"]}>
               {({ chartType, chartData, editValues }: any) => {
                 const isBar = chartType === "bar" || chartType === "hbar";
@@ -656,38 +670,27 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
                 <h3 id="topic-drilldown-title" style={{ color: NAVY, fontSize: "15px", fontWeight: 700, margin: 0 }}>Chi tiết chủ đề: {selectedTopic}</h3>
                 <span style={{ color: ORANGE, fontWeight: 700, fontSize: "12px" }}>{topicFailureTotal(selectedTopicFailure)} lỗi</span>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "minmax(280px, 2fr) minmax(320px, 3fr)", gap: "20px", alignItems: "start" }}>
-                <div style={{ overflowX: "auto" }}>
-                  <table aria-label={`Phân loại lỗi của chủ đề ${selectedTopic}`} style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
-                    <thead>
-                      <tr style={{ background: "#f8fafc" }}>
-                        <th style={{ padding: "9px 10px", textAlign: "left", color: "rgba(0,56,101,0.6)" }}>Phân loại lỗi</th>
-                        <th style={{ padding: "9px 10px", textAlign: "right", color: "rgba(0,56,101,0.6)" }}>Số lượng</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {AI_FAILURE_TAXONOMY.map((definition) => (
-                        <tr key={definition.id} style={{ borderTop: "1px solid rgba(0,56,101,0.06)" }}>
-                          <td style={{ padding: "9px 10px", color: NAVY }}>{definition.label}</td>
-                          <td style={{ padding: "9px 10px", textAlign: "right", color: NAVY, fontWeight: 700 }}>{selectedTopicFailure[definition.analyticsKey]}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+              <div>
                 <div role="region" aria-label={`Hội thoại liên quan đến chủ đề ${selectedTopic}`}>
-                  <div style={{ color: NAVY, fontSize: "12px", fontWeight: 700, marginBottom: "8px" }}>Hội thoại liên quan ({relatedConversations.length})</div>
-                  {relatedConversations.length === 0 ? (
+                  <div style={{ color: NAVY, fontSize: "12px", fontWeight: 700, marginBottom: "8px" }}>Hội thoại liên quan ({relatedConversationTotal})</div>
+                  {relatedLoading ? (
+                    <div style={{ padding: "18px", color: "rgba(0,56,101,0.55)", fontSize: "12px" }}>Đang tải hội thoại liên quan...</div>
+                  ) : relatedConversations.length === 0 ? (
                     <div style={{ padding: "18px", borderRadius: "10px", background: "#f8fafc", color: "rgba(0,56,101,0.55)", fontSize: "12px" }}>Chưa có hội thoại liên quan trong dữ liệu API hiện tại.</div>
                   ) : (
                     <div style={{ display: "grid", gap: "8px" }}>
                       {relatedConversations.map((conversation) => (
-                        <div key={conversation.id} style={{ display: "grid", gridTemplateColumns: "minmax(120px, 1fr) minmax(180px, 2fr)", gap: "10px", padding: "10px 12px", borderRadius: "10px", border: "1px solid rgba(0,56,101,0.08)", background: "#fbfdff" }}>
+                        <div key={conversation.id} style={{ display: "grid", gridTemplateColumns: "minmax(140px, 1fr) minmax(220px, 3fr)", gap: "12px", padding: "12px", borderRadius: "10px", border: "1px solid rgba(0,56,101,0.08)", background: "#fbfdff" }}>
                           <div>
                             <div style={{ color: NAVY, fontWeight: 700, fontSize: "12px" }}>{conversation.customerName}</div>
                             {conversation.customerReference && <div style={{ color: "rgba(0,56,101,0.48)", fontSize: "10px", marginTop: "2px" }}>{conversation.customerReference}</div>}
+                            <div style={{ color: "rgba(0,56,101,0.48)", fontSize: "10px", marginTop: "4px" }}>{displayDateTime(conversation.messageAt)}</div>
+                            <div style={{ color: "rgba(0,56,101,0.48)", fontSize: "10px", marginTop: "2px" }}>Hội thoại #{conversation.conversationId}</div>
                           </div>
-                          <div style={{ color: "rgba(0,56,101,0.72)", fontSize: "12px", lineHeight: 1.45 }}>{conversation.question}</div>
+                          <div style={{ display: "grid", gap: "6px", color: "rgba(0,56,101,0.72)", fontSize: "12px", lineHeight: 1.45 }}>
+                            <div><strong>Câu hỏi:</strong> {conversation.question}</div>
+                            <div><strong>Câu trả lời sai của AI:</strong> {conversation.aiAnswer}</div>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -761,7 +764,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
                   {failedConversations.map((conv) => {
                     const isExpanded = expandedRow === conv.id;
                     const fc = failReasonColor[conv.failReason] || "#64748b";
-                    const ic = impactColor[conv.impact];
+                    const ic = impactColor[conv.impact] || { bg: "#f1f5f9", color: "#64748b" };
                     return (
                       <React.Fragment key={conv.id}>
                         <tr
@@ -893,8 +896,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
           <div style={{ backgroundColor: "#fff", borderRadius: "20px", border: "1px solid rgba(0,56,101,0.08)", boxShadow: "0 2px 12px rgba(0,56,101,0.06)", overflow: "hidden", marginBottom: "24px" }}>
             <div style={{ padding: "18px 24px", borderBottom: "1px solid rgba(0,56,101,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <CheckCircle size={16} style={{ color: "#228A61" }} />
-                <h3 style={{ color: NAVY, fontSize: "14px", fontWeight: 700, margin: 0 }}>AI trả lời sai đã được bổ sung vào Sheet Chatbot</h3>
+                <h3 style={{ color: NAVY, fontSize: "14px", fontWeight: 400, margin: 0 }}>AI trả lời sai đã được bổ sung vào Sheet Chatbot</h3>
                 <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "20px", backgroundColor: "#dcfce7", color: "#16a34a", fontWeight: 600 }}>{sheetStats.approved ?? recentChatbotRows.length} mục</span>
               </div>
               <button onClick={() => onNavigate("chatbot_sheet")} style={{ padding: "6px 14px", borderRadius: "8px", border: `1px solid ${NAVY}20`, background: "#f8fafc", color: NAVY, cursor: "pointer", fontSize: "12px", fontWeight: 500 }}>
@@ -971,21 +973,20 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
       )}
 
       {faqModalConv && (
-        <AddSheetModal
-          initialValues={{
+        <FeedbackFormDialog
+          open
+          mode="create"
+          prefillData={{
             question: faqModalConv.question,
             source: "AI trả lời sai",
             notes: faqModalConv.aiAnswer ? `[Câu AI sai]: ${faqModalConv.aiAnswer}` : "",
             topic: faqModalConv.topic,
+            conversationId: faqModalConv.conversationId,
+            messageId: faqModalConv.messageId,
           }}
           onClose={() => setFaqModalConv(null)}
-          onSave={async (data) => {
-            await createSheetChatbotRow({
-              ...data,
-              addedBy: user?.name || "Nhân viên",
-            });
-            handleMarkAsProcessed(faqModalConv.id, false);
-            toast.success("Đã thêm FAQ vào Sheet Chatbot; dòng lỗi AI chỉ được ẩn trong phiên hiện tại.");
+          onSaved={async () => {
+            await handleMarkAsProcessed(faqModalConv.id, false);
           }}
         />
       )}

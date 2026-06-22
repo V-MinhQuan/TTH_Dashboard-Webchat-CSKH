@@ -4,7 +4,15 @@ import { toast } from "sonner";
 
 import { AI_FAILURE_TAXONOMY } from "../constants/aiFailureTaxonomy";
 import { useSettings } from "../context/SettingsContext";
+import {
+  defaultFilterValues,
+  useOptionalGlobalFilters,
+  type FilterValues,
+} from "../context/GlobalFilterContext";
+import { exportDashboardData, type ExportFormat } from "../services/exportService";
 import "../../styles/globals.css";
+
+export { defaultFilterValues, type FilterValues } from "../context/GlobalFilterContext";
 
 const NAVY = "#003865";
 const CTA = "#ED5206";
@@ -13,34 +21,12 @@ const ORANGE_50 = "#FFF4EE";
 const ALL = "Tất cả";
 const FAILED_AI_STATUS = "AI trả lời thất bại";
 
-export interface FilterValues {
-  dateRange: string;
-  customDateFrom?: string;
-  customDateTo?: string;
-  channel: string;
-  topic: string;
-  conversationStatus: string;
-  aiStatus: string;
-  aiFailureType: string;
-  sentiment: string;
-}
-
 export interface FilterCatalogOption {
   readonly value: string;
   readonly label: string;
   readonly available?: boolean;
   readonly unavailableReason?: string;
 }
-
-export const defaultFilterValues: Readonly<FilterValues> = Object.freeze({
-  dateRange: "30 ngày qua",
-  channel: ALL,
-  topic: ALL,
-  conversationStatus: ALL,
-  aiStatus: ALL,
-  aiFailureType: ALL,
-  sentiment: ALL,
-});
 
 export interface FilterPanelProps {
   filters: FilterValues;
@@ -55,11 +41,8 @@ const fallbackTopics: readonly FilterCatalogOption[] = Object.freeze([
 ].map((label) => Object.freeze({ value: label, label, available: true })));
 const conversationStatuses = [ALL, "Chờ xử lý", "Đang tư vấn / Chờ phản hồi", "Hoàn thành"];
 const aiStatuses = [ALL, "AI trả lời thành công", FAILED_AI_STATUS];
-const sentiments = [ALL, "Tích cực", "Trung lập", "Tiêu cực"];
 
 // Req #16 – export format types
-type ExportFormat = "pdf" | "png" | "csv" | "xlsx";
-
 const EXPORT_FORMATS: { id: ExportFormat; label: string }[] = [
   { id: "pdf",  label: "Xuất PDF (toàn trang)" },
   { id: "png",  label: "Xuất hình ảnh PNG" },
@@ -133,7 +116,7 @@ function normalizeFilters(filters: FilterValues): FilterValues {
     : { ...merged, aiFailureType: ALL };
 }
 
-type ActiveFilterKey = "dateRange" | "channel" | "topic" | "conversationStatus" | "aiStatus" | "aiFailureType" | "sentiment";
+type ActiveFilterKey = "dateRange" | "channel" | "topic" | "conversationStatus" | "aiStatus" | "aiFailureType";
 
 const ACTIVE_FILTER_LABELS: Readonly<Record<ActiveFilterKey, string>> = Object.freeze({
   dateRange: "Thời gian",
@@ -142,104 +125,7 @@ const ACTIVE_FILTER_LABELS: Readonly<Record<ActiveFilterKey, string>> = Object.f
   conversationStatus: "Hội thoại",
   aiStatus: "AI",
   aiFailureType: "Loại lỗi AI",
-  sentiment: "Cảm xúc",
 });
-
-// ── Req #16: Export helpers ─────────────────────────────────────────────────
-async function exportPdf(target: HTMLElement, filename: string) {
-  const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
-    import("html2canvas"),
-    import("jspdf"),
-  ]);
-  const canvas = await html2canvas(target, {
-    backgroundColor: "#ffffff",
-    scale: Math.min(2, window.devicePixelRatio || 1.5),
-    useCORS: true,
-    logging: false,
-    width: target.scrollWidth,
-    height: target.scrollHeight,
-    windowWidth: Math.max(document.documentElement.clientWidth, target.scrollWidth),
-    windowHeight: Math.max(document.documentElement.clientHeight, target.scrollHeight),
-  });
-  const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4", compress: true });
-  const pageWidth = pdf.internal.pageSize.getWidth();
-  const pageHeight = pdf.internal.pageSize.getHeight();
-  const imgHeight = (canvas.height * pageWidth) / canvas.width;
-  let remaining = imgHeight;
-  let yOffset = 0;
-  pdf.addImage(canvas.toDataURL("image/png"), "PNG", 0, yOffset, pageWidth, imgHeight, undefined, "FAST");
-  remaining -= pageHeight;
-  while (remaining > 0) {
-    yOffset = -(imgHeight - remaining);
-    pdf.addPage();
-    pdf.addImage(canvas.toDataURL("image/png"), "PNG", 0, yOffset, pageWidth, imgHeight, undefined, "FAST");
-    remaining -= pageHeight;
-  }
-  pdf.save(filename);
-}
-
-async function exportPng(target: HTMLElement, filename: string) {
-  const { default: html2canvas } = await import("html2canvas");
-  const canvas = await html2canvas(target, {
-    backgroundColor: "#ffffff",
-    scale: 2,
-    useCORS: true,
-    logging: false,
-  });
-  const link = document.createElement("a");
-  link.href = canvas.toDataURL("image/png");
-  link.download = filename;
-  link.click();
-}
-
-function collectTableData(target: HTMLElement): { headers: string[]; rows: string[][] } {
-  const tables = Array.from(target.querySelectorAll("table"));
-  if (!tables.length) return { headers: [], rows: [] };
-  const table = tables[0];
-  const headers = Array.from(table.querySelectorAll("thead th")).map((th) => th.textContent?.trim() ?? "");
-  const rows = Array.from(table.querySelectorAll("tbody tr")).map((tr) =>
-    Array.from(tr.querySelectorAll("td")).map((td) => td.textContent?.trim() ?? ""),
-  );
-  return { headers, rows };
-}
-
-function exportCsv(data: { headers: string[]; rows: string[][] }, filename: string) {
-  const escape = (v: string) => {
-    const safe = /^[=+@-]/.test(v.trimStart()) ? `'${v}` : v;
-    return `"${safe.replace(/"/g, '""')}"`;
-  };
-  const lines = [data.headers.map(escape).join(","), ...data.rows.map((row) => row.map(escape).join(","))];
-  const blob = new Blob(["\ufeff", lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
-}
-
-/** XLSX export via SheetJS (cdn-free, inline approach) */
-async function exportXlsx(data: { headers: string[]; rows: string[][] }, filename: string) {
-  // Dynamic import of xlsx (already in deps via sheetjs or we use a simple approach)
-  try {
-    // Use the xlsx library if available
-    const XLSX = await import("xlsx").catch(() => null);
-    if (XLSX) {
-      const ws = XLSX.utils.aoa_to_sheet([data.headers, ...data.rows]);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Dữ liệu");
-      XLSX.writeFile(wb, filename);
-      return;
-    }
-  } catch {
-    // fall through
-  }
-  // Fallback: export as CSV with .xlsx extension (opens in Excel)
-  exportCsv(data, filename.replace(".xlsx", ".csv"));
-  toast.info("Thư viện XLSX chưa được cài đặt – đã xuất CSV thay thế.", { duration: 4000 });
-}
-
-// ────────────────────────────────────────────────────────────────────────────
 
 export function FilterPanel({
   filters,
@@ -247,12 +133,20 @@ export function FilterPanel({
   topicCatalog,
   topicCatalogSource = "Care Hub",
 }: FilterPanelProps) {
+  const globalFilters = useOptionalGlobalFilters();
   const [isExpanded, setIsExpanded] = useState(true);
-  const [localFilters, setLocalFilters] = useState<FilterValues>(() => normalizeFilters(filters));
+  const [fallbackDraft, setFallbackDraft] = useState<FilterValues>(() => normalizeFilters(filters));
   const [exporting, setExporting] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const exportMenuRef = useRef<HTMLDivElement>(null);
   const { settings } = useSettings();
+  const localFilters = globalFilters?.draftFilters ?? fallbackDraft;
+
+  const setLocalFilters = (updater: FilterValues | ((current: FilterValues) => FilterValues)) => {
+    const next = typeof updater === "function" ? updater(localFilters) : updater;
+    if (globalFilters) globalFilters.setDraftFilters(next);
+    else setFallbackDraft(next);
+  };
 
   const channels = useMemo(() => {
     const enabled = [
@@ -271,8 +165,8 @@ export function FilterPanel({
   const catalogPending = !topicCatalog || topicCatalog.some((option) => option.available === false);
 
   useEffect(() => {
-    setLocalFilters(normalizeFilters(filters));
-  }, [filters]);
+    if (!globalFilters) setFallbackDraft(normalizeFilters(filters));
+  }, [filters, globalFilters]);
 
   // Close export menu when clicking outside
   useEffect(() => {
@@ -309,14 +203,16 @@ export function FilterPanel({
         return;
       }
     }
-    onFiltersChange({ ...localFilters });
+    if (globalFilters) globalFilters.applyDraft();
+    else onFiltersChange({ ...localFilters });
     toast.success("Đã áp dụng bộ lọc");
   };
 
   const handleReset = () => {
     const nextFilters = { ...defaultFilterValues };
     setLocalFilters(nextFilters);
-    onFiltersChange(nextFilters);
+    if (globalFilters) globalFilters.resetFilters();
+    else onFiltersChange(nextFilters);
     toast.info("Đã đặt lại bộ lọc");
   };
 
@@ -333,34 +229,22 @@ export function FilterPanel({
       const date = new Date().toISOString().slice(0, 10);
       const viewName = document.title.split('-')[0].trim().toLowerCase().replace(/ /g, '-') || "bao-cao";
       const base = `${viewName}-${date}`;
-
-      if (format === "pdf") {
-        toast.info("Đang tạo PDF...");
-        await new Promise<void>((res) => requestAnimationFrame(() => requestAnimationFrame(() => res())));
-        await exportPdf(target, `${base}.pdf`);
-        toast.success("Đã xuất PDF", { description: "File đã được tải xuống." });
-      } else if (format === "png") {
-        toast.info("Đang chụp màn hình...");
-        await new Promise<void>((res) => requestAnimationFrame(() => requestAnimationFrame(() => res())));
-        await exportPng(target, `${base}.png`);
-        toast.success("Đã xuất PNG");
-      } else if (format === "csv") {
-        const data = collectTableData(target);
-        if (!data.headers.length) {
-          toast.warning("Không tìm thấy bảng dữ liệu để xuất CSV.");
-          return;
-        }
-        exportCsv(data, `${base}.csv`);
-        toast.success(`Đã xuất CSV – ${data.rows.length} dòng`);
-      } else if (format === "xlsx") {
-        const data = collectTableData(target);
-        if (!data.headers.length) {
-          toast.warning("Không tìm thấy bảng dữ liệu để xuất Excel.");
-          return;
-        }
-        await exportXlsx(data, `${base}.xlsx`);
-        toast.success(`Đã xuất Excel – ${data.rows.length} dòng`);
+      if (format === "pdf") toast.info("Đang tạo PDF...");
+      if (format === "png") toast.info("Đang chụp màn hình...");
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      const result = await exportDashboardData({
+        format,
+        target,
+        filenameBase: base,
+        filters: globalFilters?.appliedFilters ?? filters,
+      });
+      if (!result.hasTable) {
+        toast.warning(`Không tìm thấy bảng dữ liệu để xuất ${format.toUpperCase()}.`);
+        return;
       }
+      if (format === "pdf") toast.success("Đã xuất PDF", { description: "File đã được tải xuống." });
+      else if (format === "png") toast.success("Đã xuất PNG");
+      else toast.success(`Đã xuất ${format.toUpperCase()} – ${result.rowCount} dòng`);
     } catch {
       toast.error("Không thể xuất dữ liệu. Vui lòng thử lại.");
     } finally {
@@ -375,21 +259,30 @@ export function FilterPanel({
 
   return (
     <section className="filter-panel" aria-label="Bộ lọc dữ liệu">
-      <div className="filter-panel__header">
-        <button
-          type="button"
-          className="filter-panel__toggle"
-          aria-expanded={isExpanded}
-          aria-controls="dashboard-filter-fields"
-          onClick={() => setIsExpanded((expanded) => !expanded)}
-        >
-          <Filter size={15} aria-hidden="true" />
-          <span>Bộ lọc dữ liệu</span>
-          {activeFilters.length > 0 && <span className="filter-panel__count">{activeFilters.length} bộ lọc</span>}
-        </button>
+      <div
+        role="button"
+        tabIndex={0}
+        aria-label="Bộ lọc dữ liệu"
+        className="filter-panel__header"
+        aria-expanded={isExpanded}
+        aria-controls="dashboard-filter-fields"
+        onClick={() => setIsExpanded((expanded) => !expanded)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            setIsExpanded((expanded) => !expanded);
+          }
+        }}
+      >
+        <div className="filter-panel__toggle">
+            <Filter size={15} aria-hidden="true" />
+            <span>Bộ lọc dữ liệu</span>
+            {activeFilters.length > 0 && <span className="filter-panel__count">{activeFilters.length} bộ lọc</span>}
+            <ChevronDown className="filter-panel__chevron" data-expanded={isExpanded} size={15} aria-hidden="true" />
+        </div>
 
         {/* Req #16: Multi-format export dropdown */}
-        <div style={{ position: "relative" }} ref={exportMenuRef}>
+        <div style={{ position: "relative" }} ref={exportMenuRef} onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
           <button
             type="button"
             disabled={exporting}
@@ -507,7 +400,6 @@ export function FilterPanel({
                 onChange={(value) => handleLocalChange("aiFailureType", value)}
               />
             )}
-            <SelectField label="Cảm xúc" value={localFilters.sentiment} options={textOptions(sentiments)} onChange={(value) => handleLocalChange("sentiment", value)} />
           </div>
           <div className="filter-panel__actions">
             <button type="button" onClick={handleReset} className="filter-panel__reset">Đặt lại</button>

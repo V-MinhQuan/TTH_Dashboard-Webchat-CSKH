@@ -6,6 +6,7 @@ from typing import Any, Dict, Iterable, List
 
 from app.repositories.analytics_repository import AnalyticsRepository
 from app.repositories.schema_inspector import issue_metadata_available
+from app.utils.customer_identity import customer_display_name, identity_text
 
 
 TOPIC_LABELS = {
@@ -203,6 +204,17 @@ class AnalyticsService:
             },
         }
 
+    def get_positive_conversations(self, filters: Dict[str, Any]) -> Dict[str, Any]:
+        payload = self.repository.get_positive_conversations(filters)
+        return {
+            "records": [_normalize_review_record(row) for row in payload.get("records", [])],
+            "pagination": payload.get("pagination") or {"page": 1, "pageSize": 20, "total": 0},
+            "metadata": {
+                "criteria": "latest analyzed message per conversation has sentimentLabel=positive",
+                "aggregationRule": "latest_analyzed_message_per_conversation",
+            },
+        }
+
     def get_ai_quality_metrics(self, filters: Dict[str, Any]) -> Dict[str, Any]:
         payload = self.repository.get_ai_quality_metrics(filters)
         row = payload.get("row") or {}
@@ -245,9 +257,28 @@ class AnalyticsService:
             for topic in topics:
                 if not topic: continue
                 if topic not in result_map:
-                    result_map[topic] = {"topic": topic, "thieuDL": 0, "khongHieu": 0, "khongChac": 0, "ngoaiPhamVi": 0, "hallucination": 0}
+                    result_map[topic] = {
+                        "topic": topic,
+                        "saiCauTra": 0,
+                        "khongHieu": 0,
+                        "thieuThongTin": 0,
+                        "khongChinhXac": 0,
+                        "thieuDL": 0,
+                        "loiHeThong": 0,
+                        "loiTriThuc": 0,
+                        "khac": 0,
+                        "khongChac": 0,
+                        "ngoaiPhamVi": 0,
+                        "hallucination": 0,
+                    }
+                result_map[topic]["saiCauTra"] += int(row.get("saiCauTra") or 0)
                 result_map[topic]["thieuDL"] += int(row.get("thieuDL") or 0)
                 result_map[topic]["khongHieu"] += int(row.get("khongHieu") or 0)
+                result_map[topic]["thieuThongTin"] += int(row.get("thieuThongTin") or 0)
+                result_map[topic]["khongChinhXac"] += int(row.get("khongChinhXac") or 0)
+                result_map[topic]["loiHeThong"] += int(row.get("loiHeThong") or 0)
+                result_map[topic]["loiTriThuc"] += int(row.get("loiTriThuc") or 0)
+                result_map[topic]["khac"] += int(row.get("khac") or 0)
                 result_map[topic]["khongChac"] += int(row.get("khongChac") or 0)
                 result_map[topic]["ngoaiPhamVi"] += int(row.get("ngoaiPhamVi") or 0)
                 result_map[topic]["hallucination"] += int(row.get("hallucination") or 0)
@@ -413,6 +444,14 @@ def _json_array(value: Any) -> Iterable[Any]:
 
 def _normalize_review_record(row: Dict[str, Any]) -> Dict[str, Any]:
     item = dict(row)
+    item["customerName"] = identity_text(item.get("customerName") or item.get("customer_name")) or None
+    item["customerId"] = identity_text(item.get("customerId") or item.get("customer_id")) or None
+    item["phoneNumber"] = identity_text(item.get("phoneNumber") or item.get("phone_number")) or None
+    item["customerDisplayName"] = customer_display_name(
+        item.get("customerName"),
+        item.get("customerId"),
+        item.get("phoneNumber"),
+    )
     item["needStaffReview"] = _as_bool(item.get("needStaffReview"))
     item["issueFlag"] = None if item.get("issueFlag") is None else _as_bool(item.get("issueFlag"))
     item["issueType"] = item.get("issueType") or None

@@ -1,9 +1,10 @@
-from fastapi import APIRouter, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from pydantic import BaseModel
 from typing import Optional
 
 from app.settings.service import settings_service
 from app.settings.user_service import user_service
+from app.core.auth import SessionClaims, require_roles
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -80,7 +81,7 @@ class PasswordConfirmSchema(BaseModel):
 
 # --- Settings endpoints ---
 @router.get("")
-def get_settings():
+def get_settings(_: SessionClaims = Depends(require_roles("manager", "staff"))):
     try:
         data = settings_service.get_settings()
         return {
@@ -96,7 +97,10 @@ def get_settings():
 
 
 @router.put("")
-def update_settings(body: SettingsUpdateSchema):
+def update_settings(
+    body: SettingsUpdateSchema,
+    _: SessionClaims = Depends(require_roles("manager", "staff")),
+):
     try:
         updates = body.model_dump(exclude_unset=True)
         data = settings_service.update_settings(updates)
@@ -114,7 +118,7 @@ def update_settings(body: SettingsUpdateSchema):
 
 # --- User Management endpoints ---
 @router.get("/users")
-def get_all_users():
+def get_all_users(_: SessionClaims = Depends(require_roles("manager"))):
     try:
         data = user_service.get_all_users()
         return {
@@ -130,7 +134,10 @@ def get_all_users():
 
 
 @router.post("/users", status_code=status.HTTP_201_CREATED)
-def create_user(body: UserCreateSchema):
+def create_user(
+    body: UserCreateSchema,
+    _: SessionClaims = Depends(require_roles("manager")),
+):
     try:
         data = user_service.create_user(
             username=body.username,
@@ -153,7 +160,11 @@ def create_user(body: UserCreateSchema):
 
 
 @router.patch("/users/{username}/status")
-def update_user_status(username: str, body: UserStatusSchema):
+def update_user_status(
+    username: str,
+    body: UserStatusSchema,
+    _: SessionClaims = Depends(require_roles("manager")),
+):
     try:
         data = user_service.set_user_active(username, body.active)
         return {
@@ -169,7 +180,11 @@ def update_user_status(username: str, body: UserStatusSchema):
 
 
 @router.post("/users/{username}/reset-password")
-def reset_user_password(username: str, body: UserResetPasswordSchema):
+def reset_user_password(
+    username: str,
+    body: UserResetPasswordSchema,
+    _: SessionClaims = Depends(require_roles("manager")),
+):
     try:
         data = user_service.reset_user_password(username, body.newPassword)
         return {
@@ -186,7 +201,12 @@ def reset_user_password(username: str, body: UserResetPasswordSchema):
 
 # --- User Profile endpoints ---
 @router.get("/profile")
-def get_profile(username: str = Query(..., description="Tên đăng nhập của user")):
+def get_profile(
+    username: str = Query(..., description="Tên đăng nhập của user"),
+    session: SessionClaims = Depends(require_roles("manager", "staff")),
+):
+    if username.strip().lower() != session.username.strip().lower():
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Bạn chỉ có thể xem hồ sơ của chính mình.")
     profile = user_service.get_profile(username)
     if not profile:
         raise HTTPException(
@@ -201,7 +221,12 @@ def get_profile(username: str = Query(..., description="Tên đăng nhập của
 
 
 @router.put("/profile")
-def update_profile(body: ProfileUpdateSchema):
+def update_profile(
+    body: ProfileUpdateSchema,
+    session: SessionClaims = Depends(require_roles("manager", "staff")),
+):
+    if body.username.strip().lower() != session.username.strip().lower():
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Bạn chỉ có thể cập nhật hồ sơ của chính mình.")
     try:
         data = user_service.update_profile(
             username=body.username,
@@ -223,7 +248,12 @@ def update_profile(body: ProfileUpdateSchema):
 
 # --- Password Change with OTP endpoints ---
 @router.post("/profile/change-password/request")
-def request_password_change_otp(body: OTPRequestSchema):
+def request_password_change_otp(
+    body: OTPRequestSchema,
+    session: SessionClaims = Depends(require_roles("manager", "staff")),
+):
+    if body.username.strip().lower() != session.username.strip().lower():
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Bạn chỉ có thể đổi mật khẩu của chính mình.")
     try:
         res = user_service.request_password_change_otp(
             username=body.username,
@@ -238,7 +268,12 @@ def request_password_change_otp(body: OTPRequestSchema):
 
 
 @router.post("/profile/change-password/verify-otp")
-def verify_otp(body: OTPVerifySchema):
+def verify_otp(
+    body: OTPVerifySchema,
+    session: SessionClaims = Depends(require_roles("manager", "staff")),
+):
+    if body.username.strip().lower() != session.username.strip().lower():
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Bạn chỉ có thể xác thực tài khoản của chính mình.")
     try:
         user_service.verify_otp(
             username=body.username,
@@ -256,7 +291,12 @@ def verify_otp(body: OTPVerifySchema):
 
 
 @router.post("/profile/change-password/confirm")
-def confirm_password_change(body: PasswordConfirmSchema):
+def confirm_password_change(
+    body: PasswordConfirmSchema,
+    session: SessionClaims = Depends(require_roles("manager", "staff")),
+):
+    if body.username.strip().lower() != session.username.strip().lower():
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Bạn chỉ có thể đổi mật khẩu của chính mình.")
     try:
         user_service.confirm_password_change(
             username=body.username,

@@ -54,12 +54,15 @@ export interface TopQuestion {
   topic: string;
   count: number;
   channel: string;
-  trend: number;
+  trend: number | null;
 }
 
 export interface PriorityConversation {
   id: string;
   customerId?: string;
+  customerName?: string | null;
+  phoneNumber?: string | null;
+  customerDisplayName?: string;
   source?: string;
   customer: string;
   channel: string;

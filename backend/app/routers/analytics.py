@@ -52,8 +52,15 @@ def _review_filters(
     page: int = Query(default=1),
     pageSize: int = Query(default=20),
     search: Optional[str] = Query(default=None),
+    uniqueConversations: bool = Query(default=False),
 ):
-    return {**base, "page": page, "pageSize": pageSize, "search": search}
+    return {
+        **base,
+        "page": page,
+        "pageSize": pageSize,
+        "search": search,
+        "uniqueConversations": uniqueConversations,
+    }
 
 
 def _keyword_mode(mode: str) -> str:
@@ -165,6 +172,20 @@ def negative_conversations(
     return {
         "success": True,
         "message": "Lay danh sach hoi thoai tieu cuc can xu ly thanh cong.",
+        "meta": data["metadata"],
+        "data": data,
+    }
+
+
+@router.get("/positive-conversations")
+def positive_conversations(
+    filters: dict = Depends(_review_filters),
+    service: AnalyticsService = Depends(get_analytics_service),
+):
+    data = service.get_positive_conversations(filters)
+    return {
+        "success": True,
+        "message": "Lấy danh sách hội thoại tích cực thành công.",
         "meta": data["metadata"],
         "data": data,
     }

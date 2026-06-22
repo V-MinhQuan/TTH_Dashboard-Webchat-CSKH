@@ -723,6 +723,7 @@ class ConversationRepository:
                 SELECT TOP {int(limit)}
                   c.Id AS id,
                   c.CustomerId AS customer_id,
+                  customerInfo.customer_name,
                   c.Source AS source,
                   CASE
                     WHEN c.LastHostMessageAt IS NULL OR c.LastCustomerMessageAt > c.LastHostMessageAt THEN 'pending'
@@ -730,6 +731,11 @@ class ConversationRepository:
                   END AS status,
                   DATEDIFF(MINUTE, c.LastCustomerMessageAt, GETDATE()) AS wait_mins
                 FROM WebChat_Conversations c
+                OUTER APPLY (
+                  SELECT MAX(NULLIF(LTRIM(RTRIM(u.DisplayName)), N'')) AS customer_name
+                  FROM WebChat_Messagelogs_User_Info u
+                  WHERE u.SenderId = c.CustomerId AND u.Source = c.Source
+                ) customerInfo
                 LEFT JOIN WebChat_ConversationStatus s
                   ON c.CustomerId = s.CustomerId AND c.Source = s.Source
                 WHERE {" AND ".join(conditions)}
@@ -1691,33 +1697,40 @@ class ConversationRepository:
         try:
             query = """
                 SELECT TOP 20
-                  TextContent AS question,
+                  m.TextContent AS question,
                   COUNT(*) AS count,
-                  MAX(Source) AS source,
-                  MAX(SentAt) AS last_sent
-                FROM WebChat_MessageLogs
+                  MAX(m.Source) AS source,
+                  MAX(m.SentAt) AS last_sent,
+                  MAX(topic_analytics.detectedTopics) AS detected_topics
+                FROM WebChat_MessageLogs m
+                OUTER APPLY (
+                  SELECT TOP 1 a.detectedTopics
+                  FROM WebChat_MessageAnalytics a
+                  WHERE a.messageId = m.id_webchat_messageLogs
+                  ORDER BY a.analyzedAt DESC, a.id DESC
+                ) topic_analytics
             """
             conditions = [
-                "FromHost = 0",
-                valid_message_condition("WebChat_MessageLogs"),
-                "(TextContent LIKE N'%?%' OR TextContent LIKE N'%phải không ạ%' OR TextContent LIKE N'%đúng không ạ%')",
-                "LEN(TextContent) > 20",
-                "TextContent NOT LIKE N'%http%'"
+                "m.FromHost = 0",
+                valid_message_condition("m"),
+                "(m.TextContent LIKE N'%?%' OR m.TextContent LIKE N'%phải không ạ%' OR m.TextContent LIKE N'%đúng không ạ%')",
+                "LEN(m.TextContent) > 20",
+                "m.TextContent NOT LIKE N'%http%'"
             ]
             params = []
             
             if start_date:
-                conditions.append("SentAt >= %s")
+                conditions.append("m.SentAt >= %s")
                 params.append(start_date)
                 
             if end_date:
-                conditions.append("SentAt <= %s")
+                conditions.append("m.SentAt <= %s")
                 params.append(f"{end_date} 23:59:59.999")
                 
             if conditions:
                 query += " WHERE " + " AND ".join(conditions)
                 
-            query += " GROUP BY TextContent ORDER BY count DESC"
+            query += " GROUP BY m.TextContent ORDER BY count DESC"
             
             with conn.cursor(as_dict=True) as cursor:
                 cursor.execute(query, tuple(params))

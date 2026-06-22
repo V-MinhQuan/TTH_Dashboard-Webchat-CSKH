@@ -2,14 +2,13 @@ import { lazy, Suspense, useState, useEffect, useCallback } from "react";
 import { Toaster } from "sonner";
 import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
-import { defaultFilterValues, FilterValues } from "./components/FilterPanel";
+import { GlobalFilterProvider, useGlobalFilters } from "./context/GlobalFilterContext";
 
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { SettingsProvider } from "./context/SettingsContext";
 import { LoginScreen } from "./components/screens/Login";
 
 // AI Chat Widget tạm ẩn chờ phát triển sau
-// const AIChatWidget = lazy(() => import("./components/AIChatWidget").then((m) => ({ default: m.AIChatWidget })));
 const Overview = lazy(() => import("./components/screens/Overview").then((m) => ({ default: m.Overview })));
 const ChannelAnalysis = lazy(() => import("./components/screens/ChannelAnalysis").then((m) => ({ default: m.ChannelAnalysis })));
 const QuestionAnalysis = lazy(() => import("./components/screens/QuestionAnalysis").then((m) => ({ default: m.QuestionAnalysis })));
@@ -63,6 +62,11 @@ function ScreenTransitionLoading() {
 
 function MainApp() {
   const { role } = useAuth();
+  const {
+    appliedFilters: filters,
+    applyFilters: setFilters,
+    resetFilters,
+  } = useGlobalFilters();
   const [activeScreen, setActiveScreen] = useState(() => {
     try {
       const saved = localStorage.getItem("dashboard_activeScreen");
@@ -72,7 +76,6 @@ function MainApp() {
     }
   });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [filters, setFilters] = useState<FilterValues>(defaultFilterValues);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [screenSwitching, setScreenSwitching] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(() => formatTime(new Date()));
@@ -84,6 +87,12 @@ function MainApp() {
       setLastUpdated(formatTime(new Date()));
     }, 1200);
   }, []);
+
+  const handleNavigate = useCallback((nextScreen: string) => {
+    if (nextScreen === activeScreen) return;
+    resetFilters();
+    setActiveScreen(nextScreen);
+  }, [activeScreen, resetFilters]);
 
   useEffect(() => {
     const interval = setInterval(triggerRefresh, 1800000);
@@ -108,7 +117,7 @@ function MainApp() {
   const baseProps = {
     filters,
     onFiltersChange: setFilters,
-    onNavigate: setActiveScreen,
+    onNavigate: handleNavigate,
   };
 
   const renderScreen = () => {
@@ -137,11 +146,11 @@ function MainApp() {
         return <ChartBuilder {...baseProps} />;
       case "settings":
       case "users":
-        return <Settings defaultSection={activeScreen === "users" ? "users" : "notifications"} />;
+        return <Settings defaultSection={activeScreen === "users" ? "users" : "profile"} />;
       case "profile":
         return <Settings defaultSection="profile" />;
       case "personalinfo":
-        return <PersonalInfo onNavigate={setActiveScreen} />;
+        return <PersonalInfo onNavigate={handleNavigate} />;
       case "faq":
         return <FAQ />;
       case "chatbot_sheet":
@@ -167,7 +176,7 @@ function MainApp() {
       <div className="print-hidden" style={{ display: "flex" }}>
         <Sidebar
           activeScreen={activeScreen}
-          onNavigate={setActiveScreen}
+          onNavigate={handleNavigate}
           collapsed={sidebarCollapsed}
           onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
         />
@@ -177,7 +186,7 @@ function MainApp() {
         <div className="print-hidden">
           <Header
             activeScreen={activeScreen}
-            onNavigate={setActiveScreen}
+            onNavigate={handleNavigate}
           />
         </div>
         <main
@@ -198,14 +207,6 @@ function MainApp() {
         </main>
       </div>
 
-      {/* 
-      <div className="print-hidden">
-        <Suspense fallback={null}>
-          <AIChatWidget />
-        </Suspense>
-      </div> 
-      */}
-
       <Toaster
         position="bottom-right"
         toastOptions={{
@@ -224,9 +225,11 @@ function MainApp() {
 export default function App() {
   return (
     <AuthProvider>
-      <SettingsProvider>
-        <MainApp />
-      </SettingsProvider>
+      <GlobalFilterProvider>
+        <SettingsProvider>
+          <MainApp />
+        </SettingsProvider>
+      </GlobalFilterProvider>
     </AuthProvider>
   );
 }

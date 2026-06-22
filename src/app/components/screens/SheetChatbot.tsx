@@ -1,22 +1,18 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../../context/AuthContext";
-import { Plus, Search, Filter, CheckCircle2, XCircle, Clock, AlertTriangle, Edit2, Check, X, ChevronDown } from "lucide-react";
+import { Plus, Search, Filter, CheckCircle2, XCircle, Clock, Edit2 } from "lucide-react";
 import { toast } from "sonner";
 import { ErrorSourceBadge } from "../common/ErrorSourceBadge";
-import { AI_FAILURE_TAXONOMY, getAiFailureDefinition } from "../../constants/aiFailureTaxonomy";
+import { getAiFailureDefinition } from "../../constants/aiFailureTaxonomy";
+import { FeedbackFormDialog } from "../feedback/FeedbackFormDialog";
 import {
-  createSheetChatbotRow,
-  getSheetChatbotDuplicates,
   getSheetChatbotRows,
   mergeSheetChatbotToFaq,
-  updateSheetChatbotRow,
   updateSheetChatbotStatus,
 } from "../../services/sheetChatbotApi";
 
 const NAVY    = "#003865";
 const ORANGE  = "#D73C01";
-const CTA     = "#ED5206";
-const CTA_SOFT= "#F36C2E";
 const ORANGE_50 = "#FFF4EE";
 const AMBER_50  = "#FFF7E6";
 const AMBER_TEXT= "#B7791F";
@@ -38,14 +34,6 @@ interface SheetRow {
   notes: string;
 }
 
-const TOPICS = ["TOEIC", "VSTEP", "CNTT Cơ bản", "CNTT Nâng cao", "Chuẩn đầu ra ngoại ngữ", "MOS/IC3", "Lịch thi", "Lệ phí", "Hồ sơ đăng ký", "Tra cứu điểm", "Cấp chứng chỉ"];
-const SOURCES: SourceType[] = [
-  "Không tìm thấy dữ liệu",
-  "AI không chắc chắn",
-  "Câu hỏi ngoài phạm vi",
-  "AI có nguy cơ tự tạo thông tin",
-];
-
 const statusConfig: Record<SheetStatus, { bg: string; color: string; icon: typeof CheckCircle2 }> = {
   "Chờ xử lý":     { bg: ORANGE_50, color: ORANGE, icon: Clock },
   "Đã duyệt":      { bg: "#dbeafe", color: "#2563eb", icon: CheckCircle2 },
@@ -58,10 +46,6 @@ const riskConfig: Record<RiskLevel, { bg: string; color: string }> = {
   "Trung bình": { bg: AMBER_50,  color: AMBER_TEXT },
   Cao:         { bg: ORANGE_50, color: ORANGE },
 };
-
-function statusFromRisk(risk: RiskLevel): SheetStatus {
-  return "Chờ xử lý";
-}
 
 function displayFailureSource(source: string) {
   const definition = getAiFailureDefinition(source);
@@ -97,246 +81,6 @@ function formatAddedAt(value: string) {
   if (sameDay) return `${time} hôm nay`;
   if (isYesterday) return `Hôm qua ${time}`;
   return date.toLocaleDateString("vi-VN");
-}
-
-interface DuplicateModalProps {
-  question: string;
-  matches: Array<SheetRow & { similarity: number }>;
-  onAddNew: () => void;
-  onClose: () => void;
-}
-
-function DuplicateModal({ question, matches, onAddNew, onClose }: DuplicateModalProps) {
-  return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div style={{ background: "#fff", borderRadius: "16px", width: "520px", padding: "24px", boxShadow: "0 16px 48px rgba(0,0,0,0.15)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <AlertTriangle size={18} style={{ color: ORANGE }} />
-            <h3 style={{ fontSize: "15px", fontWeight: 700, color: NAVY, margin: 0 }}>Phát hiện FAQ tương tự</h3>
-          </div>
-          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(0,56,101,0.4)" }}><X size={18} /></button>
-        </div>
-        <div style={{ fontSize: "13px", color: "rgba(0,56,101,0.6)", marginBottom: "16px" }}>
-          Hệ thống tìm thấy FAQ có nội dung tương tự với câu hỏi bạn vừa thêm:
-        </div>
-        <div style={{ backgroundColor: "#f8fafc", borderRadius: "10px", overflow: "hidden", marginBottom: "20px", border: "1px solid rgba(0,62,154,0.08)" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
-            <thead>
-              <tr style={{ backgroundColor: "#f1f5f9" }}>
-                {["Câu hỏi tương tự", "Chủ đề", "Độ giống nhau", "Trạng thái"].map(h => (
-                  <th key={h} style={{ padding: "9px 12px", textAlign: "left", fontWeight: 600, color: "rgba(0,56,101,0.5)", fontSize: "11px" }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {matches.map((s) => (
-                <tr key={s.id}>
-                  <td style={{ padding: "10px 12px", color: NAVY, fontWeight: 500 }}>{s.question}</td>
-                  <td style={{ padding: "10px 12px" }}><span style={{ fontSize: "10px", padding: "2px 6px", borderRadius: "20px", backgroundColor: "#eff6ff", color: "#3b82f6" }}>{s.topic}</span></td>
-                  <td style={{ padding: "10px 12px" }}><span style={{ fontSize: "12px", fontWeight: 700, color: AMBER_TEXT }}>{Math.round((s.similarity || 0) * 100)}%</span></td>
-                  <td style={{ padding: "10px 12px" }}><span style={{ fontSize: "10px", padding: "2px 6px", borderRadius: "20px", backgroundColor: "#dcfce7", color: "#16a34a" }}>{s.status}</span></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div style={{ display: "flex", gap: "10px" }}>
-          <button onClick={onAddNew} style={{ flex: 1, padding: "9px", borderRadius: "8px", border: `1px solid ${NAVY}20`, background: "#f8fafc", color: NAVY, cursor: "pointer", fontWeight: 600, fontSize: "12px" }}>Thêm mới</button>
-          <button onClick={onClose} style={{ flex: 1, padding: "9px", borderRadius: "8px", border: "none", background: NAVY, color: "#fff", cursor: "pointer", fontWeight: 600, fontSize: "12px" }}>Xem lại nội dung</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-interface AddSheetModalProps {
-  prefillQuestion?: string;
-  prefillAnswer?: string;
-  prefillNotes?: string;
-  prefillSource?: string;
-  initialValues?: Partial<Omit<SheetRow, "id" | "addedAt" | "addedBy">>;
-  onClose: () => void;
-  onSave?: (row: Omit<SheetRow, "id" | "addedAt" | "addedBy">) => void | Promise<void>;
-}
-
-export function AddSheetModal({ prefillQuestion = "", prefillAnswer = "", prefillNotes = "", prefillSource, initialValues, onClose, onSave }: AddSheetModalProps) {
-  const initialSource = getAiFailureDefinition(initialValues?.source ?? prefillSource)?.apiValue ?? SOURCES[0];
-  const [question, setQuestion] = useState(initialValues?.question ?? prefillQuestion);
-  const [answer, setAnswer] = useState(initialValues?.correctAnswer ?? prefillAnswer);
-  const [topic, setTopic] = useState(initialValues?.topic ?? TOPICS[0]);
-  const [source, setSource] = useState<SourceType>(initialSource);
-  const [risk, setRisk] = useState<RiskLevel>((initialValues?.risk as RiskLevel) ?? "Thấp");
-  const [notes, setNotes] = useState(initialValues?.notes ?? prefillNotes);
-  const [showDuplicate, setShowDuplicate] = useState(false);
-  const [duplicateMatches, setDuplicateMatches] = useState<Array<SheetRow & { similarity: number }>>([]);
-  const [isSaving, setIsSaving] = useState(false);
-
-  const handleSave = async () => {
-    if (initialValues) {
-      await doSave();
-      return;
-    }
-
-    try {
-      setIsSaving(true);
-      const matches = await getSheetChatbotDuplicates(question, 0.82, 5);
-      if (matches.length > 0) {
-        setDuplicateMatches(matches as Array<SheetRow & { similarity: number }>);
-        setShowDuplicate(true);
-        return;
-      }
-      await doSave();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Không thể kiểm tra FAQ tương tự");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const doSave = async () => {
-    const status = statusFromRisk(risk);
-    try {
-      setIsSaving(true);
-      await onSave?.({ question, correctAnswer: answer, topic, source, risk, status, notes });
-      if (risk === "Cao") {
-        toast.success("Đã thêm phản hồi và chờ xử lý");
-      } else {
-        toast.success("Đã thêm phản hồi vào thư viện");
-      }
-      onClose();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Không thể lưu phản hồi vào thư viện");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  return (
-    <>
-      <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 150, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div role="dialog" aria-label={initialValues ? "Chỉnh sửa phản hồi" : "Thêm phản hồi"} style={{ background: "#fff", borderRadius: "18px", width: "560px", maxHeight: "90vh", overflowY: "auto", padding: "28px", boxShadow: "0 16px 48px rgba(0,0,0,0.15)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
-            <h3 style={{ fontSize: "16px", fontWeight: 700, color: NAVY, margin: 0 }}>{initialValues ? "Chỉnh sửa phản hồi" : "Thêm phản hồi"}</h3>
-            <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(0,56,101,0.4)" }}><X size={18} /></button>
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-            <div>
-              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "6px" }}>Câu hỏi khách hàng <span style={{ color: ORANGE }}>*</span></label>
-              <textarea aria-label="Câu hỏi khách hàng" value={question} onChange={e => setQuestion(e.target.value)} rows={2} style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.12)", outline: "none", fontSize: "13px", resize: "none", boxSizing: "border-box" }} />
-            </div>
-            <div>
-              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "6px" }}>Câu trả lời đúng <span style={{ color: ORANGE }}>*</span></label>
-              <textarea aria-label="Câu trả lời đúng" value={answer} onChange={e => setAnswer(e.target.value)} rows={3} style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.12)", outline: "none", fontSize: "13px", resize: "none", boxSizing: "border-box" }} />
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-              <div>
-                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "6px" }}>Chủ đề</label>
-                <select value={topic} onChange={e => setTopic(e.target.value)} style={{ width: "100%", padding: "9px 10px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.12)", outline: "none", fontSize: "13px", color: NAVY, background: "#fff" }}>
-                  {TOPICS.map(t => <option key={t}>{t}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "6px" }}>Nguồn gốc lỗi sai</label>
-                <select aria-label="Nguồn gốc lỗi sai" value={source} onChange={e => setSource(e.target.value as SourceType)} style={{ width: "100%", padding: "9px 10px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.12)", outline: "none", fontSize: "13px", color: NAVY, background: "#fff" }}>
-                  {SOURCES.map(s => <option key={s}>{s}</option>)}
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "8px" }}>Mức rủi ro</label>
-              <div style={{ display: "flex", gap: "10px" }}>
-                {(["Thấp", "Trung bình", "Cao"] as RiskLevel[]).map(r => (
-                  <button
-                    key={r}
-                    onClick={() => setRisk(r)}
-                    style={{ flex: 1, padding: "8px", borderRadius: "8px", border: risk === r ? `2px solid ${riskConfig[r].color}` : "1px solid rgba(0,56,101,0.12)", background: risk === r ? `${riskConfig[r].color}14` : "#fff", color: risk === r ? riskConfig[r].color : "rgba(0,56,101,0.6)", cursor: "pointer", fontWeight: risk === r ? 700 : 400, fontSize: "13px" }}
-                  >
-                    {r}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ padding: "12px 14px", borderRadius: "10px", backgroundColor: `${riskConfig[risk].color}10`, border: `1px solid ${riskConfig[risk].color}30`, fontSize: "12px", color: riskConfig[risk].color, fontWeight: 500 }}>
-              Trạng thái: <strong>{statusFromRisk(risk)}</strong>
-              {risk === "Cao" && " — Sẽ chờ quản lý kiểm duyệt trước khi đưa vào chatbot"}
-            </div>
-
-            <div>
-              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "6px" }}>Ghi chú nội bộ</label>
-              <textarea aria-label="Ghi chú nội bộ" value={notes} onChange={e => setNotes(e.target.value)} rows={3} style={{ width: "100%", padding: "9px 10px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.12)", outline: "none", fontSize: "13px", boxSizing: "border-box", resize: "vertical" }} placeholder="Ghi chú về lỗi AI, nguồn thông tin..." />
-            </div>
-          </div>
-
-          <div style={{ display: "flex", gap: "10px", marginTop: "20px" }}>
-            <button onClick={onClose} style={{ flex: 1, padding: "10px", borderRadius: "10px", border: "1px solid rgba(0,56,101,0.12)", background: "#fff", color: NAVY, cursor: "pointer", fontWeight: 600, fontSize: "13px" }}>Hủy</button>
-            <button onClick={handleSave} disabled={!question.trim() || !answer.trim() || isSaving} style={{ flex: 2, padding: "10px", borderRadius: "10px", border: "none", background: (!question.trim() || !answer.trim() || isSaving) ? "#ccc" : NAVY, color: "#fff", cursor: (!question.trim() || !answer.trim() || isSaving) ? "not-allowed" : "pointer", fontWeight: 600, fontSize: "13px" }}>
-              {isSaving ? "Đang lưu..." : "Lưu phản hồi"}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {showDuplicate && (
-        <DuplicateModal
-          question={question}
-          matches={duplicateMatches}
-          onAddNew={() => { setShowDuplicate(false); doSave(); }}
-          onClose={() => setShowDuplicate(false)}
-        />
-      )}
-    </>
-  );
-}
-
-function SheetLoadingState() {
-  const block = (style: React.CSSProperties = {}) => (
-    <div
-      style={{
-        borderRadius: "10px",
-        background: "linear-gradient(90deg, #f0f4f8 25%, #e2e8f0 50%, #f0f4f8 75%)",
-        backgroundSize: "200% 100%",
-        animation: "sheetShimmer 1.4s infinite",
-        ...style,
-      }}
-    />
-  );
-
-  return (
-    <div style={{ marginTop: "20px" }}>
-      <style>{`
-        @keyframes sheetShimmer {
-          0% { background-position: -200% 0; }
-          100% { background-position: 200% 0; }
-        }
-      `}</style>
-      {/* KPI Cards Skeletons */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "12px", marginBottom: "20px" }}>
-        {[1, 2, 3, 4].map((i) => (
-          <div key={i} style={{ backgroundColor: "#fff", borderRadius: "14px", padding: "18px 20px", border: "1px solid rgba(0,62,154,0.07)" }}>
-            {block({ width: "40px", height: "28px", marginBottom: "8px" })}
-            {block({ width: "60%", height: "14px" })}
-          </div>
-        ))}
-      </div>
-
-      {/* Table Skeleton */}
-      <div style={{ backgroundColor: "#fff", borderRadius: "16px", border: "1px solid rgba(0,62,154,0.07)", padding: "20px" }}>
-        <div style={{ display: "flex", gap: "20px", marginBottom: "20px", borderBottom: "1px solid rgba(0,62,154,0.07)", paddingBottom: "16px" }}>
-          {[1, 2, 3, 4, 5, 6, 7].map(i => <div key={i} style={{ flex: 1 }}>{block({ width: "80%", height: "16px" })}</div>)}
-        </div>
-        {[1, 2, 3, 4, 5].map(row => (
-          <div key={row} style={{ display: "flex", gap: "20px", marginBottom: "20px" }}>
-            {[1, 2, 3, 4, 5, 6, 7].map(col => <div key={col} style={{ flex: 1 }}>{block({ width: "100%", height: "14px" })}</div>)}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
 }
 
 export function SheetChatbot() {
@@ -401,21 +145,6 @@ export function SheetChatbot() {
     const matchRole = role === "manager" ? true : r.addedBy === currentUserName;
     return matchSearch && matchStatus && matchRisk && matchRole;
   });
-
-  const handleAddRow = async (data: Omit<SheetRow, "id" | "addedAt" | "addedBy">) => {
-    if (editingRow) {
-      const updated = await updateSheetChatbotRow(editingRow.id, data);
-      setRows(prev => prev.map(row => row.id === updated.id ? updated : row));
-      setEditingRow(null);
-      return;
-    }
-
-    const created = await createSheetChatbotRow({
-      ...data,
-      addedBy: currentUserName,
-    });
-    setRows(prev => [created, ...prev]);
-  };
 
   const updateStatus = async (id: string, status: SheetStatus) => {
     try {
@@ -497,7 +226,7 @@ export function SheetChatbot() {
       </div>
 
       {isLoading ? (
-        <SheetLoadingState />
+        <div style={{ padding: "48px", textAlign: "center", color: "rgba(0,62,154,0.5)", fontSize: "13px" }}>Đang tải thư viện phản hồi từ database...</div>
       ) : (
         <>
           {/* KPI Summary */}
@@ -571,7 +300,7 @@ export function SheetChatbot() {
                     <td style={{ padding: "12px 14px" }}>
                       {role === "manager" ? (
                         <div style={{ display: "flex", gap: "5px", flexWrap: "wrap" }}>
-                          {row.status === "Chờ quản lý xác nhận" || row.status === "Chờ xử lý" || row.status === "Cần chỉnh sửa" ? (
+                          {row.status === "Chờ xử lý" || row.status === "Cần chỉnh sửa" ? (
                             <>
                               <button onClick={() => updateStatus(row.id, "Đã duyệt")} style={{ padding: "3px 9px", borderRadius: "6px", border: "1px solid #bbf7d0", background: "#f0fdf4", color: "#16a34a", cursor: "pointer", fontSize: "10px", fontWeight: 600 }}>Duyệt</button>
                               <button onClick={() => { setEditingRow(row); setShowAddModal(true); }} style={{ padding: "3px 9px", borderRadius: "6px", border: "1px solid #e9d5ff", background: "#faf5ff", color: "#7c3aed", cursor: "pointer", fontSize: "10px", fontWeight: 600 }}>Chỉnh sửa</button>
@@ -604,10 +333,13 @@ export function SheetChatbot() {
       )}
 
       {showAddModal && (
-        <AddSheetModal
-          initialValues={editingRow ? {
+        <FeedbackFormDialog
+          open
+          mode={editingRow ? "edit" : "create"}
+          editingId={editingRow?.id}
+          prefillData={editingRow ? {
             question: editingRow.question,
-            correctAnswer: editingRow.correctAnswer,
+            answer: editingRow.correctAnswer,
             topic: editingRow.topic,
             source: editingRow.source,
             risk: editingRow.risk,
@@ -615,7 +347,12 @@ export function SheetChatbot() {
             notes: editingRow.notes,
           } : undefined}
           onClose={closeSheetModal}
-          onSave={handleAddRow}
+          onSaved={(saved) => {
+            setRows((current) => editingRow
+              ? current.map((row) => row.id === saved.id ? saved : row)
+              : [saved, ...current]);
+            setEditingRow(null);
+          }}
         />
       )}
     </div>
