@@ -9,10 +9,7 @@ const CTA    = "#ED5206";
 const WARN_ICON_BG  = "#FFF4EE";   // soft orange
 const WARN_BORDER   = "#FBCBB8";   // pale orange border
 
-// Soft backgrounds for change badges
-const POSITIVE_BG   = "#EAF8F1";  // green soft
 const POSITIVE_TEXT = "#228A61";
-const NEGATIVE_BG   = "#FFF1F1";  // red soft
 const NEGATIVE_TEXT = "#B42318";  // softer red text
 
 interface KPICardProps {
@@ -85,10 +82,8 @@ export function KPICard({ title, value, change, changeLabel, icon: Icon, isWarni
           <span
             style={{
               fontSize: "11px",
-              padding: "4px 10px",
-              borderRadius: "20px",
-              /* Softer badge backgrounds */
-              backgroundColor: change > 0 ? POSITIVE_BG : change < 0 ? NEGATIVE_BG : "#f1f5f9",
+              padding: 0,
+              backgroundColor: "transparent",
               color: change > 0 ? POSITIVE_TEXT : change < 0 ? NEGATIVE_TEXT : "#64748b",
               fontWeight: 600,
               display: "inline-flex",

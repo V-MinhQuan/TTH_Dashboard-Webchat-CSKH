@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { Hash, Brain, X, HelpCircle, CheckCircle, Plus } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -8,9 +8,9 @@ import {
 import { FilterPanel, FilterValues } from "../FilterPanel";
 import { toast } from "sonner";
 import { buildApiUrl, fetchApiJson } from "../../services/dashboardApi";
-import { createSheetChatbotRow } from "../../services/sheetChatbotApi";
 import { useAuth } from "../../context/AuthContext";
 import { ErrorSourceBadge } from "../common/ErrorSourceBadge";
+import { FeedbackFormDialog } from "../feedback/FeedbackFormDialog";
 import { AI_FAILURE_TAXONOMY, getAiFailureDefinition } from "../../constants/aiFailureTaxonomy";
 import * as round3Api from "../../services/round3Api";
 
@@ -144,6 +144,21 @@ function failureSourceFromSuggestion(source: string) {
     return getAiFailureDefinition("hallucination_risk")!.apiValue;
   }
   return getAiFailureDefinition("missing_data")!.apiValue;
+}
+
+function topicForGroupId(groupId: string | null) {
+  const topicMapSheet: Record<string, string> = {
+    toeic: "TOEIC",
+    vstep: "VSTEP",
+    tinhoc: "MOS/IC3",
+    chuandaura: "Chuẩn đầu ra ngoại ngữ",
+  };
+  return groupId ? topicMapSheet[groupId] || "TOEIC" : "TOEIC";
+}
+
+function aiWrongAnswerNote(value: string | undefined) {
+  const answer = (value || "").trim();
+  return answer ? `Câu trả lời sai của AI:\n${answer}` : "";
 }
 
 async function persistAiErrorKeyword(payload: AiErrorKeywordPayload) {
@@ -382,14 +397,13 @@ function KeywordErrorState({ message, onRetry }: { message: string; onRetry: () 
 }
 
 export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNavigate }: Props) {
-  const { user, role } = useAuth();
+  const { role } = useAuth();
   // appliedFilters chỉ cập nhật khi bấm "Áp dụng", không re-fetch khi thay đổi bộ lọc chưa áp dụng
   const [appliedFilters, setAppliedFilters] = useState<FilterValues>(filters);
   const [missingFaqs, setMissingFaqs] = useState<Record<string, MissingFaqItem[]>>({});
 
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
-  const [composingIndex, setComposingIndex] = useState<number | null>(null);
-  const [composeAnswer, setComposeAnswer] = useState("");
+  const [activeMissingFaq, setActiveMissingFaq] = useState<{ groupId: string; index: number; item: MissingFaqItem } | null>(null);
   const [showAiErrorKeywordModal, setShowAiErrorKeywordModal] = useState(false);
   const [isSavingAiErrorKeyword, setIsSavingAiErrorKeyword] = useState(false);
   const [aiErrorKeywordForm, setAiErrorKeywordForm] = useState(emptyAiErrorKeywordForm);
@@ -442,53 +456,16 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
     return items.filter(item => !item.added).length;
   };
 
-  const handleSaveMissingFaq = async (index: number, question: string, source: string) => {
-    if (!composeAnswer.trim()) {
-      toast.error("Vui lòng nhập câu trả lời");
-      return;
-    }
-
-    try {
-      // Map selectedGroupId to display topic name
-      const topicMapSheet: Record<string, string> = {
-        toeic: "TOEIC",
-        vstep: "VSTEP",
-        tinhoc: "MOS/IC3",
-        chuandaura: "Chuẩn đầu ra ngoại ngữ"
-      };
-
-      const sheetSource = failureSourceFromSuggestion(source);
-
-      await createSheetChatbotRow({
-        addedBy: user?.name || "Người dùng ẩn danh",
-        question: question,
-        correctAnswer: composeAnswer,
-        topic: topicMapSheet[selectedGroupId!] || "TOEIC",
-        source: sheetSource,
-        risk: "Trung bình",
-        status: "Chờ xử lý",
-        notes: [
-          "Thêm từ Phân tích từ khóa.",
-          `Nội dung lỗi liên quan: ${question}`,
-          `Nguồn phát hiện: ${source}`,
-        ].join("\n"),
-      });
-
-      // 1. Mark as added in missingFaqs
-      const groupItems = [...(missingFaqs[selectedGroupId!] || [])];
+  const markMissingFaqAdded = (groupId: string, index: number) => {
+    setMissingFaqs((current) => {
+      const groupItems = [...(current[groupId] || [])];
+      if (!groupItems[index]) return current;
       groupItems[index] = { ...groupItems[index], added: true };
-      setMissingFaqs({
-        ...missingFaqs,
-        [selectedGroupId!]: groupItems
-      });
-
-      // 2. Reset compose state
-      setComposeAnswer("");
-      setComposingIndex(null);
-      toast.success("Đã chuyển đề xuất FAQ vào thư viện phản hồi chờ duyệt!");
-    } catch (error: any) {
-      toast.error(error.message || "Có lỗi xảy ra khi thêm FAQ");
-    }
+      return {
+        ...current,
+        [groupId]: groupItems,
+      };
+    });
   };
 
   const [activeGroup, setActiveGroup] = useState<string | null>(null);
@@ -995,33 +972,27 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px" }}>
                         <div style={{ flex: 1 }}>
                           <div style={{ fontWeight: 600, color: NAVY, fontSize: "13px", lineHeight: 1.4 }}>{item.question}</div>
-                          <div style={{ fontSize: "11px", color: "rgba(0,56,101,0.45)", marginTop: "6px", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-                            <ErrorSourceBadge source="ai" />
-                            <span>Nguồn phát hiện: {item.source}</span>
+                          <div style={{ fontSize: "11px", color: "rgba(0,56,101,0.45)", marginTop: "6px" }}>
+                            Nguồn phát hiện: {item.source}
                           </div>
                         </div>
                         <div>
-                          {composingIndex !== index && (
-                            <button onClick={() => { setComposingIndex(index); setComposeAnswer(item.suggestedAnswer || ""); }} style={{ padding: "5px 12px", borderRadius: "8px", border: `1px solid ${CTA}`, background: "#fff", color: CTA, cursor: "pointer", fontSize: "11px", fontWeight: 600 }}>Soạn câu trả lời</button>
-                          )}
+                          <button
+                            onClick={() => setActiveMissingFaq({
+                              groupId: selectedGroupId,
+                              index,
+                              item: {
+                                question: item.question,
+                                source: item.source,
+                                suggestedAnswer: item.suggestedAnswer,
+                              },
+                            })}
+                            style={{ padding: "5px 12px", borderRadius: "8px", border: `1px solid ${CTA}`, background: "#fff", color: CTA, cursor: "pointer", fontSize: "11px", fontWeight: 600 }}
+                          >
+                            Soạn câu trả lời
+                          </button>
                         </div>
                       </div>
-
-                      {composingIndex === index && (
-                        <div style={{ marginTop: "14px", display: "flex", flexDirection: "column", gap: "10px", borderTop: "1px dashed rgba(0,56,101,0.1)", paddingTop: "14px" }}>
-                          <textarea
-                            value={composeAnswer}
-                            onChange={(e) => setComposeAnswer(e.target.value)}
-                            placeholder="Nhập câu trả lời chính thức cho câu hỏi này..."
-                            rows={3}
-                            style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1.5px solid rgba(0,56,101,0.12)", fontSize: "12px", color: NAVY, outline: "none", boxSizing: "border-box", resize: "vertical" }}
-                          />
-                          <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
-                            <button onClick={() => setComposingIndex(null)} style={{ padding: "6px 12px", borderRadius: "6px", border: "1.5px solid rgba(0,56,101,0.12)", backgroundColor: "#fff", color: NAVY, cursor: "pointer", fontSize: "11px", fontWeight: 600 }}>Hủy</button>
-                            <button onClick={() => handleSaveMissingFaq(index, item.question, item.source)} style={{ padding: "6px 12px", borderRadius: "6px", border: "none", backgroundColor: CTA, color: "#fff", cursor: "pointer", fontSize: "11px", fontWeight: 600 }}>Lưu & Bổ sung FAQ</button>
-                          </div>
-                        </div>
-                      )}
                     </div>
                   );
                 });
@@ -1033,6 +1004,27 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
             </div>
           </div>
         </div>
+      )}
+
+      {activeMissingFaq && (
+        <FeedbackFormDialog
+          open
+          mode="create"
+          prefillData={{
+            question: activeMissingFaq.item.question,
+            answer: "",
+            topic: topicForGroupId(activeMissingFaq.groupId),
+            source: failureSourceFromSuggestion(activeMissingFaq.item.source),
+            risk: "Trung bình",
+            status: "Chờ xử lý",
+            notes: aiWrongAnswerNote(activeMissingFaq.item.suggestedAnswer),
+          }}
+          onClose={() => setActiveMissingFaq(null)}
+          onSaved={() => {
+            markMissingFaqAdded(activeMissingFaq.groupId, activeMissingFaq.index);
+            setActiveMissingFaq(null);
+          }}
+        />
       )}
     </div>
   );

@@ -311,6 +311,70 @@ def test_repository_bulk_close_rolls_back_on_write_failure():
     connection.rollback.assert_called_once()
 
 
+def test_repository_close_latest_matches_display_source_aliases():
+    captured = []
+    connection = MagicMock()
+    connection.cursor.return_value = MagicMock()
+
+    @contextmanager
+    def fake_connection():
+        yield connection
+
+    def fake_execute_one(conn, query, params):
+        captured.append((query, list(params)))
+        return {"id": 12}
+
+    selected = [
+        {
+            "id": 12,
+            "customer_id": "customer-12",
+            "source": "zalooa",
+            "status_id": None,
+            "status": "pending",
+        }
+    ]
+
+    repository = ConversationRepository(connection_factory=fake_connection)
+    with patch("app.repositories.conversation_repository.execute_one", side_effect=fake_execute_one), patch(
+        "app.repositories.conversation_repository.execute_all",
+        return_value=selected,
+    ):
+        result = repository.close_latest("customer-12", "Zalo OA", "staff01")
+
+    query, params = captured[0]
+    assert "LOWER(LTRIM(RTRIM(c.Source))) IN (?, ?)" in query
+    assert params == ["customer-12", "zalooa", "zalo"]
+    assert result["affectedCount"] == 1
+
+
+@patch("app.services.conversation_service.clear_dashboard_cache")
+def test_service_close_operations_clear_dashboard_cache(mock_clear_cache):
+    repository = MagicMock()
+    repository.close_latest.return_value = {
+        "requestedCount": 1,
+        "matchedCount": 1,
+        "affectedCount": 1,
+        "alreadyClosedCount": 0,
+    }
+    repository.close_conversations.return_value = {
+        "requestedCount": 2,
+        "matchedCount": 2,
+        "affectedCount": 2,
+        "alreadyClosedCount": 0,
+    }
+    service = ConversationService(repository=repository)
+
+    service.close_conversation(
+        conversation_id=None,
+        customer_id="customer-12",
+        source="Zalo OA",
+        actor="staff01",
+    )
+    service.close_conversations((11, 12), "manager01")
+
+    assert mock_clear_cache.call_count == 2
+
+
 def test_service_single_close_by_id_reports_missing_conversation():
     repository = MagicMock()
     repository.close_conversations.return_value = {

@@ -23,6 +23,7 @@ def get_dashboard_kpi(
     topic: Optional[str] = Query(default=None),
     conversationStatus: Optional[str] = Query(default=None),
     aiStatus: Optional[str] = Query(default=None),
+    forceRefresh: bool = Query(default=False),
 ):
     if startDate:
         try:
@@ -54,6 +55,7 @@ def get_dashboard_kpi(
         "topic": topic,
         "conversationStatus": conversationStatus,
         "aiStatus": aiStatus,
+        "forceRefresh": forceRefresh,
     }
     
     data = legacy_ds.get_kpis(startDate, endDate, filters)

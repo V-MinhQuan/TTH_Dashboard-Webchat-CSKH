@@ -1,7 +1,11 @@
+from pathlib import Path
 from typing import List
 
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 class Settings(BaseSettings):
@@ -43,6 +47,22 @@ class Settings(BaseSettings):
 
     ml_service_url: str = Field(default="http://localhost:8001", validation_alias="ML_SERVICE_URL")
     ml_timeout_seconds: float = Field(default=15.0, validation_alias="ML_TIMEOUT_SECONDS")
+    gemini_api_keys: str = Field(
+        default="",
+        validation_alias="GEMINI_API_KEYS",
+    )
+    gemini_api_key: str = Field(default="", validation_alias="GEMINI_API_KEY")
+    openai_api_keys: str = Field(
+        default="",
+        validation_alias="OPENAI_API_KEYS",
+    )
+    openai_api_key_single: str = Field(default="", validation_alias="OPENAI_API_KEY")
+    ai_question_timeout_seconds: float = Field(
+        default=4.0,
+        ge=1.0,
+        le=30.0,
+        validation_alias="AI_QUESTION_TIMEOUT_SECONDS",
+    )
 
     cors_origins: str = Field(
         default="http://localhost:3000,http://localhost:5173,http://127.0.0.1:5173",
@@ -56,7 +76,7 @@ class Settings(BaseSettings):
     smtp_sender: str = Field(default="", validation_alias="SMTP_SENDER")
 
     model_config = SettingsConfigDict(
-        env_file=(".env", "backend/.env"),
+        env_file=(str(REPO_ROOT / ".env"), str(REPO_ROOT / "backend" / ".env")),
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
@@ -74,6 +94,29 @@ class Settings(BaseSettings):
             username.strip().lower()
             for username in self.manager_usernames.split(",")
             if username.strip()
+        ]
+
+    @property
+    def gemini_api_key_list(self) -> List[str]:
+        raw_keys = self.gemini_api_keys or self.gemini_api_key
+        return [
+            key.strip().strip('"').strip("'")
+            for key in raw_keys.split(",")
+            if key.strip().strip('"').strip("'")
+        ]
+
+    @property
+    def openai_api_key(self) -> str:
+        keys = self.openai_api_key_list
+        return keys[0] if keys else ""
+
+    @property
+    def openai_api_key_list(self) -> List[str]:
+        raw_keys = self.openai_api_keys or self.openai_api_key_single
+        return [
+            key.strip().strip('"').strip("'")
+            for key in raw_keys.split(",")
+            if key.strip().strip('"').strip("'")
         ]
 
 

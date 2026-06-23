@@ -145,9 +145,10 @@ interface ChartCardProps {
   onOpenBuilder?: () => void;
   data?: any;
   showToolbarActions?: boolean;
+  headerExtra?: React.ReactNode;
 }
 
-export function ChartCard({ title, children, useDefaultChart, defaultChartType = "bar", supportedChartTypes, onOpenBuilder, data, showToolbarActions = true }: ChartCardProps) {
+export function ChartCard({ title, children, useDefaultChart, defaultChartType = "bar", supportedChartTypes, onOpenBuilder, data, showToolbarActions = true, headerExtra }: ChartCardProps) {
   const [chartType, setChartType] = useState(defaultChartType);
   const [chartTitle, setChartTitle] = useState(title);
   const [isEdited, setIsEdited] = useState(false);
@@ -382,8 +383,11 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
               </span>
             )}
           </div>
-          {showToolbarActions && (
-            <div style={{ display: "flex", gap: "4px", position: "relative" }} ref={popoverRef}>
+          {(headerExtra || showToolbarActions) && (
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", position: "relative" }} ref={popoverRef}>
+              {headerExtra}
+              {showToolbarActions && (
+                <div style={{ display: "flex", gap: "4px" }}>
               {toolbarItems.map(({ icon: Icon, tooltip, active, onClick }, i) => (
                 <div key={i} style={{ position: "relative" }}>
                   <button
@@ -419,6 +423,8 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
                   </button>
                 </div>
               ))}
+                </div>
+              )}
 
               {/* Chart Type Popover */}
               {chartTypeOpen && (

@@ -243,10 +243,35 @@
   cursor: pointer;
 }
 
-.app-main thead th,
-.app-main [data-slot="table-head"] {
+.app-main table th,
+.app-main table td,
+.app-main [data-slot="table-head"],
+.app-main [data-slot="table-cell"] {
   text-align: center !important;
   vertical-align: middle !important;
+}
+
+.app-main table td > div {
+  text-align: center !important;
+}
+
+.app-main table td > div[style*="display: flex"],
+.app-main table td > div[style*="display:flex"] {
+  justify-content: center !important;
+}
+
+.app-main table td.flic-td-left,
+.app-main [data-slot="table-cell"].flic-td-left {
+  text-align: left !important;
+}
+
+.app-main table td.flic-td-left > div {
+  text-align: left !important;
+}
+
+.app-main table td.flic-td-left > div[style*="display: flex"],
+.app-main table td.flic-td-left > div[style*="display:flex"] {
+  justify-content: flex-start !important;
 }
 
 @media (max-width: 900px) {
@@ -311,12 +336,12 @@
   }
 }
 
-/* ── Req #12: Shared centered table header ───────────────────────────────── */
+/* ── Req #12: Shared centered table cells ────────────────────────────────── */
 /*
   Apply class="flic-th" to every <th> across the system.
   - Centers text horizontally and vertically
   - Works with sort buttons (table-sort-button)
-  - Does NOT force-center <td> cells — body cell alignment follows data type
+  - Body cells are centered globally in .app-main tables
 */
 .flic-th {
   padding: 10px 12px;

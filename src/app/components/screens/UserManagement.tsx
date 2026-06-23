@@ -239,7 +239,7 @@ export function UserManagement() {
               <h3 style={{ fontSize: "16px", fontWeight: 700, color: NAVY, margin: 0 }}>Sửa quyền người dùng</h3>
               <button onClick={() => setEditingUser(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(0,56,101,0.4)" }}><X size={18} /></button>
             </div>
-            
+
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
               <div>
                 <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "8px" }}>Tên đăng nhập</label>
@@ -277,7 +277,7 @@ export function UserManagement() {
               <h3 style={{ fontSize: "18px", fontWeight: 700, color: NAVY, margin: 0 }}>Thêm người dùng mới</h3>
               <button onClick={() => { setIsAddingUser(false); setNewUser(emptyNewUser); }} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(0,56,101,0.4)" }}><X size={18} /></button>
             </div>
-            
+
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "16px" }}>
               <div>
                 <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "8px" }}>Tên đăng nhập</label>

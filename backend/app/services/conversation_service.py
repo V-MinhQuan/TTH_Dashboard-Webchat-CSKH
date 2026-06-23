@@ -4,6 +4,7 @@ from typing import Any, Dict
 
 from app.core.exceptions import AppError
 from app.repositories.conversation_repository import ConversationRepository
+from app.services.legacy_dashboard_service import clear_dashboard_cache
 from app.utils.customer_identity import customer_display_name, identity_text
 
 
@@ -29,7 +30,9 @@ class ConversationService:
         conversation_ids: tuple[int, ...],
         actor: str,
     ) -> Dict[str, int]:
-        return self.repository.close_conversations(tuple(conversation_ids), actor)
+        result = self.repository.close_conversations(tuple(conversation_ids), actor)
+        self._clear_dashboard_cache_after_close(result)
+        return result
 
     def close_conversation(
         self,
@@ -45,6 +48,7 @@ class ConversationService:
             result = self.repository.close_latest(customer_id or "", source or "", actor)
         if result["matchedCount"] == 0:
             raise AppError("Không tìm thấy hội thoại cần đóng.", status_code=404)
+        self._clear_dashboard_cache_after_close(result)
         return result
 
     @staticmethod
@@ -61,3 +65,8 @@ class ConversationService:
             "customerDisplayName": customer_display_name(customer_name, customer_id, phone_number),
             "phoneNumber": phone_number,
         }
+
+    @staticmethod
+    def _clear_dashboard_cache_after_close(result: Dict[str, int]) -> None:
+        if result.get("matchedCount", 0) > 0:
+            clear_dashboard_cache(preserve_ai_questions=True)

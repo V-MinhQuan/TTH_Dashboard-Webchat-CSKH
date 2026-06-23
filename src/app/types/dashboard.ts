@@ -39,6 +39,7 @@ export interface KPITrends {
 
 export interface UrgentAlert {
   id: number | string;
+  conversationId?: number;
   type: "overtime" | "ai_uncertain" | "ai_no_data";
   priority: string;
   title: string;
@@ -47,6 +48,7 @@ export interface UrgentAlert {
   topic: string;
   waitTime: string;
   desc: string;
+  raw_source?: string;
 }
 
 export interface TopQuestion {
@@ -55,10 +57,17 @@ export interface TopQuestion {
   count: number;
   channel: string;
   trend: number | null;
+  relatedQuestions?: Array<{
+    question: string;
+    count: number;
+  }>;
+  sourceQuestionCount?: number;
+  aiGenerated?: boolean;
 }
 
 export interface PriorityConversation {
   id: string;
+  conversationId?: number;
   customerId?: string;
   customerName?: string | null;
   phoneNumber?: string | null;
@@ -94,6 +103,8 @@ export interface DashboardKpiData {
   averageResponseTimeMinutes: number;
   urgentAlerts: UrgentAlert[];
   topQuestions: TopQuestion[];
+  topQuestionsStatus?: "ok" | "ai_overloaded" | "fallback" | "stale" | string;
+  topQuestionsMessage?: string;
   priorityConversations: PriorityConversation[];
   dailyTrends: DailyTrend[];
 }

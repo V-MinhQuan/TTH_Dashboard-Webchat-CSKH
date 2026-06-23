@@ -8,8 +8,19 @@ from fastapi.testclient import TestClient
 # Add backend package root to sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from app.core.auth import SessionClaims, get_current_session
+from app.services import legacy_dashboard_service as dashboard_module
 from app.services.conversation_cleaner import conversation_cleaner_service
-from app.services.legacy_dashboard_service import DashboardService, clear_dashboard_cache
+from app.services.legacy_dashboard_service import (
+    AI_OVERLOAD_MESSAGE,
+    DashboardService,
+    QuestionGroupingAIError,
+    build_top_question_rows,
+    classify_topic,
+    clear_dashboard_cache,
+    hash_str,
+    prepare_question_items,
+)
 from app.repositories.legacy_conversation_repository import ConversationRepository
 from app.core.auth import create_session_manager
 from app.main import app
@@ -83,12 +94,13 @@ def test_cleaner_normalizes_source():
 @patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_message_counts_filtered')
 @patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_trends')
 @patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_urgent_alerts_data')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_overtime_alerts_data')
 @patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_top_questions_data')
 @patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_priority_conversations_data')
 @patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_daily_conversation_summary')
 @patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_ai_daily_stats')
 def test_dashboard_service_computes_correct_kpis(
-    mock_ai_daily, mock_daily, mock_priority, mock_top_q, mock_alerts, mock_trends, mock_counts, mock_summary
+    mock_ai_daily, mock_daily, mock_priority, mock_top_q, mock_overtime, mock_alerts, mock_trends, mock_counts, mock_summary
 ):
     clear_dashboard_cache()
     mock_summary.return_value = {
@@ -118,6 +130,7 @@ def test_dashboard_service_computes_correct_kpis(
         "aiFailures": 15
     }
     mock_alerts.return_value = []
+    mock_overtime.return_value = []
     mock_top_q.return_value = []
     mock_priority.return_value = []
     mock_daily.return_value = []
@@ -142,6 +155,223 @@ def test_dashboard_service_computes_correct_kpis(
         "ChatWidget": 1
     }
     assert kpi["averageResponseTimeMinutes"] == 15
+
+
+def test_prepare_question_items_cleans_noise_and_merges_duplicates():
+    raw_rows = [
+        {"question": " Học phí là bao nhiêu??? ", "source": "facebook"},
+        {"question": "hoc phi la bao nhieu", "source": "fb"},
+        {"question": "http://example.com/banner", "source": "zalooa"},
+        {"question": "Xin chào", "source": "chatwidget"},
+        {"question": "Lịch thi TOEIC khi nào ạ?", "source": "zalooa", "count": 2},
+    ]
+
+    items = prepare_question_items(raw_rows)
+
+    assert len(items) == 2
+    tuition_item = next(
+        item for item in items
+        if any("hoc phi" in variant["question"].lower() or "học phí" in variant["question"].lower() for variant in item["variants"])
+    )
+    schedule_item = next(item for item in items if "Lịch thi TOEIC" in item["question"])
+
+    assert tuition_item["count"] == 2
+    assert tuition_item["sourceCounts"]["Facebook"] == 2
+    assert schedule_item["count"] == 2
+
+
+def test_build_top_question_rows_uses_ai_groups(monkeypatch):
+    raw_rows = [
+        {"question": "Học phí là bao nhiêu?", "source": "facebook", "count": 2},
+        {"question": "Giá khóa học thế nào?", "source": "zalooa", "count": 3},
+        {"question": "Trung tâm ở đâu?", "source": "chatwidget", "count": 1},
+    ]
+
+    def fake_request_ai_question_groups(prompt: str) -> str:
+        assert "Học phí là bao nhiêu?" in prompt
+        return (
+            '{"groups":['
+            '{"question":"Học phí và chi phí khóa học là bao nhiêu?","itemIds":["q1","q2"]},'
+            '{"question":"Trung tâm ở đâu?","itemIds":["q3"]}'
+            ']}'
+        )
+
+    monkeypatch.setattr(dashboard_module, "request_ai_question_groups", fake_request_ai_question_groups)
+
+    rows, status, message = build_top_question_rows(raw_rows)
+
+    assert status == "ok"
+    assert message == ""
+    assert rows[0]["question"] == "Học phí và chi phí khóa học là bao nhiêu?"
+    assert rows[0]["count"] == 5
+    assert rows[0]["sourceQuestionCount"] == 2
+    assert {item["question"] for item in rows[0]["relatedQuestions"]} == {
+        "Học phí là bao nhiêu?",
+        "Giá khóa học thế nào?",
+    }
+
+
+def test_build_top_question_rows_uses_database_fallback_without_ai_result(monkeypatch):
+    raw_rows = [
+        {"question": "Học phí là bao nhiêu?", "source": "facebook", "count": 2},
+        {"question": "Giá khóa học thế nào?", "source": "zalooa", "count": 3},
+    ]
+
+    def fake_request_ai_question_groups(_: str) -> str:
+        raise QuestionGroupingAIError("quota exceeded")
+
+    monkeypatch.setattr(dashboard_module, "request_ai_question_groups", fake_request_ai_question_groups)
+
+    rows, status, message = build_top_question_rows(raw_rows)
+
+    assert status == "fallback"
+    assert "database" in message
+    assert rows[0]["question"] == "Học phí và chi phí khóa học là bao nhiêu?"
+    assert rows[0]["count"] == 5
+    assert rows[0]["aiGenerated"] is False
+
+
+def test_prepare_question_items_filters_reminder_announcements():
+    raw_rows = [
+        {
+            "question": "All [NHẮC LẠI: LỊCH HỌC PHỤ ĐẠO GIẢI ĐỀ CNTT CƠ BẢN THÁNG 5/2026] Ngày mai là buổi học phụ đạo đầu tiên",
+            "source": "facebook",
+            "count": 10,
+        },
+        {"question": "Dạ lịch thi tin học ạ", "source": "facebook", "count": 2},
+    ]
+
+    items = prepare_question_items(raw_rows)
+
+    assert len(items) == 1
+    assert items[0]["question"] == "Dạ lịch thi tin học ạ"
+
+
+def test_dashboard_top_question_uses_last_good_ai_result_when_current_ai_fails(monkeypatch, tmp_path):
+    clear_dashboard_cache()
+    monkeypatch.setattr(
+        dashboard_module,
+        "AI_QUESTION_LAST_GOOD_CACHE_FILE",
+        tmp_path / "dashboard_top_questions_last_good.json",
+    )
+    service = DashboardService()
+    raw_rows = [{"question": "Học phí là bao nhiêu?", "source": "facebook", "count": 1}]
+    responses = [
+        ([{"question": "Học phí khóa học là bao nhiêu?", "count": 1, "aiGenerated": True}], "ok", ""),
+        ([], "ai_overloaded", AI_OVERLOAD_MESSAGE),
+    ]
+    calls = []
+
+    def fake_cached_repo_call(*_args, **_kwargs):
+        return raw_rows
+
+    def fake_build_top_question_rows(_raw_rows):
+        calls.append("build")
+        return responses.pop(0)
+
+    monkeypatch.setattr(service, "_cached_repo_call", fake_cached_repo_call)
+    monkeypatch.setattr(dashboard_module, "build_top_question_rows", fake_build_top_question_rows)
+
+    first = service._get_cached_top_question_rows("2026-06-01", "2026-06-30")
+    assert dashboard_module.AI_QUESTION_LAST_GOOD_CACHE_FILE.exists()
+    clear_dashboard_cache()
+    second = service._get_cached_top_question_rows("2026-06-01", "2026-06-30")
+    third = service._get_cached_top_question_rows("2026-06-01", "2026-06-30")
+
+    assert first[1] == "ok"
+    assert second[1] == "stale"
+    assert second[0] == first[0]
+    assert third[1] == "stale"
+    assert calls == ["build", "build"]
+
+
+def test_dashboard_top_question_ignores_empty_last_good_cache(monkeypatch, tmp_path):
+    clear_dashboard_cache()
+    monkeypatch.setattr(
+        dashboard_module,
+        "AI_QUESTION_LAST_GOOD_CACHE_FILE",
+        tmp_path / "dashboard_top_questions_last_good.json",
+    )
+    service = DashboardService()
+    raw_rows = [{"question": "Học phí là bao nhiêu?", "source": "facebook", "count": 1}]
+
+    def fake_cached_repo_call(*_args, **_kwargs):
+        return raw_rows
+
+    def fake_build_top_question_rows(_raw_rows):
+        return [], "ai_overloaded", AI_OVERLOAD_MESSAGE
+
+    monkeypatch.setattr(service, "_cached_repo_call", fake_cached_repo_call)
+    monkeypatch.setattr(dashboard_module, "build_top_question_rows", fake_build_top_question_rows)
+
+    last_good_cache_key = dashboard_module.make_cache_key(
+        "top_questions_ai_last_good:all",
+        "2026-06-01",
+        "2026-06-30",
+        {},
+    )
+    dashboard_module.set_persistent_last_good_value(last_good_cache_key, ([], "ok", ""))
+
+    result = service._get_cached_top_question_rows("2026-06-01", "2026-06-30")
+
+    assert result == ([], "ai_overloaded", AI_OVERLOAD_MESSAGE)
+
+
+def test_dashboard_question_ai_budget_stays_under_fast_load_target():
+    total_budget = (
+        dashboard_module.GEMINI_PROVIDER_BUDGET_SECONDS
+        + dashboard_module.OPENAI_PROVIDER_BUDGET_SECONDS
+    )
+
+    assert total_budget <= 4.0
+    assert dashboard_module.DEFAULT_KPI_DATE_WINDOW_DAYS == 30
+    assert dashboard_module.QUESTION_RAW_ROW_LIMIT <= 6000
+    assert dashboard_module.QUESTION_ANALYSIS_ITEM_LIMIT <= 1200
+    assert dashboard_module.GEMINI_REQUEST_TIMEOUT_SECONDS <= dashboard_module.GEMINI_PROVIDER_BUDGET_SECONDS
+    assert dashboard_module.OPENAI_REQUEST_TIMEOUT_SECONDS <= dashboard_module.OPENAI_PROVIDER_BUDGET_SECONDS
+
+
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_conversation_summary')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_message_counts_filtered')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_trends')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_urgent_alerts_data')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_overtime_alerts_data')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_top_questions_data')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_priority_conversations_data')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_daily_conversation_summary')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_ai_daily_stats')
+def test_dashboard_service_defaults_unbounded_kpis_to_fast_date_window(
+    mock_ai_daily, mock_daily, mock_priority, mock_top_q, mock_overtime, mock_alerts, mock_trends, mock_counts, mock_summary
+):
+    clear_dashboard_cache()
+    mock_summary.return_value = {
+        "totalConversations": 0,
+        "newCustomers": 0,
+        "statusSummary": {"new": 0, "open": 0, "pending": 0, "closed": 0, "unknown": 0},
+        "sourceSummary": {"ZaloOA": 0, "ZaloBusiness": 0, "Facebook": 0, "ChatWidget": 0},
+        "averageResponseTimeMinutes": 0,
+    }
+    mock_counts.return_value = []
+    mock_trends.return_value = {}
+    mock_alerts.return_value = []
+    mock_overtime.return_value = []
+    mock_top_q.return_value = []
+    mock_priority.return_value = []
+    mock_daily.return_value = []
+    mock_ai_daily.return_value = []
+
+    DashboardService().get_kpis()
+
+    start_arg, end_arg = mock_summary.call_args.args[:2]
+    assert start_arg is not None
+    assert end_arg is not None
+    assert (
+        datetime.strptime(end_arg, "%Y-%m-%d") - datetime.strptime(start_arg, "%Y-%m-%d")
+    ).days == dashboard_module.DEFAULT_KPI_DATE_WINDOW_DAYS
+
+    assert mock_alerts.call_count == 1
+    assert mock_alerts.call_args.args[:2] == (start_arg, end_arg)
+    assert mock_overtime.call_count == 1
 
 # ==========================================
 # 3. Tests for API Endpoints
@@ -221,16 +451,23 @@ def test_api_close_conversation_missing_params():
     )
     assert response.status_code == 422
 
+def test_api_close_conversation_requires_login():
+    response = client.post("/api/conversations/close", json={"customerId": "123", "source": "Facebook"})
+    assert response.status_code == 401
+    assert response.json()["success"] is False
+    assert "Vui lòng đăng nhập" in response.json()["message"]
+
 @patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_conversation_summary')
 @patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_message_counts_filtered')
 @patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_trends')
 @patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_urgent_alerts_data')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_overtime_alerts_data')
 @patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_top_questions_data')
 @patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_priority_conversations_data')
 @patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_daily_conversation_summary')
 @patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_ai_daily_stats')
 def test_dashboard_service_priority_conversations_mapping(
-    mock_ai_daily, mock_daily, mock_priority, mock_top_q, mock_alerts, mock_trends, mock_counts, mock_summary
+    mock_ai_daily, mock_daily, mock_priority, mock_top_q, mock_overtime, mock_alerts, mock_trends, mock_counts, mock_summary
 ):
     clear_dashboard_cache()
     mock_summary.return_value = {
@@ -244,6 +481,8 @@ def test_dashboard_service_priority_conversations_mapping(
         {
             "id": 1,
             "customer_id": "C1",
+            "customer_name": "Mai Ly",
+            "phone_number": None,
             "status": "pending",
             "source": "facebook",
             "wait_mins": 30,
@@ -251,6 +490,8 @@ def test_dashboard_service_priority_conversations_mapping(
         {
             "id": 2,
             "customer_id": "C2",
+            "customer_name": None,
+            "phone_number": "0901000000",
             "status": "open",
             "source": "zalooa",
             "wait_mins": 90,
@@ -265,6 +506,7 @@ def test_dashboard_service_priority_conversations_mapping(
         "aiFailures": 0
     }
     mock_alerts.return_value = []
+    mock_overtime.return_value = []
     mock_top_q.return_value = []
     mock_daily.return_value = []
     mock_ai_daily.return_value = []
@@ -277,10 +519,14 @@ def test_dashboard_service_priority_conversations_mapping(
     
     # C1 (status pending) -> Chờ xử lý
     c1 = next(c for c in priority_convs if c["customerId"] == "C1")
+    assert c1["conversationId"] == 1
+    assert c1["customer"] == "Mai Ly"
+    assert c1["customerDisplayName"] == "Mai Ly"
     assert c1["status"] == "Chờ xử lý"
     
     # C2 (status open) -> Đang xử lý
     c2 = next(c for c in priority_convs if c["customerId"] == "C2")
+    assert c2["customer"] == "C2"
     assert c2["status"] == "Đang xử lý"
 
 @patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_channel_conversation_stats')

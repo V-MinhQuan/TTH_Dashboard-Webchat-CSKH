@@ -131,6 +131,8 @@ function normalizeDashboardKpiData(value: DashboardKpiPayload | null | undefined
     averageResponseTimeMinutes: toNumber(raw.averageResponseTimeMinutes),
     urgentAlerts: Array.isArray(raw.urgentAlerts) ? raw.urgentAlerts : [],
     topQuestions: Array.isArray(raw.topQuestions) ? raw.topQuestions : [],
+    topQuestionsStatus: typeof raw.topQuestionsStatus === "string" ? raw.topQuestionsStatus : "ok",
+    topQuestionsMessage: typeof raw.topQuestionsMessage === "string" ? raw.topQuestionsMessage : "",
     priorityConversations: Array.isArray(raw.priorityConversations) ? raw.priorityConversations : [],
     dailyTrends: Array.isArray(raw.dailyTrends)
       ? raw.dailyTrends
@@ -301,6 +303,7 @@ export async function getDashboardKpi(params?: {
   topic?: string;
   conversationStatus?: string;
   aiStatus?: string;
+  forceRefresh?: boolean;
 }): Promise<DashboardKpiData> {
   const url = buildApiUrl("/api/dashboard/kpi");
 
@@ -322,8 +325,14 @@ export async function getDashboardKpi(params?: {
   if (params?.aiStatus && params.aiStatus !== "Tất cả") {
     url.searchParams.append("aiStatus", params.aiStatus);
   }
+  if (params?.forceRefresh) {
+    url.searchParams.append("forceRefresh", "true");
+  }
 
-  const resJson = await fetchApiJson<APIResponse<DashboardKpiPayload>>(url);
+  const resJson = await fetchApiJson<APIResponse<DashboardKpiPayload>>(
+    url,
+    params?.forceRefresh ? { cache: false } : {},
+  );
 
   if (!resJson.success) {
     throw new Error(resJson.message || "Không thể tải dữ liệu Dashboard. Vui lòng kiểm tra lại cấu hình hoặc kết nối.");
@@ -370,24 +379,32 @@ export async function getChannelAnalytics(params?: {
   return resJson.data;
 }
 
+export interface CloseConversationTarget {
+  conversationId?: number | string | null;
+  customerId?: string | null;
+  source?: string | null;
+}
+
 /**
- * Gọi API đóng cuộc hội thoại (đánh dấu là đã xử lý)
- * @param customerId ID của khách hàng
- * @param source Nguồn kênh của cuộc hội thoại
+ * Gọi API đóng cuộc hội thoại (đánh dấu là đã xử lý).
+ * Ưu tiên conversationId để tránh đóng nhầm khi cùng customer/source có nhiều hội thoại.
  */
-export async function closeConversation(customerId: string, source: string): Promise<boolean> {
+export async function closeConversation(target: CloseConversationTarget | string, source?: string): Promise<boolean> {
+  const payload = typeof target === "string"
+    ? { customerId: target, source }
+    : Number.isInteger(Number(target.conversationId)) && Number(target.conversationId) > 0
+      ? { conversationId: Number(target.conversationId) }
+      : { customerId: target.customerId, source: target.source };
+
   const resJson = await fetchApiJson<{ success: boolean; message?: string }>(
     buildApiUrl("/api/conversations/close"),
     {
       method: "POST",
       cache: false,
-      body: JSON.stringify({ customerId, source }),
+      body: JSON.stringify(payload),
     },
   );
-  if (!resJson.success) {
-    throw new Error(resJson.message || "Không thể cập nhật trạng thái cuộc hội thoại.");
-  }
-
+  if (!resJson.success) throw new Error(resJson.message || "Không thể cập nhật trạng thái cuộc hội thoại.");
   clearApiCache();
   return true;
 }

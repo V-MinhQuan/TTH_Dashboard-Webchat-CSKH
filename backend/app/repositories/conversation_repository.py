@@ -151,6 +151,8 @@ class ConversationRepository:
         source: str,
         marked_by: str,
     ) -> Dict[str, int]:
+        source_values = self._source_match_values(source)
+        placeholders = ", ".join("?" for _ in source_values)
         with self._connection_factory() as conn:
             try:
                 row = execute_one(
@@ -159,11 +161,11 @@ class ConversationRepository:
                     SELECT TOP 1 c.Id AS id
                     FROM dbo.WebChat_Conversations c WITH (UPDLOCK, HOLDLOCK)
                     WHERE c.CustomerId = ?
-                      AND LOWER(LTRIM(RTRIM(c.Source))) = LOWER(LTRIM(RTRIM(?)))
+                      AND LOWER(LTRIM(RTRIM(c.Source))) IN ({placeholders})
                       AND {valid_conversation_condition("c")}
                     ORDER BY c.LastCustomerMessageAt DESC, c.LastMessageAt DESC, c.Id DESC
                     """,
-                    [customer_id, source],
+                    [customer_id, *source_values],
                 )
                 if not row.get("id"):
                     result = self._close_result(1, 0, 0)
@@ -243,6 +245,26 @@ class ConversationRepository:
             "affectedCount": affected,
             "alreadyClosedCount": matched - affected,
         }
+
+    @staticmethod
+    def _source_match_values(source: str) -> tuple[str, ...]:
+        normalized = str(source or "").strip().lower()
+        values = {
+            "zalo oa": ("zalooa", "zalo"),
+            "zalooa": ("zalooa", "zalo"),
+            "zalo": ("zalooa", "zalo"),
+            "zalo business": ("zalobusiness", "zalobiz"),
+            "zalobusiness": ("zalobusiness", "zalobiz"),
+            "zalobiz": ("zalobusiness", "zalobiz"),
+            "facebook": ("facebook", "fb", "messenger"),
+            "fb": ("facebook", "fb", "messenger"),
+            "messenger": ("facebook", "fb", "messenger"),
+            "chat widget": ("chatwidget", "website", "web"),
+            "chatwidget": ("chatwidget", "website", "web"),
+            "website": ("chatwidget", "website", "web"),
+            "web": ("chatwidget", "website", "web"),
+        }.get(normalized, (normalized,))
+        return tuple(dict.fromkeys(value for value in values if value))
 
     @staticmethod
     def _list_from_clause() -> str:

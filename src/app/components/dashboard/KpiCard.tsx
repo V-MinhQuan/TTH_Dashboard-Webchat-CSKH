@@ -6,9 +6,7 @@ const ORANGE = "#D73C01";
 
 const WARN_ICON_BG = "#FFF4EE";
 
-const POSITIVE_BG = "#EAF8F1";
 const POSITIVE_TEXT = "#228A61";
-const NEGATIVE_BG = "#FFF1F1";
 const NEGATIVE_TEXT = "#B42318";
 
 interface KpiCardProps {
@@ -84,9 +82,8 @@ export function KpiCard({
           <span
             style={{
               fontSize: "11px",
-              padding: "4px 10px",
-              borderRadius: "20px",
-              backgroundColor: change > 0 ? POSITIVE_BG : change < 0 ? NEGATIVE_BG : "#f1f5f9",
+              padding: 0,
+              backgroundColor: "transparent",
               color: change > 0 ? POSITIVE_TEXT : change < 0 ? NEGATIVE_TEXT : "#64748b",
               fontWeight: 600,
               display: "inline-flex",

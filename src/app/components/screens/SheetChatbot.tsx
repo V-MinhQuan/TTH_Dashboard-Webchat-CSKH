@@ -11,11 +11,11 @@ import {
   updateSheetChatbotStatus,
 } from "../../services/sheetChatbotApi";
 
-const NAVY    = "#003865";
-const ORANGE  = "#D73C01";
+const NAVY = "#003865";
+const ORANGE = "#D73C01";
 const ORANGE_50 = "#FFF4EE";
-const AMBER_50  = "#FFF7E6";
-const AMBER_TEXT= "#B7791F";
+const AMBER_50 = "#FFF7E6";
+const AMBER_TEXT = "#B7791F";
 
 type SheetStatus = "Chờ xử lý" | "Đã duyệt" | "Cần chỉnh sửa" | "Từ chối";
 type RiskLevel = "Thấp" | "Trung bình" | "Cao";
@@ -35,16 +35,16 @@ interface SheetRow {
 }
 
 const statusConfig: Record<SheetStatus, { bg: string; color: string; icon: typeof CheckCircle2 }> = {
-  "Chờ xử lý":     { bg: ORANGE_50, color: ORANGE, icon: Clock },
-  "Đã duyệt":      { bg: "#dbeafe", color: "#2563eb", icon: CheckCircle2 },
+  "Chờ xử lý": { bg: ORANGE_50, color: ORANGE, icon: Clock },
+  "Đã duyệt": { bg: "#dbeafe", color: "#2563eb", icon: CheckCircle2 },
   "Cần chỉnh sửa": { bg: "#f3e8ff", color: "#7c3aed", icon: Edit2 },
-  "Từ chối":       { bg: "#fee2e2", color: "#ef4444", icon: XCircle },
+  "Từ chối": { bg: "#fee2e2", color: "#ef4444", icon: XCircle },
 };
 
 const riskConfig: Record<RiskLevel, { bg: string; color: string }> = {
-  Thấp:        { bg: "#EAF8F1", color: "#16a34a" },
-  "Trung bình": { bg: AMBER_50,  color: AMBER_TEXT },
-  Cao:         { bg: ORANGE_50, color: ORANGE },
+  Thấp: { bg: "#EAF8F1", color: "#16a34a" },
+  "Trung bình": { bg: AMBER_50, color: AMBER_TEXT },
+  Cao: { bg: ORANGE_50, color: ORANGE },
 };
 
 function displayFailureSource(source: string) {
@@ -229,106 +229,120 @@ export function SheetChatbot() {
         <div style={{ padding: "48px", textAlign: "center", color: "rgba(0,62,154,0.5)", fontSize: "13px" }}>Đang tải thư viện phản hồi từ database...</div>
       ) : (
         <>
-          {/* KPI Summary */}
+          {/* KPI Summary – horizontal inline layout */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "12px", marginBottom: "20px" }}>
             {[
               { label: "Tổng dữ liệu", value: rows.length, color: NAVY },
-              { label: "Chờ xử lý", value: kpiCounts.pending, color: ORANGE, warning: true },
+              { label: "Chờ xử lý", value: kpiCounts.pending, color: ORANGE },
               { label: "Đã duyệt", value: kpiCounts.approved, color: "#2563eb" },
               { label: "Từ chối", value: kpiCounts.rejected, color: "#ef4444" },
             ].map(kpi => (
-              <div key={kpi.label} style={{ backgroundColor: "#fff", borderRadius: "14px", padding: "18px 20px", border: kpi.warning ? `1px solid ${ORANGE}25` : "1px solid rgba(0,62,154,0.07)", borderLeft: kpi.warning ? `4px solid ${ORANGE}` : `4px solid ${kpi.color}`, boxShadow: "0 2px 8px rgba(0,62,154,0.05)" }}>
-                <div style={{ fontSize: "24px", fontWeight: 700, color: kpi.color, marginBottom: "4px" }}>{kpi.value}</div>
-                <div style={{ fontSize: "12px", color: "rgba(0,62,154,0.6)" }}>{kpi.label}</div>
+              <div
+                key={kpi.label}
+                style={{
+                  backgroundColor: "#fff",
+                  borderRadius: "12px",
+                  padding: "14px 18px",
+                  border: "1px solid rgba(0,62,154,0.07)",
+                  borderLeft: `4px solid ${kpi.color}`,
+                  boxShadow: "0 2px 8px rgba(0,62,154,0.05)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "14px",
+                }}
+              >
+                <span style={{ fontSize: "26px", fontWeight: 700, color: kpi.color, lineHeight: 1, flexShrink: 0 }}>
+                  {kpi.value}
+                </span>
+                <span style={{ fontSize: "12px", fontWeight: 500, color: "rgba(0,62,154,0.6)", lineHeight: 1.3, alignSelf: "center" }}>
+                  {kpi.label}
+                </span>
               </div>
             ))}
           </div>
 
-      {/* Table */}
-      <div style={{ backgroundColor: "#fff", borderRadius: "16px", border: "1px solid rgba(0,62,154,0.07)", overflow: "hidden", flex: 1, minHeight: 0 }}>
-        <div style={{ overflow: "auto", height: "100%" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
-            <thead>
-              <tr style={{ backgroundColor: "#f8fafc" }}>
-                {["Thời gian thêm", "Người thêm", "Câu hỏi", "Câu trả lời đúng", "Chủ đề", "Nguồn", "Mức rủi ro", "Trạng thái", "Hành động"].map(h => (
-                  <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontWeight: 600, color: "rgba(0,62,154,0.5)", fontSize: "11px", letterSpacing: "0.04em", borderBottom: "1px solid rgba(0,62,154,0.07)", whiteSpace: "nowrap", position: "sticky", top: 0, zIndex: 1, backgroundColor: "#f8fafc" }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {(loadError || filtered.length === 0) && (
-                <tr>
-                  <td colSpan={9} style={{ padding: "40px", textAlign: "center", color: "rgba(0,62,154,0.4)", fontSize: "13px" }}>
-                    {loadError || "Không có dữ liệu phù hợp"}
-                  </td>
-                </tr>
-              )}
-              {!loadError && filtered.map(row => {
-                const sc = statusConfig[row.status] || { bg: "#f1f5f9", color: "#64748b", icon: Clock };
-                const rc = riskConfig[row.risk] || riskConfig["Thấp"];
-                const StatusIcon = sc.icon;
-                return (
-                  <tr key={row.id} style={{ borderBottom: "1px solid rgba(0,62,154,0.04)" }}
-                    onMouseEnter={e => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "#f8fafc"}
-                    onMouseLeave={e => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "transparent"}
-                  >
-                    <td style={{ padding: "12px 14px", color: "rgba(0,62,154,0.55)", whiteSpace: "nowrap" }}>{formatAddedAt(row.addedAt)}</td>
-                    <td style={{ padding: "12px 14px", color: NAVY, fontWeight: 600, whiteSpace: "nowrap" }}>{row.addedBy}</td>
-                    <td style={{ padding: "12px 14px", maxWidth: "200px" }}>
-                      <div style={{ color: NAVY, fontWeight: 500, lineHeight: 1.4, fontSize: "12px" }}>{row.question}</div>
-                    </td>
-                    <td style={{ padding: "12px 14px", maxWidth: "200px" }}>
-                      <div style={{ color: "rgba(0,62,154,0.7)", lineHeight: 1.4, fontSize: "12px" }}>{row.correctAnswer.slice(0, 80)}{row.correctAnswer.length > 80 ? "..." : ""}</div>
-                    </td>
-                    <td style={{ padding: "12px 14px" }}>
-                      <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: "#eff6ff", color: "#3b82f6", whiteSpace: "nowrap" }}>{row.topic}</span>
-                    </td>
-                    <td style={{ padding: "12px 14px" }}>
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "4px", whiteSpace: "nowrap" }}>
-                        <ErrorSourceBadge source={errorOriginForRow(row)} />
-                        <span style={{ fontSize: "10px", color: "rgba(0,62,154,0.6)" }}>{displayFailureSource(row.source)}</span>
-                      </div>
-                    </td>
-                    <td style={{ padding: "12px 14px" }}>
-                      <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: rc.bg, color: rc.color, fontWeight: 600 }}>{row.risk}</span>
-                    </td>
-                    <td style={{ padding: "12px 14px" }}>
-                      <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: sc.bg, color: sc.color, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "3px", whiteSpace: "nowrap" }}>
-                        <StatusIcon size={10} /> {row.status}
-                      </span>
-                    </td>
-                    <td style={{ padding: "12px 14px" }}>
-                      {role === "manager" ? (
-                        <div style={{ display: "flex", gap: "5px", flexWrap: "wrap" }}>
-                          {row.status === "Chờ xử lý" || row.status === "Cần chỉnh sửa" ? (
-                            <>
-                              <button onClick={() => updateStatus(row.id, "Đã duyệt")} style={{ padding: "3px 9px", borderRadius: "6px", border: "1px solid #bbf7d0", background: "#f0fdf4", color: "#16a34a", cursor: "pointer", fontSize: "10px", fontWeight: 600 }}>Duyệt</button>
-                              <button onClick={() => { setEditingRow(row); setShowAddModal(true); }} style={{ padding: "3px 9px", borderRadius: "6px", border: "1px solid #e9d5ff", background: "#faf5ff", color: "#7c3aed", cursor: "pointer", fontSize: "10px", fontWeight: 600 }}>Chỉnh sửa</button>
-                              <button onClick={() => updateStatus(row.id, "Từ chối")} style={{ padding: "3px 9px", borderRadius: "6px", border: "1px solid rgba(0,62,154,0.12)", background: "#f8fafc", color: "#64748b", cursor: "pointer", fontSize: "10px", fontWeight: 600 }}>Từ chối</button>
-                            </>
-                          ) : row.status === "Đã duyệt" ? (
-                            <button onClick={() => handleMergeFaq(row.id)} style={{ padding: "3px 9px", borderRadius: "6px", border: `1px solid ${NAVY}20`, background: "#f8fafc", color: NAVY, cursor: "pointer", fontSize: "10px", fontWeight: 600 }}>Gộp FAQ</button>
-                          ) : (
-                            <span style={{ fontSize: "11px", color: "rgba(0,62,154,0.4)" }}>—</span>
-                          )}
-                        </div>
-                      ) : (
-                        <div>
-                          {row.status === "Cần chỉnh sửa" ? (
-                            <button onClick={() => { setEditingRow(row); setShowAddModal(true); }} style={{ padding: "3px 9px", borderRadius: "6px", border: `1px solid #e9d5ff`, background: "#faf5ff", color: "#7c3aed", cursor: "pointer", fontSize: "10px", fontWeight: 600 }}>Chỉnh sửa</button>
-                          ) : (
-                            <span style={{ fontSize: "11px", color: "rgba(0,62,154,0.4)" }}>{row.status}</span>
-                          )}
-                        </div>
-                      )}
-                    </td>
+          {/* Table */}
+          <div style={{ backgroundColor: "#fff", borderRadius: "16px", border: "1px solid rgba(0,62,154,0.07)", overflow: "hidden", flex: 1, minHeight: 0 }}>
+            <div style={{ overflow: "auto", height: "100%" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+                <thead>
+                  <tr style={{ backgroundColor: "#f8fafc" }}>
+                    {["Thời gian thêm", "Người thêm", "Câu hỏi", "Câu trả lời đúng", "Chủ đề", "Nguồn", "Mức rủi ro", "Trạng thái", "Hành động"].map(h => (
+                      <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontWeight: 600, color: "rgba(0,62,154,0.5)", fontSize: "11px", letterSpacing: "0.04em", borderBottom: "1px solid rgba(0,62,154,0.07)", whiteSpace: "nowrap", position: "sticky", top: 0, zIndex: 1, backgroundColor: "#f8fafc" }}>{h}</th>
+                    ))}
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                </thead>
+                <tbody>
+                  {(loadError || filtered.length === 0) && (
+                    <tr>
+                      <td colSpan={9} style={{ padding: "40px", textAlign: "center", color: "rgba(0,62,154,0.4)", fontSize: "13px" }}>
+                        {loadError || "Không có dữ liệu phù hợp"}
+                      </td>
+                    </tr>
+                  )}
+                  {!loadError && filtered.map(row => {
+                    const sc = statusConfig[row.status] || { bg: "#f1f5f9", color: "#64748b", icon: Clock };
+                    const rc = riskConfig[row.risk] || riskConfig["Thấp"];
+                    const StatusIcon = sc.icon;
+                    return (
+                      <tr key={row.id} style={{ borderBottom: "1px solid rgba(0,62,154,0.04)" }}
+                        onMouseEnter={e => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "#f8fafc"}
+                        onMouseLeave={e => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "transparent"}
+                      >
+                        <td style={{ padding: "12px 14px", color: "rgba(0,62,154,0.55)", whiteSpace: "nowrap" }}>{formatAddedAt(row.addedAt)}</td>
+                        <td style={{ padding: "12px 14px", color: NAVY, fontWeight: 600, whiteSpace: "nowrap" }}>{row.addedBy}</td>
+                        <td className="flic-td-left" style={{ padding: "12px 14px", maxWidth: "200px" }}>
+                          <div style={{ color: NAVY, fontWeight: 500, lineHeight: 1.4, fontSize: "12px" }}>{row.question}</div>
+                        </td>
+                        <td className="flic-td-left" style={{ padding: "12px 14px", maxWidth: "200px" }}>
+                          <div style={{ color: "rgba(0,62,154,0.7)", lineHeight: 1.4, fontSize: "12px" }}>{row.correctAnswer.slice(0, 80)}{row.correctAnswer.length > 80 ? "..." : ""}</div>
+                        </td>
+                        <td style={{ padding: "12px 14px" }}>
+                          <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: "#eff6ff", color: "#3b82f6", whiteSpace: "nowrap" }}>{row.topic}</span>
+                        </td>
+                        <td style={{ padding: "12px 14px" }}>
+                          <span style={{ fontSize: "10px", color: "rgba(0,62,154,0.6)", whiteSpace: "nowrap" }}>{displayFailureSource(row.source)}</span>
+                        </td>
+                        <td style={{ padding: "12px 14px" }}>
+                          <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: rc.bg, color: rc.color, fontWeight: 600 }}>{row.risk}</span>
+                        </td>
+                        <td style={{ padding: "12px 14px" }}>
+                          <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: sc.bg, color: sc.color, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "3px", whiteSpace: "nowrap" }}>
+                            <StatusIcon size={10} /> {row.status}
+                          </span>
+                        </td>
+                        <td style={{ padding: "12px 14px" }}>
+                          {role === "manager" ? (
+                            <div style={{ display: "flex", gap: "5px", flexWrap: "wrap" }}>
+                              {row.status === "Chờ xử lý" || row.status === "Cần chỉnh sửa" ? (
+                                <>
+                                  <button onClick={() => updateStatus(row.id, "Đã duyệt")} style={{ padding: "3px 9px", borderRadius: "6px", border: "1px solid #bbf7d0", background: "#f0fdf4", color: "#16a34a", cursor: "pointer", fontSize: "10px", fontWeight: 600 }}>Duyệt</button>
+                                  <button onClick={() => { setEditingRow(row); setShowAddModal(true); }} style={{ padding: "3px 9px", borderRadius: "6px", border: "1px solid #e9d5ff", background: "#faf5ff", color: "#7c3aed", cursor: "pointer", fontSize: "10px", fontWeight: 600 }}>Chỉnh sửa</button>
+                                  <button onClick={() => updateStatus(row.id, "Từ chối")} style={{ padding: "3px 9px", borderRadius: "6px", border: "1px solid rgba(0,62,154,0.12)", background: "#f8fafc", color: "#64748b", cursor: "pointer", fontSize: "10px", fontWeight: 600 }}>Từ chối</button>
+                                </>
+                              ) : row.status === "Đã duyệt" ? (
+                                <button onClick={() => handleMergeFaq(row.id)} style={{ padding: "3px 9px", borderRadius: "6px", border: `1px solid ${NAVY}20`, background: "#f8fafc", color: NAVY, cursor: "pointer", fontSize: "10px", fontWeight: 600 }}>Gộp FAQ</button>
+                              ) : (
+                                <span style={{ fontSize: "11px", color: "rgba(0,62,154,0.4)" }}>—</span>
+                              )}
+                            </div>
+                          ) : (
+                            <div>
+                              {row.status === "Cần chỉnh sửa" ? (
+                                <button onClick={() => { setEditingRow(row); setShowAddModal(true); }} style={{ padding: "3px 9px", borderRadius: "6px", border: `1px solid #e9d5ff`, background: "#faf5ff", color: "#7c3aed", cursor: "pointer", fontSize: "10px", fontWeight: 600 }}>Chỉnh sửa</button>
+                              ) : (
+                                <span style={{ fontSize: "11px", color: "rgba(0,62,154,0.4)" }}>{row.status}</span>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </>
       )}
 

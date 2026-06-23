@@ -380,7 +380,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
   const negPctStr = summaryData?.summary?.total ? Math.round((summaryData.summary.negative / summaryData.summary.total) * 100) + "%" : "0%";
   const satisfactionValue = summaryData?.avgSatisfaction ? (summaryData.avgSatisfaction > 5 ? summaryData.avgSatisfaction / 20 : summaryData.avgSatisfaction) : 0;
   const satisfactionStr = satisfactionValue > 0 ? satisfactionValue.toFixed(1) + "/5" : "0/5";
-  const satisfactionPctLabel = satisfactionValue > 0 ? `${Math.round(satisfactionValue * 20)} điểm %` : "0 điểm %";
+  const satisfactionPctLabel = satisfactionValue > 0 ? `${Math.round(satisfactionValue * 20)} điểm ` : "0 điểm %";
 
   // Dữ liệu chủ đề từ API thực — hiển thị empty state nếu chưa có dữ liệu
   const dynamicTopicData = topicSentiment && topicSentiment.length > 0 ? topicSentiment : [];
@@ -717,24 +717,37 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
             <thead><tr style={{ backgroundColor: "#f8fafc" }}>
-              {["Khách hàng", "Nội dung đại diện", "Thời gian", "Chủ đề", "Kênh", "Cảm xúc", "Điểm", "Hành động"].map((header) => (
-                <th key={header} className="flic-th">{header}</th>
+              {["Khách hàng", "Nội dung đại diện", "Chủ đề", "Kênh", "Cảm xúc", "Thời gian", "Điểm"].map((header) => (
+                <th key={header} style={{ padding: "10px 14px", textAlign: "left", fontWeight: 600, color: "rgba(0,56,101,0.5)", fontSize: "10px", letterSpacing: "0.04em", borderBottom: "1px solid rgba(0,56,101,0.06)", whiteSpace: "nowrap" }}>{header}</th>
               ))}
             </tr></thead>
             <tbody>
-              {positiveLoading && <tr><td colSpan={8} style={{ padding: "22px", textAlign: "center", color: "rgba(0,56,101,0.55)" }}>Đang tải trang {positivePage}...</td></tr>}
-              {!positiveLoading && positiveError && <tr><td colSpan={8} style={{ padding: "22px", textAlign: "center", color: "#b42318" }}>{positiveError}</td></tr>}
-              {!positiveLoading && !positiveError && positiveConversations.length === 0 && <tr><td colSpan={8} style={{ padding: "22px", textAlign: "center", color: "rgba(0,56,101,0.55)" }}>Chưa có dữ liệu hội thoại tích cực trong khoảng lọc.</td></tr>}
+              {positiveLoading && <tr><td colSpan={7} style={{ padding: "22px", textAlign: "center", color: "rgba(0,56,101,0.55)" }}>Đang tải trang {positivePage}...</td></tr>}
+              {!positiveLoading && positiveError && <tr><td colSpan={7} style={{ padding: "22px", textAlign: "center", color: "#b42318" }}>{positiveError}</td></tr>}
+              {!positiveLoading && !positiveError && positiveConversations.length === 0 && <tr><td colSpan={7} style={{ padding: "22px", textAlign: "center", color: "rgba(0,56,101,0.55)" }}>Chưa có dữ liệu hội thoại tích cực trong khoảng lọc.</td></tr>}
               {!positiveLoading && !positiveError && positiveConversations.map((conversation) => (
-                <tr key={conversation.id} style={{ borderBottom: "1px solid rgba(0,56,101,0.04)" }}>
-                  <td style={{ padding: "12px 14px", color: NAVY, fontWeight: 600 }}>{conversation.customer}{conversation.customerReference && <div style={{ fontSize: "10px", color: "rgba(0,56,101,0.45)" }}>{conversation.customerReference}</div>}</td>
-                  <td style={{ padding: "12px 14px", maxWidth: "300px", color: "rgba(0,56,101,0.72)" }}>{conversation.content}</td>
-                  <td style={{ padding: "12px 14px", whiteSpace: "nowrap" }}>{conversation.messageAt ? new Date(conversation.messageAt).toLocaleString("vi-VN") : "Chưa xác định"}</td>
-                  <td style={{ padding: "12px 14px" }}>{conversation.topic}</td>
-                  <td style={{ padding: "12px 14px" }}>{conversation.channel}</td>
-                  <td style={{ padding: "12px 14px", textAlign: "center" }}><span style={{ padding: "2px 8px", borderRadius: "999px", background: "#ecfdf3", color: "#16794f" }}>{conversation.label}</span></td>
-                  <td style={{ padding: "12px 14px", textAlign: "center" }}>{conversation.score === null ? "Chưa có dữ liệu" : conversation.score.toFixed(2)}</td>
-                  <td style={{ padding: "12px 14px", textAlign: "center" }}><button type="button" onClick={() => { sessionStorage.setItem("dashboard_open_conversation_id", String(conversation.conversationId)); onNavigate("conversation"); }} style={{ padding: "4px 9px", borderRadius: "6px", border: "1px solid rgba(0,56,101,0.16)", background: "#fff", color: NAVY, cursor: "pointer" }}>Xem chi tiết</button></td>
+                <tr
+                  key={conversation.id}
+                  style={{ borderBottom: "1px solid rgba(0,56,101,0.04)" }}
+                  onMouseEnter={(e) => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "#fafbfc"}
+                  onMouseLeave={(e) => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "transparent"}
+                >
+                  <td style={{ padding: "12px 14px" }}>
+                    <div style={{ fontWeight: 600, color: NAVY, fontSize: "12px" }}>{conversation.customer}</div>
+                    {conversation.customerReference && <div style={{ fontSize: "10px", color: "rgba(0,56,101,0.4)", fontFamily: "monospace", marginTop: "2px" }}>{conversation.customerReference}</div>}
+                  </td>
+                  <td className="flic-td-left" style={{ padding: "12px 14px", maxWidth: "240px" }}>
+                    <div style={{ fontSize: "12px", color: "rgba(0,56,101,0.7)", lineHeight: 1.5, fontStyle: "italic" }}>"{conversation.content}"</div>
+                  </td>
+                  <td style={{ padding: "12px 14px", maxWidth: "150px" }}>
+                    <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: "#eff6ff", color: "#3b82f6", display: "inline-block", wordBreak: "break-word" }}>{conversation.topic}</span>
+                  </td>
+                  <td style={{ padding: "12px 14px", color: "rgba(0,56,101,0.65)", whiteSpace: "nowrap" }}>{conversation.channel}</td>
+                  <td style={{ padding: "12px 14px" }}>
+                    <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: "#ecfdf3", color: "#16794f", fontWeight: 600, whiteSpace: "nowrap", display: "inline-block" }}>{conversation.label}</span>
+                  </td>
+                  <td style={{ padding: "12px 14px", color: "rgba(0,56,101,0.65)", whiteSpace: "nowrap" }}>{conversation.messageAt ? new Date(conversation.messageAt).toLocaleString("vi-VN") : "Chưa xác định"}</td>
+                  <td style={{ padding: "12px 14px", color: NAVY, fontWeight: 600, whiteSpace: "nowrap" }}>{conversation.score === null ? "Chưa có dữ liệu" : conversation.score.toFixed(2)}</td>
                 </tr>
               ))}
             </tbody>
@@ -849,7 +862,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
                       <div style={{ fontWeight: 600, color: NAVY, fontSize: "12px" }}>{conv.customer}</div>
                       {conv.customerReference && <div style={{ fontSize: "10px", color: "rgba(0,56,101,0.4)", fontFamily: "monospace", marginTop: "2px" }}>{conv.customerReference}</div>}
                     </td>
-                    <td style={{ padding: "12px 14px", maxWidth: "240px" }}>
+                    <td className="flic-td-left" style={{ padding: "12px 14px", maxWidth: "240px" }}>
                       <div style={{ fontSize: "12px", color: "rgba(0,56,101,0.7)", lineHeight: 1.5, fontStyle: "italic" }}>"{conv.complaint}"</div>
                     </td>
                     <td style={{ padding: "12px 14px", maxWidth: "150px" }}>

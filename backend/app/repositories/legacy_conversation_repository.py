@@ -718,12 +718,24 @@ class ConversationRepository:
                 topic,
                 ai_status,
             )
+            conditions.append(f"""
+                EXISTS (
+                  SELECT 1
+                  FROM WebChat_MessageLogs customer_msg
+                  WHERE customer_msg.FromHost = 0
+                    AND {valid_message_condition("customer_msg")}
+                    AND customer_msg.TextContent IS NOT NULL
+                    AND CAST(customer_msg.SenderId AS NVARCHAR(255)) = CAST(c.CustomerId AS NVARCHAR(255))
+                    AND {self._normalized_source_expr('customer_msg.Source')} = {self._normalized_source_expr('c.Source')}
+                )
+            """)
 
             query = f"""
                 SELECT TOP {int(limit)}
                   c.Id AS id,
                   c.CustomerId AS customer_id,
                   customerInfo.customer_name,
+                  CAST(NULL AS NVARCHAR(50)) AS phone_number,
                   c.Source AS source,
                   CASE
                     WHEN c.LastHostMessageAt IS NULL OR c.LastCustomerMessageAt > c.LastHostMessageAt THEN 'pending'
@@ -734,7 +746,8 @@ class ConversationRepository:
                 OUTER APPLY (
                   SELECT MAX(NULLIF(LTRIM(RTRIM(u.DisplayName)), N'')) AS customer_name
                   FROM WebChat_Messagelogs_User_Info u
-                  WHERE u.SenderId = c.CustomerId AND u.Source = c.Source
+                  WHERE CAST(u.SenderId AS NVARCHAR(255)) = CAST(c.CustomerId AS NVARCHAR(255))
+                    AND {self._normalized_source_expr('u.Source')} = {self._normalized_source_expr('c.Source')}
                 ) customerInfo
                 LEFT JOIN WebChat_ConversationStatus s
                   ON c.CustomerId = s.CustomerId AND c.Source = s.Source
@@ -1446,79 +1459,117 @@ class ConversationRepository:
         finally:
             conn.close()
 
+    def _execute_overtime_alerts_query(self, cursor, start_date=None, end_date=None, limit=100):
+        try:
+            limit = int(limit or 100)
+        except (TypeError, ValueError):
+            limit = 100
+        limit = max(1, min(limit, 200))
+
+        conditions = [
+            valid_conversation_condition("c"),
+            "c.LastCustomerMessageAt IS NOT NULL",
+            "(s.NoResponseNeeded IS NULL OR s.NoResponseNeeded = 0 OR c.LastCustomerMessageAt > s.MarkedAt)",
+            "c.LastMessageId > 0",
+            "(c.LastHostMessageAt IS NULL OR c.LastCustomerMessageAt > c.LastHostMessageAt)",
+            "DATEDIFF(MINUTE, c.LastCustomerMessageAt, @dbNow) > 600",
+        ]
+        params = []
+
+        if start_date:
+            conditions.append("c.LastCustomerMessageAt >= %s")
+            params.append(start_date)
+
+        if end_date:
+            conditions.append("c.LastCustomerMessageAt <= %s")
+            params.append(f"{end_date} 23:59:59.999")
+
+        where_sql = " AND ".join(conditions)
+
+        query = f"""
+            DECLARE @dbNow DATETIME;
+            SET @dbNow = GETDATE();
+
+            WITH OvertimeConversations AS (
+              SELECT TOP ({limit})
+                c.Id AS id,
+                c.CustomerId AS customer_id,
+                c.Source AS source,
+                c.LastCustomerMessageAt AS last_customer_msg_at,
+                c.LastHostMessageAt AS last_host_msg_at,
+                DATEDIFF(MINUTE, c.LastCustomerMessageAt, @dbNow) AS wait_mins
+              FROM WebChat_Conversations c
+              OUTER APPLY (
+                SELECT TOP 1
+                  status_meta.NoResponseNeeded,
+                  status_meta.MarkedAt
+                FROM WebChat_ConversationStatus status_meta
+                WHERE CAST(status_meta.CustomerId AS NVARCHAR(255)) = CAST(c.CustomerId AS NVARCHAR(255))
+                  AND {self._normalized_source_expr('status_meta.Source')} = {self._normalized_source_expr('c.Source')}
+                ORDER BY CASE WHEN status_meta.MarkedAt IS NULL THEN 0 ELSE 1 END DESC, status_meta.MarkedAt DESC
+              ) s
+              WHERE {where_sql}
+              ORDER BY DATEDIFF(MINUTE, c.LastCustomerMessageAt, @dbNow) DESC, c.LastCustomerMessageAt ASC
+            )
+            SELECT
+              o.id,
+              o.customer_id,
+              o.source,
+              o.last_customer_msg_at,
+              o.last_host_msg_at,
+              u.DisplayName AS customer_name,
+              cust.TextContent AS last_cust_text,
+              ai.TextContent AS last_ai_text,
+              'overtime' AS alert_type,
+              o.wait_mins
+            FROM OvertimeConversations o
+            OUTER APPLY (
+              SELECT TOP 1 user_info.DisplayName
+              FROM WebChat_Messagelogs_User_Info user_info
+              WHERE CAST(user_info.SenderId AS NVARCHAR(255)) = CAST(o.customer_id AS NVARCHAR(255))
+                AND {self._normalized_source_expr('user_info.Source')} = {self._normalized_source_expr('o.source')}
+              ORDER BY user_info.DisplayName
+            ) u
+            OUTER APPLY (
+              SELECT TOP 1 cust_msg.TextContent
+              FROM WebChat_MessageLogs cust_msg
+              WHERE cust_msg.FromHost = 0
+                AND {valid_message_condition("cust_msg")}
+                AND CAST(cust_msg.SenderId AS NVARCHAR(255)) = CAST(o.customer_id AS NVARCHAR(255))
+                AND {self._normalized_source_expr('cust_msg.Source')} = {self._normalized_source_expr('o.source')}
+              ORDER BY cust_msg.SentAt DESC
+            ) cust
+            OUTER APPLY (
+              SELECT TOP 1 ai_msg.TextContent
+              FROM WebChat_MessageLogs ai_msg
+              WHERE ai_msg.FromHost = 1
+                AND ai_msg.HostDisplayName = 'AI Assistant'
+                AND {valid_message_condition("ai_msg")}
+                AND CAST(ai_msg.ReceiverId AS NVARCHAR(255)) = CAST(o.customer_id AS NVARCHAR(255))
+                AND {self._normalized_source_expr('ai_msg.Source')} = {self._normalized_source_expr('o.source')}
+              ORDER BY ai_msg.SentAt DESC
+            ) ai
+            ORDER BY o.wait_mins DESC, o.last_customer_msg_at ASC
+        """
+
+        cursor.execute(query, tuple(params))
+        return cursor.fetchall()
+
+    def get_overtime_alerts_data(self, start_date=None, end_date=None, limit=100):
+        conn = get_db_connection()
+        try:
+            with conn.cursor(as_dict=True) as cursor:
+                return self._execute_overtime_alerts_query(cursor, start_date, end_date, limit)
+        finally:
+            conn.close()
+
     def get_urgent_alerts_data(self, start_date=None, end_date=None, include_overtime=True, include_ai=True):
         conn = get_db_connection()
         try:
             rows = []
             with conn.cursor(as_dict=True) as cursor:
                 if include_overtime:
-                    overtime_query = f"""
-                        DECLARE @dbNow DATETIME;
-                        SET @dbNow = GETDATE();
-
-                        WITH LatestAI AS (
-                          SELECT ReceiverId, Source, TextContent,
-                                 ROW_NUMBER() OVER (PARTITION BY ReceiverId, Source ORDER BY SentAt DESC) as rn
-                          FROM WebChat_MessageLogs
-                          WHERE FromHost = 1 AND HostDisplayName = 'AI Assistant'
-                            AND {valid_message_condition("WebChat_MessageLogs")}
-                        ),
-                        LatestCust AS (
-                          SELECT SenderId, Source, TextContent,
-                                 ROW_NUMBER() OVER (PARTITION BY SenderId, Source ORDER BY SentAt DESC) as rn
-                          FROM WebChat_MessageLogs
-                          WHERE FromHost = 0
-                            AND {valid_message_condition("WebChat_MessageLogs")}
-                        )
-                        SELECT TOP 100
-                          c.Id AS id,
-                          c.CustomerId AS customer_id,
-                          c.Source AS source,
-                          c.LastCustomerMessageAt AS last_customer_msg_at,
-                          c.LastHostMessageAt AS last_host_msg_at,
-                          u.DisplayName AS customer_name,
-                          cust.TextContent AS last_cust_text,
-                          ai.TextContent AS last_ai_text,
-                          'overtime' AS alert_type,
-                          DATEDIFF(MINUTE, c.LastCustomerMessageAt, @dbNow) AS wait_mins
-                        FROM WebChat_Conversations c
-                        LEFT JOIN WebChat_Messagelogs_User_Info u
-                          ON c.CustomerId = u.SenderId
-                         AND c.Source = u.Source
-                        LEFT JOIN WebChat_ConversationStatus s
-                          ON c.CustomerId = s.CustomerId
-                         AND c.Source = s.Source
-                        LEFT JOIN LatestCust cust
-                          ON c.CustomerId = cust.SenderId
-                         AND c.Source = cust.Source
-                         AND cust.rn = 1
-                        LEFT JOIN LatestAI ai
-                          ON c.CustomerId = ai.ReceiverId
-                         AND c.Source = ai.Source
-                         AND ai.rn = 1
-                    """
-                    overtime_conditions = [
-                        valid_conversation_condition("c"),
-                        "(s.NoResponseNeeded IS NULL OR s.NoResponseNeeded = 0 OR c.LastCustomerMessageAt > s.MarkedAt)",
-                        "c.LastMessageId > 0",
-                        "(c.LastHostMessageAt IS NULL OR c.LastCustomerMessageAt > c.LastHostMessageAt)",
-                        "DATEDIFF(MINUTE, c.LastCustomerMessageAt, @dbNow) > 600",
-                    ]
-                    overtime_params = []
-
-                    if start_date:
-                        overtime_conditions.append("c.LastCustomerMessageAt >= %s")
-                        overtime_params.append(start_date)
-
-                    if end_date:
-                        overtime_conditions.append("c.LastCustomerMessageAt <= %s")
-                        overtime_params.append(f"{end_date} 23:59:59.999")
-
-                    overtime_query += " WHERE " + " AND ".join(overtime_conditions)
-                    overtime_query += " ORDER BY c.LastCustomerMessageAt DESC"
-
-                    cursor.execute(overtime_query, tuple(overtime_params))
-                    rows.extend(cursor.fetchall())
+                    rows.extend(self._execute_overtime_alerts_query(cursor, start_date, end_date))
 
                 if include_ai:
                     ai_conditions = [
@@ -1554,6 +1605,7 @@ class ConversationRepository:
                           SELECT
                             'ai-' + CAST(m.id_webchat_messageLogs AS VARCHAR(30)) AS id,
                             m.id_webchat_messageLogs AS message_id,
+                            c.Id AS conversation_id,
                             CAST({self._message_customer_expr("m")} AS NVARCHAR(255)) AS customer_id,
                             m.Source AS source,
                             {source_case} AS source_key,
@@ -1603,6 +1655,7 @@ class ConversationRepository:
                           SELECT
                             s.id,
                             s.message_id,
+                            s.conversation_id,
                             s.customer_id,
                             s.source,
                             s.source_key,
@@ -1628,6 +1681,7 @@ class ConversationRepository:
                           GROUP BY
                             s.id,
                             s.message_id,
+                            s.conversation_id,
                             s.customer_id,
                             s.source,
                             s.source_key,
@@ -1644,6 +1698,7 @@ class ConversationRepository:
                         classified AS (
                           SELECT
                             id,
+                            conversation_id,
                             customer_id,
                             source,
                             ai_sent_at,
@@ -1669,6 +1724,7 @@ class ConversationRepository:
                         )
                         SELECT
                           id,
+                          conversation_id,
                           customer_id,
                           source,
                           last_customer_msg_at,
@@ -1692,45 +1748,40 @@ class ConversationRepository:
         finally:
             conn.close()
 
-    def get_top_questions_data(self, start_date=None, end_date=None):
+    def get_top_questions_data(self, start_date=None, end_date=None, channel=None):
         conn = get_db_connection()
         try:
             query = """
-                SELECT TOP 20
-                  m.TextContent AS question,
+                SELECT
+                  TextContent AS question,
+                  Source AS source,
                   COUNT(*) AS count,
-                  MAX(m.Source) AS source,
-                  MAX(m.SentAt) AS last_sent,
-                  MAX(topic_analytics.detectedTopics) AS detected_topics
-                FROM WebChat_MessageLogs m
-                OUTER APPLY (
-                  SELECT TOP 1 a.detectedTopics
-                  FROM WebChat_MessageAnalytics a
-                  WHERE a.messageId = m.id_webchat_messageLogs
-                  ORDER BY a.analyzedAt DESC, a.id DESC
-                ) topic_analytics
+                  MAX(SentAt) AS sent_at
+                FROM WebChat_MessageLogs
             """
             conditions = [
-                "m.FromHost = 0",
-                valid_message_condition("m"),
-                "(m.TextContent LIKE N'%?%' OR m.TextContent LIKE N'%phải không ạ%' OR m.TextContent LIKE N'%đúng không ạ%')",
-                "LEN(m.TextContent) > 20",
-                "m.TextContent NOT LIKE N'%http%'"
+                "FromHost = 0",
+                valid_message_condition("WebChat_MessageLogs"),
+                "LEN(TextContent) > 4",
+                "TextContent NOT LIKE N'%http%'",
+                "TextContent NOT LIKE N'%www.%'"
             ]
             params = []
-            
-            if start_date:
-                conditions.append("m.SentAt >= %s")
-                params.append(start_date)
-                
-            if end_date:
-                conditions.append("m.SentAt <= %s")
-                params.append(f"{end_date} 23:59:59.999")
+
+            self._append_date_and_channel_filters(
+                conditions,
+                params,
+                "SentAt",
+                "Source",
+                start_date,
+                end_date,
+                channel,
+            )
                 
             if conditions:
                 query += " WHERE " + " AND ".join(conditions)
                 
-            query += " GROUP BY m.TextContent ORDER BY count DESC"
+            query += " GROUP BY TextContent, Source ORDER BY count DESC, sent_at DESC"
             
             with conn.cursor(as_dict=True) as cursor:
                 cursor.execute(query, tuple(params))

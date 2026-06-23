@@ -123,7 +123,8 @@ def get_kpi(
     channel: str = None,
     topic: str = None,
     conversationStatus: str = None,
-    aiStatus: str = None
+    aiStatus: str = None,
+    forceRefresh: bool = False,
 ):
     if startDate:
         try:
@@ -154,7 +155,8 @@ def get_kpi(
         "channel": channel,
         "topic": topic,
         "conversationStatus": conversationStatus,
-        "aiStatus": aiStatus
+        "aiStatus": aiStatus,
+        "forceRefresh": forceRefresh,
     }
     
     kpis = dashboard_service.get_kpis(startDate, endDate, filters)

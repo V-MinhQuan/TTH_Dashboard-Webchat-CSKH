@@ -1,6 +1,13 @@
 import { buildApiUrl, fetchApiJson } from "./dashboardApi";
 import { getAiFailureDefinition } from "../constants/aiFailureTaxonomy";
 
+export const SHEET_CHATBOT_SOURCE_OPTIONS = [
+  "Không tìm thấy dữ liệu",
+  "AI trả lời không chắc chắn",
+  "Lỗi hệ thống",
+  "Khác",
+] as const;
+
 export type SheetChatbotStatus =
   | "Chờ xử lý"
   | "Đã duyệt"
@@ -10,11 +17,10 @@ export type SheetChatbotStatus =
 export type SheetChatbotRiskLevel = "Thấp" | "Trung bình" | "Cao";
 
 export type SheetChatbotSource =
-  | "AI trả lời sai"
   | "Không tìm thấy dữ liệu"
-  | "AI không chắc chắn"
-  | "Câu hỏi lặp lại nhiều lần"
-  | "Nhân viên đề xuất"
+  | "AI trả lời không chắc chắn"
+  | "Lỗi hệ thống"
+  | "Khác"
   | (string & {});
 
 export interface SheetChatbotRow {
@@ -180,31 +186,25 @@ function normalizeCreatePayload(payload: SheetChatbotCreatePayload): SheetChatbo
   const question = requiredText(payload.question, "Câu hỏi khách hàng");
   const correctAnswer = requiredText(payload.correctAnswer, "Câu trả lời đúng");
   const topic = requiredText(payload.topic, "Chủ đề");
-  const sourceDefinition = getAiFailureDefinition(payload.source);
-
-  if (!sourceDefinition && payload.source !== "Nhân viên đề xuất") {
-    throw new Error("Nguồn gốc lỗi sai không thuộc taxonomy lỗi AI được hỗ trợ.");
-  }
 
   return {
     ...payload,
     question,
     correctAnswer,
     topic,
-    source: sourceDefinition?.apiValue ?? "Nhân viên đề xuất",
+    source: normalizeSheetChatbotSource(payload.source),
     notes: payload.notes.trim(),
     addedBy: payload.addedBy?.trim() || undefined,
   };
 }
 
 function normalizeUpdatePayload(payload: SheetChatbotUpdatePayload): SheetChatbotUpdatePayload {
-  const sourceDefinition = payload.source ? getAiFailureDefinition(payload.source) : null;
   return {
     ...payload,
     question: payload.question === undefined ? undefined : requiredText(payload.question, "Câu hỏi khách hàng"),
     correctAnswer: payload.correctAnswer === undefined ? undefined : requiredText(payload.correctAnswer, "Câu trả lời đúng"),
     topic: payload.topic === undefined ? undefined : requiredText(payload.topic, "Chủ đề"),
-    source: payload.source === undefined ? undefined : sourceDefinition?.apiValue ?? payload.source.trim(),
+    source: payload.source === undefined ? undefined : normalizeSheetChatbotSource(payload.source),
     notes: payload.notes?.trim(),
     addedBy: payload.addedBy?.trim(),
   };
@@ -219,4 +219,21 @@ function requiredText(value: string, label: string) {
   const normalized = value.trim();
   if (!normalized) throw new Error(`${label} không được để trống.`);
   return normalized;
+}
+
+function normalizeSheetChatbotSource(value: string): SheetChatbotSource {
+  const raw = (value || "").trim();
+  if ((SHEET_CHATBOT_SOURCE_OPTIONS as readonly string[]).includes(raw)) {
+    return raw as SheetChatbotSource;
+  }
+
+  const sourceDefinition = getAiFailureDefinition(raw);
+  const canonical = sourceDefinition?.apiValue ?? raw;
+
+  if (canonical === "Không tìm thấy dữ liệu") return "Không tìm thấy dữ liệu";
+  if (canonical === "AI không chắc chắn" || canonical === "AI trả lời không chắc chắn") {
+    return "AI trả lời không chắc chắn";
+  }
+  if (canonical === "Lỗi hệ thống") return "Lỗi hệ thống";
+  return "Khác";
 }

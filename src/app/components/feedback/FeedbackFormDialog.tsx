@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { X } from "lucide-react";
 import { toast } from "sonner";
 
-import { AI_FAILURE_TAXONOMY, getAiFailureDefinition } from "../../constants/aiFailureTaxonomy";
+import { getAiFailureDefinition } from "../../constants/aiFailureTaxonomy";
 import { useAuth } from "../../context/AuthContext";
 import {
   createSheetChatbotRow,
   getSheetChatbotDuplicates,
+  SHEET_CHATBOT_SOURCE_OPTIONS,
   updateSheetChatbotRow,
   type SheetChatbotRiskLevel,
   type SheetChatbotRow,
@@ -41,33 +42,25 @@ interface FeedbackFormState {
   question: string;
   answer: string;
   topic: string;
-  keyword: string;
   source: string;
-  conversationId: string;
-  messageId: string;
   notes: string;
   risk: SheetChatbotRiskLevel;
   status: SheetChatbotStatus;
 }
 
-const STAFF_SOURCE = "Nhân viên đề xuất";
-const DEFAULT_SOURCE = STAFF_SOURCE;
+const DEFAULT_SOURCE = "Khác";
+const RISK_LEVELS = ["Thấp", "Trung bình", "Cao"] as const;
 
 function text(value: unknown) {
   return typeof value === "string" || typeof value === "number" ? String(value).trim() : "";
 }
 
 function initialForm(prefill?: FeedbackPrefillData): FeedbackFormState {
-  const source = getAiFailureDefinition(prefill?.source)?.apiValue
-    ?? (prefill?.source === STAFF_SOURCE ? STAFF_SOURCE : DEFAULT_SOURCE);
   return {
     question: text(prefill?.question),
     answer: text(prefill?.answer),
     topic: text(prefill?.topic) || "Chưa xác định",
-    keyword: text(prefill?.keyword),
-    source,
-    conversationId: text(prefill?.conversationId),
-    messageId: text(prefill?.messageId),
+    source: normalizeFormSource(prefill?.source),
     notes: text(prefill?.notes),
     risk: prefill?.risk ?? "Trung bình",
     status: prefill?.status ?? "Chờ xử lý",
@@ -79,12 +72,32 @@ function normalizeQuestion(value: string) {
 }
 
 function buildNotes(form: FeedbackFormState) {
-  const metadata = [
-    form.keyword ? `keyword: ${form.keyword}` : "",
-    form.conversationId ? `conversationId: ${form.conversationId}` : "",
-    form.messageId ? `messageId: ${form.messageId}` : "",
-  ].filter(Boolean);
-  return [form.notes, ...metadata].filter(Boolean).join("\n");
+  return form.notes.trim();
+}
+
+function normalizeLookupValue(value: unknown) {
+  return text(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLocaleLowerCase("vi-VN")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeFormSource(value: unknown) {
+  const raw = text(value);
+  if ((SHEET_CHATBOT_SOURCE_OPTIONS as readonly string[]).includes(raw)) return raw;
+
+  const definition = getAiFailureDefinition(raw);
+  const canonical = definition?.apiValue ?? raw;
+  const normalized = normalizeLookupValue(canonical);
+
+  if (normalized.includes("khong tim thay")) return "Không tìm thấy dữ liệu";
+  if (normalized.includes("khong chac")) return "AI trả lời không chắc chắn";
+  if (normalized.includes("loi he thong") || normalized.includes("system")) return "Lỗi hệ thống";
+  return DEFAULT_SOURCE;
 }
 
 const fieldStyle: CSSProperties = {
@@ -209,25 +222,15 @@ export function FeedbackFormDialog({
             <label style={labelStyle}>Chủ đề
               <input aria-label="Chủ đề" value={form.topic} onChange={(event) => update("topic", event.target.value)} style={fieldStyle} />
             </label>
-            <label style={labelStyle}>Từ khóa
-              <input aria-label="Từ khóa" value={form.keyword} onChange={(event) => update("keyword", event.target.value)} style={fieldStyle} />
-            </label>
             <label style={labelStyle}>Nguồn
               <select aria-label="Nguồn" value={form.source} onChange={(event) => update("source", event.target.value)} style={fieldStyle}>
-                <option value={STAFF_SOURCE}>{STAFF_SOURCE}</option>
-                {AI_FAILURE_TAXONOMY.map((item) => <option key={item.id} value={item.apiValue}>{item.label}</option>)}
+                {SHEET_CHATBOT_SOURCE_OPTIONS.map((value) => <option key={value} value={value}>{value}</option>)}
               </select>
             </label>
             <label style={labelStyle}>Mức rủi ro
               <select aria-label="Mức rủi ro" value={form.risk} onChange={(event) => update("risk", event.target.value as SheetChatbotRiskLevel)} style={fieldStyle}>
-                {(["Thấp", "Trung bình", "Cao"] as const).map((value) => <option key={value}>{value}</option>)}
+                {RISK_LEVELS.map((value) => <option key={value}>{value}</option>)}
               </select>
-            </label>
-            <label style={labelStyle}>Conversation ID
-              <input aria-label="Conversation ID" value={form.conversationId} onChange={(event) => update("conversationId", event.target.value)} style={fieldStyle} />
-            </label>
-            <label style={labelStyle}>Message ID
-              <input aria-label="Message ID" value={form.messageId} onChange={(event) => update("messageId", event.target.value)} style={fieldStyle} />
             </label>
           </div>
           <label style={labelStyle}>Ghi chú nội bộ

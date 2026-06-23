@@ -13,22 +13,41 @@ import {
   type SheetChatbotStatus,
 } from "../../services/sheetChatbotApi";
 
-const NAVY    = "#003BB9";
-const ORANGE  = "#D73C01";
-const CTA     = "#ED5206";
-const CTA_SOFT= "#F36C2E";
-const AMBER_50  = "#FFF7E6";
-const AMBER_TEXT= "#B7791F";
-const RED_50    = "#FFF1F1";
-const RED_TEXT  = "#B42318";
+const NAVY = "#003BB9";
+const ORANGE = "#D73C01";
+const CTA = "#ED5206";
+const CTA_SOFT = "#F36C2E";
+const AMBER_50 = "#FFF7E6";
+const AMBER_TEXT = "#B7791F";
+const RED_50 = "#FFF1F1";
+const RED_TEXT = "#B42318";
 
+const TIME_PERIODS = ["Hôm nay", "7 ngày qua", "30 ngày qua", "Tháng này", "Tùy chỉnh"];
 const FAQ_TOPICS_LANGUAGE = ["TOEIC", "VSTEP", "Chuẩn đầu ra"];
 const FAQ_TOPICS_COMPUTER = ["MOS", "IC3", "Tin học cơ bản"];
-
 const RISK_LEVELS = ["Cao", "Trung bình", "Thấp"];
 const FAQ_STATUSES: SheetChatbotStatus[] = ["Chờ xử lý", "Đã duyệt", "Cần chỉnh sửa", "Từ chối"];
-const TIME_PERIODS = ["Hôm nay", "7 ngày qua", "30 ngày qua", "Tháng này", "Tùy chỉnh"];
-const SOURCES = AI_FAILURE_TAXONOMY.map((item) => item.apiValue);
+const FAQ_SOURCES = AI_FAILURE_TAXONOMY.map((item) => item.apiValue);
+
+interface FaqFormState {
+  question: string;
+  answer: string;
+  topic: string;
+  source: string;
+  riskLevel: string;
+  notes: string;
+  status: SheetChatbotStatus;
+}
+
+const emptyFaqForm: FaqFormState = {
+  question: "",
+  answer: "",
+  topic: "TOEIC",
+  source: FAQ_SOURCES[0],
+  riskLevel: "Thấp",
+  notes: "",
+  status: "Chờ xử lý",
+};
 
 interface Faq {
   id: string;
@@ -42,16 +61,6 @@ interface Faq {
   date: string;
   notes: string;
 }
-
-const emptyFaqForm = {
-  question: "",
-  answer: "",
-  topic: "TOEIC",
-  source: SOURCES[0],
-  riskLevel: "Thấp",
-  notes: "",
-  status: "Chờ xử lý" as SheetChatbotStatus,
-};
 
 function mapSheetRowToFaq(row: SheetChatbotRow): Faq {
   return {
@@ -69,7 +78,7 @@ function mapSheetRowToFaq(row: SheetChatbotRow): Faq {
 }
 
 function displayFailureSource(source: string) {
-  return getAiFailureDefinition(source)?.label ?? "Chưa phân loại lỗi AI";
+  return getAiFailureDefinition(source)?.label ?? (source || "Chưa phân loại lỗi AI");
 }
 
 function errorOriginForFaq(faq: Faq): "ai" | "staff" | "system" {
@@ -189,7 +198,7 @@ export function FAQ() {
         question: selectedFaq.question,
         correctAnswer: suggestedAnswer.trim(),
         topic: selectedFaq.topic,
-        source: getAiFailureDefinition(selectedFaq.source)?.apiValue ?? SOURCES[0],
+        source: getAiFailureDefinition(selectedFaq.source)?.apiValue ?? FAQ_SOURCES[0],
         risk: selectedFaq.riskLevel as "Thấp" | "Trung bình" | "Cao",
         status: "Chờ xử lý",
         notes: [
@@ -255,7 +264,7 @@ export function FAQ() {
     toast.info("Đã đặt lại bộ lọc");
   };
 
-  const SelectField = ({ label, value, options, onChange, style, groups }: { label: string; value: string; options?: string[]; onChange: (v: string) => void; style?: React.CSSProperties, groups?: {label: string, options: string[]}[] }) => (
+  const SelectField = ({ label, value, options, onChange, style, groups }: { label: string; value: string; options?: string[]; onChange: (v: string) => void; style?: React.CSSProperties, groups?: { label: string, options: string[] }[] }) => (
     <div style={{ display: "flex", flexDirection: "column", gap: "6px", ...style }}>
       <label style={{ fontSize: "11px", fontWeight: 600, color: "rgba(0,56,101,0.5)", letterSpacing: "0.05em" }}>
         {label.toUpperCase()}
