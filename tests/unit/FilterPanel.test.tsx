@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -226,6 +226,30 @@ describe("FilterPanel", () => {
 
     await user.click(screen.getByRole("button", { name: /Xuất dữ liệu/i }));
     expect(header).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("renders the export menu in a portal so it remains usable when the filter is collapsed", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    const container = screen.getByTestId("global-filter-collapse-container");
+    await openExportMenu(user);
+
+    const menu = screen.getByTestId("global-filter-export-menu");
+    expect(menu).toBeVisible();
+    expect(menu.parentElement).toBe(document.body);
+    expect(container).not.toContainElement(menu);
+  });
+
+  it("limits AI status choices to all, success, and failed", () => {
+    renderPanel();
+
+    const aiStatusSelect = screen.getByRole("combobox", { name: "Trạng thái AI" });
+    expect(within(aiStatusSelect).getAllByRole("option").map((option) => option.textContent)).toEqual([
+      "Tất cả",
+      "AI trả lời thành công",
+      "AI trả lời thất bại",
+    ]);
   });
 
   it("reports when the export target is unavailable after opening the dropdown", async () => {

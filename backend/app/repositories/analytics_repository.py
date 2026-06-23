@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import unicodedata
 from typing import Any, Callable, Dict, List, Tuple
 
 from app.db.session import execute_all, execute_one, get_connection
@@ -930,6 +931,18 @@ class AnalyticsRepository:
             conditions.append("a.issueType = ?" if columns.get("issueType") else "1 = 0")
             if columns.get("issueType"):
                 params.append(issue_type)
+        ai_status = str(filters.get("aiStatus") or "").strip()
+        normalized_ai_status = "".join(
+            char for char in unicodedata.normalize("NFD", ai_status.lower())
+            if unicodedata.category(char) != "Mn"
+        )
+        if normalized_ai_status and normalized_ai_status not in {"all", "tat ca"}:
+            if not columns.get("issueFlag"):
+                conditions.append("1 = 0")
+            elif normalized_ai_status in {"success", "ai tra loi thanh cong"}:
+                conditions.append("ISNULL(a.issueFlag, 0) = 0")
+            elif normalized_ai_status in {"failed", "failure", "ai tra loi that bai"}:
+                conditions.append("a.issueFlag = 1")
         return ("WHERE " + " AND ".join(conditions)) if conditions else "", params
 
     def _build_need_review_where(

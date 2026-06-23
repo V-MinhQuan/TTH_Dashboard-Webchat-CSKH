@@ -529,7 +529,7 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
                 { label: "Kênh", key: "channel", options: channels },
                 { label: "Chủ đề", key: "topic", options: ["Tất cả", ...topics] },
                 { label: "Trạng thái hội thoại", key: "status", options: ["Tất cả", "Chờ xử lý", "Đang tư vấn / Chờ phản hồi", "Hoàn thành"] },
-                { label: "Trạng thái AI", key: "aiStatus", options: ["Tất cả", "AI trả lời thành công", "AI trả lời thất bại", "AI không chắc chắn"] },
+                { label: "Trạng thái AI", key: "aiStatus", options: ["Tất cả", "AI trả lời thành công", "AI trả lời thất bại"] },
               ].map(({ label, key, options }) => (
                 <div key={key}>
                   <label style={{ fontSize: "11px", fontWeight: 600, color: "rgba(0,59,185,0.5)", display: "block", marginBottom: "6px", letterSpacing: "0.05em" }}>

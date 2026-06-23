@@ -196,6 +196,25 @@ test("positive sentiment conversations render from the API response", async ({ p
   await expect(page.getByRole("cell", { name: /Khách hàng trang hai/ })).toBeVisible();
 });
 
+test("AI performance CSV export falls back when the backend export route is missing", async ({ page }) => {
+  await page.route("**/api/analytics/ai/failed-conversations/export**", (route) =>
+    json(route, { success: false, message: "Route không tồn tại." }, 404),
+  );
+  await injectAuth(page, "aiinsights");
+  await page.goto("/");
+
+  await expect(page.locator(".ai-insights-chart-grid")).toBeVisible();
+  await page.locator('button[aria-haspopup="menu"]').last().click();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("menuitem").first().click();
+  const download = await downloadPromise;
+  const downloadPath = await download.path();
+  expect(downloadPath).toBeTruthy();
+  const csv = fs.readFileSync(downloadPath!, "utf8");
+  expect(csv).toContain("Message ID");
+  expect(csv).toContain(String(failedConversation.messageId));
+});
+
 test("AI performance layout is viewport-safe at the four acceptance sizes", async ({ page }) => {
   await injectAuth(page, "aiinsights");
   const sizes = [

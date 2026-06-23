@@ -16,10 +16,12 @@ import { getChannelAnalytics } from "../../services/dashboardApi";
 import { ChannelAnalyticsData, ChannelSummary } from "../../types/dashboard";
 import { EmptyState } from "../common/EmptyState";
 import { useSettings } from "../../context/SettingsContext";
+import { getDateParamsFromFilters } from "../../utils/dateFilters";
 
 const NAVY = "#003BB9";
 const ORANGE = "#D73C01";
 const GREEN = "#228A61";
+const AVG_RESPONSE_TIME_COLOR = "#6c9fff";
 
 const CHANNEL_COLORS: Record<string, string> = {
   "Zalo Business": "#0068FF",
@@ -463,18 +465,13 @@ export function ChannelAnalysis({ filters, onFiltersChange, onNavigate }: Channe
   }, [filters]);
 
   const loadChannelData = useCallback(async () => {
-    const dateParams = getDatesFromRange(
-      appliedFilters.dateRange,
-      appliedFilters.customDateFrom,
-      appliedFilters.customDateTo,
-    );
-
-    if (appliedFilters.dateRange === "Tùy chỉnh" && appliedFilters.customDateFrom && appliedFilters.customDateTo) {
-      if (new Date(appliedFilters.customDateFrom) > new Date(appliedFilters.customDateTo)) {
-        toast.error("Ngày bắt đầu không được lớn hơn ngày kết thúc.");
-        setLoading(false);
-        return;
-      }
+    let dateParams;
+    try {
+      dateParams = getDateParamsFromFilters(appliedFilters);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Bộ lọc ngày không hợp lệ.");
+      setLoading(false);
+      return;
     }
 
     try {
@@ -503,18 +500,13 @@ export function ChannelAnalysis({ filters, onFiltersChange, onNavigate }: Channe
     let cancelled = false;
 
     async function run() {
-      const dateParams = getDatesFromRange(
-        appliedFilters.dateRange,
-        appliedFilters.customDateFrom,
-        appliedFilters.customDateTo,
-      );
-
-      if (appliedFilters.dateRange === "Tùy chỉnh" && appliedFilters.customDateFrom && appliedFilters.customDateTo) {
-        if (new Date(appliedFilters.customDateFrom) > new Date(appliedFilters.customDateTo)) {
-          toast.error("Ngày bắt đầu không được lớn hơn ngày kết thúc.");
-          setLoading(false);
-          return;
-        }
+      let dateParams;
+      try {
+        dateParams = getDateParamsFromFilters(appliedFilters);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Bộ lọc ngày không hợp lệ.");
+        if (!cancelled) setLoading(false);
+        return;
       }
 
       try {
@@ -596,6 +588,7 @@ export function ChannelAnalysis({ filters, onFiltersChange, onNavigate }: Channe
     <div style={{ padding: "24px" }}>
       <FilterPanel filters={filters} onFiltersChange={handleApplyFilters} />
 
+      <div data-export-target="true">
       {nonDataState ? (
         nonDataState
       ) : data && !hasAnyConversation ? (
@@ -679,7 +672,7 @@ export function ChannelAnalysis({ filters, onFiltersChange, onNavigate }: Channe
                 nameKey: "channel",
                 valueKey: "avg_time",
                 valueName: "Phản hồi TB",
-                color: ORANGE,
+                color: AVG_RESPONSE_TIME_COLOR,
                 tooltipSuffix: " phút",
               })}
             </ChartCard>
@@ -955,6 +948,7 @@ export function ChannelAnalysis({ filters, onFiltersChange, onNavigate }: Channe
           </div>
         </>
       )}
+      </div>
     </div>
   );
 }

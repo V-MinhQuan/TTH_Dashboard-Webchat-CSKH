@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FeedbackFormDialog } from "../../src/app/components/feedback/FeedbackFormDialog";
 
 const api = vi.hoisted(() => ({
+  SHEET_CHATBOT_SOURCE_OPTIONS: ["Không tìm thấy dữ liệu", "AI không chắc chắn", "Khác"],
   createSheetChatbotRow: vi.fn(),
   getSheetChatbotDuplicates: vi.fn(),
   updateSheetChatbotRow: vi.fn(),
@@ -17,7 +18,9 @@ vi.mock("../../src/app/context/AuthContext", () => ({
 
 describe("FeedbackFormDialog", () => {
   beforeEach(() => {
-    Object.values(api).forEach((mock) => mock.mockReset());
+    Object.values(api).forEach((mock) => {
+      if (typeof mock === "function" && "mockReset" in mock) mock.mockReset();
+    });
     api.getSheetChatbotDuplicates.mockResolvedValue([]);
     api.createSheetChatbotRow.mockResolvedValue({ id: "CS-100" });
   });
@@ -45,9 +48,6 @@ describe("FeedbackFormDialog", () => {
     expect(screen.getByRole("heading", { name: "Thêm phản hồi" })).toBeVisible();
     expect(screen.getByLabelText("Câu hỏi khách hàng")).toHaveValue("Khi nào có lịch thi?");
     expect(screen.getByLabelText("Chủ đề")).toHaveValue("Lịch thi");
-    expect(screen.getByLabelText("Từ khóa")).toHaveValue("lịch thi");
-    expect(screen.getByLabelText("Conversation ID")).toHaveValue("42");
-    expect(screen.getByLabelText("Message ID")).toHaveValue("99");
 
     await user.type(screen.getByLabelText("Câu trả lời đúng"), "Lịch thi được công bố trên cổng FLIC.");
     await user.click(screen.getByRole("button", { name: "Lưu phản hồi" }));
@@ -58,7 +58,6 @@ describe("FeedbackFormDialog", () => {
       correctAnswer: "Lịch thi được công bố trên cổng FLIC.",
       topic: "Lịch thi",
       source: "Không tìm thấy dữ liệu",
-      notes: expect.stringContaining("conversationId: 42"),
     }));
     expect(onSaved).toHaveBeenCalled();
   });

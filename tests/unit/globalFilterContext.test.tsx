@@ -2,6 +2,7 @@ import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
+  defaultFilterValues,
   GlobalFilterProvider,
   useGlobalFilters,
 } from "../../src/app/context/GlobalFilterContext";
@@ -40,5 +41,20 @@ describe("GlobalFilterContext", () => {
     act(() => result.current.resetFilters());
     expect(result.current.appliedFilters.topic).toBe("Tất cả");
     expect(result.current.draftFilters.topic).toBe("Tất cả");
+  });
+
+  it("normalizes deprecated AI status values restored from storage", () => {
+    sessionStorage.setItem("flic_dashboard_filters:v1", JSON.stringify({
+      draftFilters: { ...defaultFilterValues, aiStatus: "AI không chắc chắn" },
+      appliedFilters: { ...defaultFilterValues, aiStatus: "uncertain" },
+    }));
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <GlobalFilterProvider>{children}</GlobalFilterProvider>
+    );
+
+    const { result } = renderHook(() => useGlobalFilters(), { wrapper });
+
+    expect(result.current.draftFilters.aiStatus).toBe(defaultFilterValues.aiStatus);
+    expect(result.current.appliedFilters.aiStatus).toBe(defaultFilterValues.aiStatus);
   });
 });

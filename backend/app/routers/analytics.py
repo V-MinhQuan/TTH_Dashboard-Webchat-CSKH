@@ -1,14 +1,38 @@
 from __future__ import annotations
 
-from typing import Optional
+import csv
+from datetime import date, datetime
+from io import StringIO
+from typing import Iterable, Optional
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Query, status
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import JSONResponse, StreamingResponse
 
+from app.core.auth import SessionClaims, require_roles
+from app.core.exceptions import AppError
 from app.schemas.analytics import CustomChartRequest
 from app.services.analytics_service import AnalyticsService
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
+AI_FAILED_EXPORT_PAGE_SIZE = 100
+AI_FAILED_EXPORT_MAX_ROWS = 50000
+AI_FAILED_EXPORT_COLUMNS = [
+    ("STT", "row_number", True),
+    ("Message ID", "messageId", True),
+    ("Conversation ID", "conversationId", True),
+    ("Customer ID", "customerId", True),
+    ("Số điện thoại", "phoneNumber", True),
+    ("Tên khách hàng", "customerDisplayName", False),
+    ("Câu hỏi khách hàng", "textContent", False),
+    ("Câu trả lời AI", "aiAnswer", False),
+    ("Chủ đề", "detectedTopics", False),
+    ("Kênh", "source", False),
+    ("Lý do lỗi AI", "issueType", False),
+    ("Mức độ tin cậy", "issueConfidence", False),
+    ("Gợi ý tri thức", "issueReason", False),
+    ("Thời gian", "messageAt", False),
+]
 
 
 def get_analytics_service() -> AnalyticsService:
@@ -17,10 +41,10 @@ def get_analytics_service() -> AnalyticsService:
 
 def _analytics_filters(
     dateRange: Optional[str] = Query(default=None),
-    fromDate: Optional[str] = Query(default=None),
-    toDate: Optional[str] = Query(default=None),
-    startDate: Optional[str] = Query(default=None),
-    endDate: Optional[str] = Query(default=None),
+    fromDate: Optional[date] = Query(default=None),
+    toDate: Optional[date] = Query(default=None),
+    startDate: Optional[date] = Query(default=None),
+    endDate: Optional[date] = Query(default=None),
     channel: Optional[str] = Query(default=None),
     source: Optional[str] = Query(default=None),
     topic: Optional[str] = Query(default=None),
@@ -30,12 +54,17 @@ def _analytics_filters(
     conversationStatus: Optional[str] = Query(default=None),
     aiStatus: Optional[str] = Query(default=None),
 ):
+    if fromDate and toDate and fromDate > toDate:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="fromDate must be before or equal to toDate.")
+    if startDate and endDate and startDate > endDate:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="startDate must be before or equal to endDate.")
+
     return {
         "dateRange": dateRange,
-        "fromDate": fromDate,
-        "toDate": toDate,
-        "startDate": startDate,
-        "endDate": endDate,
+        "fromDate": fromDate.isoformat() if fromDate else None,
+        "toDate": toDate.isoformat() if toDate else None,
+        "startDate": startDate.isoformat() if startDate else None,
+        "endDate": endDate.isoformat() if endDate else None,
         "channel": channel,
         "source": source,
         "topic": topic,
@@ -61,6 +90,40 @@ def _review_filters(
         "search": search,
         "uniqueConversations": uniqueConversations,
     }
+
+
+def _csv_line(values: Iterable[object]) -> str:
+    buffer = StringIO(newline="")
+    writer = csv.writer(buffer, lineterminator="\r\n")
+    writer.writerow(list(values))
+    return buffer.getvalue()
+
+
+def _csv_value(value: object, preserve_identifier: bool = False) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, list):
+        text = "; ".join(str(item) for item in value if item is not None)
+    else:
+        text = str(value)
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    if preserve_identifier:
+        digits_only = text.isdigit()
+        if digits_only and (text.startswith("0") or len(text) >= 12):
+            text = f"\t{text}"
+    if text.lstrip().startswith(("=", "+", "-", "@")):
+        text = f"'{text}"
+    return text
+
+
+def _failed_conversation_export_rows(records: list[dict], start_index: int) -> Iterable[str]:
+    for offset, record in enumerate(records):
+        row_number = start_index + offset
+        values = []
+        for _, key, preserve_identifier in AI_FAILED_EXPORT_COLUMNS:
+            value = row_number if key == "row_number" else record.get(key)
+            values.append(_csv_value(value, preserve_identifier=preserve_identifier))
+        yield _csv_line(values)
 
 
 def _keyword_mode(mode: str) -> str:
@@ -234,6 +297,62 @@ def ai_failed_conversations(
 ):
     data = service.get_failed_conversations(filters)
     return {"success": True, "message": "Lấy danh sách lỗi AI thành công.", "data": data}
+
+
+@router.get("/ai/failed-conversations/export")
+def ai_failed_conversations_export(
+    filters: dict = Depends(_review_filters),
+    maxExportRows: int = Query(default=AI_FAILED_EXPORT_MAX_ROWS, ge=1, le=100000),
+    _: SessionClaims = Depends(require_roles("manager")),
+    service: AnalyticsService = Depends(get_analytics_service),
+):
+    page_filters = {
+        **filters,
+        "page": 1,
+        "pageSize": AI_FAILED_EXPORT_PAGE_SIZE,
+    }
+    first_page = service.get_failed_conversations(page_filters)
+    first_records = list(first_page.get("records") or [])
+    pagination = first_page.get("pagination") or {}
+    total = int(pagination.get("total") or len(first_records))
+    if total > maxExportRows:
+        raise AppError(
+            f"Export có {total} bản ghi, vượt giới hạn an toàn {maxExportRows}. Vui lòng thu hẹp bộ lọc.",
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    filename = f"cau-hoi-ai-chua-xu-ly-{datetime.now().strftime('%Y%m%d-%H%M%S')}.csv"
+    headers = {
+        "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}",
+        "X-Total-Records": str(total),
+    }
+
+    def iter_csv():
+        yield "\ufeff"
+        yield _csv_line(column[0] for column in AI_FAILED_EXPORT_COLUMNS)
+        emitted = 0
+        if first_records:
+            yield from _failed_conversation_export_rows(first_records, 1)
+            emitted += len(first_records)
+
+        page = 2
+        while emitted < total:
+            next_page = service.get_failed_conversations({
+                **page_filters,
+                "page": page,
+            })
+            records = list(next_page.get("records") or [])
+            if not records:
+                break
+            yield from _failed_conversation_export_rows(records, emitted + 1)
+            emitted += len(records)
+            page += 1
+
+    return StreamingResponse(
+        iter_csv(),
+        media_type="text/csv; charset=utf-8",
+        headers=headers,
+    )
 
 
 @router.get("/ai/staff-reported-errors")

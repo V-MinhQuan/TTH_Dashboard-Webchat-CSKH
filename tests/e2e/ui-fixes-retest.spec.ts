@@ -44,7 +44,8 @@ test.beforeEach(async ({ page }, testInfo) => {
   });
 });
 
-test.afterEach(async (_, testInfo) => {
+test.afterEach(async ({ page }, testInfo) => {
+  void page;
   const state = captures.get(testKey(testInfo));
   if (!state) return;
   const slug = slugify(testInfo.title);

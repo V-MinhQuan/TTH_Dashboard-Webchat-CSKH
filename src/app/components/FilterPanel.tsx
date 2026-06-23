@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Download, Filter, X, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 
@@ -10,6 +11,7 @@ import {
   type FilterValues,
 } from "../context/GlobalFilterContext";
 import { exportDashboardData, type ExportFormat } from "../services/exportService";
+import { getDateParamsFromFilters } from "../utils/dateFilters";
 import "../../styles/globals.css";
 
 export { defaultFilterValues, type FilterValues } from "../context/GlobalFilterContext";
@@ -138,6 +140,8 @@ export function FilterPanel({
   const [fallbackDraft, setFallbackDraft] = useState<FilterValues>(() => normalizeFilters(filters));
   const [exporting, setExporting] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [exportMenuPosition, setExportMenuPosition] = useState({ top: 0, right: 0 });
+  const exportButtonRef = useRef<HTMLButtonElement>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
   const { settings } = useSettings();
   const localFilters = globalFilters?.draftFilters ?? fallbackDraft;
@@ -168,16 +172,55 @@ export function FilterPanel({
     if (!globalFilters) setFallbackDraft(normalizeFilters(filters));
   }, [filters, globalFilters]);
 
-  // Close export menu when clicking outside
   useEffect(() => {
+    if (!exportMenuOpen) return;
+
+    const updatePosition = () => {
+      const rect = exportButtonRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setExportMenuPosition({
+        top: rect.bottom + 6,
+        right: Math.max(8, window.innerWidth - rect.right),
+      });
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [exportMenuOpen]);
+
+  useEffect(() => {
+    if (!exportMenuOpen) return;
+
     function handleClickOutside(e: MouseEvent) {
-      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (
+        exportMenuRef.current?.contains(target) ||
+        exportButtonRef.current?.contains(target)
+      ) {
+        return;
+      }
+      setExportMenuOpen(false);
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
         setExportMenuOpen(false);
+        exportButtonRef.current?.focus();
       }
     }
+
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [exportMenuOpen]);
 
   const handleLocalChange = (key: keyof FilterValues, value: string) => {
     setLocalFilters((previous) => {
@@ -198,7 +241,9 @@ export function FilterPanel({
         toast.error("Vui lòng chọn đầy đủ thời gian bắt đầu và kết thúc.");
         return;
       }
-      if (new Date(localFilters.customDateFrom).getTime() > new Date(localFilters.customDateTo).getTime()) {
+      try {
+        getDateParamsFromFilters(localFilters);
+      } catch {
         toast.error("Thời gian bắt đầu phải trước thời gian kết thúc.");
         return;
       }
@@ -257,8 +302,60 @@ export function FilterPanel({
     .filter((key) => key !== "aiFailureType" || localFilters.aiStatus === FAILED_AI_STATUS)
     .map((key) => ({ key, label: ACTIVE_FILTER_LABELS[key], value: localFilters[key] }));
 
+  const exportMenu = exportMenuOpen && !exporting
+    ? createPortal(
+      <div
+        ref={exportMenuRef}
+        role="menu"
+        aria-label="Chọn định dạng xuất"
+        data-testid="global-filter-export-menu"
+        style={{
+          position: "fixed",
+          top: exportMenuPosition.top,
+          right: exportMenuPosition.right,
+          zIndex: 1000,
+          minWidth: "200px",
+          background: "#fff",
+          borderRadius: "10px",
+          border: "1px solid rgba(0,56,101,0.1)",
+          boxShadow: "0 8px 28px rgba(0,56,101,0.14)",
+          padding: "6px",
+        }}
+      >
+        {EXPORT_FORMATS.map((fmt) => (
+          <button
+            key={fmt.id}
+            role="menuitem"
+            type="button"
+            onClick={() => void handleExport(fmt.id)}
+            style={{
+              width: "100%",
+              padding: "9px 12px",
+              border: 0,
+              borderRadius: "7px",
+              background: "transparent",
+              color: NAVY,
+              textAlign: "left",
+              cursor: "pointer",
+              fontSize: "12px",
+              fontWeight: 500,
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#f8fafc"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+          >
+            {fmt.label}
+          </button>
+        ))}
+      </div>,
+      document.body,
+    )
+    : null;
+
   return (
-    <section className="filter-panel" aria-label="Bộ lọc dữ liệu">
+    <section className="filter-panel" aria-label="Bộ lọc dữ liệu" data-testid="global-filter-collapse-container">
       <div
         role="button"
         tabIndex={0}
@@ -282,66 +379,35 @@ export function FilterPanel({
         </div>
 
         {/* Req #16: Multi-format export dropdown */}
-        <div style={{ position: "relative" }} ref={exportMenuRef} onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+        <div
+          style={{ position: "relative" }}
+          onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => {
+            event.stopPropagation();
+            if (event.key === "Escape") {
+              setExportMenuOpen(false);
+              exportButtonRef.current?.focus();
+            }
+          }}
+        >
           <button
+            ref={exportButtonRef}
             type="button"
             disabled={exporting}
             data-print-hidden="true"
             className="filter-panel__export"
             aria-haspopup="menu"
             aria-expanded={exportMenuOpen}
-            onClick={() => setExportMenuOpen((prev) => !prev)}
+            onClick={(event) => {
+              event.stopPropagation();
+              setExportMenuOpen((prev) => !prev);
+            }}
           >
             <Download size={12} aria-hidden="true" />
             {exporting ? "Đang xuất..." : "Xuất dữ liệu"}
             <ChevronDown size={11} aria-hidden="true" style={{ marginLeft: "2px" }} />
           </button>
-          {exportMenuOpen && !exporting && (
-            <div
-              role="menu"
-              aria-label="Chọn định dạng xuất"
-              style={{
-                position: "absolute",
-                top: "calc(100% + 6px)",
-                right: 0,
-                zIndex: 50,
-                minWidth: "200px",
-                background: "#fff",
-                borderRadius: "10px",
-                border: "1px solid rgba(0,56,101,0.1)",
-                boxShadow: "0 8px 28px rgba(0,56,101,0.14)",
-                padding: "6px",
-              }}
-            >
-              {EXPORT_FORMATS.map((fmt) => (
-                <button
-                  key={fmt.id}
-                  role="menuitem"
-                  type="button"
-                  onClick={() => void handleExport(fmt.id)}
-                  style={{
-                    width: "100%",
-                    padding: "9px 12px",
-                    border: 0,
-                    borderRadius: "7px",
-                    background: "transparent",
-                    color: NAVY,
-                    textAlign: "left",
-                    cursor: "pointer",
-                    fontSize: "12px",
-                    fontWeight: 500,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                  }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#f8fafc"; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
-                >
-                  {fmt.label}
-                </button>
-              ))}
-            </div>
-          )}
+          {exportMenu}
         </div>
       </div>
 

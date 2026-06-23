@@ -825,8 +825,6 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
                 <button
                   onClick={() => {
                     setSelectedGroupId(group.id);
-                    setComposingIndex(null);
-                    setComposeAnswer("");
                   }}
                   style={{ padding: "2px 8px", borderRadius: "6px", border: `1px solid ${CTA}`, background: "#fff", color: CTA, cursor: "pointer", fontSize: "11px", fontWeight: 600 }}
                 >

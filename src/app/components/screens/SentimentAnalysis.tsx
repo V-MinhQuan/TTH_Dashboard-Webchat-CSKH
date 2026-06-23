@@ -20,8 +20,9 @@ import {
 import { ChartCard } from "../ChartCard";
 import { FilterPanel, FilterValues } from "../FilterPanel";
 import { toast } from "sonner";
-import { closeConversation, fetchApiJson, buildApiUrl, formatChannelParam } from "../../services/dashboardApi";
+import { closeConversation, fetchApiJson, buildApiUrl } from "../../services/dashboardApi";
 import { bulkCloseConversations, getCustomerPresentation } from "../../services/conversationApi";
+import { analyticsFiltersToSearchParams } from "../../utils/dateFilters";
 
 const NAVY = "#003865";
 const ORANGE = "#D73C01";
@@ -95,17 +96,7 @@ function getDatesFromRange(range: string, customFrom?: string, customTo?: string
 }
 
 function buildSentimentQueryParams(filters: FilterValues) {
-  const queryParams = new URLSearchParams();
-  const dates = getDatesFromRange(filters.dateRange, filters.customDateFrom, filters.customDateTo);
-  if (dates.startDate && dates.endDate) {
-    queryParams.set("startDate", dates.startDate);
-    queryParams.set("endDate", dates.endDate);
-  }
-  if (filters.channel && filters.channel !== "Tất cả") queryParams.set("channel", formatChannelParam(filters.channel));
-  if (filters.topic && filters.topic !== "Tất cả") queryParams.set("topic", filters.topic);
-  if (filters.conversationStatus && filters.conversationStatus !== "Tất cả") queryParams.set("conversationStatus", filters.conversationStatus);
-  if (filters.aiStatus && filters.aiStatus !== "Tất cả") queryParams.set("aiStatus", filters.aiStatus);
-  return queryParams;
+  return analyticsFiltersToSearchParams(filters);
 }
 
 function mapPositiveConversation(conv: any) {
@@ -215,17 +206,19 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
   }, [filters]);
 
   useEffect(() => {
+    const controller = new AbortController();
+
     async function loadData() {
       setLoading(true);
       try {
         const queryParams = buildSentimentQueryParams(filters);
 
         const [sumRes, trendRes, topicRes, kwRes, convRes] = await Promise.all([
-          fetchApiJson<any>(buildApiUrl("/api/analytics/sentiment-summary", queryParams), { cache: false }),
-          fetchApiJson<any>(buildApiUrl("/api/analytics/sentiment-trend", queryParams), { cache: false }),
-          fetchApiJson<any>(buildApiUrl("/api/analytics/topics", queryParams), { cache: false }),
-          fetchApiJson<any>(buildApiUrl("/api/analytics/negative-keywords", queryParams), { cache: false }),
-          fetchApiJson<any>(buildApiUrl("/api/analytics/negative-conversations", queryParams), { cache: false }),
+          fetchApiJson<any>(buildApiUrl("/api/analytics/sentiment-summary", queryParams), { cache: false, signal: controller.signal }),
+          fetchApiJson<any>(buildApiUrl("/api/analytics/sentiment-trend", queryParams), { cache: false, signal: controller.signal }),
+          fetchApiJson<any>(buildApiUrl("/api/analytics/topics", queryParams), { cache: false, signal: controller.signal }),
+          fetchApiJson<any>(buildApiUrl("/api/analytics/negative-keywords", queryParams), { cache: false, signal: controller.signal }),
+          fetchApiJson<any>(buildApiUrl("/api/analytics/negative-conversations", queryParams), { cache: false, signal: controller.signal }),
         ]);
 
         if (sumRes?.success) {
@@ -331,16 +324,19 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
           });
         }
       } catch (err) {
+        if ((err as any)?.name === "AbortError") return;
         console.error("Lỗi khi tải dữ liệu cảm xúc:", err);
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     }
     loadData();
+    return () => controller.abort();
   }, [filters, refreshKey]);
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
 
     async function loadPositiveConversations() {
       setPositiveLoading(true);
@@ -351,7 +347,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
         queryParams.set("pageSize", "10");
         const response = await fetchApiJson<any>(
           buildApiUrl("/api/analytics/positive-conversations", queryParams),
-          { cache: false },
+          { cache: false, signal: controller.signal },
         );
         if (cancelled) return;
         if (!response?.success) throw new Error("API hội thoại tích cực trả về dữ liệu không hợp lệ.");
@@ -360,6 +356,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
         setPositiveConversations(records.map(mapPositiveConversation));
         setPositiveTotal(Number(response.data?.pagination?.total) || 0);
       } catch (error) {
+        if ((error as any)?.name === "AbortError") return;
         if (cancelled) return;
         setPositiveConversations([]);
         setPositiveTotal(0);
@@ -372,6 +369,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
     void loadPositiveConversations();
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [filters, positivePage, refreshKey]);
 

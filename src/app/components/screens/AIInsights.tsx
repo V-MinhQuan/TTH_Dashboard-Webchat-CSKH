@@ -7,13 +7,14 @@ import {
 import { ChartCard } from "../ChartCard";
 import { FilterPanel, FilterValues } from "../FilterPanel";
 import { toast } from "sonner";
-import { fetchApiJson, buildApiUrl, formatChannelParam } from "../../services/dashboardApi";
+import { ApiRequestError, fetchApiJson, buildApiUrl } from "../../services/dashboardApi";
 import { getSheetChatbotRows, type SheetChatbotStats } from "../../services/sheetChatbotApi";
 import { FeedbackFormDialog } from "../feedback/FeedbackFormDialog";
 import { bulkCloseConversations, getCustomerPresentation } from "../../services/conversationApi";
-import { getFailedConversations, getTopicFailures, type TopicFailureRecord } from "../../services/round3Api";
+import { exportFailedConversationsCsv, getAllFailedConversations, getFailedConversations, getTopicFailures, type TopicFailureRecord } from "../../services/round3Api";
 import { AI_FAILURE_TAXONOMY, getAiFailureDefinition } from "../../constants/aiFailureTaxonomy";
 import { StatusBadge } from "../common/StatusBadge";
+import { analyticsFiltersToSearchParams } from "../../utils/dateFilters";
 
 const NAVY = "#003865";
 const ORANGE = "#D73C01";
@@ -195,6 +196,14 @@ function csvCell(value: unknown) {
   return `"${safeText.replace(/"/g, '""')}"`;
 }
 
+function spreadsheetIdentifier(value: unknown) {
+  const text = value === null || value === undefined ? "" : String(value);
+  if (/^\d{11,}$/.test(text) || /^0\d+$/.test(text)) {
+    return `\t${text}`;
+  }
+  return text;
+}
+
 function downloadCsv(filename: string, rows: Array<Array<unknown>>) {
   const csv = rows.map(row => row.map(csvCell).join(",")).join("\r\n");
   const blob = new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8;" });
@@ -210,6 +219,17 @@ function downloadCsv(filename: string, rows: Array<Array<unknown>>) {
 
 function downloadJson(filename: string, value: unknown) {
   const blob = new Blob([JSON.stringify(value, null, 2)], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function downloadBlob(filename: string, blob: Blob) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -247,10 +267,69 @@ function mapFailedConversation(record: any) {
     impact: "Chưa xác định",
     kbSuggestion: record.issueReason || "Chưa có dữ liệu",
     customerId: record.customerId || null,
+    phoneNumber: record.phoneNumber || null,
     customerName: customer.primary,
     customerReference: customer.secondary,
     messageAt: record.messageAt || null,
   };
+}
+
+function buildFailedConversationCsvRows(records: Array<ReturnType<typeof mapFailedConversation>>) {
+  return [
+    [
+      "STT",
+      "Message ID",
+      "Conversation ID",
+      "Customer ID",
+      "Số điện thoại",
+      "Tên khách hàng",
+      "Câu hỏi khách hàng",
+      "Câu trả lời AI",
+      "Chủ đề",
+      "Kênh",
+      "Lý do lỗi AI",
+      "Mức độ tin cậy",
+      "Gợi ý tri thức",
+      "Thời gian",
+    ],
+    ...records.map((row, index) => [
+      index + 1,
+      spreadsheetIdentifier(row.messageId),
+      spreadsheetIdentifier(row.conversationId),
+      spreadsheetIdentifier(row.customerId),
+      spreadsheetIdentifier(row.phoneNumber),
+      row.customerName,
+      row.question,
+      row.aiAnswer,
+      row.topic,
+      row.channel,
+      row.failReason,
+      row.confidence,
+      row.kbSuggestion,
+      row.messageAt,
+    ]),
+  ];
+}
+
+async function exportFailedConversationsCsvFile(queryParams: URLSearchParams) {
+  try {
+    const exported = await exportFailedConversationsCsv(queryParams);
+    downloadBlob(exported.filename, exported.blob);
+    return { totalRecords: exported.totalRecords };
+  } catch (error) {
+    if (!(error instanceof ApiRequestError) || error.status !== 404) {
+      throw error;
+    }
+
+    const result = await getAllFailedConversations(queryParams, { pageSize: 100 });
+    const exportRows = result.records.map(mapFailedConversation);
+    const date = new Date().toISOString().slice(0, 10);
+    downloadCsv(
+      `cau-hoi-ai-chua-xu-ly-toan-bo-du-lieu-da-loc-${date}.csv`,
+      buildFailedConversationCsvRows(exportRows),
+    );
+    return { totalRecords: exportRows.length };
+  }
 }
 
 export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsProps) {
@@ -264,6 +343,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
   const [topN, setTopN] = useState(5);
   const [failedPage, setFailedPage] = useState(1);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [exportingFailed, setExportingFailed] = useState(false);
   const bulkSubmitGuard = useRef(false);
 
   const [qualityMetrics, setQualityMetrics] = useState<any>({ total_messages: 0, success_rate: 0, failure_count: 0, hallucination_count: 0, avg_confidence: 0 });
@@ -277,14 +357,8 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
   const [sheetStats, setSheetStats] = useState<Partial<SheetChatbotStats>>({});
 
   useEffect(() => {
-    const queryParams = new URLSearchParams();
-    const dates = getDatesFromRange(filters.dateRange, filters.customDateFrom, filters.customDateTo);
-    if (dates.startDate && dates.endDate) {
-      queryParams.set("startDate", dates.startDate);
-      queryParams.set("endDate", dates.endDate);
-    }
-    if (filters.channel && filters.channel !== "Tất cả") queryParams.set("channel", formatChannelParam(filters.channel));
-    if (filters.topic && filters.topic !== "Tất cả") queryParams.set("topic", filters.topic);
+    let cancelled = false;
+    const queryParams = analyticsFiltersToSearchParams(filters);
     const qs = queryParams.toString();
 
     const fetchData = async () => {
@@ -301,6 +375,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
           getSheetChatbotRows({ pageSize: 5 })
         ]);
 
+        if (cancelled) return;
         if (qm.success) setQualityMetrics(qm.data);
         if (sa.success) setStaffActivity(sa.data);
         if (ft.success) setFailureTrend(ft.data);
@@ -320,13 +395,17 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
           setSheetStats(scRows.stats || {});
         }
       } catch (err) {
+        if (cancelled) return;
         console.error("Fetch API Error:", err);
         toast.error("Lỗi khi tải dữ liệu Phân tích AI");
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
     fetchData();
+    return () => {
+      cancelled = true;
+    };
   }, [filters]);
 
   const topFailureTopics = useMemo(
@@ -411,52 +490,47 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
     }
   };
 
-  const handleExportFailedConversations = (format: "csv" | "json") => {
-    const exportRows = paginatedFailedConversations;
-    if (!exportRows.length) {
-      toast.warning("Không có dữ liệu lỗi AI để xuất.");
-      return;
-    }
+  const handleExportFailedConversations = async (format: "csv" | "json") => {
+    if (exportingFailed) return;
+    setExportingFailed(true);
+    try {
+      const queryParams = analyticsFiltersToSearchParams(filters);
+      if (format === "csv") {
+        const exported = await exportFailedConversationsCsvFile(queryParams);
+        toast.success(
+          exported.totalRecords > 0
+            ? `Đã xuất ${exported.totalRecords} dòng lỗi AI theo bộ lọc.`
+            : "Đã xuất file CSV chỉ có header vì bộ lọc không có dữ liệu.",
+        );
+        return;
+      }
 
-    const date = new Date().toISOString().slice(0, 10);
-    const scope = `-trang-${failedPageSafe}`;
-    if (format === "json") {
-      downloadJson(`cau-hoi-ai-chua-xu-ly${scope}-${date}.json`, exportRows);
+      const date = new Date().toISOString().slice(0, 10);
+      const scope = "-toan-bo-du-lieu-da-loc";
+      const result = await getAllFailedConversations(queryParams, { pageSize: 100 });
+      const exportRows = result.records.map(mapFailedConversation);
+      if (!exportRows.length) {
+        toast.warning("Không có dữ liệu lỗi AI để xuất.");
+        return;
+      }
+
+      downloadJson(`cau-hoi-ai-chua-xu-ly${scope}-${date}.json`, {
+        filters: Object.fromEntries(queryParams),
+        total: result.total,
+        exported: exportRows.length,
+        records: exportRows,
+      });
+      toast.success(`Đã xuất ${exportRows.length}/${result.total} dòng lỗi AI theo bộ lọc.`);
+    } catch (error) {
+      if (error instanceof ApiRequestError) {
+        toast.error(`Export thất bại (${error.status}): ${error.message}`);
+      } else {
+        toast.error(error instanceof Error ? error.message : "Không thể xuất toàn bộ dữ liệu lỗi AI đã lọc.");
+      }
+    } finally {
       setExportMenuOpen(false);
-      toast.success(`Đã xuất ${exportRows.length} dòng lỗi AI.`);
-      return;
+      setExportingFailed(false);
     }
-
-    const rows = [
-      [
-        "STT",
-        "Câu hỏi khách hàng",
-        "Câu trả lời AI",
-        "Mã khách hàng",
-        "Chủ đề",
-        "Kênh",
-        "Lý do lỗi AI",
-        "Mức độ tin cậy (%)",
-        "Mức ảnh hưởng",
-        "Gợi ý tri thức",
-      ],
-      ...exportRows.map((item, index) => [
-        index + 1,
-        item.question,
-        item.aiAnswer,
-        item.customerId,
-        item.topic,
-        item.channel,
-        item.failReason,
-        `${Math.round((Number(item.confidence) || 0) * 100)}%`,
-        item.impact,
-        item.kbSuggestion,
-      ]),
-    ];
-
-    downloadCsv(`cau-hoi-ai-chua-xu-ly${scope}-${date}.csv`, rows);
-    setExportMenuOpen(false);
-    toast.success(`Đã xuất ${exportRows.length} dòng lỗi AI.`);
   };
   const kpiStats = {
     ai_success: (qualityMetrics?.total_messages || 0) - (qualityMetrics?.failure_count || 0),
@@ -651,19 +725,20 @@ export function AIInsights({ filters, onFiltersChange, onNavigate }: AIInsightsP
                     aria-label="Mở menu xuất dữ liệu"
                     aria-haspopup="menu"
                     aria-expanded={exportMenuOpen}
+                    disabled={exportingFailed}
                     onClick={() => setExportMenuOpen((current) => !current)}
-                    style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "6px 14px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.12)", background: "#f8fafc", color: NAVY, cursor: "pointer", fontSize: "12px" }}
+                    style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "6px 14px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.12)", background: "#f8fafc", color: NAVY, cursor: exportingFailed ? "not-allowed" : "pointer", fontSize: "12px", opacity: exportingFailed ? 0.72 : 1 }}
                   >
-                    <Download size={13} aria-hidden="true" /> Xuất dữ liệu <ChevronDown size={12} aria-hidden="true" />
+                    <Download size={13} aria-hidden="true" /> {exportingFailed ? "Đang xuất..." : "Xuất dữ liệu"} <ChevronDown size={12} aria-hidden="true" />
                   </button>
                   {exportMenuOpen && (
                     <div role="menu" aria-label="Định dạng xuất dữ liệu" style={{ position: "absolute", right: 0, top: "calc(100% + 6px)", zIndex: 20, minWidth: "130px", padding: "6px", borderRadius: "10px", border: "1px solid rgba(0,56,101,0.12)", background: "#fff", boxShadow: "0 10px 28px rgba(0,56,101,0.14)" }}>
-                      <button role="menuitem" type="button" onClick={() => handleExportFailedConversations("csv")} style={{ width: "100%", padding: "8px 10px", border: 0, borderRadius: "6px", background: "transparent", color: NAVY, textAlign: "left", cursor: "pointer" }}>Xuất CSV</button>
-                      <button role="menuitem" type="button" onClick={() => handleExportFailedConversations("json")} style={{ width: "100%", padding: "8px 10px", border: 0, borderRadius: "6px", background: "transparent", color: NAVY, textAlign: "left", cursor: "pointer" }}>Xuất JSON</button>
+                      <button role="menuitem" type="button" onClick={() => void handleExportFailedConversations("csv")} style={{ width: "100%", padding: "8px 10px", border: 0, borderRadius: "6px", background: "transparent", color: NAVY, textAlign: "left", cursor: "pointer" }}>Xuất CSV</button>
+                      <button role="menuitem" type="button" onClick={() => void handleExportFailedConversations("json")} style={{ width: "100%", padding: "8px 10px", border: 0, borderRadius: "6px", background: "transparent", color: NAVY, textAlign: "left", cursor: "pointer" }}>Xuất JSON</button>
                     </div>
                   )}
                 </div>
-                <span style={{ fontSize: "11px", color: "rgba(0,56,101,0.58)" }}>Phạm vi: trang hiện tại</span>
+                <span style={{ fontSize: "11px", color: "rgba(0,56,101,0.58)" }}>Phạm vi: toàn bộ dữ liệu đã lọc</span>
               </div>
             </div>
             {selectedFailureIds.size > 0 && (

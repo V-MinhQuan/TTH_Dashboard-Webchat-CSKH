@@ -20,6 +20,14 @@ const MOCK_AUTH = JSON.stringify({
 });
 
 export async function injectAuth(page: Page, screen = 'chartbuilder'): Promise<void> {
+  const originalGoto = page.goto.bind(page);
+  page.goto = ((url: Parameters<Page['goto']>[0], options?: Parameters<Page['goto']>[1]) => {
+    if (url === '/') {
+      return originalGoto(`/?activeScreen=${encodeURIComponent(screen)}`, options);
+    }
+    return originalGoto(url, options);
+  }) as Page['goto'];
+
   await page.addInitScript(
     ({ authKey, authValue, screenKey, screenValue }: {
       authKey: string; authValue: string; screenKey: string; screenValue: string;

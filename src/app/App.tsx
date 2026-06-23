@@ -34,6 +34,83 @@ function formatTime(d: Date) {
   }).format(d);
 }
 
+const DEFAULT_SCREEN = "overview";
+const VALID_SCREEN_IDS = new Set([
+  "overview",
+  "channel",
+  "question",
+  "keyword",
+  "performance",
+  "conversation",
+  "todo",
+  "ai_intervention",
+  "sentiment",
+  "aiinsights",
+  "chartbuilder",
+  "settings",
+  "users",
+  "profile",
+  "personalinfo",
+  "faq",
+  "chatbot_sheet",
+]);
+const PATH_TO_SCREEN = new Map([
+  ["/overview", "overview"],
+  ["/channel", "channel"],
+  ["/question", "question"],
+  ["/keyword", "keyword"],
+  ["/performance", "performance"],
+  ["/conversation", "conversation"],
+  ["/todo", "todo"],
+  ["/ai-intervention", "ai_intervention"],
+  ["/sentiment", "sentiment"],
+  ["/ai-insights", "aiinsights"],
+  ["/aiinsights", "aiinsights"],
+  ["/chartbuilder", "chartbuilder"],
+  ["/chart-builder", "chartbuilder"],
+  ["/settings", "settings"],
+  ["/users", "users"],
+  ["/profile", "profile"],
+  ["/personal-info", "personalinfo"],
+  ["/personalinfo", "personalinfo"],
+  ["/faq", "faq"],
+  ["/chatbot-sheet", "chatbot_sheet"],
+  ["/chatbot_sheet", "chatbot_sheet"],
+]);
+
+function normalizeScreenId(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const normalized = value.trim().replace(/^#\/?/, "");
+  return VALID_SCREEN_IDS.has(normalized) ? normalized : null;
+}
+
+function getInternalScreenFromUrl(value: string | null | undefined): string | null {
+  if (!value || typeof window === "undefined") return null;
+  try {
+    const url = new URL(value, window.location.origin);
+    if (url.origin !== window.location.origin) return null;
+    return (
+      normalizeScreenId(url.searchParams.get("screen")) ||
+      normalizeScreenId(url.searchParams.get("activeScreen")) ||
+      PATH_TO_SCREEN.get(url.pathname) ||
+      normalizeScreenId(url.hash) ||
+      null
+    );
+  } catch {
+    return null;
+  }
+}
+
+function getInitialActiveScreen() {
+  if (typeof window === "undefined") return DEFAULT_SCREEN;
+  const params = new URLSearchParams(window.location.search);
+  return (
+    getInternalScreenFromUrl(params.get("returnUrl")) ||
+    getInternalScreenFromUrl(`${window.location.pathname}${window.location.search}${window.location.hash}`) ||
+    DEFAULT_SCREEN
+  );
+}
+
 function ScreenTransitionLoading() {
   return (
     <div style={{ minHeight: "100%", padding: "24px", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -67,14 +144,7 @@ function MainApp() {
     applyFilters: setFilters,
     resetFilters,
   } = useGlobalFilters();
-  const [activeScreen, setActiveScreen] = useState(() => {
-    try {
-      const saved = localStorage.getItem("dashboard_activeScreen");
-      return saved || "overview";
-    } catch {
-      return "overview";
-    }
-  });
+  const [activeScreen, setActiveScreen] = useState(getInitialActiveScreen);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [screenSwitching, setScreenSwitching] = useState(false);

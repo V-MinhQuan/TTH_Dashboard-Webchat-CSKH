@@ -166,6 +166,11 @@ function getAuthToken(): string | null {
   return null;
 }
 
+export function getApiAuthHeaders(): HeadersInit {
+  const authToken = getAuthToken();
+  return authToken ? { Authorization: `Bearer ${authToken}` } : {};
+}
+
 function readCache<T>(key: string, allowExpired = false): T | null {
   const storage = getCacheStorage();
   if (!storage) return null;
@@ -226,7 +231,7 @@ export async function fetchApiJson<T>(
   options: Omit<RequestInit, "cache"> & { timeoutMs?: number; cache?: boolean } = {},
 ): Promise<T> {
   const url = urlInput.toString();
-  const { timeoutMs, cache: cacheOption, ...fetchOptions } = options;
+  const { timeoutMs, cache: cacheOption, signal: externalSignal, ...fetchOptions } = options;
   const method = (fetchOptions.method || "GET").toUpperCase();
   const useCache = cacheOption !== false && method === "GET";
   const cacheKey = `${method}:${url}`;
@@ -242,6 +247,12 @@ export async function fetchApiJson<T>(
   const controller = new AbortController();
   const timeoutValue = timeoutMs || API_TIMEOUT_MS;
   const timeoutId = window.setTimeout(() => controller.abort(), timeoutValue);
+  const abortFromExternalSignal = () => controller.abort();
+  if (externalSignal?.aborted) {
+    controller.abort();
+  } else {
+    externalSignal?.addEventListener("abort", abortFromExternalSignal, { once: true });
+  }
 
   const authToken = getAuthToken();
   const request = fetch(url, {
@@ -276,6 +287,9 @@ export async function fetchApiJson<T>(
       }
 
       if (err?.name === "AbortError") {
+        if (externalSignal?.aborted) {
+          throw err;
+        }
         throw new Error(`Quá thời gian tải dữ liệu ${Math.round(timeoutValue / 1000)} giây. Vui lòng thử lại hoặc kiểm tra kết nối backend.`);
       }
 
@@ -283,11 +297,69 @@ export async function fetchApiJson<T>(
     })
     .finally(() => {
       window.clearTimeout(timeoutId);
+      externalSignal?.removeEventListener("abort", abortFromExternalSignal);
       if (useCache) inFlightGetRequests.delete(cacheKey);
     });
 
   if (useCache) inFlightGetRequests.set(cacheKey, request);
   return request;
+}
+
+export async function fetchApiBlob(
+  urlInput: string | URL,
+  options: Omit<RequestInit, "cache"> & { timeoutMs?: number } = {},
+): Promise<{ blob: Blob; headers: Headers; status: number }> {
+  const url = urlInput.toString();
+  const { timeoutMs, signal: externalSignal, ...fetchOptions } = options;
+  const controller = new AbortController();
+  const timeoutValue = timeoutMs || API_TIMEOUT_MS;
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutValue);
+  const abortFromExternalSignal = () => controller.abort();
+  if (externalSignal?.aborted) {
+    controller.abort();
+  } else {
+    externalSignal?.addEventListener("abort", abortFromExternalSignal, { once: true });
+  }
+
+  try {
+    const response = await fetch(url, {
+      ...fetchOptions,
+      method: fetchOptions.method || "GET",
+      signal: controller.signal,
+      headers: {
+        ...getApiAuthHeaders(),
+        ...(fetchOptions.headers || {}),
+      },
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      const error = new ApiRequestError(
+        payload?.message || payload?.detail || `API trả về lỗi ${response.status}.`,
+        response.status,
+      );
+      if (response.status === 401 && typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("flic:auth-expired", { detail: error.message }));
+      }
+      throw error;
+    }
+    return {
+      blob: await response.blob(),
+      headers: response.headers,
+      status: response.status,
+    };
+  } catch (err: any) {
+    if (err?.name === "AbortError") {
+      if (externalSignal?.aborted) throw err;
+      throw new Error(
+        `Quá thời gian tải dữ liệu ${Math.round(timeoutValue / 1000)} giây. Vui lòng thử lại hoặc kiểm tra kết nối backend.`,
+        { cause: err },
+      );
+    }
+    throw err;
+  } finally {
+    window.clearTimeout(timeoutId);
+    externalSignal?.removeEventListener("abort", abortFromExternalSignal);
+  }
 }
 
 
