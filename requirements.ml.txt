@@ -1,0 +1,13 @@
+# Docker dependencies for the ML service.
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+pydantic==2.9.2
+pytest>=9.0.3,<10
+
+# ML service / Transformers
+transformers==4.46.3
+onnxruntime==1.20.1
+numpy==1.26.4
+
+# Docker runs the already-exported ONNX model. Use the root requirements.txt
+# locally when running ml-service/download_model.py, which needs PyTorch.

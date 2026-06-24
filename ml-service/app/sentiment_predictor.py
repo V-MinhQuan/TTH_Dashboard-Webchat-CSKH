@@ -20,7 +20,7 @@ import time
 import numpy as np
 from typing import List, Dict, Any
 
-from .model_loader import get_tokenizer, get_ort_model
+from .model_loader import get_id2label, get_tokenizer, get_ort_model
 
 # ─── Tên model HuggingFace (để điền vào response) ─────────────────────────────
 MODEL_NAME = "wonrax/phobert-base-vietnamese-sentiment"
@@ -201,28 +201,32 @@ def predict_batch(texts: List[str]) -> List[Dict[str, Any]]:
     ort_model  = get_ort_model()
 
     # ── Lấy id2label từ config của model ──────────────────────────────────────
-    id2label: Dict[int, str] = getattr(ort_model.config, "id2label", {
-        0: "NEG", 1: "POS", 2: "NEU"
-    })
+    id2label: Dict[int, str] = get_id2label()
 
     start_time = time.time()
 
     # ── Tokenize chỉ non-empty texts ──────────────────────────────────────────
     # padding=True: đệm đồng đều, truncation=True: cắt nếu quá dài
-    # return_tensors="pt": trả về PyTorch tensor (optimum ORTModel xử lý được)
+    # return_tensors="np": trả về NumPy array để chạy trực tiếp bằng onnxruntime
     encodings = tokenizer(
         non_empty_texts,
         padding=True,
         truncation=True,
         max_length=256,
-        return_tensors="pt"
+        return_tensors="np"
     )
 
     # ── Chạy ONNX Runtime inference ───────────────────────────────────────────
-    outputs = ort_model(**encodings)
+    input_names = {input_meta.name for input_meta in ort_model.get_inputs()}
+    onnx_inputs = {
+        name: value.astype(np.int64)
+        for name, value in encodings.items()
+        if name in input_names
+    }
+    outputs = ort_model.run(None, onnx_inputs)
 
     # logits shape: (batch_size, num_labels)
-    logits = outputs.logits.detach().numpy()
+    logits = outputs[0]
 
     # ── Áp dụng softmax để lấy xác suất ──────────────────────────────────────
     probs_batch = _softmax(logits)

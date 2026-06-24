@@ -1,7 +1,18 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./app/App";
 import "./styles/index.css";
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 60_000,
+      refetchOnWindowFocus: false,
+      retry: 1,
+    },
+  },
+});
 
 class GlobalErrorBoundary extends React.Component<any, any> {
   constructor(props: any) { super(props); this.state = { hasError: false, error: null }; }
@@ -21,7 +32,9 @@ class GlobalErrorBoundary extends React.Component<any, any> {
 }
 
 createRoot(document.getElementById("root")!).render(
-  <GlobalErrorBoundary>
-    <App />
-  </GlobalErrorBoundary>
+  <QueryClientProvider client={queryClient}>
+    <GlobalErrorBoundary>
+      <App />
+    </GlobalErrorBoundary>
+  </QueryClientProvider>
 );

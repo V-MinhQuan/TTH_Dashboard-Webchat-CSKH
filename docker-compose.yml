@@ -1,0 +1,123 @@
+services:
+  backend:
+    image: python:3.11-bullseye
+    container_name: tth-dashboard-backend
+    working_dir: /app/backend
+    ports:
+      - "5000:5000"
+    volumes:
+      - .:/app
+      - pip_cache:/root/.cache/pip
+    environment:
+      PORT: "5000"
+      FASTAPI_PORT: "5000"
+      ML_SERVICE_URL: "http://ml-service:8001"
+      CELERY_BROKER_URL: "redis://redis:6379/0"
+      CELERY_RESULT_BACKEND: "redis://redis:6379/1"
+      CELERY_BACKGROUND_QUEUE: "background"
+      CORS_ORIGINS: "http://localhost:5173,http://127.0.0.1:5173"
+    depends_on:
+      - ml-service
+      - redis
+    command: >
+      sh -c "
+        set -e;
+        apt-get update;
+        apt-get install -y --no-install-recommends curl gnupg apt-transport-https ca-certificates unixodbc-dev freetds-dev;
+        curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | apt-key add -;
+        curl -fsSL https://packages.microsoft.com/config/debian/11/prod.list > /etc/apt/sources.list.d/mssql-release.list;
+        apt-get update;
+        ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql17;
+        pip install --timeout 120 --retries 10 -r /app/requirements.backend.txt;
+        python -m uvicorn app.main:app --host 0.0.0.0 --port 5000 --reload
+      "
+
+  celery-worker:
+    image: python:3.11-bullseye
+    container_name: tth-dashboard-celery-worker
+    working_dir: /app/backend
+    volumes:
+      - .:/app
+      - pip_cache:/root/.cache/pip
+    environment:
+      PORT: "5000"
+      FASTAPI_PORT: "5000"
+      ML_SERVICE_URL: "http://ml-service:8001"
+      CELERY_BROKER_URL: "redis://redis:6379/0"
+      CELERY_RESULT_BACKEND: "redis://redis:6379/1"
+      CELERY_BACKGROUND_QUEUE: "background"
+      C_FORCE_ROOT: "1"
+    depends_on:
+      - redis
+      - ml-service
+    command: >
+      sh -c "
+        set -e;
+        apt-get update;
+        apt-get install -y --no-install-recommends curl gnupg apt-transport-https ca-certificates unixodbc-dev freetds-dev;
+        curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | apt-key add -;
+        curl -fsSL https://packages.microsoft.com/config/debian/11/prod.list > /etc/apt/sources.list.d/mssql-release.list;
+        apt-get update;
+        ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql17;
+        pip install --timeout 120 --retries 10 -r /app/requirements.backend.txt;
+        celery -A app.tasks.background worker --loglevel=info --queues=background --concurrency=2
+      "
+
+  redis:
+    image: redis:alpine
+    container_name: tth-dashboard-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  ml-service:
+    image: python:3.11-slim
+    container_name: tth-dashboard-ml-service
+    working_dir: /app/ml-service
+    ports:
+      - "8001:8001"
+    volumes:
+      - .:/app
+      - pip_cache:/root/.cache/pip
+    environment:
+      ML_ALLOWED_ORIGINS: "http://localhost:5000,http://127.0.0.1:5000,http://localhost:5173,http://127.0.0.1:5173"
+      METRICS_FILE_PATH: "/app/ml-service/data/metrics.json"
+    command: >
+      sh -c "
+        set -e;
+        pip install --timeout 120 --retries 10 -r /app/requirements.ml.txt;
+        python -m uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
+      "
+
+  frontend:
+    image: node:20-bullseye
+    container_name: tth-dashboard-frontend
+    working_dir: /app
+    ports:
+      - "5173:5173"
+    volumes:
+      - .:/app
+      - frontend_node_modules:/app/node_modules
+    environment:
+      VITE_API_BASE_URL: "http://127.0.0.1:5000"
+      CHOKIDAR_USEPOLLING: "true"
+    depends_on:
+      - backend
+    command: >
+      sh -c "
+        set -e;
+        runtime_marker=node-20-bullseye;
+        current_marker=$$(cat node_modules/.docker-runtime 2>/dev/null || true);
+        if [ ! -f node_modules/.package-lock.json ] || [ \"$$current_marker\" != \"$$runtime_marker\" ] || [ package-lock.json -nt node_modules/.package-lock.json ]; then
+          npm ci;
+          echo \"$$runtime_marker\" > node_modules/.docker-runtime;
+        fi;
+        npm run build;
+        npx vite preview --host 0.0.0.0 --port 5173
+      "
+
+volumes:
+  frontend_node_modules:
+  pip_cache:
+  redis_data:

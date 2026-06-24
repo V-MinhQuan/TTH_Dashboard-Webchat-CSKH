@@ -57,6 +57,7 @@ source .venv/bin/activate
 ### Bước 4: Cài đặt dependencies
 
 ```bash
+# Chạy từ thư mục gốc repo, dùng venv chung
 pip install -r requirements.txt
 ```
 
@@ -360,6 +361,7 @@ pytest tests/test_api.py -v
 **Nguyên nhân**: Chưa cài đủ dependencies.  
 **Giải pháp**:
 ```bash
+# Chạy từ thư mục gốc repo
 pip install -r requirements.txt
 ```
 
@@ -392,7 +394,7 @@ pip install -r requirements.txt
 **Giải pháp**:
 1. Tải [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/).
 2. Cài đặt "Desktop development with C++".
-3. Thử lại `pip install -r requirements.txt`.
+3. Từ thư mục gốc repo, thử lại `pip install -r requirements.txt`.
 
 ---
 
@@ -412,7 +414,6 @@ ml-service/
 │   ├── __init__.py
 │   └── test_api.py           # Test tự động (pytest + mock)
 ├── download_model.py         # Script tải và export model ONNX
-├── requirements.txt          # Danh sách dependencies Python
 ├── .gitignore                # Bỏ qua .venv và models/ khi commit
 └── README.md                 # File này
 ```

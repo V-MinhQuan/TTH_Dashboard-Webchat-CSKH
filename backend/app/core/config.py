@@ -47,6 +47,10 @@ class Settings(BaseSettings):
 
     ml_service_url: str = Field(default="http://localhost:8001", validation_alias="ML_SERVICE_URL")
     ml_timeout_seconds: float = Field(default=15.0, validation_alias="ML_TIMEOUT_SECONDS")
+    celery_broker_url: str = Field(default="redis://localhost:6379/0", validation_alias="CELERY_BROKER_URL")
+    celery_result_backend: str = Field(default="redis://localhost:6379/1", validation_alias="CELERY_RESULT_BACKEND")
+    celery_background_queue: str = Field(default="background", validation_alias="CELERY_BACKGROUND_QUEUE")
+    celery_enqueue_on_startup: bool = Field(default=True, validation_alias="CELERY_ENQUEUE_ON_STARTUP")
     gemini_api_keys: str = Field(
         default="",
         validation_alias="GEMINI_API_KEYS",

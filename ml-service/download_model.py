@@ -40,7 +40,7 @@ def main():
         from optimum.onnxruntime import ORTModelForSequenceClassification
     except ImportError as e:
         print(f"[LỖI] Không thể import thư viện cần thiết: {e}")
-        print("      Hãy chạy: pip install -r requirements.txt")
+        print("      Hãy chạy từ thư mục gốc repo: pip install -r requirements.txt")
         sys.exit(1)
 
     # ── Bước 2: Tải tokenizer từ HuggingFace ─────────────────────────────────

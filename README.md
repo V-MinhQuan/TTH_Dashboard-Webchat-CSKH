@@ -67,41 +67,27 @@ DB_USER=sa
 DB_PASSWORD=your_password
 ```
 
-### 3. Tạo virtual environment và cài dependencies cho FastAPI backend
+### 3. Tạo virtual environment Python chung và cài dependencies
 
 ```bash
-cd backend
+# Chạy ở thư mục gốc repo
 python -m venv .venv
 
 # Windows
 .venv\Scripts\activate
 pip install -r requirements.txt
 deactivate
-
-cd ..
 ```
 
-### 4. Tạo virtual environment và cài dependencies cho ml-service
+File `requirements.txt` ở thư mục gốc dùng chung cho FastAPI backend, Celery worker và ml-service.
 
-```bash
-cd ml-service
-python -m venv .venv
-
-# Windows
-.venv\Scripts\activate
-pip install -r requirements.txt
-deactivate
-
-cd ..
-```
-
-### 5. Tải model PhoBERT (chỉ cần chạy một lần)
+### 4. Tải model PhoBERT (chỉ cần chạy một lần)
 
 Model PhoBERT sẽ được tải từ HuggingFace và export sang ONNX (~500 MB, mất 5–15 phút lần đầu):
 
 ```bash
 cd ml-service
-.venv\Scripts\activate
+..\.venv\Scripts\activate
 python download_model.py
 deactivate
 cd ..
@@ -113,14 +99,50 @@ Model sẽ được lưu tại `ml-service/models/phobert-sentiment-onnx/`.
 
 ## Chạy project (Development)
 
-Cần mở **3 terminal riêng biệt**, khởi động theo thứ tự:
+Cần mở Redis trong WSL Ubuntu và **4 terminal PowerShell riêng biệt**, khởi động theo thứ tự:
 
-### Terminal 1 — ML Service (cổng 8001)
+### WSL Ubuntu — Redis (cổng 6379)
 
 ```bash
-cd ml-service
+sudo service redis-server start
+redis-cli ping
+```
+
+Kết quả mong đợi: `PONG`.
+
+---
+
+### Terminal 1 — FastAPI Backend (cổng 5000)
+
+```bash
+cd D:\WebChat_Project\TTH_Dashboard-Webchat-CSKH
 .venv\Scripts\activate
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
+python -m uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port 5000 --reload
+```
+
+Kiểm tra: http://localhost:5000/api/health
+Swagger UI: http://localhost:5000/docs
+
+---
+
+### Terminal 2 — Celery Worker
+
+```bash
+cd D:\WebChat_Project\TTH_Dashboard-Webchat-CSKH
+.venv\Scripts\activate
+python -m celery --workdir backend -A app.tasks.background worker --loglevel=info --queues=background --pool=threads --concurrency=2
+```
+
+Trên Windows phải dùng `--pool=threads`; pool mặc định của Celery dùng multiprocessing có thể lỗi `WinError 5/6`.
+
+---
+
+### Terminal 3 — ML Service (cổng 8001)
+
+```bash
+cd D:\WebChat_Project\TTH_Dashboard-Webchat-CSKH
+.venv\Scripts\activate
+python -m uvicorn app.main:app --app-dir ml-service --host 0.0.0.0 --port 8001 --reload
 ```
 
 Hoặc dùng script sẵn có (Windows):
@@ -134,23 +156,10 @@ Kiểm tra: http://localhost:8001/health
 
 ---
 
-### Terminal 2 — FastAPI Backend (cổng 5000)
+### Terminal 4 — Frontend (cổng 5173)
 
 ```bash
-cd backend
-.venv\Scripts\activate
-python -m uvicorn app.main:app --host 0.0.0.0 --port 5000 --reload
-```
-
-Kiểm tra: http://localhost:5000/api/health
-Swagger UI: http://localhost:5000/docs
-
----
-
-### Terminal 3 — Frontend (cổng 5173)
-
-```bash
-# Chạy ở thư mục gốc
+cd D:\WebChat_Project\TTH_Dashboard-Webchat-CSKH
 npm run dev
 ```
 
@@ -169,17 +178,15 @@ npm run build
 ### FastAPI backend tests
 
 ```bash
-cd backend
 .venv\Scripts\activate
-python -m pytest tests_fastapi -q
+python -m pytest backend\tests_fastapi -q
 ```
 
 ### ML Service tests
 
 ```bash
-cd ml-service
 .venv\Scripts\activate
-python -m pytest tests -q
+python -m pytest ml-service\tests -q
 ```
 
 ### Legacy Node.js backend tests (chỉ chạy khi rollback)
@@ -217,8 +224,7 @@ TTH_Dashboard-Webchat-CSKH/
 │   ├── reports/                # Báo cáo kỹ thuật
 │   ├── scripts/                # Tác vụ tiện ích admin
 │   ├── tests_fastapi/          # Bộ unit/integration test (pytest)
-│   ├── .env.example            # Mẫu biến môi trường
-│   └── requirements.txt        # Python dependencies
+│   └── .env.example            # Mẫu biến môi trường
 │
 ├── backend_legacy_node/        # Archived Node.js backend (rollback/reference only)
 │   ├── controllers/            # Express controllers
@@ -239,14 +245,14 @@ TTH_Dashboard-Webchat-CSKH/
 │   ├── tests/                  # pytest tests
 │   ├── download_model.py       # Script tải model lần đầu
 │   ├── run_windows.bat         # Script chạy trên Windows
-│   ├── .env.example            # Mẫu biến môi trường
-│   └── requirements.txt        # Python dependencies
+│   └── .env.example            # Mẫu biến môi trường
 │
 ├── docs/                       # Tài liệu kỹ thuật
 ├── guidelines/                 # Hướng dẫn phát triển
 ├── .env.example                # (không có, dùng backend/.env.example)
 ├── .gitignore
 ├── package.json                # Frontend dependencies
+├── requirements.txt            # Python dependencies chung cho backend + ml-service
 ├── vite.config.ts              # Vite config + code splitting
 └── README.md
 ```

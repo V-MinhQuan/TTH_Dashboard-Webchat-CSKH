@@ -1,5 +1,6 @@
-﻿import { useState, useEffect } from "react";
-import { Hash, Brain, X, HelpCircle, CheckCircle, Plus } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Brain, X, Plus } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
   LineChart, Line,
@@ -9,171 +10,35 @@ import { FilterPanel, FilterValues } from "../FilterPanel";
 import { toast } from "sonner";
 import { buildApiUrl, fetchApiJson } from "../../services/dashboardApi";
 import { useAuth } from "../../context/AuthContext";
-import { ErrorSourceBadge } from "../common/ErrorSourceBadge";
 import { FeedbackFormDialog } from "../feedback/FeedbackFormDialog";
-import { AI_FAILURE_TAXONOMY, getAiFailureDefinition } from "../../constants/aiFailureTaxonomy";
-import * as round3Api from "../../services/round3Api";
-
-const NAVY = "#003865";
-const ORANGE = "#D73C01";
-const CTA = "#ED5206";
-const TOPIC_DONUT_COLORS = [NAVY, "#1565C0", "#1D7FF2", "#00AEEF"];
-
-type AiErrorKeywordPayload = {
-  keyword: string;
-  error_group: string;
-  topic: string;
-  care_hub: null;
-  description: string;
-  status: "active";
-};
-
-type Round3KeywordApi = typeof round3Api & {
-  createAiErrorKeyword?: (payload: AiErrorKeywordPayload) => Promise<unknown>;
-};
-
-const emptyAiErrorKeywordForm = {
-  keyword: "",
-  errorGroup: getAiFailureDefinition("missing_data")!.apiValue,
-  topic: "",
-  description: "",
-};
-
-type KeywordItem = {
-  word: string;
-  count: number;
-  trend: number;
-};
-
-type KeywordGroup = {
-  id: string;
-  name: string;
-  color: string;
-  totalQuestions: number;
-  changeRate: number;
-  aiFailed: number | null;
-  faqNeeded: number;
-  keywords: KeywordItem[];
-};
-
-type KeywordGroupsResponse = {
-  success: boolean;
-  message?: string;
-  data: any[];
-};
-
-type KeywordHeatmapResponse = {
-  success: boolean;
-  message?: string;
-  data: any[];
-  columns?: { key: string; label: string }[];
-};
-
-type KeywordTrendResponse = {
-  success: boolean;
-  message?: string;
-  data: any[];
-};
-
-type SuggestedFaqItem = {
-  question: string;
-  suggestedAnswer: string;
-  topic: string;
-  freq: number;
-  priority: string;
-};
-
-type SuggestedFaqResponse = {
-  success: boolean;
-  message?: string;
-  data: SuggestedFaqItem[];
-};
-
-type MissingFaqItem = {
-  question: string;
-  source: string;
-  added?: boolean;
-  suggestedAnswer?: string;
-};
-
-function mapTopicToGroupId(value: string): string | null {
-  if (!value) return null;
-  const t = value.toLowerCase();
-  if (t.includes("toeic")) return "toeic";
-  if (t.includes("vstep")) return "vstep";
-  if (t.includes("tin học") || t.includes("mos") || t.includes("ic3") || t.includes("cntt") || t.includes("sát hạch")) return "tinhoc";
-  if (t.includes("chuẩn đầu ra") || t.includes("chứng chỉ")) return "chuandaura";
-  return null;
-}
-
-
-const topicGroupMeta: Pick<KeywordGroup, "id" | "name" | "color">[] = [
-  { id: "toeic", name: "TOEIC", color: NAVY },
-  { id: "vstep", name: "VSTEP", color: "#1565C0" },
-  { id: "tinhoc", name: "Tin học / MOS / IC3", color: "#42A5F5" },
-  { id: "chuandaura", name: "Chuẩn đầu ra / Chứng chỉ", color: "#0288D1" },
-];
-
-function heatColor(val: number) {
-  if (val <= 0) return "#f1f5f9";
-  if (val >= 5) return "#003865";
-  if (val >= 4) return "#1565C0";
-  if (val >= 3) return "#42A5F5";
-  if (val >= 2) return "#B9DCFF";
-  return "#EBF2FF";
-}
-
-function heatTextColor(val: number) {
-  return val >= 3 ? "#fff" : "#003865";
-}
-
-function normalizeFaqText(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function failureSourceFromSuggestion(source: string) {
-  const normalized = source.toLocaleLowerCase("vi-VN");
-  if (normalized.includes("không chắc chắn")) return getAiFailureDefinition("uncertain")!.apiValue;
-  if (normalized.includes("ngoài phạm vi")) return getAiFailureDefinition("out_of_scope")!.apiValue;
-  if (normalized.includes("tự tạo thông tin") || normalized.includes("bịa thông tin")) {
-    return getAiFailureDefinition("hallucination_risk")!.apiValue;
-  }
-  return getAiFailureDefinition("missing_data")!.apiValue;
-}
-
-function topicForGroupId(groupId: string | null) {
-  const topicMapSheet: Record<string, string> = {
-    toeic: "TOEIC",
-    vstep: "VSTEP",
-    tinhoc: "MOS/IC3",
-    chuandaura: "Chuẩn đầu ra ngoại ngữ",
-  };
-  return groupId ? topicMapSheet[groupId] || "TOEIC" : "TOEIC";
-}
-
-function aiWrongAnswerNote(value: string | undefined) {
-  const answer = (value || "").trim();
-  return answer ? `Câu trả lời sai của AI:\n${answer}` : "";
-}
-
-async function persistAiErrorKeyword(payload: AiErrorKeywordPayload) {
-  const api = round3Api as Round3KeywordApi;
-  if (typeof api.createAiErrorKeyword === "function") {
-    return api.createAiErrorKeyword(payload);
-  }
-
-  const response = await fetchApiJson<{ success: boolean; message?: string; data: unknown }>(
-    buildApiUrl("/api/ai-error-keywords"),
-    { method: "POST", cache: false, body: JSON.stringify(payload) },
-  );
-  if (!response.success) throw new Error(response.message || "Không thể lưu từ khóa lỗi AI.");
-  return response.data;
-}
+import { AI_FAILURE_TAXONOMY } from "../../constants/aiFailureTaxonomy";
+import { cn } from "../ui/utils";
+import {
+  aiWrongAnswerNote,
+  buildApiParams,
+  buildTrendApiParams,
+  CTA,
+  emptyAiErrorKeywordForm,
+  failureSourceFromSuggestion,
+  mapApiGroups,
+  mapTopicToGroupId,
+  mapTrendRows,
+  matchesKeywordFilter,
+  NAVY,
+  normalizeFaqText,
+  normalizeFilterValue,
+  ORANGE,
+  persistAiErrorKeyword,
+  TOPIC_DONUT_COLORS,
+  topicForGroupId,
+  type AiErrorKeywordPayload,
+  type KeywordGroup,
+  type KeywordGroupsResponse,
+  type KeywordHeatmapResponse,
+  type KeywordTrendResponse,
+  type MissingFaqItem,
+  type SuggestedFaqResponse,
+} from "../../utils/keywordHelpers";
 
 interface Props {
   filters: FilterValues;
@@ -182,201 +47,192 @@ interface Props {
   onNavigate: (s: string) => void;
 }
 
-function formatLocalDate(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+const cardShellClass = "bg-white rounded-[16px] p-5 border border-[rgba(0,56,101,0.08)] shadow-[0_2px_8px_rgba(0,56,101,0.05)]";
+const labelTextClass = "text-[11px] text-[rgba(0,56,101,0.5)]";
+const navyTitleClass = "text-[#003865] font-bold";
+const modalLabelClass = "text-[#003865] text-xs font-semibold";
+const modalInputClass = "mt-1.5 w-full box-border rounded-lg border border-[rgba(0,56,101,0.16)] px-3 py-2.5 text-[#003865] outline-none";
+
+const groupToneClasses: Record<string, { activeBorder: string; activeShadow: string; text: string; strip: string }> = {
+  toeic: {
+    activeBorder: "border-[#003865]",
+    activeShadow: "shadow-[0_4px_16px_rgba(0,56,101,0.13)]",
+    text: "text-[#003865]",
+    strip: "bg-[#003865]",
+  },
+  vstep: {
+    activeBorder: "border-[#1565C0]",
+    activeShadow: "shadow-[0_4px_16px_rgba(21,101,192,0.13)]",
+    text: "text-[#1565C0]",
+    strip: "bg-[#1565C0]",
+  },
+  tinhoc: {
+    activeBorder: "border-[#42A5F5]",
+    activeShadow: "shadow-[0_4px_16px_rgba(66,165,245,0.13)]",
+    text: "text-[#42A5F5]",
+    strip: "bg-[#42A5F5]",
+  },
+  chuandaura: {
+    activeBorder: "border-[#0288D1]",
+    activeShadow: "shadow-[0_4px_16px_rgba(2,136,209,0.13)]",
+    text: "text-[#0288D1]",
+    strip: "bg-[#0288D1]",
+  },
+};
+
+const defaultGroupTone = groupToneClasses.toeic;
+const heatScaleClasses = ["bg-[#f1f5f9]", "bg-[#EBF2FF]", "bg-[#B9DCFF]", "bg-[#42A5F5]", "bg-[#1565C0]", "bg-[#003865]"];
+const loadingBarHeights = ["h-[58%]", "h-[82%]", "h-[44%]", "h-[70%]", "h-[38%]", "h-[92%]"];
+const emptyMissingFaqGroups: Record<string, MissingFaqItem[]> = {
+  toeic: [],
+  vstep: [],
+  tinhoc: [],
+  chuandaura: [],
+};
+
+type KeywordAnalysisQueryData = {
+  groups: KeywordGroup[];
+  heatmapRows: any[];
+  trendRows: any[];
+  heatmapColsDyn: { key: string; label: string }[];
+  missingFaqs: Record<string, MissingFaqItem[]>;
+};
+
+function toneForGroup(groupId: string) {
+  return groupToneClasses[groupId] || defaultGroupTone;
 }
 
-/** Chuyển FilterValues → query params để gửi lên API backend */
-function buildApiParams(filters: FilterValues): URLSearchParams {
-  const params = new URLSearchParams();
-  params.set("pageSize", "100");
-
-  // --- Khoảng thời gian ---
-  const now = new Date();
-  let startDate: Date | null = null;
-  let endDate: Date | null = null;
-
-  if (filters.dateRange === "Tùy chỉnh") {
-    if (filters.customDateFrom) startDate = new Date(filters.customDateFrom);
-    if (filters.customDateTo) endDate = new Date(filters.customDateTo);
-  } else {
-    endDate = new Date(now);
-    startDate = new Date(now);
-    if (filters.dateRange === "Hôm nay") { startDate.setHours(0, 0, 0, 0); }
-    else if (filters.dateRange === "7 ngày qua") { startDate.setDate(now.getDate() - 7); }
-    else if (filters.dateRange === "30 ngày qua") { startDate.setDate(now.getDate() - 30); }
-    else if (filters.dateRange === "Tháng này") { startDate = new Date(now.getFullYear(), now.getMonth(), 1); }
-    else if (filters.dateRange === "Quý này") {
-      const q = Math.floor(now.getMonth() / 3);
-      startDate = new Date(now.getFullYear(), q * 3, 1);
-    }
-  }
-
-  if (filters.dateRange === "Tùy chỉnh") {
-    if (filters.customDateFrom) params.set("startDate", filters.customDateFrom);
-    if (filters.customDateTo) params.set("endDate", filters.customDateTo);
-  } else {
-    if (startDate) params.set("startDate", formatLocalDate(startDate));
-    if (endDate) params.set("endDate", formatLocalDate(endDate));
-  }
-
-  // --- Kênh ---
-  const channelMap: Record<string, string> = {
-    "Zalo OA": "ZaloOA",
-    "Zalo Business": "ZaloBusiness",
-    "Chat Widget": "ChatWidget",
-    "Facebook": "Facebook",
-  };
-  if (filters.channel && filters.channel !== "Tất cả") {
-    const mapped = channelMap[filters.channel];
-    if (mapped) params.set("channel", mapped);
-  }
-
-  if (filters.topic && filters.topic !== "Tất cả") {
-    params.set("topic", filters.topic);
-  }
-
-  if (filters.conversationStatus && filters.conversationStatus !== "Tất cả") {
-    params.set("conversationStatus", filters.conversationStatus);
-  }
-
-  if (filters.aiStatus && filters.aiStatus !== "Tất cả") {
-    params.set("aiStatus", filters.aiStatus);
-  }
-
-  return params;
+function summaryCardClass(group: KeywordGroup, activeGroup: string | null) {
+  const tone = toneForGroup(group.id);
+  const isActive = activeGroup === group.id;
+  return cn(
+    "relative cursor-pointer overflow-hidden rounded-[14px] border-[1.5px] bg-white px-[18px] py-4 pl-[22px] transition-all",
+    isActive ? cn(tone.activeBorder, tone.activeShadow) : "border-[rgba(0,56,101,0.08)] shadow-[0_2px_8px_rgba(0,56,101,0.05)]",
+  );
 }
 
-function buildTrendApiParams(filters: FilterValues): URLSearchParams {
+function heatCellClass(val: number, hasRawValue: boolean) {
+  const base = "rounded-lg px-3 py-1.5 text-center text-[13px] font-bold";
+  const color = val <= 0
+    ? "bg-[#f1f5f9] text-[#003865]"
+    : val >= 5
+      ? "bg-[#003865] text-white"
+      : val >= 4
+        ? "bg-[#1565C0] text-white"
+        : val >= 3
+          ? "bg-[#42A5F5] text-white"
+          : val >= 2
+            ? "bg-[#B9DCFF] text-[#003865]"
+            : "bg-[#EBF2FF] text-[#003865]";
+
+  return cn(base, color, hasRawValue ? "cursor-help" : "cursor-default");
+}
+
+function heatLegendClass(val: number) {
+  if (val <= 0) return "bg-[#f1f5f9]";
+  if (val >= 5) return "bg-[#003865]";
+  if (val >= 4) return "bg-[#1565C0]";
+  if (val >= 3) return "bg-[#42A5F5]";
+  if (val >= 2) return "bg-[#B9DCFF]";
+  return "bg-[#EBF2FF]";
+}
+
+async function loadKeywordAnalysisData(filters: FilterValues, signal?: AbortSignal): Promise<KeywordAnalysisQueryData> {
   const params = buildApiParams(filters);
-  params.delete("pageSize");
-  params.set("granularity", getTrendGranularity(filters));
-  params.set("months", "8");
-  return params;
-}
+  const trendParams = buildTrendApiParams(filters);
 
-function getTrendGranularity(filters: FilterValues) {
-  if (filters.dateRange === "Quý này") return "week";
+  const [groupsJson, hJson, tJson, faqsJson] = await Promise.all([
+    fetchApiJson<KeywordGroupsResponse>(buildApiUrl("/api/admin/crm-keywords/groups", params), { signal }),
+    fetchApiJson<KeywordHeatmapResponse>(buildApiUrl("/api/admin/crm-keywords/heatmap", params), { signal }),
+    fetchApiJson<KeywordTrendResponse>(buildApiUrl("/api/admin/crm-keywords/trends", trendParams), { signal }),
+    fetchApiJson<SuggestedFaqResponse>(buildApiUrl("/api/analytics/ai/suggested-faqs", params), { signal }),
+  ]);
 
-  if (filters.dateRange === "Tùy chỉnh" && filters.customDateFrom && filters.customDateTo) {
-    const start = new Date(filters.customDateFrom);
-    const end = new Date(filters.customDateTo);
-    const days = Math.abs(end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
-    if (days <= 45) return "day";
-    if (days <= 120) return "week";
-    return "month";
+  if (!groupsJson.success || !Array.isArray(groupsJson.data)) {
+    throw new Error(groupsJson.message || "Không thể tải thống kê nhóm Keywords.");
+  }
+  if (!hJson.success || !Array.isArray(hJson.data)) {
+    throw new Error(hJson.message || "Không thể tải dữ liệu heatmap Keywords.");
+  }
+  if (!tJson.success || !Array.isArray(tJson.data)) {
+    throw new Error(tJson.message || "Không thể tải dữ liệu xu hướng Keywords.");
+  }
+  if (!faqsJson.success || !Array.isArray(faqsJson.data)) {
+    throw new Error(faqsJson.message || "Không thể tải câu hỏi đề xuất FAQ từ database.");
   }
 
-  return "day";
-}
+  const missingFaqs: Record<string, MissingFaqItem[]> = {
+    toeic: [],
+    vstep: [],
+    tinhoc: [],
+    chuandaura: [],
+  };
 
-function mapApiGroups(apiGroups: any[]): KeywordGroup[] {
-  return apiGroups.map((apiGroup: any) => {
-    const group = topicGroupMeta.find(g => g.id === apiGroup.id);
-    const aiFailed = apiGroup.aiFailed == null ? null : Number(apiGroup.aiFailed);
-    return {
-      id: apiGroup.id,
-      name: apiGroup.name || group?.name || apiGroup.id,
-      color: apiGroup.color || group?.color || NAVY,
-      totalQuestions: apiGroup.totalQuestions || 0,
-      changeRate: apiGroup.changeRate || 0,
-      aiFailed: aiFailed !== null && Number.isFinite(aiFailed) ? aiFailed : null,
-      faqNeeded: apiGroup.faqNeeded || 0,
-      keywords: (apiGroup.keywords || []).map((k: any) => ({
-        word: k.word,
-        count: k.count || 0,
-        trend: apiGroup.changeRate || 0,
-      })),
-    };
+  faqsJson.data.forEach((item) => {
+    const groupId = mapTopicToGroupId(`${item.topic || ""} ${item.question || ""} ${item.suggestedAnswer || ""}`);
+    if (!groupId || !item.question?.trim()) return;
+
+    missingFaqs[groupId].push({
+      question: item.question.trim(),
+      source: `Phát hiện từ ${item.freq} hội thoại`,
+      suggestedAnswer: item.suggestedAnswer || "",
+      added: false,
+    });
   });
+
+  return {
+    groups: mapApiGroups(groupsJson.data),
+    heatmapRows: hJson.data,
+    trendRows: mapTrendRows(tJson.data),
+    heatmapColsDyn: hJson.columns && Array.isArray(hJson.columns) ? hJson.columns : [],
+    missingFaqs,
+  };
 }
 
-function mapTrendRows(apiRows: any[]) {
-  return apiRows.map((row: any) => ({
-    date: row.date,
-    TOEIC: row["TOEIC"] || 0,
-    VSTEP: row["VSTEP"] || 0,
-    "Tin học": row["Tin học / MOS / IC3"] || row["Tin học"] || 0,
-    "Chuẩn đầu ra": row["Chuẩn đầu ra / Chứng chỉ"] || row["Chuẩn đầu ra"] || 0,
-  }));
-}
-
-function normalizeFilterValue(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function matchesKeywordFilter(topic: string, keyword: string) {
-  const normalizedTopic = normalizeFilterValue(topic);
-  if (!normalizedTopic || normalizedTopic === "tat ca") return true;
-
-  const normalizedKeyword = normalizeFilterValue(keyword);
-  if (!normalizedKeyword) return false;
-
-  return normalizedKeyword === normalizedTopic ||
-    normalizedKeyword.startsWith(`${normalizedTopic} `) ||
-    normalizedKeyword.endsWith(` ${normalizedTopic}`) ||
-    normalizedKeyword.includes(` ${normalizedTopic} `);
+function ShimmerBlock({ className }: { className: string }) {
+  return (
+    <div
+      className={cn(
+        "rounded-[10px] bg-gradient-to-r from-[#f0f4f8] via-[#e2e8f0] to-[#f0f4f8] bg-[length:200%_100%] animate-pulse",
+        className,
+      )}
+    />
+  );
 }
 
 function KeywordLoadingState() {
-  const block = (style: React.CSSProperties = {}) => (
-    <div
-      style={{
-        borderRadius: "10px",
-        background: "linear-gradient(90deg, #f0f4f8 25%, #e2e8f0 50%, #f0f4f8 75%)",
-        backgroundSize: "200% 100%",
-        animation: "keywordShimmer 1.4s infinite",
-        ...style,
-      }}
-    />
-  );
-
   return (
     <div>
-      <style>{`
-        @keyframes keywordShimmer {
-          0% { background-position: -200% 0; }
-          100% { background-position: 200% 0; }
-        }
-      `}</style>
-      <div style={{ marginBottom: "20px" }}>
-        {block({ width: "220px", height: "24px", marginBottom: "8px" })}
-        {block({ width: "320px", height: "15px" })}
+      <div className="mb-5">
+        <ShimmerBlock className="mb-2 h-6 w-[220px]" />
+        <ShimmerBlock className="h-[15px] w-[320px]" />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "14px", marginBottom: "24px" }}>
+      <div className="mb-6 grid grid-cols-4 gap-3.5">
         {[0, 1, 2, 3].map((i) => (
-          <div key={i} style={{ background: "#fff", borderRadius: "14px", padding: "18px", border: "1px solid rgba(0,56,101,0.08)", minHeight: "142px" }}>
-            {block({ width: "45%", height: "16px", marginBottom: "18px" })}
-            {block({ width: "28%", height: "30px", marginBottom: "10px" })}
-            {block({ width: "35%", height: "13px", marginBottom: "16px" })}
-            <div style={{ display: "flex", gap: "10px" }}>
-              {block({ width: "52px", height: "14px" })}
-              {block({ width: "86px", height: "14px" })}
+          <div key={i} className="min-h-[142px] rounded-[14px] border border-[rgba(0,56,101,0.08)] bg-white p-[18px]">
+            <ShimmerBlock className="mb-[18px] h-4 w-[45%]" />
+            <ShimmerBlock className="mb-2.5 h-[30px] w-[28%]" />
+            <ShimmerBlock className="mb-4 h-[13px] w-[35%]" />
+            <div className="flex gap-2.5">
+              <ShimmerBlock className="h-[14px] w-[52px]" />
+              <ShimmerBlock className="h-[14px] w-[86px]" />
             </div>
           </div>
         ))}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "20px", marginBottom: "20px" }}>
-        <div style={{ background: "#fff", borderRadius: "16px", padding: "20px", border: "1px solid rgba(0,56,101,0.08)", height: "262px" }}>
-          {block({ width: "220px", height: "18px", marginBottom: "24px" })}
-          <div style={{ height: "190px", display: "flex", alignItems: "flex-end", gap: "16px" }}>
-            {[58, 82, 44, 70, 38, 92].map((height, i) => (
-              <div key={i} style={{ flex: 1, height: `${height}%`, borderRadius: "6px 6px 0 0", background: i % 2 ? "#eef3f8" : "#f6f8fb" }} />
+      <div className="mb-5 grid grid-cols-[2fr_1fr] gap-5">
+        <div className="h-[262px] rounded-2xl border border-[rgba(0,56,101,0.08)] bg-white p-5">
+          <ShimmerBlock className="mb-6 h-[18px] w-[220px]" />
+          <div className="flex h-[190px] items-end gap-4">
+            {loadingBarHeights.map((heightClass, i) => (
+              <div key={i} className={cn("flex-1 rounded-t-md", heightClass, i % 2 ? "bg-[#eef3f8]" : "bg-[#f6f8fb]")} />
             ))}
           </div>
         </div>
-        <div style={{ background: "#fff", borderRadius: "16px", padding: "20px", border: "1px solid rgba(0,56,101,0.08)", height: "262px" }}>
-          {block({ width: "160px", height: "18px", marginBottom: "28px" })}
-          <div style={{ display: "flex", justifyContent: "center" }}>
-            <div style={{ width: "138px", height: "138px", borderRadius: "50%", border: "18px solid #eef3f8", borderTopColor: "#d7e4f2" }} />
+        <div className="h-[262px] rounded-2xl border border-[rgba(0,56,101,0.08)] bg-white p-5">
+          <ShimmerBlock className="mb-7 h-[18px] w-40" />
+          <div className="flex justify-center">
+            <div className="h-[138px] w-[138px] rounded-full border-[18px] border-[#eef3f8] border-t-[#d7e4f2]" />
           </div>
         </div>
       </div>
@@ -386,21 +242,24 @@ function KeywordLoadingState() {
 
 function KeywordErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <div style={{ background: "#fff", border: "1px solid rgba(0,56,101,0.08)", borderRadius: "16px", padding: "44px 24px", textAlign: "center" }}>
-      <div style={{ fontSize: "15px", fontWeight: 700, color: NAVY, marginBottom: "8px" }}>Không thể tải dữ liệu Keywords</div>
-      <div style={{ fontSize: "13px", color: "rgba(0,56,101,0.55)", marginBottom: "18px" }}>{message}</div>
-      <button onClick={onRetry} style={{ padding: "9px 18px", borderRadius: "8px", border: "none", background: NAVY, color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: "12px" }}>
+    <div className="rounded-2xl border border-[rgba(0,56,101,0.08)] bg-white px-6 py-11 text-center">
+      <div className="mb-2 text-[15px] font-bold text-[#003865]">Không thể tải dữ liệu Keywords</div>
+      <div className="mb-[18px] text-[13px] text-[rgba(0,56,101,0.55)]">{message}</div>
+      <button
+        onClick={onRetry}
+        className="cursor-pointer rounded-lg border-0 bg-[#003865] px-[18px] py-[9px] text-xs font-bold text-white"
+      >
         Tải lại
       </button>
     </div>
   );
 }
 
-export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNavigate }: Props) {
+export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Props) {
   const { role } = useAuth();
   // appliedFilters chỉ cập nhật khi bấm "Áp dụng", không re-fetch khi thay đổi bộ lọc chưa áp dụng
   const [appliedFilters, setAppliedFilters] = useState<FilterValues>(filters);
-  const [missingFaqs, setMissingFaqs] = useState<Record<string, MissingFaqItem[]>>({});
+  const [addedFaqKeys, setAddedFaqKeys] = useState<Record<string, Record<string, boolean>>>({});
 
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [activeMissingFaq, setActiveMissingFaq] = useState<{ groupId: string; index: number; item: MissingFaqItem } | null>(null);
@@ -453,29 +312,47 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
 
   const getFaqNeededCount = (groupId: string) => {
     const items = missingFaqs[groupId] || [];
-    return items.filter(item => !item.added).length;
+    return items.filter((item) => !item.added).length;
   };
 
   const markMissingFaqAdded = (groupId: string, index: number) => {
-    setMissingFaqs((current) => {
-      const groupItems = [...(current[groupId] || [])];
-      if (!groupItems[index]) return current;
-      groupItems[index] = { ...groupItems[index], added: true };
+    const item = missingFaqs[groupId]?.[index];
+    if (!item) return;
+
+    const faqKey = normalizeFaqText(item.question);
+    setAddedFaqKeys((current) => {
       return {
         ...current,
-        [groupId]: groupItems,
+        [groupId]: {
+          ...(current[groupId] || {}),
+          [faqKey]: true,
+        },
       };
     });
   };
 
   const [activeGroup, setActiveGroup] = useState<string | null>(null);
-  const [groups, setGroups] = useState<KeywordGroup[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const keywordQuery = useQuery({
+    queryKey: ["keyword-analysis", appliedFilters],
+    queryFn: ({ signal }) => loadKeywordAnalysisData(appliedFilters, signal),
+    placeholderData: (previousData) => previousData,
+  });
 
-  // Hàm xử lý khi bấm "Áp dụng" — cập nhật appliedFilters để trigger fetch
+  const missingFaqs = useMemo<Record<string, MissingFaqItem[]>>(() => {
+    const source = keywordQuery.data?.missingFaqs || emptyMissingFaqGroups;
+    return Object.fromEntries(
+      Object.entries(source).map(([groupId, items]) => [
+        groupId,
+        items.map((item) => ({
+          ...item,
+          added: Boolean(item.added || addedFaqKeys[groupId]?.[normalizeFaqText(item.question)]),
+        })),
+      ]),
+    ) as Record<string, MissingFaqItem[]>;
+  }, [keywordQuery.data?.missingFaqs, addedFaqKeys]);
+
+  // Hàm xử lý khi bấm "Áp dụng" - cập nhật appliedFilters để trigger fetch
   const handleApplyFilters = (newFilters: FilterValues) => {
-    setLoading(true);
     onFiltersChange(newFilters);
     setAppliedFilters(newFilters);
     if (onApplyFilters) onApplyFilters(newFilters);
@@ -485,110 +362,16 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
     setAppliedFilters(filters);
   }, [filters]);
 
-  // API fetching now handles suggestions
-  const [heatmapRows, setHeatmapRows] = useState<any[]>([]);
-  const [trendRows, setTrendRows] = useState<any[]>([]);
-  const [heatmapColsDyn, setHeatmapColsDyn] = useState<{ key: string; label: string }[]>([]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadData() {
-      const params = buildApiParams(appliedFilters);
-      const trendParams = buildTrendApiParams(appliedFilters);
-
-      try {
-        setLoading(true);
-        setLoadError(null);
-
-        const [groupsJson, hJson, tJson, faqsJson] = await Promise.all([
-          fetchApiJson<KeywordGroupsResponse>(buildApiUrl("/api/admin/crm-keywords/groups", params)),
-          fetchApiJson<KeywordHeatmapResponse>(buildApiUrl("/api/admin/crm-keywords/heatmap", params)),
-          fetchApiJson<KeywordTrendResponse>(buildApiUrl("/api/admin/crm-keywords/trends", trendParams)),
-          fetchApiJson<SuggestedFaqResponse>(buildApiUrl("/api/analytics/ai/suggested-faqs", params)),
-        ]);
-
-        if (!groupsJson.success || !Array.isArray(groupsJson.data)) {
-          throw new Error(groupsJson.message || "Không thể tải thống kê nhóm Keywords.");
-        }
-        if (!hJson.success || !Array.isArray(hJson.data)) {
-          throw new Error(hJson.message || "Không thể tải dữ liệu heatmap Keywords.");
-        }
-        if (!tJson.success || !Array.isArray(tJson.data)) {
-          throw new Error(tJson.message || "Không thể tải dữ liệu xu hướng Keywords.");
-        }
-        if (!faqsJson.success || !Array.isArray(faqsJson.data)) {
-          throw new Error(faqsJson.message || "Không thể tải câu hỏi đề xuất FAQ từ database.");
-        }
-
-        if (cancelled) return;
-
-        const nextData = {
-          groups: mapApiGroups(groupsJson.data),
-          heatmapRows: hJson.data,
-          trendRows: mapTrendRows(tJson.data),
-        };
-
-        setMissingFaqs(prev => {
-          const next: Record<string, MissingFaqItem[]> = {
-            toeic: [],
-            vstep: [],
-            tinhoc: [],
-            chuandaura: [],
-          };
-
-          faqsJson.data.forEach(item => {
-            const groupId = mapTopicToGroupId(`${item.topic || ""} ${item.question || ""} ${item.suggestedAnswer || ""}`);
-            if (!groupId || !item.question?.trim()) return;
-
-            const normalizedNew = normalizeFaqText(item.question);
-            const wasAdded = prev[groupId]?.some(e => normalizeFaqText(e.question) === normalizedNew && e.added) || false;
-
-            next[groupId].push({
-              question: item.question.trim(),
-              source: `Phát hiện từ ${item.freq} hội thoại`,
-              suggestedAnswer: item.suggestedAnswer || "",
-              added: wasAdded,
-            });
-          });
-
-          return next;
-        });
-        setGroups(nextData.groups);
-        setHeatmapRows(nextData.heatmapRows);
-        if (hJson.columns && Array.isArray(hJson.columns)) {
-          setHeatmapColsDyn(hJson.columns);
-        } else {
-          setHeatmapColsDyn([]);
-        }
-        setTrendRows(nextData.trendRows);
-      } catch (err: any) {
-        if (cancelled) return;
-
-        console.error("Lỗi khi tải dữ liệu Keywords:", err);
-        setGroups(null);
-        setHeatmapRows([]);
-        setTrendRows([]);
-        setLoadError(err.message || "Không thể kết nối API Keywords.");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    loadData();
-    return () => {
-      cancelled = true;
-    };
-    // Chỉ re-fetch khi appliedFilters thay đổi (khi bấm "Áp dụng")
-  }, [appliedFilters]);
-
   const retryLoadData = () => {
-    setAppliedFilters({ ...appliedFilters });
+    keywordQuery.refetch();
   };
 
   const renderLoadingOrError = () => {
-    if (loading) return <KeywordLoadingState />;
-    if (loadError) return <KeywordErrorState message={loadError} onRetry={retryLoadData} />;
+    if (keywordQuery.isPending) return <KeywordLoadingState />;
+    if (keywordQuery.isError && !keywordQuery.data) {
+      const message = keywordQuery.error instanceof Error ? keywordQuery.error.message : "Không thể kết nối API Keywords.";
+      return <KeywordErrorState message={message} onRetry={retryLoadData} />;
+    }
     return null;
   };
 
@@ -596,7 +379,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
 
   if (nonDataState) {
     return (
-      <div style={{ padding: "24px" }}>
+      <div className="p-6">
         <FilterPanel filters={filters} onFiltersChange={handleApplyFilters} />
         {nonDataState}
       </div>
@@ -604,7 +387,12 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
   }
 
   // 1. Topic (Chủ đề) Filter
-  const filteredGroups = (groups || []).filter(g => {
+  const groups = keywordQuery.data?.groups || [];
+  const heatmapRows = keywordQuery.data?.heatmapRows || [];
+  const trendRows = keywordQuery.data?.trendRows || [];
+  const heatmapColsDyn = keywordQuery.data?.heatmapColsDyn || [];
+
+  const filteredGroups = groups.filter((g) => {
     const topic = appliedFilters.topic || "";
     if (!topic || topic === "Tất cả") return true;
 
@@ -613,7 +401,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
     const tokenCoverage = normalizedTopic
       .split(" ")
       .filter(Boolean)
-      .filter(token => normalizedGroupName.includes(token)).length;
+      .filter((token) => normalizedGroupName.includes(token)).length;
 
     const aliases: Record<string, string[]> = {
       toeic: ["toeic"],
@@ -622,11 +410,11 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
       chuandaura: ["chuan dau ra", "chung chi", "chuẩn đầu ra"],
     };
 
-    if (aliases[g.id]?.some(alias => normalizedTopic === alias || normalizedTopic.includes(alias) || alias.includes(normalizedTopic))) {
+    if (aliases[g.id]?.some((alias) => normalizedTopic === alias || normalizedTopic.includes(alias) || alias.includes(normalizedTopic))) {
       return true;
     }
 
-    return g.keywords.some(k => matchesKeywordFilter(topic, k.word)) ||
+    return g.keywords.some((k) => matchesKeywordFilter(topic, k.word)) ||
       (normalizedGroupName === normalizedTopic || normalizedGroupName.includes(normalizedTopic) || (tokenCoverage >= 2 && normalizedTopic.split(" ").length >= 2));
   });
 
@@ -634,9 +422,8 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
   const finalTrendRows = trendRows;
   const finalHeatmapRows = heatmapRows;
 
-  const displayedGroups = activeGroup ? finalGroups.filter(g => g.id === activeGroup) : finalGroups;
-  const displayedHeatmapRows = activeGroup ? finalHeatmapRows.filter(r => mapTopicToGroupId(r.topic) === activeGroup) : finalHeatmapRows;
-
+  const displayedGroups = activeGroup ? finalGroups.filter((g) => g.id === activeGroup) : finalGroups;
+  const displayedHeatmapRows = activeGroup ? finalHeatmapRows.filter((r) => mapTopicToGroupId(r.topic) === activeGroup) : finalHeatmapRows;
 
   const hasAiFailedMetric = finalGroups.some((g) => g.aiFailed !== null);
 
@@ -644,21 +431,21 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
   const donutData = finalGroups.map((g) => ({ name: g.name.split(" / ")[0], value: g.totalQuestions }));
 
   return (
-    <div style={{ padding: "24px" }} data-export-target="true">
+    <div className="p-6" data-export-target="true">
       {/* Truyền handleApplyFilters để chỉ fetch khi bấm "Áp dụng" */}
       <FilterPanel filters={filters} onFiltersChange={handleApplyFilters} />
 
       {/* Page title */}
-      <div style={{ marginBottom: "20px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "16px" }}>
+      <div className="mb-5 flex items-start justify-between gap-4">
         <div>
-          <h1 style={{ fontSize: "20px", fontWeight: 700, color: NAVY, marginBottom: "4px" }}>Phân tích từ khóa</h1>
-          <p style={{ fontSize: "13px", color: "rgba(0,56,101,0.5)", margin: 0 }}>Phân tích theo 4 nhóm chủ đề chính</p>
+          <h1 className="mb-1 text-xl font-bold text-[#003865]">Phân tích từ khóa</h1>
+          <p className="m-0 text-[13px] text-[rgba(0,56,101,0.5)]">Phân tích theo 4 nhóm chủ đề chính</p>
         </div>
         {role === "manager" && (
           <button
             type="button"
             onClick={() => setShowAiErrorKeywordModal(true)}
-            style={{ padding: "9px 16px", borderRadius: "9px", border: "none", backgroundColor: NAVY, color: "#fff", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "7px", fontSize: "12px", fontWeight: 700 }}
+            className="inline-flex cursor-pointer items-center gap-[7px] rounded-[9px] border-0 bg-[#003865] px-4 py-[9px] text-xs font-bold text-white"
           >
             <Plus size={14} /> Thêm từ khóa lỗi AI
           </button>
@@ -666,34 +453,22 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
       </div>
 
       {/* Summary cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "14px", marginBottom: "24px" }}>
+      <div className="mb-6 grid grid-cols-4 gap-3.5">
         {finalGroups.map((g) => (
-          <div
-            key={g.id}
-            onClick={() => setActiveGroup(activeGroup === g.id ? null : g.id)}
-            style={{
-              backgroundColor: "#fff",
-              borderRadius: "14px",
-              padding: "16px 18px",
-              border: `1.5px solid ${activeGroup === g.id ? g.color : "rgba(0,56,101,0.08)"}`,
-              boxShadow: activeGroup === g.id ? `0 4px 16px ${g.color}20` : "0 2px 8px rgba(0,56,101,0.05)",
-              cursor: "pointer",
-              transition: "all 0.2s",
-              borderLeft: `4px solid ${g.color}`,
-            }}
-          >
-            <div style={{ fontSize: "13px", fontWeight: 700, color: NAVY, marginBottom: "10px" }}>{g.name}</div>
-            <div style={{ fontSize: "22px", fontWeight: 700, color: g.color, marginBottom: "6px" }}>{g.totalQuestions.toLocaleString("vi-VN")}</div>
-            <div style={{ fontSize: "11px", color: "rgba(0,56,101,0.5)" }}>tổng câu hỏi</div>
+          <div key={g.id} onClick={() => setActiveGroup(activeGroup === g.id ? null : g.id)} className={summaryCardClass(g, activeGroup)}>
+            <span aria-hidden="true" className={cn("absolute inset-y-0 left-0 w-1", toneForGroup(g.id).strip)} />
+            <div className="mb-2.5 text-[13px] font-bold text-[#003865]">{g.name}</div>
+            <div className={cn("mb-1.5 text-[22px] font-bold", toneForGroup(g.id).text)}>{g.totalQuestions.toLocaleString("vi-VN")}</div>
+            <div className={labelTextClass}>tổng câu hỏi</div>
           </div>
         ))}
       </div>
 
       {/* Charts row 1: Bar + Donut */}
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "20px", marginBottom: "20px" }}>
+      <div className="mb-5 grid grid-cols-[2fr_1fr] gap-5">
         {/* Bar chart */}
-        <div style={{ backgroundColor: "#fff", borderRadius: "16px", padding: "20px", border: "1px solid rgba(0,56,101,0.08)", boxShadow: "0 2px 8px rgba(0,56,101,0.05)" }}>
-          <div style={{ fontSize: "14px", fontWeight: 700, color: NAVY, marginBottom: "16px" }}>Số câu hỏi theo nhóm chủ đề</div>
+        <div className={cardShellClass}>
+          <div className="mb-4 text-sm font-bold text-[#003865]">Số câu hỏi theo nhóm chủ đề</div>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={barData} margin={{ top: 0, right: 10, bottom: 0, left: -10 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" />
@@ -706,30 +481,30 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
             </BarChart>
           </ResponsiveContainer>
           {!hasAiFailedMetric && (
-            <div style={{ marginTop: "-10px", fontSize: "11px", color: "rgba(0,56,101,0.55)" }}>
+            <div className="mt-[-10px] text-[11px] text-[rgba(0,56,101,0.55)]">
               API chưa trả số liệu AI phản hồi không chính xác từ database.
             </div>
           )}
         </div>
 
         {/* Donut chart */}
-        <div style={{ backgroundColor: "#fff", borderRadius: "16px", padding: "20px", border: "1px solid rgba(0,56,101,0.08)", boxShadow: "0 2px 8px rgba(0,56,101,0.05)" }}>
-          <div style={{ fontSize: "14px", fontWeight: 700, color: NAVY, marginBottom: "16px" }}>Tỷ lệ nhóm chủ đề</div>
+        <div className={cardShellClass}>
+          <div className="mb-4 text-sm font-bold text-[#003865]">Tỷ lệ nhóm chủ đề</div>
           <ResponsiveContainer width="100%" height={220}>
             <PieChart>
               <Pie data={donutData} cx="50%" cy="50%" innerRadius={55} outerRadius={85} dataKey="value" nameKey="name">
                 {donutData.map((_, i) => <Cell key={`cell-${i}`} fill={TOPIC_DONUT_COLORS[i % TOPIC_DONUT_COLORS.length]} />)}
               </Pie>
               <Tooltip formatter={(v: number) => v.toLocaleString("vi-VN")} />
-              <Legend iconSize={10} formatter={(v) => <span style={{ fontSize: "11px", color: NAVY }}>{v}</span>} />
+              <Legend iconSize={10} formatter={(v) => <span className="text-[11px] text-[#003865]">{v}</span>} />
             </PieChart>
           </ResponsiveContainer>
         </div>
       </div>
 
       {/* Charts row 2: Line trend */}
-      <div style={{ backgroundColor: "#fff", borderRadius: "16px", padding: "20px", border: "1px solid rgba(0,56,101,0.08)", boxShadow: "0 2px 8px rgba(0,56,101,0.05)", marginBottom: "20px" }}>
-        <div style={{ fontSize: "14px", fontWeight: 700, color: NAVY, marginBottom: "16px" }}>Xu hướng chủ đề theo thời gian</div>
+      <div className={cn(cardShellClass, "mb-5")}>
+        <div className="mb-4 text-sm font-bold text-[#003865]">Xu hướng chủ đề theo thời gian</div>
         <ResponsiveContainer width="100%" height={200}>
           <LineChart data={finalTrendRows} margin={{ top: 0, right: 10, bottom: 0, left: -10 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" />
@@ -746,31 +521,31 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
       </div>
 
       {/* Heatmap: AI error level */}
-      <div style={{ backgroundColor: "#fff", borderRadius: "16px", padding: "20px", border: "1px solid rgba(0,56,101,0.08)", boxShadow: "0 2px 8px rgba(0,56,101,0.05)", marginBottom: "20px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
-          <Brain size={16} style={{ color: ORANGE }} />
-          <span style={{ fontSize: "14px", fontWeight: 700, color: NAVY }}>Mức độ lỗi AI theo nhóm chủ đề</span>
-          <span style={{ marginLeft: "auto", fontSize: "11px", color: "rgba(0,56,101,0.4)" }}>0 = không có lỗi · 5 = cao</span>
+      <div className={cn(cardShellClass, "mb-5")}>
+        <div className="mb-4 flex items-center gap-2">
+          <Brain size={16} className="text-[#D73C01]" />
+          <span className="text-sm font-bold text-[#003865]">Mức độ lỗi AI theo nhóm chủ đề</span>
+          <span className="ml-auto text-[11px] text-[rgba(0,56,101,0.4)]">0 = không có lỗi · 5 = cao</span>
         </div>
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: "4px" }}>
+        <div className="overflow-x-auto">
+          <table className="w-full border-separate [border-spacing:4px]">
             <thead>
               <tr>
-                <th style={{ width: "140px", padding: "8px", fontSize: "11px", fontWeight: 600, color: "rgba(0,56,101,0.5)", textAlign: "left" }}>Nhóm chủ đề</th>
+                <th className="w-[140px] p-2 text-left text-[11px] font-semibold text-[rgba(0,56,101,0.5)]">Nhóm chủ đề</th>
                 {heatmapColsDyn.map((col) => (
-                  <th key={col.key} style={{ padding: "8px 12px", fontSize: "11px", fontWeight: 600, color: "rgba(0,56,101,0.5)", textAlign: "center" }}>{col.label}</th>
+                  <th key={col.key} className="px-3 py-2 text-center text-[11px] font-semibold text-[rgba(0,56,101,0.5)]">{col.label}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {displayedHeatmapRows.map((row: any) => (
                 <tr key={row.topic}>
-                  <td style={{ padding: "6px 8px", fontSize: "12px", fontWeight: 600, color: NAVY }}>{row.topic}</td>
+                  <td className="px-2 py-1.5 text-xs font-semibold text-[#003865]">{row.topic}</td>
                   {heatmapColsDyn.map((col) => {
                     const val = (row as any)[col.key];
                     const rawVal = (row as any)[`${col.key}_raw`];
                     return (
-                      <td key={col.key} title={rawVal !== undefined ? `${rawVal} lỗi AI từ database` : ''} style={{ padding: "6px 12px", textAlign: "center", borderRadius: "8px", backgroundColor: heatColor(val), fontSize: "13px", fontWeight: 700, color: heatTextColor(val), cursor: rawVal !== undefined ? "help" : "default" }}>
+                      <td key={col.key} title={rawVal !== undefined ? `${rawVal} lỗi AI từ database` : ""} className={heatCellClass(val, rawVal !== undefined)}>
                         {val}
                       </td>
                     );
@@ -780,10 +555,10 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
             </tbody>
           </table>
         </div>
-        <div style={{ display: "flex", gap: "12px", marginTop: "12px", fontSize: "11px", color: "rgba(0,56,101,0.5)", alignItems: "center" }}>
-          <span style={{ fontWeight: 600 }}>Mức độ:</span>
-          <span style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-            <span style={{ width: "16px", height: "16px", borderRadius: "4px", backgroundColor: heatColor(0), display: "inline-block", border: "1px solid rgba(0,56,101,0.1)" }} />
+        <div className="mt-3 flex items-center gap-3 text-[11px] text-[rgba(0,56,101,0.5)]">
+          <span className="font-semibold">Mức độ:</span>
+          <span className="flex items-center gap-[5px]">
+            <span className={cn("inline-block h-4 w-4 rounded border border-[rgba(0,56,101,0.1)]", heatLegendClass(0))} />
             Không có
           </span>
           {[
@@ -791,51 +566,42 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
             { label: "Trung bình", val: 3 },
             { label: "Cao", val: 5 },
           ].map(({ label, val }) => (
-            <span key={label} style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-              <span style={{ width: "16px", height: "16px", borderRadius: "4px", backgroundColor: heatColor(val), display: "inline-block", border: "1px solid rgba(0,56,101,0.1)" }} />
+            <span key={label} className="flex items-center gap-[5px]">
+              <span className={cn("inline-block h-4 w-4 rounded border border-[rgba(0,56,101,0.1)]", heatLegendClass(val))} />
               {label}
             </span>
           ))}
-          <span style={{ marginLeft: "8px", display: "flex", alignItems: "center", gap: "3px" }}>
-            {["#f1f5f9", "#EBF2FF", "#B9DCFF", "#42A5F5", "#1565C0", "#003865"].map((c) => (
-              <span key={c} style={{ width: "20px", height: "12px", backgroundColor: c, display: "inline-block", borderRadius: "2px" }} />
+          <span className="ml-2 flex items-center gap-[3px]">
+            {heatScaleClasses.map((colorClass) => (
+              <span key={colorClass} className={cn("inline-block h-3 w-5 rounded-[2px]", colorClass)} />
             ))}
           </span>
         </div>
       </div>
 
       {/* Keyword detail cards */}
-      <div style={{ display: "grid", gridTemplateColumns: activeGroup ? "1fr" : "repeat(2, 1fr)", gap: "20px" }}>
+      <div className={cn("grid gap-5", activeGroup ? "grid-cols-[1fr]" : "grid-cols-2")}>
         {displayedGroups.map((group) => (
-          <div
-            key={group.id}
-            style={{
-              backgroundColor: "#fff",
-              borderRadius: "16px",
-              border: "1px solid rgba(0,56,101,0.08)",
-              boxShadow: "0 2px 8px rgba(0,56,101,0.05)",
-              overflow: "hidden",
-            }}
-          >
-            <div style={{ padding: "16px 18px", borderBottom: "1px solid rgba(0,56,101,0.06)", display: "flex", alignItems: "center", gap: "10px" }}>
-              <div style={{ width: "8px", height: "24px", borderRadius: "4px", backgroundColor: group.color }} />
-              <span style={{ fontWeight: 700, fontSize: "14px", color: NAVY }}>{group.name}</span>
-              <div style={{ marginLeft: "auto", display: "flex", gap: "10px", fontSize: "11px" }}>
-                <span style={{ color: "rgba(0,56,101,0.45)" }}>Từ khóa hàng đầu</span>
+          <div key={group.id} className="overflow-hidden rounded-2xl border border-[rgba(0,56,101,0.08)] bg-white shadow-[0_2px_8px_rgba(0,56,101,0.05)]">
+            <div className="flex items-center gap-2.5 border-b border-[rgba(0,56,101,0.06)] px-[18px] py-4">
+              <div className={cn("h-6 w-2 rounded", toneForGroup(group.id).strip)} />
+              <span className="text-sm font-bold text-[#003865]">{group.name}</span>
+              <div className="ml-auto flex gap-2.5 text-[11px]">
+                <span className="text-[rgba(0,56,101,0.45)]">Từ khóa hàng đầu</span>
                 <button
                   onClick={() => {
                     setSelectedGroupId(group.id);
                   }}
-                  style={{ padding: "2px 8px", borderRadius: "6px", border: `1px solid ${CTA}`, background: "#fff", color: CTA, cursor: "pointer", fontSize: "11px", fontWeight: 600 }}
+                  className="cursor-pointer rounded-md border border-[#ED5206] bg-white px-2 py-0.5 text-[11px] font-semibold text-[#ED5206]"
                 >
                   +{getFaqNeededCount(group.id)} FAQ cần thêm
                 </button>
               </div>
             </div>
-            <div style={{ padding: "14px 18px" }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: "9px" }}>
+            <div className="px-[18px] py-3.5">
+              <div className="flex flex-col gap-[9px]">
                 {group.keywords.length === 0 && (
-                  <div style={{ padding: "12px 0", fontSize: "12px", color: "rgba(0,56,101,0.45)" }}>
+                  <div className="py-3 text-xs text-[rgba(0,56,101,0.45)]">
                     Không có từ khóa phát sinh trong khoảng lọc.
                   </div>
                 )}
@@ -843,18 +609,18 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
                   const maxCount = group.keywords[0]?.count || 0;
                   const widthPct = maxCount > 0 ? (kw.count / maxCount) * 100 : 0;
                   return (
-                    <div key={i} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                      <span style={{ width: "18px", fontSize: "11px", color: "rgba(0,56,101,0.35)", fontWeight: 700, flexShrink: 0 }}>#{i + 1}</span>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "3px" }}>
-                          <span style={{ fontSize: "12px", color: NAVY, fontWeight: 500 }}>{kw.word}</span>
-                          <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                            <span style={{ fontSize: "11px", color: "rgba(0,56,101,0.45)", marginLeft: "5px" }}>{kw.count.toLocaleString("vi-VN")}</span>
+                    <div key={i} className="flex items-center gap-2.5">
+                      <span className="w-[18px] shrink-0 text-[11px] font-bold text-[rgba(0,56,101,0.35)]">#{i + 1}</span>
+                      <div className="flex-1">
+                        <div className="mb-[3px] flex justify-between">
+                          <span className="text-xs font-medium text-[#003865]">{kw.word}</span>
+                          <div className="flex items-center gap-1">
+                            <span className="ml-[5px] text-[11px] text-[rgba(0,56,101,0.45)]">{kw.count.toLocaleString("vi-VN")}</span>
                           </div>
                         </div>
-                        <div style={{ height: "5px", backgroundColor: "#f1f5f9", borderRadius: "3px", overflow: "hidden" }}>
-                          <div style={{ height: "100%", width: `${widthPct}%`, backgroundColor: group.color, borderRadius: "3px", opacity: 0.75 }} />
-                        </div>
+                        <svg className="block h-[5px] w-full overflow-hidden rounded-[3px] bg-[#f1f5f9]" viewBox="0 0 100 5" preserveAspectRatio="none" aria-hidden="true">
+                          <rect width={widthPct} height="5" rx="3" fill={group.color} opacity="0.75" />
+                        </svg>
                       </div>
                     </div>
                   );
@@ -866,52 +632,59 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
       </div>
 
       {showAiErrorKeywordModal && (
-        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,56,101,0.45)", backdropFilter: "blur(4px)", zIndex: 220, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
-          <div role="dialog" aria-label="Thêm từ khóa lỗi AI" style={{ backgroundColor: "#fff", width: "520px", maxWidth: "100%", borderRadius: "18px", padding: "26px", boxShadow: "0 20px 60px rgba(0,0,0,0.18)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+        <div className="fixed inset-0 z-[220] flex items-center justify-center bg-[rgba(0,56,101,0.45)] p-5 backdrop-blur-[4px]">
+          <div role="dialog" aria-label="Thêm từ khóa lỗi AI" className="w-[520px] max-w-full rounded-[18px] bg-white p-[26px] shadow-[0_20px_60px_rgba(0,0,0,0.18)]">
+            <div className="mb-5 flex items-center justify-between">
               <div>
-                <h3 style={{ margin: 0, color: NAVY, fontSize: "17px", fontWeight: 700 }}>Thêm từ khóa lỗi AI</h3>
-                <p style={{ margin: "5px 0 0", color: "rgba(0,56,101,0.55)", fontSize: "12px" }}>Từ khóa sẽ được lưu vào database sau khi kiểm tra hợp lệ.</p>
+                <h3 className="m-0 text-[17px] font-bold text-[#003865]">Thêm từ khóa lỗi AI</h3>
+                <p className="mt-[5px] mb-0 text-xs text-[rgba(0,56,101,0.55)]">Từ khóa sẽ được lưu vào database sau khi kiểm tra hợp lệ.</p>
               </div>
-              <button type="button" aria-label="Đóng" onClick={() => { setShowAiErrorKeywordModal(false); setAiErrorKeywordForm(emptyAiErrorKeywordForm); }} style={{ border: "none", background: "transparent", color: "rgba(0,56,101,0.5)", cursor: "pointer", padding: "4px" }}><X size={20} /></button>
+              <button
+                type="button"
+                aria-label="Đóng"
+                onClick={() => { setShowAiErrorKeywordModal(false); setAiErrorKeywordForm(emptyAiErrorKeywordForm); }}
+                className="cursor-pointer border-0 bg-transparent p-1 text-[rgba(0,56,101,0.5)]"
+              >
+                <X size={20} />
+              </button>
             </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-              <label style={{ color: NAVY, fontSize: "12px", fontWeight: 600 }}>
+            <div className="flex flex-col gap-3.5">
+              <label className={modalLabelClass}>
                 Từ khóa lỗi AI
                 <input
                   aria-label="Từ khóa lỗi AI"
                   maxLength={200}
                   value={aiErrorKeywordForm.keyword}
                   onChange={(event) => setAiErrorKeywordForm((current) => ({ ...current, keyword: event.target.value }))}
-                  style={{ marginTop: "6px", width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.16)", color: NAVY, outline: "none" }}
+                  className={modalInputClass}
                 />
               </label>
 
-              <label style={{ color: NAVY, fontSize: "12px", fontWeight: 600 }}>
+              <label className={modalLabelClass}>
                 Nhóm lỗi AI
                 <select
                   aria-label="Nhóm lỗi AI"
                   value={aiErrorKeywordForm.errorGroup}
                   onChange={(event) => setAiErrorKeywordForm((current) => ({ ...current, errorGroup: event.target.value }))}
-                  style={{ marginTop: "6px", width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.16)", color: NAVY, backgroundColor: "#fff", outline: "none" }}
+                  className={cn(modalInputClass, "bg-white")}
                 >
                   {AI_FAILURE_TAXONOMY.map((item) => <option key={item.id} value={item.apiValue}>{item.label}</option>)}
                 </select>
               </label>
 
-              <label style={{ color: NAVY, fontSize: "12px", fontWeight: 600 }}>
+              <label className={modalLabelClass}>
                 Chủ đề
                 <input
                   aria-label="Chủ đề"
                   maxLength={200}
                   value={aiErrorKeywordForm.topic}
                   onChange={(event) => setAiErrorKeywordForm((current) => ({ ...current, topic: event.target.value }))}
-                  style={{ marginTop: "6px", width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.16)", color: NAVY, outline: "none" }}
+                  className={modalInputClass}
                 />
               </label>
 
-              <label style={{ color: NAVY, fontSize: "12px", fontWeight: 600 }}>
+              <label className={modalLabelClass}>
                 Mô tả
                 <textarea
                   aria-label="Mô tả"
@@ -919,14 +692,28 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
                   rows={4}
                   value={aiErrorKeywordForm.description}
                   onChange={(event) => setAiErrorKeywordForm((current) => ({ ...current, description: event.target.value }))}
-                  style={{ marginTop: "6px", width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.16)", color: NAVY, outline: "none", resize: "vertical", fontFamily: "inherit" }}
+                  className={cn(modalInputClass, "resize-y font-[inherit]")}
                 />
               </label>
             </div>
 
-            <div style={{ marginTop: "22px", display: "flex", justifyContent: "flex-end", gap: "10px" }}>
-              <button type="button" onClick={() => { setShowAiErrorKeywordModal(false); setAiErrorKeywordForm(emptyAiErrorKeywordForm); }} style={{ padding: "9px 16px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.16)", backgroundColor: "#fff", color: NAVY, cursor: "pointer", fontWeight: 600 }}>Hủy</button>
-              <button type="button" disabled={isSavingAiErrorKeyword} onClick={() => void handleCreateAiErrorKeyword()} style={{ padding: "9px 18px", borderRadius: "8px", border: "none", backgroundColor: isSavingAiErrorKeyword ? "#94a3b8" : CTA, color: "#fff", cursor: isSavingAiErrorKeyword ? "not-allowed" : "pointer", fontWeight: 700 }}>
+            <div className="mt-[22px] flex justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => { setShowAiErrorKeywordModal(false); setAiErrorKeywordForm(emptyAiErrorKeywordForm); }}
+                className="cursor-pointer rounded-lg border border-[rgba(0,56,101,0.16)] bg-white px-4 py-[9px] font-semibold text-[#003865]"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                disabled={isSavingAiErrorKeyword}
+                onClick={() => void handleCreateAiErrorKeyword()}
+                className={cn(
+                  "rounded-lg border-0 px-[18px] py-[9px] font-bold text-white",
+                  isSavingAiErrorKeyword ? "cursor-not-allowed bg-slate-400" : "cursor-pointer bg-[#ED5206]",
+                )}
+              >
                 {isSavingAiErrorKeyword ? "Đang lưu..." : "Lưu từ khóa"}
               </button>
             </div>
@@ -936,41 +723,41 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
 
       {/* Modal đề xuất FAQ bổ sung */}
       {selectedGroupId && (
-        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,56,101,0.45)", backdropFilter: "blur(4px)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div style={{ backgroundColor: "#fff", width: "600px", borderRadius: "18px", padding: "28px", boxShadow: "0 20px 60px rgba(0,0,0,0.15)", maxHeight: "85vh", overflowY: "auto", display: "flex", flexDirection: "column" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <div style={{ padding: "8px", borderRadius: "10px", backgroundColor: "#fff7e6" }}>
-                  <Brain size={20} style={{ color: ORANGE }} />
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-[rgba(0,56,101,0.45)] backdrop-blur-[4px]">
+          <div className="flex max-h-[85vh] w-[600px] flex-col overflow-y-auto rounded-[18px] bg-white p-7 shadow-[0_20px_60px_rgba(0,0,0,0.15)]">
+            <div className="mb-5 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="rounded-[10px] bg-[#fff7e6] p-2">
+                  <Brain size={20} className="text-[#D73C01]" />
                 </div>
                 <div>
-                  <h3 style={{ fontSize: "16px", fontWeight: 700, color: NAVY, margin: 0 }}>FAQ đề xuất bổ sung</h3>
-                  <span style={{ fontSize: "12px", color: "rgba(0,56,101,0.5)" }}>Nhóm {selectedGroupId.toUpperCase()} · Chọn câu hỏi để biên soạn câu trả lời</span>
+                  <h3 className={cn(navyTitleClass, "m-0 text-base")}>FAQ đề xuất bổ sung</h3>
+                  <span className="text-xs text-[rgba(0,56,101,0.5)]">Nhóm {selectedGroupId.toUpperCase()} · Chọn câu hỏi để biên soạn câu trả lời</span>
                 </div>
               </div>
-              <button onClick={() => setSelectedGroupId(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(0,56,101,0.4)", padding: "4px" }}><X size={20} /></button>
+              <button onClick={() => setSelectedGroupId(null)} className="cursor-pointer border-0 bg-transparent p-1 text-[rgba(0,56,101,0.4)]"><X size={20} /></button>
             </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: "14px", overflowY: "auto", flex: 1, paddingRight: "4px" }}>
+            <div className="flex flex-1 flex-col gap-3.5 overflow-y-auto pr-1">
               {(() => {
                 const itemsToRender = (missingFaqs[selectedGroupId] || [])
                   .map((item, originalIndex) => ({ ...item, originalIndex }))
-                  .filter(item => !item.added);
+                  .filter((item) => !item.added);
 
                 if (itemsToRender.length === 0) {
                   return (
-                    <div style={{ textAlign: "center", padding: "40px 0", color: "rgba(0,56,101,0.4)", fontSize: "13px" }}>Không có câu hỏi đề xuất nào.</div>
+                    <div className="py-10 text-center text-[13px] text-[rgba(0,56,101,0.4)]">Không có câu hỏi đề xuất nào.</div>
                   );
                 }
 
                 return itemsToRender.map((item) => {
                   const index = item.originalIndex;
                   return (
-                    <div key={index} style={{ border: "1.5px solid rgba(0,56,101,0.06)", borderRadius: "12px", padding: "16px", backgroundColor: "#fff", transition: "all 0.2s" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px" }}>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontWeight: 600, color: NAVY, fontSize: "13px", lineHeight: 1.4 }}>{item.question}</div>
-                          <div style={{ fontSize: "11px", color: "rgba(0,56,101,0.45)", marginTop: "6px" }}>
+                    <div key={index} className="rounded-xl border-[1.5px] border-[rgba(0,56,101,0.06)] bg-white p-4 transition-all">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1">
+                          <div className="text-[13px] font-semibold leading-[1.4] text-[#003865]">{item.question}</div>
+                          <div className="mt-1.5 text-[11px] text-[rgba(0,56,101,0.45)]">
                             Nguồn phát hiện: {item.source}
                           </div>
                         </div>
@@ -985,7 +772,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
                                 suggestedAnswer: item.suggestedAnswer,
                               },
                             })}
-                            style={{ padding: "5px 12px", borderRadius: "8px", border: `1px solid ${CTA}`, background: "#fff", color: CTA, cursor: "pointer", fontSize: "11px", fontWeight: 600 }}
+                            className="cursor-pointer rounded-lg border border-[#ED5206] bg-white px-3 py-[5px] text-[11px] font-semibold text-[#ED5206]"
                           >
                             Soạn câu trả lời
                           </button>
@@ -997,8 +784,13 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters, onNa
               })()}
             </div>
 
-            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "20px", borderTop: "1px solid rgba(0,56,101,0.06)", paddingTop: "16px" }}>
-              <button onClick={() => setSelectedGroupId(null)} style={{ padding: "8px 18px", borderRadius: "8px", border: "1.5px solid rgba(0,56,101,0.12)", backgroundColor: "#fff", color: NAVY, cursor: "pointer", fontSize: "12px", fontWeight: 600 }}>Đóng</button>
+            <div className="mt-5 flex justify-end border-t border-[rgba(0,56,101,0.06)] pt-4">
+              <button
+                onClick={() => setSelectedGroupId(null)}
+                className="cursor-pointer rounded-lg border-[1.5px] border-[rgba(0,56,101,0.12)] bg-white px-[18px] py-2 text-xs font-semibold text-[#003865]"
+              >
+                Đóng
+              </button>
             </div>
           </div>
         </div>

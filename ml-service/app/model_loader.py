@@ -5,8 +5,9 @@ Module tải ONNX model và tokenizer một lần khi service khởi động.
 Không reload model trên mỗi request để đảm bảo hiệu suất tốt nhất.
 """
 
+import json
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 # ─── Đường dẫn đến thư mục chứa ONNX model ────────────────────────────────────
 # Dùng pathlib để hoạt động đúng trên cả Windows và Linux
@@ -17,6 +18,7 @@ MODEL_NAME = "wonrax/phobert-base-vietnamese-sentiment"
 # ─── Biến global lưu tokenizer và model sau khi load ──────────────────────────
 _tokenizer = None
 _ort_model = None
+_id2label: Dict[int, str] = {0: "NEG", 1: "POS", 2: "NEU"}
 _model_loaded: bool = False
 _load_error: Optional[str] = None
 
@@ -29,7 +31,7 @@ def load_model() -> Tuple[bool, Optional[str]]:
     Returns:
         (success: bool, error_message: Optional[str])
     """
-    global _tokenizer, _ort_model, _model_loaded, _load_error
+    global _tokenizer, _ort_model, _id2label, _model_loaded, _load_error
 
     # ── Kiểm tra thư mục model tồn tại ───────────────────────────────────────
     if not MODEL_DIR.exists():
@@ -52,20 +54,26 @@ def load_model() -> Tuple[bool, Optional[str]]:
 
     try:
         # ── Import thư viện (lazy import để tránh lỗi nếu chưa cài) ──────────
+        import onnxruntime as ort
         from transformers import AutoTokenizer
-        from optimum.onnxruntime import ORTModelForSequenceClassification
 
         # ── Tải tokenizer ─────────────────────────────────────────────────────
         print(f"[ModelLoader] Đang tải tokenizer từ: {MODEL_DIR}")
         _tokenizer = AutoTokenizer.from_pretrained(str(MODEL_DIR))
         print("[ModelLoader] Tokenizer đã tải thành công.")
 
-        # ── Tải ONNX model qua optimum ────────────────────────────────────────
-        # export=False → chỉ load model đã export sẵn, không convert lại
+        config_file = MODEL_DIR / "config.json"
+        if config_file.exists():
+            with config_file.open("r", encoding="utf-8") as fh:
+                config = json.load(fh)
+            raw_id2label = config.get("id2label") or {}
+            _id2label = {int(idx): label for idx, label in raw_id2label.items()} or _id2label
+
+        # ── Tải ONNX model bằng onnxruntime thuần, không cần PyTorch/Optimum ───
         print(f"[ModelLoader] Đang tải ONNX model từ: {MODEL_DIR}")
-        _ort_model = ORTModelForSequenceClassification.from_pretrained(
-            str(MODEL_DIR),
-            export=False
+        _ort_model = ort.InferenceSession(
+            str(onnx_file),
+            providers=["CPUExecutionProvider"],
         )
         print("[ModelLoader] ONNX model đã tải thành công.")
 
@@ -74,7 +82,7 @@ def load_model() -> Tuple[bool, Optional[str]]:
         return True, None
 
     except ImportError as e:
-        _load_error = f"Thiếu thư viện: {e}. Hãy chạy: pip install -r requirements.txt"
+        _load_error = f"Thiếu thư viện: {e}. Hãy chạy từ thư mục gốc repo: pip install -r requirements.txt"
         _model_loaded = False
         return False, _load_error
 
@@ -102,6 +110,11 @@ def get_ort_model():
             "Vui lòng chạy python download_model.py rồi khởi động lại service."
         )
     return _ort_model
+
+
+def get_id2label() -> Dict[int, str]:
+    """Trả về mapping id → label từ config của model."""
+    return _id2label
 
 
 def is_model_loaded() -> bool:

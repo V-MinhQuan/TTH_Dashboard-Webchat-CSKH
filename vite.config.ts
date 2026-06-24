@@ -33,6 +33,10 @@ export default defineConfig({
 
   assetsInclude: ['**/*.svg', '**/*.csv'],
 
+  optimizeDeps: {
+    exclude: ['exceljs', 'html2canvas', 'jspdf', 'lucide-react', 'recharts'],
+  },
+
   build: {
     // Tăng nhẹ ngưỡng cảnh báo để tránh cảnh báo cho chunk recharts (thư viện lớn không thể tách nhỏ hơn)
     // Không đặt quá cao để vẫn phát hiện được bundle bất thường

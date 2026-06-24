@@ -1,11 +1,49 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+import logging
 from typing import Any, Dict, Iterable, Iterator, List, Optional
 
+import pymssql
 import pyodbc
 
 from app.core.config import Settings, get_settings
+
+logger = logging.getLogger(__name__)
+_prefer_pymssql = False
+
+
+class _PymssqlCursor:
+    """Small adapter so pymssql can run queries written with pyodbc '?' params."""
+
+    def __init__(self, cursor: Any):
+        self._cursor = cursor
+
+    @staticmethod
+    def _query(query: str) -> str:
+        return query.replace("?", "%s")
+
+    def execute(self, query: str, params: Iterable[Any] = ()) -> Any:
+        return self._cursor.execute(self._query(query), tuple(params))
+
+    def executemany(self, query: str, params: Iterable[Iterable[Any]]) -> Any:
+        return self._cursor.executemany(self._query(query), params)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._cursor, name)
+
+
+class _PymssqlConnection:
+    """Connection adapter matching the pyodbc surface used by repositories."""
+
+    def __init__(self, connection: Any):
+        self._connection = connection
+
+    def cursor(self) -> _PymssqlCursor:
+        return _PymssqlCursor(self._connection.cursor())
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._connection, name)
 
 
 def build_connection_string(settings: Optional[Settings] = None) -> str:
@@ -26,13 +64,40 @@ def build_connection_string(settings: Optional[Settings] = None) -> str:
     )
 
 
-@contextmanager
-def get_connection(settings: Optional[Settings] = None) -> Iterator[pyodbc.Connection]:
-    settings = settings or get_settings()
-    conn = pyodbc.connect(
+def _connect_with_pymssql(settings: Settings) -> _PymssqlConnection:
+    conn = pymssql.connect(
+        server=settings.db_server,
+        user=settings.db_user,
+        password=settings.db_password,
+        database=settings.db_name,
+        port=settings.db_port,
+        tds_version="7.0",
+        timeout=max(settings.db_timeout_seconds, 5),
+        login_timeout=max(settings.db_timeout_seconds, 5),
+    )
+    return _PymssqlConnection(conn)
+
+
+def _connect_with_pyodbc(settings: Settings) -> Any:
+    return pyodbc.connect(
         build_connection_string(settings),
         timeout=settings.db_timeout_seconds,
     )
+
+
+@contextmanager
+def get_connection(settings: Optional[Settings] = None) -> Iterator[Any]:
+    global _prefer_pymssql
+    settings = settings or get_settings()
+    if _prefer_pymssql:
+        conn = _connect_with_pymssql(settings)
+    else:
+        try:
+            conn = _connect_with_pyodbc(settings)
+        except pyodbc.Error as exc:
+            logger.warning("pyodbc connection failed, falling back to pymssql: %s", exc)
+            _prefer_pymssql = True
+            conn = _connect_with_pymssql(settings)
     try:
         yield conn
     finally:

@@ -24,18 +24,17 @@ backend/
 ├── scripts/                    # Các script Python chạy tác vụ admin/tiện ích
 ├── tests_fastapi/              # Thư mục chứa bộ unit/integration test sử dụng pytest
 ├── .env.example                # Tệp cấu hình mẫu biến môi trường
-├── .env                        # Tệp cấu hình biến môi trường thực tế (không commit)
-└── requirements.txt            # Khai báo các thư viện Python phụ thuộc
+└── .env                        # Tệp cấu hình biến môi trường thực tế (không commit)
 ```
 
 ---
 
 ## 2. Hướng dẫn cài đặt và cấu hình
 
-### Bước 1: Di chuyển vào thư mục backend
-Mở terminal/command prompt và chuyển hướng vào thư mục backend:
+### Bước 1: Di chuyển vào thư mục gốc repo
+Mở terminal/command prompt và chuyển hướng vào thư mục gốc:
 ```bash
-cd backend
+cd D:\WebChat_Project\TTH_Dashboard-Webchat-CSKH
 ```
 
 ### Bước 2: Khởi tạo và kích hoạt Virtual Environment (Môi trường ảo)
@@ -55,7 +54,7 @@ Sau khi kích hoạt môi trường ảo, chạy lệnh cài đặt:
 ```bash
 pip install -r requirements.txt
 ```
-*Các thư viện chính bao gồm: `fastapi`, `uvicorn`, `pyodbc` (để kết nối SQL Server), `pydantic-settings`, `httpx`, `pytest`.*
+*File requirements chung ở thư mục gốc cài dependencies cho backend, Celery worker và ml-service.*
 
 ### Bước 4: Cấu hình biến môi trường
 Sao chép tệp mẫu và điền thông tin kết nối SQL Server của bạn vào `.env`:
@@ -94,7 +93,7 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:5173,http://127.0.0.1:5173
 Đảm bảo bạn đã kích hoạt virtual environment:
 ```bash
 # Chạy uvicorn server trên cổng 5000
-python -m uvicorn app.main:app --host 0.0.0.0 --port 5000 --reload
+python -m uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port 5000 --reload
 ```
 
 * **Trang chủ API**: `http://localhost:5000/`
@@ -108,10 +107,9 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 5000 --reload
 Bộ test suite được cài đặt trong `tests_fastapi/` sử dụng `pytest`.
 
 ```bash
-# Kích hoạt venv và chạy pytest
-cd backend
+# Kích hoạt venv root và chạy pytest
 .venv\Scripts\activate
-python -m pytest tests_fastapi -v
+python -m pytest backend\tests_fastapi -v
 ```
 
 ---
