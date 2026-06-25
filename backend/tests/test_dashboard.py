@@ -1,4 +1,5 @@
 import sys
+import json
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -191,8 +192,8 @@ def test_build_top_question_rows_uses_ai_groups(monkeypatch):
         assert "Học phí là bao nhiêu?" in prompt
         return (
             '{"groups":['
-            '{"question":"Học phí và chi phí khóa học là bao nhiêu?","itemIds":["q1","q2"]},'
-            '{"question":"Trung tâm ở đâu?","itemIds":["q3"]}'
+            '{"question":"Học phí và chi phí khóa học là bao nhiêu?","itemIds":["g1","g2"]},'
+            '{"question":"Trung tâm ở đâu?","itemIds":["g3"]}'
             ']}'
         )
 
@@ -209,6 +210,86 @@ def test_build_top_question_rows_uses_ai_groups(monkeypatch):
         "Học phí là bao nhiêu?",
         "Giá khóa học thế nào?",
     }
+
+
+def test_build_top_question_rows_keeps_more_than_display_top_five(monkeypatch):
+    raw_rows = [
+        {"question": "Học phí TOEIC là bao nhiêu?", "source": "facebook", "count": 9},
+        {"question": "Lịch thi VSTEP khi nào?", "source": "zalooa", "count": 8},
+        {"question": "Cách đăng ký khóa học tin học thế nào?", "source": "chatwidget", "count": 7},
+        {"question": "Khi nào nhận chứng chỉ MOS?", "source": "facebook", "count": 6},
+        {"question": "Trung tâm ở đâu?", "source": "zalooa", "count": 5},
+        {"question": "Cách tra cứu điểm TOEIC?", "source": "chatwidget", "count": 4},
+        {"question": "Hồ sơ xét miễn chuẩn đầu ra gồm gì?", "source": "facebook", "count": 3},
+    ]
+
+    def fake_request_ai_question_groups(_: str) -> str:
+        return json.dumps({
+            "groups": [
+                {"question": row["question"], "itemIds": [f"g{index}"]}
+                for index, row in enumerate(raw_rows, start=1)
+            ]
+        }, ensure_ascii=False)
+
+    monkeypatch.setattr(dashboard_module, "request_ai_question_groups", fake_request_ai_question_groups)
+
+    rows, status, message = build_top_question_rows(raw_rows)
+
+    assert status == "ok"
+    assert message == ""
+    assert len(rows) == len(raw_rows)
+
+
+def test_build_top_question_rows_limits_ai_prompt_to_display_candidates(monkeypatch):
+    questions = [
+        "Học phí TOEIC là bao nhiêu?",
+        "Lịch thi VSTEP khi nào?",
+        "Cách đăng ký MOS như thế nào?",
+        "Làm sao nhận phiếu điểm IC3?",
+        "Trung tâm ở đâu?",
+        "Khi nào có chứng chỉ đầu ra?",
+        "Hồ sơ miễn chuẩn đầu ra cần gì?",
+        "Cách tra cứu điểm TOEIC như thế nào?",
+        "Lệ phí thi VSTEP bao nhiêu?",
+        "Ca thi tin học lúc nào?",
+        "Kết quả thi MOS khi nào?",
+        "Đổi lịch thi có được không?",
+        "Bảo lưu khóa học có được không?",
+        "Hủy đăng ký khóa học như thế nào?",
+        "Nhận chứng nhận ở đâu?",
+        "Thời hạn nộp hồ sơ là khi nào?",
+        "Mã lớp học dùng như thế nào?",
+        "Học online có được không?",
+        "Gia hạn tài khoản e-learning có được không?",
+        "Liên hệ phòng đào tạo ở đâu?",
+    ]
+    raw_rows = [
+        {"question": question, "source": "facebook", "count": 100 - index}
+        for index, question in enumerate(questions, start=1)
+    ]
+    captured_candidate_count = None
+
+    def fake_request_ai_question_groups(prompt: str) -> str:
+        nonlocal captured_candidate_count
+        payload = json.loads(prompt.split("Các cụm ứng viên:\n", 1)[1])
+        captured_candidate_count = len(payload)
+        assert captured_candidate_count <= dashboard_module.TOP_QUESTIONS_AI_CANDIDATE_LIMIT
+        assert all(str(item["id"]).startswith("g") for item in payload)
+        return json.dumps({
+            "groups": [
+                {"question": item["question"], "itemIds": [item["id"]]}
+                for item in payload
+            ]
+        }, ensure_ascii=False)
+
+    monkeypatch.setattr(dashboard_module, "request_ai_question_groups", fake_request_ai_question_groups)
+
+    rows, status, message = build_top_question_rows(raw_rows)
+
+    assert status == "ok"
+    assert message == ""
+    assert captured_candidate_count == dashboard_module.TOP_QUESTIONS_AI_CANDIDATE_LIMIT
+    assert dashboard_module.TOP_QUESTIONS_DISPLAY_LIMIT < len(rows) <= dashboard_module.TOP_QUESTIONS_RESPONSE_LIMIT
 
 
 def test_build_top_question_rows_uses_database_fallback_without_ai_result(monkeypatch):

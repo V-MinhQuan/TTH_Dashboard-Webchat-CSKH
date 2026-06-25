@@ -4,15 +4,16 @@ export const CHART_BUILDER_PALETTES: Record<ChartTheme, string[]> = {
   flic: [
     "#003865",
     "#ED5206",
-    "#D73C01",
     "#1565C0",
-    "#228A61",
-    "#F59E0B",
+    "#D73C01",
     "#42A5F5",
+    "#F36C2E",
+    "#0F6C8D",
+    "#F59E0B",
   ],
-  navy: ["#1565C0", "#003865", "#42A5F5", "#0F6C8D", "#5B8DB8", "#8BB9D9"],
-  warm: ["#D73C01", "#ED5206", "#F59E0B", "#C24173", "#E76F51", "#F4A261"],
-  monochrome: ["#507999", "#003865", "#245679", "#7C9CB8", "#A8C1D6", "#D2E0EC"],
+  navy: ["#003865", "#F36C2E", "#1565C0", "#ED5206", "#42A5F5", "#D73C01"],
+  warm: ["#D73C01", "#003865", "#ED5206", "#1565C0", "#F36C2E", "#42A5F5"],
+  monochrome: ["#003865", "#ED5206", "#507999", "#F36C2E", "#1565C0", "#D73C01"],
 };
 
 const AUTO_PALETTE_COLORS = new Set(
@@ -22,10 +23,10 @@ const AUTO_PALETTE_COLORS = new Set(
 );
 
 export const CHART_BUILDER_PALETTE_LABELS: Record<ChartTheme, string> = {
-  flic: "FLIC Brand",
-  navy: "Xanh Navy",
-  warm: "Gam màu ấm",
-  monochrome: "Đơn sắc",
+  flic: "FLIC cam/xanh",
+  navy: "Xanh chủ đạo",
+  warm: "Cam chủ đạo",
+  monochrome: "Cam/xanh nhẹ",
 };
 
 export function getChartBuilderPalette(theme: ChartTheme): string[] {

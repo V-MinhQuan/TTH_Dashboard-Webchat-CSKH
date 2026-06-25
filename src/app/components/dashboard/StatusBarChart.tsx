@@ -4,11 +4,11 @@ const NAVY = "#003865";
 
 const STATUS_COLORS: Record<string, string> = {
   "Mới": "#42A5F5",
-  "Đang tư vấn / Chờ phản hồi": "#1565C0",
-  "Đang xử lý": "#1565C0", // legacy alias
-  "Chờ xử lý": "#B7791F",
-  "Đã đóng": "#228A61",
-  "Khác": "#94a3b8"
+  "Đang tư vấn / Chờ phản hồi": NAVY,
+  "Đang xử lý": NAVY, // legacy alias
+  "Chờ xử lý": "#D73C01",
+  "Đã đóng": "#1565C0",
+  "Khác": "#F36C2E"
 };
 
 const STATUS_LABELS: Record<string, string> = {

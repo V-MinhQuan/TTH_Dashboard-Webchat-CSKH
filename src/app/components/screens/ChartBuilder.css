@@ -403,6 +403,77 @@
   scrollbar-gutter: stable;
 }
 
+.chart-builder-date-scope {
+  min-width: 0;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(0, 56, 101, 0.1);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.chart-builder-date-scope-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--cb-navy);
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.chart-builder-date-scope-title svg {
+  color: var(--cb-orange);
+}
+
+.chart-builder-date-scope-control,
+.chart-builder-date-custom label {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.chart-builder-date-scope-control {
+  width: min(220px, 100%);
+}
+
+.chart-builder-date-scope-control span,
+.chart-builder-date-custom span {
+  color: rgba(0, 56, 101, 0.56);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.chart-builder-date-scope select,
+.chart-builder-date-scope input {
+  min-height: 32px;
+  border: 1px solid #dbe4eb;
+  border-radius: 9px;
+  background: #fff;
+  color: var(--cb-navy);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.chart-builder-date-scope select {
+  padding: 6px 28px 6px 10px;
+}
+
+.chart-builder-date-scope input {
+  padding: 6px 9px;
+}
+
+.chart-builder-date-custom {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(130px, 1fr));
+  gap: 8px;
+}
+
 .chart-builder-drop-zone-row {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -932,6 +1003,16 @@
   .chart-builder-title-block input { width: 100%; }
   .chart-builder-toolbar-actions { justify-content: flex-end; }
   .chart-builder-drop-zone-row { grid-template-columns: 1fr; }
+  .chart-builder-date-scope {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .chart-builder-date-scope-control {
+    width: 100%;
+  }
+  .chart-builder-date-custom {
+    grid-template-columns: 1fr;
+  }
   .chart-builder-drop-zone-row.is-dynamic { grid-template-columns: 1fr; }
   .chart-builder-preview-card { padding: 20px 14px; }
   .chart-builder-preview-header { flex-direction: column; }

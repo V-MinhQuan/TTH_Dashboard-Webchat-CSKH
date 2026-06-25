@@ -6,7 +6,7 @@ interface Props {
   onChange: (value: YAxisConfig[]) => void;
 }
 
-const FALLBACKS = ["#D73C01", "#003865", "#7B61FF", "#0F9D78", "#C24173", "#64748B"];
+const FALLBACKS = ["#003865", "#ED5206", "#1565C0", "#D73C01", "#42A5F5", "#F36C2E"];
 
 export function ColorPicker({ metrics, yAxes, onChange }: Props) {
   return (

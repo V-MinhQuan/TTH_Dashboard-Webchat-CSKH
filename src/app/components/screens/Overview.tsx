@@ -23,9 +23,9 @@ import { KpiCard } from "../dashboard/KpiCard";
 import { SourceChart } from "../dashboard/SourceChart";
 import { FeedbackFormDialog } from "../feedback/FeedbackFormDialog";
 
-const NAVY = "#003BB9";
+const NAVY = "#003865";
 const ORANGE = "#D73C01";
-const DETAIL_PAGE_SIZE = 8;
+const CHART_COLORS = [NAVY, "#ED5206", "#1565C0", ORANGE, "#42A5F5", "#F36C2E"];
 
 function viNum(n: number) {
   return n.toLocaleString("vi-VN");
@@ -46,6 +46,16 @@ function normalizeSourceForCompare(source?: string) {
     web: "chatwidget",
   };
   return aliases[normalized] || normalized;
+}
+
+function normalizeQuestionSearchText(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLocaleLowerCase("vi-VN")
+    .trim();
 }
 
 
@@ -244,7 +254,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
   const [feedbackQuestion, setFeedbackQuestion] = useState<TopQuestion | null>(null);
   const [selectedTopQuestion, setSelectedTopQuestion] = useState<TopQuestion | null>(null);
   const [detailSearch, setDetailSearch] = useState("");
-  const [detailPage, setDetailPage] = useState(1);
+  const [topQuestionSearch, setTopQuestionSearch] = useState("");
 
   const handleFlagAlert = (alertId: string) => {
     setFlaggedAlertIds(prev => {
@@ -370,7 +380,6 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
   const openTopQuestionDetails = (question: TopQuestion) => {
     setSelectedTopQuestion(question);
     setDetailSearch("");
-    setDetailPage(1);
   };
 
   const openTopQuestionFaq = (question: TopQuestion) => {
@@ -387,12 +396,11 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
     return rows.filter((row) => row.question.toLocaleLowerCase("vi-VN").includes(needle));
   }, [selectedTopQuestion, detailSearch]);
 
-  const detailTotalPages = Math.max(1, Math.ceil(detailQuestions.length / DETAIL_PAGE_SIZE));
-  const detailPageSafe = Math.min(detailPage, detailTotalPages);
-  const paginatedDetailQuestions = detailQuestions.slice(
-    (detailPageSafe - 1) * DETAIL_PAGE_SIZE,
-    detailPageSafe * DETAIL_PAGE_SIZE,
-  );
+  const visibleTopQuestions = useMemo(() => {
+    const needle = normalizeQuestionSearchText(topQuestionSearch);
+    if (!needle) return topQuestions.slice(0, 5);
+    return topQuestions.filter((question) => normalizeQuestionSearchText(question.question).includes(needle));
+  }, [topQuestions, topQuestionSearch]);
 
   const isScreenRefreshing = parentRefreshing || localRefreshing;
 
@@ -523,7 +531,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
   const reportStatusRows = [
     { label: "Chờ xử lý", value: kpiData?.statusSummary.pending || 0, color: "#D73C01" },
     { label: "Đang tư vấn / Chờ phản hồi", value: kpiData?.statusSummary.open || 0, color: "#003BB9" },
-    { label: "Hoàn thành", value: kpiData?.statusSummary.closed || 0, color: "#228A61" },
+    { label: "Hoàn thành", value: kpiData?.statusSummary.closed || 0, color: "#1565C0" },
   ];
   const maxStatusValue = Math.max(...reportStatusRows.map((row) => row.value), 1);
   const maxSourceValue = Math.max(...sourceStats.map((row) => row.hoiday), 1);
@@ -583,7 +591,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
               { label: "Tổng hội thoại", value: viNum(totalConversations), color: "#003BB9" },
               { label: "Tổng tin nhắn", value: viNum(totalMessages), color: "#003865" },
               { label: "Chờ xử lý", value: viNum(activeConversations), color: "#D73C01" },
-              { label: "Hoàn thành", value: viNum(closedConversations), color: "#228A61" },
+              { label: "Hoàn thành", value: viNum(closedConversations), color: "#1565C0" },
               { label: "AI thất bại", value: viNum(kpiData?.aiFailures || 0), color: "#B42318" },
             ].map((item) => (
               <div key={item.label} style={{ border: "1px solid rgba(0,56,101,0.1)", borderRadius: "10px", padding: "14px", background: "#FDFEFE" }}>
@@ -877,7 +885,6 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                   const pieData = sortedData
                     .filter((d) => d[valueKey] !== null)
                     .map((d) => ({ name: d[nameKey], value: d[valueKey] }));
-                  const COLORS = ["#003BB9", "#D73C01", "rgba(0,59,185,0.6)", "#ED5206", "rgba(0,59,185,0.3)"];
                   return (
                     <PieChart id="pie-chart-trend">
                       <Pie
@@ -890,7 +897,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                         label={editValues.dataLabels}
                       >
                         {pieData.map((entry, i) => (
-                          <Cell key={`pie-cell-${i}`} fill={COLORS[i % COLORS.length]} />
+                          <Cell key={`pie-cell-${i}`} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                         ))}
                       </Pie>
                       <ChartTooltip />
@@ -911,7 +918,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                         dataKey={valueKey}
                         name={
                           valueKey === "total"
-                            ? "Thực tế"
+                            ? "Số lượng hội thoại"
                             : valueKey === "ai_ok"
                               ? "AI trả lời thành công"
                               : "AI trả lời thất bại"
@@ -937,7 +944,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                         dataKey={valueKey}
                         name={
                           valueKey === "total"
-                            ? "Thực tế"
+                            ? "Số lượng hội thoại"
                             : valueKey === "ai_ok"
                               ? "AI trả lời thành công"
                               : "AI trả lời thất bại"
@@ -964,7 +971,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                         dataKey={valueKey}
                         name={
                           valueKey === "total"
-                            ? "Thực tế"
+                            ? "Số lượng hội thoại"
                             : valueKey === "ai_ok"
                               ? "AI trả lời thành công"
                               : "AI trả lời thất bại"
@@ -992,7 +999,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                       dataKey={valueKey}
                       name={
                         valueKey === "total"
-                          ? "Thực tế"
+                          ? "Số lượng hội thoại"
                           : valueKey === "ai_ok"
                             ? "AI trả lời thành công"
                             : "AI trả lời thất bại"
@@ -1080,9 +1087,9 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
               }
 
               const SOURCE_COLORS: Record<string, string> = {
-                ZaloOA: "#00B2FE",
-                ZaloBusiness: "#085fb6ff",
-                Facebook: "#1877F2",
+                ZaloOA: "#42A5F5",
+                ZaloBusiness: NAVY,
+                Facebook: "#ED5206",
                 ChatWidget: ORANGE,
               };
 
@@ -1103,7 +1110,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                         {listData.map((entry) => (
                           <Cell
                             key={`cell-source-${entry.colorKey}`}
-                            fill={SOURCE_COLORS[entry.colorKey] || "#003BB9"}
+                            fill={SOURCE_COLORS[entry.colorKey] || NAVY}
                           />
                         ))}
                       </Pie>
@@ -1152,7 +1159,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                         {listData.map((entry) => (
                           <Cell
                             key={`cell-source-bar-${entry.colorKey}`}
-                            fill={SOURCE_COLORS[entry.colorKey] || "#003BB9"}
+                            fill={SOURCE_COLORS[entry.colorKey] || NAVY}
                           />
                         ))}
                       </Bar>
@@ -1178,7 +1185,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                         {listData.map((entry) => (
                           <Cell
                             key={`cell-source-hbar-${entry.colorKey}`}
-                            fill={SOURCE_COLORS[entry.colorKey] || "#003BB9"}
+                            fill={SOURCE_COLORS[entry.colorKey] || NAVY}
                           />
                         ))}
                       </Bar>
@@ -1269,11 +1276,33 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
 
         {/* Câu hỏi nổi bật (Top Questions) */}
         <div style={{ backgroundColor: "#fff", borderRadius: "16px", border: "1px solid rgba(0,59,185,0.07)", boxShadow: "0 2px 10px rgba(0,59,185,0.05)", overflow: "hidden", marginBottom: "24px" }}>
-          <div style={{ padding: "16px 22px", borderBottom: "1px solid rgba(0,59,185,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ padding: "16px 22px", borderBottom: "1px solid rgba(0,59,185,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "14px", flexWrap: "wrap" }}>
             <h3 style={{ color: "#003BB9", fontSize: "14px", fontWeight: 700, margin: 0 }}>Câu hỏi nổi bật từ khách hàng</h3>
-            <button onClick={handleManualRefresh} disabled={isScreenRefreshing} style={{ fontSize: "12px", color: "#003BB9", border: "1px solid rgba(0,59,185,0.2)", background: "#f8fafc", padding: "5px 12px", borderRadius: "8px", cursor: isScreenRefreshing ? "not-allowed" : "pointer", fontWeight: 500, display: "flex", alignItems: "center", gap: "6px", opacity: isScreenRefreshing ? 0.6 : 1 }}>
-              <RefreshCw size={12} style={{ animation: isScreenRefreshing ? "spin 1s linear infinite" : "none" }} /> Làm mới
-            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", justifyContent: "flex-end" }}>
+              <label style={{ width: "min(320px, 64vw)", display: "flex", alignItems: "center", gap: "8px", border: "1px solid rgba(0,59,185,0.12)", background: "#fff", borderRadius: "10px", padding: "7px 10px", color: "rgba(0,59,185,0.48)" }}>
+                <Search size={14} aria-hidden="true" />
+                <input
+                  aria-label="Tìm kiếm câu hỏi nổi bật"
+                  value={topQuestionSearch}
+                  onChange={(event) => setTopQuestionSearch(event.target.value)}
+                  placeholder="Tìm câu hỏi nổi bật..."
+                  style={{ minWidth: 0, flex: 1, border: "none", outline: "none", color: NAVY, fontSize: "12px", background: "transparent" }}
+                />
+                {topQuestionSearch && (
+                  <button
+                    type="button"
+                    aria-label="Xóa tìm kiếm câu hỏi nổi bật"
+                    onClick={() => setTopQuestionSearch("")}
+                    style={{ border: "none", background: "transparent", color: "rgba(0,59,185,0.42)", cursor: "pointer", padding: "2px", display: "flex", alignItems: "center" }}
+                  >
+                    <X size={13} aria-hidden="true" />
+                  </button>
+                )}
+              </label>
+              <button onClick={handleManualRefresh} disabled={isScreenRefreshing} style={{ fontSize: "12px", color: "#003BB9", border: "1px solid rgba(0,59,185,0.2)", background: "#f8fafc", padding: "7px 12px", borderRadius: "8px", cursor: isScreenRefreshing ? "not-allowed" : "pointer", fontWeight: 500, display: "flex", alignItems: "center", gap: "6px", opacity: isScreenRefreshing ? 0.6 : 1 }}>
+                <RefreshCw size={12} style={{ animation: isScreenRefreshing ? "spin 1s linear infinite" : "none" }} /> Làm mới
+              </button>
+            </div>
           </div>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
@@ -1297,8 +1326,14 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                       Database chưa có câu hỏi khách hàng phù hợp trong bộ lọc hiện tại.
                     </td>
                   </tr>
+                ) : visibleTopQuestions.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} style={{ padding: "18px 16px", color: "rgba(0,59,185,0.55)" }}>
+                      Không tìm thấy câu hỏi nổi bật phù hợp với từ khóa.
+                    </td>
+                  </tr>
                 ) : (
-                  topQuestions.slice(0, 5).map((q, i) => (
+                  visibleTopQuestions.map((q, i) => (
                     <tr key={`${q.question}-${i}`} style={{ borderBottom: "1px solid rgba(0,59,185,0.04)" }}
                       onMouseEnter={(e) => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "#f8fafc"}
                       onMouseLeave={(e) => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "transparent"}
@@ -1409,9 +1444,18 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
           />
         )}
         {selectedTopQuestion && (
-          <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.45)", zIndex: 240, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
-            <div role="dialog" aria-label="Chi tiết câu hỏi nổi bật" style={{ width: "min(760px, 100%)", maxHeight: "88vh", overflowY: "auto", background: "#fff", borderRadius: "16px", boxShadow: "0 20px 60px rgba(0,0,0,0.18)" }}>
-              <div style={{ padding: "18px 22px", borderBottom: "1px solid rgba(0,59,185,0.08)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "14px" }}>
+          <div
+            onClick={() => setSelectedTopQuestion(null)}
+            style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.45)", zIndex: 240, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Chi tiết câu hỏi nổi bật"
+              onClick={(event) => event.stopPropagation()}
+              style={{ width: "min(760px, 100%)", height: "min(760px, calc(100vh - 40px))", display: "flex", flexDirection: "column", overflow: "hidden", background: "#fff", borderRadius: "16px", boxShadow: "0 20px 60px rgba(0,0,0,0.18)" }}
+            >
+              <div style={{ padding: "18px 22px", borderBottom: "1px solid rgba(0,59,185,0.08)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "14px", flexShrink: 0 }}>
                 <div>
                   <h3 style={{ margin: 0, color: NAVY, fontSize: "16px", fontWeight: 700 }}>Chi tiết câu hỏi nổi bật</h3>
                   <div style={{ marginTop: "4px", color: "rgba(0,59,185,0.55)", fontSize: "12px" }}>
@@ -1423,8 +1467,8 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                 </button>
               </div>
 
-              <div style={{ padding: "20px 22px", display: "flex", flexDirection: "column", gap: "16px" }}>
-                <div style={{ border: "1px solid rgba(0,59,185,0.08)", background: "#f8fafc", borderRadius: "12px", padding: "14px 16px" }}>
+              <div style={{ padding: "20px 22px", display: "flex", flexDirection: "column", gap: "16px", flex: 1, minHeight: 0, overflow: "hidden" }}>
+                <div style={{ border: "1px solid rgba(0,59,185,0.08)", background: "#f8fafc", borderRadius: "12px", padding: "14px 16px", flexShrink: 0 }}>
                   <div style={{ color: "rgba(0,59,185,0.55)", fontSize: "11px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", marginBottom: "6px" }}>
                     Câu hỏi tổng quát
                   </div>
@@ -1433,58 +1477,35 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                   </div>
                 </div>
 
-                <div style={{ display: "flex", alignItems: "center", gap: "10px", border: "1px solid rgba(0,59,185,0.12)", borderRadius: "10px", padding: "9px 12px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", border: "1px solid rgba(0,59,185,0.12)", borderRadius: "10px", padding: "9px 12px", flexShrink: 0 }}>
                   <Search size={15} style={{ color: "rgba(0,59,185,0.45)" }} />
                   <input
                     value={detailSearch}
-                    onChange={(e) => {
-                      setDetailSearch(e.target.value);
-                      setDetailPage(1);
-                    }}
+                    onChange={(e) => setDetailSearch(e.target.value)}
                     placeholder="Tìm trong danh sách câu hỏi liên quan..."
                     style={{ border: "none", outline: "none", flex: 1, color: NAVY, fontSize: "13px" }}
                   />
                 </div>
 
-                <div style={{ border: "1px solid rgba(0,59,185,0.08)", borderRadius: "12px", overflow: "hidden" }}>
-                  <div style={{ padding: "10px 14px", background: "#f8fafc", color: "rgba(0,59,185,0.55)", fontSize: "11px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                <div style={{ border: "1px solid rgba(0,59,185,0.08)", borderRadius: "12px", overflow: "hidden", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+                  <div style={{ padding: "10px 14px", background: "#f8fafc", color: "rgba(0,59,185,0.55)", fontSize: "11px", fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", flexShrink: 0 }}>
                     Các câu hỏi liên quan
                   </div>
-                  {paginatedDetailQuestions.length === 0 ? (
-                    <div style={{ padding: "18px 14px", color: "rgba(0,59,185,0.55)", fontSize: "13px" }}>Không tìm thấy câu hỏi phù hợp.</div>
-                  ) : (
-                    paginatedDetailQuestions.map((row, index) => (
-                      <div key={`${row.question}-${index}`} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "14px", padding: "12px 14px", borderTop: index === 0 ? "none" : "1px solid rgba(0,59,185,0.06)", alignItems: "start" }}>
-                        <div style={{ color: NAVY, fontSize: "13px", lineHeight: 1.45 }}>{row.question}</div>
-                        <span style={{ fontSize: "12px", fontWeight: 700, color: ORANGE, background: "#FFF4EE", borderRadius: "999px", padding: "2px 8px", whiteSpace: "nowrap" }}>
-                          {viNum(row.count)}
-                        </span>
-                      </div>
-                    ))
-                  )}
-                </div>
-
-                {detailTotalPages > 1 && (
-                  <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "10px" }}>
-                    <button
-                      onClick={() => setDetailPage((page) => Math.max(1, page - 1))}
-                      disabled={detailPageSafe <= 1}
-                      style={{ padding: "6px 10px", borderRadius: "8px", border: "1px solid rgba(0,59,185,0.12)", background: "#fff", color: NAVY, cursor: detailPageSafe <= 1 ? "not-allowed" : "pointer", opacity: detailPageSafe <= 1 ? 0.5 : 1 }}
-                    >
-                      Trước
-                    </button>
-                    <span style={{ color: "rgba(0,59,185,0.6)", fontSize: "12px", fontWeight: 600 }}>
-                      Trang {detailPageSafe}/{detailTotalPages}
-                    </span>
-                    <button
-                      onClick={() => setDetailPage((page) => Math.min(detailTotalPages, page + 1))}
-                      disabled={detailPageSafe >= detailTotalPages}
-                      style={{ padding: "6px 10px", borderRadius: "8px", border: "1px solid rgba(0,59,185,0.12)", background: "#fff", color: NAVY, cursor: detailPageSafe >= detailTotalPages ? "not-allowed" : "pointer", opacity: detailPageSafe >= detailTotalPages ? 0.5 : 1 }}
-                    >
-                      Sau
-                    </button>
+                  <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+                    {detailQuestions.length === 0 ? (
+                      <div style={{ padding: "18px 14px", color: "rgba(0,59,185,0.55)", fontSize: "13px" }}>Không tìm thấy câu hỏi phù hợp.</div>
+                    ) : (
+                      detailQuestions.map((row, index) => (
+                        <div key={`${row.question}-${index}`} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "14px", padding: "12px 14px", borderTop: index === 0 ? "none" : "1px solid rgba(0,59,185,0.06)", alignItems: "start" }}>
+                          <div style={{ color: NAVY, fontSize: "13px", lineHeight: 1.45 }}>{row.question}</div>
+                          <span style={{ fontSize: "12px", fontWeight: 700, color: ORANGE, background: "#FFF4EE", borderRadius: "999px", padding: "2px 8px", whiteSpace: "nowrap" }}>
+                            {viNum(row.count)}
+                          </span>
+                        </div>
+                      ))
+                    )}
                   </div>
-                )}
+                </div>
               </div>
             </div>
           </div>

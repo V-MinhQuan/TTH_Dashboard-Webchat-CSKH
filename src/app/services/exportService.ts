@@ -18,7 +18,6 @@ function filterSummary(filters: FilterValues) {
     ["Chủ đề", filters.topic],
     ["Trạng thái hội thoại", filters.conversationStatus],
     ["Trạng thái AI", filters.aiStatus],
-    ["Loại lỗi AI", filters.aiFailureType],
   ].filter((entry): entry is [string, string] => Boolean(entry[1]));
 }
 
@@ -60,10 +59,15 @@ function createExportSnapshot(target: HTMLElement, filters: FilterValues) {
 export function collectTableData(target: HTMLElement): { headers: string[]; rows: string[][] } {
   const table = target.querySelector("table");
   if (!table) return { headers: [], rows: [] };
+  const cellText = (cell: Element) => {
+    const clone = cell.cloneNode(true) as HTMLElement;
+    clone.querySelectorAll<HTMLElement>("[data-print-hidden='true'], .print-hidden").forEach((element) => element.remove());
+    return clone.textContent?.trim() ?? "";
+  };
   return {
-    headers: Array.from(table.querySelectorAll("thead th")).map((cell) => cell.textContent?.trim() ?? ""),
+    headers: Array.from(table.querySelectorAll("thead th")).map(cellText),
     rows: Array.from(table.querySelectorAll("tbody tr")).map((row) => (
-      Array.from(row.querySelectorAll("td")).map((cell) => cell.textContent?.trim() ?? "")
+      Array.from(row.querySelectorAll("td")).map(cellText)
     )),
   };
 }

@@ -6,7 +6,13 @@ import * as round3Api from "../services/round3Api";
 export const NAVY = "#003865";
 export const ORANGE = "#D73C01";
 export const CTA = "#ED5206";
-export const TOPIC_DONUT_COLORS = [NAVY, "#1565C0", "#1D7FF2", "#00AEEF"];
+export const TOPIC_GROUP_COLORS: Record<string, string> = {
+  toeic: NAVY,
+  vstep: CTA,
+  tinhoc: "#1565C0",
+  chuandaura: "#F36C2E",
+};
+export const TOPIC_DONUT_COLORS = Object.values(TOPIC_GROUP_COLORS);
 
 export type AiErrorKeywordPayload = {
   keyword: string;
@@ -86,10 +92,10 @@ export type MissingFaqItem = {
 };
 
 const topicGroupMeta: Pick<KeywordGroup, "id" | "name" | "color">[] = [
-  { id: "toeic", name: "TOEIC", color: NAVY },
-  { id: "vstep", name: "VSTEP", color: "#1565C0" },
-  { id: "tinhoc", name: "Tin học / MOS / IC3", color: "#42A5F5" },
-  { id: "chuandaura", name: "Chuẩn đầu ra / Chứng chỉ", color: "#0288D1" },
+  { id: "toeic", name: "TOEIC", color: TOPIC_GROUP_COLORS.toeic },
+  { id: "vstep", name: "VSTEP", color: TOPIC_GROUP_COLORS.vstep },
+  { id: "tinhoc", name: "Tin học / MOS / IC3", color: TOPIC_GROUP_COLORS.tinhoc },
+  { id: "chuandaura", name: "Chuẩn đầu ra / Chứng chỉ", color: TOPIC_GROUP_COLORS.chuandaura },
 ];
 
 export function mapTopicToGroupId(value: string): string | null {

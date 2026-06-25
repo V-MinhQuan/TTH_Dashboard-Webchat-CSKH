@@ -97,11 +97,19 @@ services:
     ports:
       - "5173:5173"
     volumes:
-      - .:/app
+      - ./src:/app/src
+      - ./index.html:/app/index.html
+      - ./package.json:/app/package.json
+      - ./package-lock.json:/app/package-lock.json
+      - ./vite.config.ts:/app/vite.config.ts
+      - ./tsconfig.json:/app/tsconfig.json
+      - ./postcss.config.mjs:/app/postcss.config.mjs
+      - ./.env:/app/.env
       - frontend_node_modules:/app/node_modules
     environment:
       VITE_API_BASE_URL: "http://127.0.0.1:5000"
       CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: "500"
     depends_on:
       - backend
     command: >
@@ -113,8 +121,7 @@ services:
           npm ci;
           echo \"$$runtime_marker\" > node_modules/.docker-runtime;
         fi;
-        npm run build;
-        npx vite preview --host 0.0.0.0 --port 5173
+        npm run dev -- --host 0.0.0.0 --port 5173 --strictPort
       "
 
 volumes:

@@ -49,10 +49,12 @@ export const BLUE_TEXT   = "#3B82F6";
 export const CHART_COLORS = [
   NAVY,
   CTA,
-  "rgba(0,56,101,0.6)",
+  BLUE_500,
+  ORANGE,
+  BLUE_400,
   CTA_SOFT,
-  "rgba(0,56,101,0.3)",
-  "#FBCBB8",
+  "#0F6C8D",
+  "#F59E0B",
 ];
 
 // ── Button styles (inline style objects) ─────────────────────────

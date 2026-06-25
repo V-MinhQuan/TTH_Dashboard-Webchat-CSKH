@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Brain, X, Plus } from "lucide-react";
+import { AlertTriangle, Brain, X, Plus } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
   LineChart, Line,
@@ -17,7 +17,6 @@ import {
   aiWrongAnswerNote,
   buildApiParams,
   buildTrendApiParams,
-  CTA,
   emptyAiErrorKeywordForm,
   failureSourceFromSuggestion,
   mapApiGroups,
@@ -29,6 +28,7 @@ import {
   normalizeFilterValue,
   ORANGE,
   persistAiErrorKeyword,
+  TOPIC_GROUP_COLORS,
   TOPIC_DONUT_COLORS,
   topicForGroupId,
   type AiErrorKeywordPayload,
@@ -52,6 +52,12 @@ const labelTextClass = "text-[11px] text-[rgba(0,56,101,0.5)]";
 const navyTitleClass = "text-[#003865] font-bold";
 const modalLabelClass = "text-[#003865] text-xs font-semibold";
 const modalInputClass = "mt-1.5 w-full box-border rounded-lg border border-[rgba(0,56,101,0.16)] px-3 py-2.5 text-[#003865] outline-none";
+const TOPIC_LINE_STYLES = {
+  toeic: { color: TOPIC_GROUP_COLORS.toeic, dash: undefined },
+  vstep: { color: TOPIC_GROUP_COLORS.vstep, dash: "7 3" },
+  tinhoc: { color: TOPIC_GROUP_COLORS.tinhoc, dash: "2 4" },
+  chuandaura: { color: TOPIC_GROUP_COLORS.chuandaura, dash: "10 3 2 3" },
+} as const;
 
 const groupToneClasses: Record<string, { activeBorder: string; activeShadow: string; text: string; strip: string }> = {
   toeic: {
@@ -61,22 +67,22 @@ const groupToneClasses: Record<string, { activeBorder: string; activeShadow: str
     strip: "bg-[#003865]",
   },
   vstep: {
+    activeBorder: "border-[#ED5206]",
+    activeShadow: "shadow-[0_4px_16px_rgba(237,82,6,0.16)]",
+    text: "text-[#ED5206]",
+    strip: "bg-[#ED5206]",
+  },
+  tinhoc: {
     activeBorder: "border-[#1565C0]",
-    activeShadow: "shadow-[0_4px_16px_rgba(21,101,192,0.13)]",
+    activeShadow: "shadow-[0_4px_16px_rgba(21,101,192,0.16)]",
     text: "text-[#1565C0]",
     strip: "bg-[#1565C0]",
   },
-  tinhoc: {
-    activeBorder: "border-[#42A5F5]",
-    activeShadow: "shadow-[0_4px_16px_rgba(66,165,245,0.13)]",
-    text: "text-[#42A5F5]",
-    strip: "bg-[#42A5F5]",
-  },
   chuandaura: {
-    activeBorder: "border-[#0288D1]",
-    activeShadow: "shadow-[0_4px_16px_rgba(2,136,209,0.13)]",
-    text: "text-[#0288D1]",
-    strip: "bg-[#0288D1]",
+    activeBorder: "border-[#F36C2E]",
+    activeShadow: "shadow-[0_4px_16px_rgba(243,108,46,0.16)]",
+    text: "text-[#F36C2E]",
+    strip: "bg-[#F36C2E]",
   },
 };
 
@@ -89,6 +95,9 @@ const emptyMissingFaqGroups: Record<string, MissingFaqItem[]> = {
   tinhoc: [],
   chuandaura: [],
 };
+const emptyKeywordOptionalErrors = {
+  suggestedFaqs: false,
+};
 
 type KeywordAnalysisQueryData = {
   groups: KeywordGroup[];
@@ -96,6 +105,7 @@ type KeywordAnalysisQueryData = {
   trendRows: any[];
   heatmapColsDyn: { key: string; label: string }[];
   missingFaqs: Record<string, MissingFaqItem[]>;
+  optionalErrors: typeof emptyKeywordOptionalErrors;
 };
 
 function toneForGroup(groupId: string) {
@@ -140,12 +150,19 @@ function heatLegendClass(val: number) {
 async function loadKeywordAnalysisData(filters: FilterValues, signal?: AbortSignal): Promise<KeywordAnalysisQueryData> {
   const params = buildApiParams(filters);
   const trendParams = buildTrendApiParams(filters);
+  let suggestedFaqsLoadFailed = false;
 
   const [groupsJson, hJson, tJson, faqsJson] = await Promise.all([
     fetchApiJson<KeywordGroupsResponse>(buildApiUrl("/api/admin/crm-keywords/groups", params), { signal }),
     fetchApiJson<KeywordHeatmapResponse>(buildApiUrl("/api/admin/crm-keywords/heatmap", params), { signal }),
     fetchApiJson<KeywordTrendResponse>(buildApiUrl("/api/admin/crm-keywords/trends", trendParams), { signal }),
-    fetchApiJson<SuggestedFaqResponse>(buildApiUrl("/api/analytics/ai/suggested-faqs", params), { signal }),
+    fetchApiJson<SuggestedFaqResponse>(buildApiUrl("/api/analytics/ai/suggested-faqs", params), { signal })
+      .catch((error) => {
+        if (signal?.aborted) throw error;
+        suggestedFaqsLoadFailed = true;
+        console.warn("Optional suggested FAQ request failed:", error);
+        return null;
+      }),
   ]);
 
   if (!groupsJson.success || !Array.isArray(groupsJson.data)) {
@@ -157,10 +174,6 @@ async function loadKeywordAnalysisData(filters: FilterValues, signal?: AbortSign
   if (!tJson.success || !Array.isArray(tJson.data)) {
     throw new Error(tJson.message || "Không thể tải dữ liệu xu hướng Keywords.");
   }
-  if (!faqsJson.success || !Array.isArray(faqsJson.data)) {
-    throw new Error(faqsJson.message || "Không thể tải câu hỏi đề xuất FAQ từ database.");
-  }
-
   const missingFaqs: Record<string, MissingFaqItem[]> = {
     toeic: [],
     vstep: [],
@@ -168,7 +181,9 @@ async function loadKeywordAnalysisData(filters: FilterValues, signal?: AbortSign
     chuandaura: [],
   };
 
-  faqsJson.data.forEach((item) => {
+  const suggestedFaqsUnavailable = suggestedFaqsLoadFailed || Boolean(faqsJson && !faqsJson.success);
+  const suggestedFaqRows = faqsJson?.success && Array.isArray(faqsJson.data) ? faqsJson.data : [];
+  suggestedFaqRows.forEach((item) => {
     const groupId = mapTopicToGroupId(`${item.topic || ""} ${item.question || ""} ${item.suggestedAnswer || ""}`);
     if (!groupId || !item.question?.trim()) return;
 
@@ -186,6 +201,9 @@ async function loadKeywordAnalysisData(filters: FilterValues, signal?: AbortSign
     trendRows: mapTrendRows(tJson.data),
     heatmapColsDyn: hJson.columns && Array.isArray(hJson.columns) ? hJson.columns : [],
     missingFaqs,
+    optionalErrors: {
+      suggestedFaqs: suggestedFaqsUnavailable,
+    },
   };
 }
 
@@ -391,6 +409,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
   const heatmapRows = keywordQuery.data?.heatmapRows || [];
   const trendRows = keywordQuery.data?.trendRows || [];
   const heatmapColsDyn = keywordQuery.data?.heatmapColsDyn || [];
+  const suggestedFaqsLoadFailed = Boolean(keywordQuery.data?.optionalErrors?.suggestedFaqs);
 
   const filteredGroups = groups.filter((g) => {
     const topic = appliedFilters.topic || "";
@@ -428,7 +447,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
   const hasAiFailedMetric = finalGroups.some((g) => g.aiFailed !== null);
 
   const barData = finalGroups.map((g) => ({ name: g.name.split(" / ")[0], "Số câu hỏi": g.totalQuestions, "Số câu AI phản hồi không chính xác": g.aiFailed }));
-  const donutData = finalGroups.map((g) => ({ name: g.name.split(" / ")[0], value: g.totalQuestions }));
+  const donutData = finalGroups.map((g) => ({ id: g.id, name: g.name.split(" / ")[0], value: g.totalQuestions }));
 
   return (
     <div className="p-6" data-export-target="true">
@@ -492,8 +511,24 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
           <div className="mb-4 text-sm font-bold text-[#003865]">Tỷ lệ nhóm chủ đề</div>
           <ResponsiveContainer width="100%" height={220}>
             <PieChart>
-              <Pie data={donutData} cx="50%" cy="50%" innerRadius={55} outerRadius={85} dataKey="value" nameKey="name">
-                {donutData.map((_, i) => <Cell key={`cell-${i}`} fill={TOPIC_DONUT_COLORS[i % TOPIC_DONUT_COLORS.length]} />)}
+              <Pie
+                data={donutData}
+                cx="50%"
+                cy="50%"
+                innerRadius={55}
+                outerRadius={85}
+                dataKey="value"
+                nameKey="name"
+                paddingAngle={3}
+              >
+                {donutData.map((item, i) => (
+                  <Cell
+                    key={`cell-${item.id}-${i}`}
+                    fill={TOPIC_GROUP_COLORS[item.id] || TOPIC_DONUT_COLORS[i % TOPIC_DONUT_COLORS.length]}
+                    stroke="#fff"
+                    strokeWidth={3}
+                  />
+                ))}
               </Pie>
               <Tooltip formatter={(v: number) => v.toLocaleString("vi-VN")} />
               <Legend iconSize={10} formatter={(v) => <span className="text-[11px] text-[#003865]">{v}</span>} />
@@ -512,10 +547,10 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
             <YAxis tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
             <Tooltip />
             <Legend iconSize={10} />
-            {(!activeGroup || activeGroup === "toeic") && <Line type="monotone" dataKey="TOEIC" stroke={NAVY} strokeWidth={2} dot={{ r: 3 }} />}
-            {(!activeGroup || activeGroup === "vstep") && <Line type="monotone" dataKey="VSTEP" stroke="#1565C0" strokeWidth={2} dot={{ r: 3 }} />}
-            {(!activeGroup || activeGroup === "tinhoc") && <Line type="monotone" dataKey="Tin học" stroke={CTA} strokeWidth={2} dot={{ r: 3 }} />}
-            {(!activeGroup || activeGroup === "chuandaura") && <Line type="monotone" dataKey="Chuẩn đầu ra" stroke={ORANGE} strokeWidth={2} dot={{ r: 3 }} />}
+            {(!activeGroup || activeGroup === "toeic") && <Line type="monotone" dataKey="TOEIC" stroke={TOPIC_LINE_STYLES.toeic.color} strokeDasharray={TOPIC_LINE_STYLES.toeic.dash} strokeWidth={2.8} dot={{ r: 3, fill: TOPIC_LINE_STYLES.toeic.color }} />}
+            {(!activeGroup || activeGroup === "vstep") && <Line type="monotone" dataKey="VSTEP" stroke={TOPIC_LINE_STYLES.vstep.color} strokeDasharray={TOPIC_LINE_STYLES.vstep.dash} strokeWidth={2.8} dot={{ r: 3, fill: TOPIC_LINE_STYLES.vstep.color }} />}
+            {(!activeGroup || activeGroup === "tinhoc") && <Line type="monotone" dataKey="Tin học" stroke={TOPIC_LINE_STYLES.tinhoc.color} strokeDasharray={TOPIC_LINE_STYLES.tinhoc.dash} strokeWidth={2.8} dot={{ r: 3, fill: TOPIC_LINE_STYLES.tinhoc.color }} />}
+            {(!activeGroup || activeGroup === "chuandaura") && <Line type="monotone" dataKey="Chuẩn đầu ra" stroke={TOPIC_LINE_STYLES.chuandaura.color} strokeDasharray={TOPIC_LINE_STYLES.chuandaura.dash} strokeWidth={2.8} dot={{ r: 3, fill: TOPIC_LINE_STYLES.chuandaura.color }} />}
           </LineChart>
         </ResponsiveContainer>
       </div>
@@ -579,6 +614,13 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
         </div>
       </div>
 
+      {suggestedFaqsLoadFailed && (
+        <div className="mb-4 flex items-center gap-2 rounded-xl border border-[#FADFA8] bg-[#FFF7E6] px-4 py-3 text-xs font-semibold text-[#8A5A14]">
+          <AlertTriangle size={15} aria-hidden="true" />
+          <span>FAQ đề xuất bổ sung tạm thời chưa tải được. Các biểu đồ và từ khóa chính vẫn đang hiển thị.</span>
+        </div>
+      )}
+
       {/* Keyword detail cards */}
       <div className={cn("grid gap-5", activeGroup ? "grid-cols-[1fr]" : "grid-cols-2")}>
         {displayedGroups.map((group) => (
@@ -592,9 +634,10 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
                   onClick={() => {
                     setSelectedGroupId(group.id);
                   }}
+                  title={suggestedFaqsLoadFailed ? "Dữ liệu FAQ đề xuất tạm thời chưa tải được" : undefined}
                   className="cursor-pointer rounded-md border border-[#ED5206] bg-white px-2 py-0.5 text-[11px] font-semibold text-[#ED5206]"
                 >
-                  +{getFaqNeededCount(group.id)} FAQ cần thêm
+                  {suggestedFaqsLoadFailed ? "FAQ chưa tải" : `+${getFaqNeededCount(group.id)} FAQ cần thêm`}
                 </button>
               </div>
             </div>
@@ -745,6 +788,22 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
                   .filter((item) => !item.added);
 
                 if (itemsToRender.length === 0) {
+                  if (suggestedFaqsLoadFailed) {
+                    return (
+                      <div className="rounded-xl border border-[#FADFA8] bg-[#FFF7E6] px-5 py-6 text-center">
+                        <AlertTriangle size={22} className="mx-auto mb-2 text-[#B7791F]" aria-hidden="true" />
+                        <div className="text-[13px] font-semibold text-[#8A5A14]">Chưa tải được dữ liệu phụ FAQ đề xuất.</div>
+                        <div className="mt-1 text-xs text-[rgba(0,56,101,0.55)]">Dữ liệu từ khóa chính vẫn đang hiển thị bình thường.</div>
+                        <button
+                          type="button"
+                          onClick={() => retryLoadData()}
+                          className="mt-4 cursor-pointer rounded-lg border border-[#ED5206] bg-white px-3 py-1.5 text-xs font-semibold text-[#ED5206]"
+                        >
+                          Tải lại dữ liệu
+                        </button>
+                      </div>
+                    );
+                  }
                   return (
                     <div className="py-10 text-center text-[13px] text-[rgba(0,56,101,0.4)]">Không có câu hỏi đề xuất nào.</div>
                   );

@@ -3,7 +3,6 @@ import { createPortal } from "react-dom";
 import { Download, Filter, X, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 
-import { AI_FAILURE_TAXONOMY } from "../constants/aiFailureTaxonomy";
 import { useSettings } from "../context/SettingsContext";
 import {
   defaultFilterValues,
@@ -113,12 +112,10 @@ function textOptions(options: readonly string[]): readonly FilterCatalogOption[]
 
 function normalizeFilters(filters: FilterValues): FilterValues {
   const merged = { ...defaultFilterValues, ...filters };
-  return merged.aiStatus === FAILED_AI_STATUS
-    ? merged
-    : { ...merged, aiFailureType: ALL };
+  return { ...merged, aiFailureType: ALL };
 }
 
-type ActiveFilterKey = "dateRange" | "channel" | "topic" | "conversationStatus" | "aiStatus" | "aiFailureType";
+type ActiveFilterKey = "dateRange" | "channel" | "topic" | "conversationStatus" | "aiStatus";
 
 const ACTIVE_FILTER_LABELS: Readonly<Record<ActiveFilterKey, string>> = Object.freeze({
   dateRange: "Thời gian",
@@ -126,7 +123,6 @@ const ACTIVE_FILTER_LABELS: Readonly<Record<ActiveFilterKey, string>> = Object.f
   topic: "Chủ đề",
   conversationStatus: "Hội thoại",
   aiStatus: "AI",
-  aiFailureType: "Loại lỗi AI",
 });
 
 export function FilterPanel({
@@ -228,7 +224,7 @@ export function FilterPanel({
         const { customDateFrom: _from, customDateTo: _to, ...remaining } = previous;
         return { ...remaining, dateRange: value };
       }
-      if (key === "aiStatus" && value !== FAILED_AI_STATUS) {
+      if (key === "aiStatus") {
         return { ...previous, aiStatus: value, aiFailureType: ALL };
       }
       return { ...previous, [key]: value };
@@ -299,7 +295,6 @@ export function FilterPanel({
 
   const activeFilters = (Object.keys(ACTIVE_FILTER_LABELS) as ActiveFilterKey[])
     .filter((key) => localFilters[key] !== defaultFilterValues[key])
-    .filter((key) => key !== "aiFailureType" || localFilters.aiStatus === FAILED_AI_STATUS)
     .map((key) => ({ key, label: ACTIVE_FILTER_LABELS[key], value: localFilters[key] }));
 
   const exportMenu = exportMenuOpen && !exporting
@@ -458,14 +453,6 @@ export function FilterPanel({
             />
             <SelectField label="Trạng thái hội thoại" value={localFilters.conversationStatus} options={textOptions(conversationStatuses)} onChange={(value) => handleLocalChange("conversationStatus", value)} />
             <SelectField label="Trạng thái AI" value={localFilters.aiStatus} options={textOptions(aiStatuses)} onChange={(value) => handleLocalChange("aiStatus", value)} />
-            {localFilters.aiStatus === FAILED_AI_STATUS && (
-              <SelectField
-                label="Loại lỗi AI (8 nhóm)"
-                value={localFilters.aiFailureType}
-                options={withAll(AI_FAILURE_TAXONOMY.map((item) => ({ value: item.apiValue, label: item.label, available: true })))}
-                onChange={(value) => handleLocalChange("aiFailureType", value)}
-              />
-            )}
           </div>
           <div className="filter-panel__actions">
             <button type="button" onClick={handleReset} className="filter-panel__reset">Đặt lại</button>

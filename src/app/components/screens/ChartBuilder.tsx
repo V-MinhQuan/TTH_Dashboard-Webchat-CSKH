@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Download, FileText, RefreshCw } from "lucide-react";
+import { Calendar, Download, FileText, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 import { FilterValues } from "../FilterPanel";
@@ -41,6 +41,7 @@ import {
   CatalogFieldMeta,
   ChartBuilderState,
   ChartConfigPayload,
+  ChartDataFilters,
   ChartDataResponse,
   ChartSeries,
   CustomChartRequest,
@@ -53,10 +54,24 @@ import {
   exportChartAsPdf,
   exportChartAsPng,
 } from "../../utils/chartExport";
+import {
+  getDateParamsFromFilters,
+  type DateFilterInput,
+} from "../../utils/dateFilters";
 
 import "./ChartBuilder.css";
 
 const PREVIEW_ID = "chart-builder-export-area";
+const ALL_TIME_DATE_RANGE = "Toàn bộ thời gian";
+const CHART_DATE_RANGE_OPTIONS = [
+  ALL_TIME_DATE_RANGE,
+  "30 ngày qua",
+  "7 ngày qua",
+  "Hôm nay",
+  "Tháng này",
+  "Quý này",
+  "Tùy chỉnh",
+];
 
 interface ChartBuilderProps {
   onNavigate: (screen: string) => void;
@@ -113,6 +128,9 @@ export function ChartBuilder({
   const [draggedField, setDraggedField] = useState<ChartFieldDragData | null>(
     null,
   );
+  const [chartDateFilters, setChartDateFilters] = useState<DateFilterInput>({
+    dateRange: ALL_TIME_DATE_RANGE,
+  });
 
   const selectedDataset = useMemo(
     () => datasets.find((dataset) => dataset.id === state.datasetId) || null,
@@ -152,8 +170,16 @@ export function ChartBuilder({
     chartType: state.chartType,
     selectedOutputFieldIds,
   }), [state.chartType, selectedOutputFieldIds]);
+  const chartDateParams = useMemo(
+    () => safeDateParamsFromFilters(chartDateFilters),
+    [
+      chartDateFilters.dateRange,
+      chartDateFilters.customDateFrom,
+      chartDateFilters.customDateTo,
+    ],
+  );
   const customRequest = useMemo(
-    () => buildCustomRequest(state),
+    () => buildCustomRequest(state, selectedDataset, chartDateParams),
     [
       state.datasetId,
       state.chartType,
@@ -165,6 +191,22 @@ export function ChartBuilder({
       state.sort,
       state.topN,
       state.limit,
+      selectedDataset?.id,
+      selectedDataset?.defaultDateField,
+      chartDateParams.startDate,
+      chartDateParams.endDate,
+    ],
+  );
+  const dateScopeLabel = useMemo(
+    () => (
+      selectedDataset?.defaultDateField
+        ? formatChartDateScopeLabel(chartDateParams)
+        : ""
+    ),
+    [
+      selectedDataset?.defaultDateField,
+      chartDateParams.startDate,
+      chartDateParams.endDate,
     ],
   );
   const seriesDisplayByKey = useMemo(
@@ -236,12 +278,7 @@ export function ChartBuilder({
       try {
         const response = legacyConfig
           ? await fetchData(
-            {
-              ...legacyConfig,
-              version: 1,
-              mode: "predefined",
-              limit: 500,
-            },
+            buildLegacyDataRequest(legacyConfig, chartDateParams),
             controller.signal,
           )
           : await fetchPreview(customRequest, controller.signal);
@@ -261,7 +298,14 @@ export function ChartBuilder({
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [customRequest, customValidation.valid, legacyConfig, refreshKey]);
+  }, [
+    customRequest,
+    customValidation.valid,
+    chartDateParams.startDate,
+    chartDateParams.endDate,
+    legacyConfig,
+    refreshKey,
+  ]);
 
   const updateState = (changes: Partial<ChartBuilderState>) => {
     setLegacyConfig(null);
@@ -438,6 +482,25 @@ export function ChartBuilder({
     onFiltersChange(dynamicFiltersToGlobal(globalFilters, filters, selectedDataset));
   };
 
+  const handleChartDateRangeChange = (dateRange: string) => {
+    setChartDateFilters((current) => (
+      dateRange === "Tùy chỉnh"
+        ? { ...current, dateRange }
+        : { dateRange }
+    ));
+  };
+
+  const handleChartCustomDateChange = (
+    key: "customDateFrom" | "customDateTo",
+    value: string,
+  ) => {
+    setChartDateFilters((current) => ({
+      ...current,
+      dateRange: "Tùy chỉnh",
+      [key]: value,
+    }));
+  };
+
   const handleSave = async (name: string, description: string) => {
     setSaving(true);
     try {
@@ -591,6 +654,44 @@ export function ChartBuilder({
                 tương thích được giữ nguyên để bảo toàn kết quả.
               </div>
             )}
+            <div className="chart-builder-date-scope">
+              <div className="chart-builder-date-scope-title">
+                <Calendar size={14} />
+                <span>Khoảng thời gian</span>
+              </div>
+              <label className="chart-builder-date-scope-control">
+                <span>Phạm vi dữ liệu</span>
+                <select
+                  value={chartDateFilters.dateRange}
+                  onChange={(event) => handleChartDateRangeChange(event.target.value)}
+                  disabled={!selectedDataset?.defaultDateField}
+                >
+                  {CHART_DATE_RANGE_OPTIONS.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
+              </label>
+              {chartDateFilters.dateRange === "Tùy chỉnh" && (
+                <div className="chart-builder-date-custom">
+                  <label>
+                    <span>Từ ngày</span>
+                    <input
+                      type="date"
+                      value={String(chartDateFilters.customDateFrom ?? "")}
+                      onChange={(event) => handleChartCustomDateChange("customDateFrom", event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    <span>Đến ngày</span>
+                    <input
+                      type="date"
+                      value={String(chartDateFilters.customDateTo ?? "")}
+                      onChange={(event) => handleChartCustomDateChange("customDateTo", event.target.value)}
+                    />
+                  </label>
+                </div>
+              )}
+            </div>
             <DropZoneBar
               dataset={selectedDataset}
               chartType={state.chartType}
@@ -629,6 +730,7 @@ export function ChartBuilder({
                     {data?.execution
                       ? ` · ${data.execution.rowCount} dòng · ${data.execution.executionTimeMs} ms`
                       : ""}
+                    {dateScopeLabel ? ` · Khoảng thời gian ${dateScopeLabel}` : ""}
                   </p>
                   {data?.execution?.truncated && (
                     <p className="chart-builder-truncated-note">
@@ -786,7 +888,27 @@ function createMetric(
   };
 }
 
-function buildCustomRequest(state: ChartBuilderState): CustomChartRequest {
+type ChartDateParams = ReturnType<typeof getDateParamsFromFilters>;
+
+function safeDateParamsFromFilters(filters: DateFilterInput): ChartDateParams {
+  try {
+    return getDateParamsFromFilters(filters);
+  } catch {
+    return {};
+  }
+}
+
+function buildCustomRequest(
+  state: ChartBuilderState,
+  dataset: CatalogDatasetMeta | null,
+  dateParams: ChartDateParams,
+): CustomChartRequest {
+  const filters = applyGlobalDateFilter(
+    state.filters.filter(isCompleteFilter),
+    dataset,
+    dateParams,
+  );
+
   return {
     version: 2,
     mode: "custom",
@@ -796,11 +918,87 @@ function buildCustomRequest(state: ChartBuilderState): CustomChartRequest {
     metrics: state.metrics,
     series: state.series,
     tooltipFields: state.tooltipFields,
-    filters: state.filters.filter(isCompleteFilter),
+    filters,
     sort: state.sort,
     topN: state.topN,
     limit: state.limit,
   };
+}
+
+function buildLegacyDataRequest(
+  config: ChartConfigPayload,
+  dateParams: ChartDateParams,
+) {
+  return {
+    ...config,
+    version: 1 as const,
+    mode: "predefined" as const,
+    limit: 500,
+    filters: applyLegacyGlobalDateFilter(config.filters || {}, dateParams),
+  };
+}
+
+function applyGlobalDateFilter(
+  filters: FilterSelection[],
+  dataset: CatalogDatasetMeta | null,
+  dateParams: ChartDateParams,
+) {
+  const fieldId = dataset?.defaultDateField;
+  if (!fieldId || !dateParams.startDate || !dateParams.endDate) {
+    return filters;
+  }
+
+  const dateField = dataset.fields.find(
+    (field) => (
+      field.id === fieldId
+      && field.available
+      && field.dataType === "date"
+      && field.roles.includes("filter")
+      && field.filterOperators.includes("between")
+    ),
+  );
+  if (!dateField) return filters;
+
+  return [
+    ...filters.filter((filter) => filter.fieldId !== fieldId),
+    {
+      fieldId,
+      operator: "between" as const,
+      value: dateParams.startDate,
+      valueTo: dateParams.endDate,
+      values: [],
+    },
+  ];
+}
+
+function applyLegacyGlobalDateFilter(
+  filters: ChartDataFilters,
+  dateParams: ChartDateParams,
+): ChartDataFilters {
+  if (!dateParams.startDate || !dateParams.endDate) {
+    return filters;
+  }
+  return {
+    ...filters,
+    fromDate: dateParams.startDate,
+    toDate: dateParams.endDate,
+  };
+}
+
+function formatChartDateScopeLabel(dateParams: ChartDateParams) {
+  if (!dateParams.startDate || !dateParams.endDate) {
+    return "toàn bộ thời gian";
+  }
+  if (dateParams.startDate === dateParams.endDate) {
+    return formatIsoDateLabel(dateParams.startDate);
+  }
+  return `${formatIsoDateLabel(dateParams.startDate)} - ${formatIsoDateLabel(dateParams.endDate)}`;
+}
+
+function formatIsoDateLabel(value: string) {
+  const [year, month, day] = value.split("-");
+  if (!year || !month || !day) return value;
+  return `${day}/${month}/${year}`;
 }
 
 function buildSeriesDisplayMap(

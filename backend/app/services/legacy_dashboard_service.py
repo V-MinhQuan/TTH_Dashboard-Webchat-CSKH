@@ -49,6 +49,9 @@ QUESTION_ANALYSIS_ITEM_LIMIT = 1200
 AI_CANDIDATE_GROUP_LIMIT = 40
 AI_CANDIDATE_MIN_GROUPS = 12
 AI_CANDIDATE_PROMPT_CHAR_LIMIT = 6500
+TOP_QUESTIONS_DISPLAY_LIMIT = 5
+TOP_QUESTIONS_RESPONSE_LIMIT = 50
+TOP_QUESTIONS_AI_CANDIDATE_LIMIT = 12
 GEMINI_PROVIDER_BUDGET_SECONDS = 2.5
 GEMINI_REQUEST_TIMEOUT_SECONDS = 1.0
 OPENAI_PROVIDER_BUDGET_SECONDS = 1.0
@@ -693,7 +696,7 @@ def build_candidate_group_prompt(candidate_groups):
         "Quy tắc:\n"
         "- Chỉ dùng id có trong danh sách, không bịa dữ liệu ngoài database.\n"
         "- Mỗi id chỉ xuất hiện trong tối đa một nhóm.\n"
-        "- Ưu tiên các nhóm có count cao để Dashboard hiển thị Top 5 đúng thực tế.\n"
+        "- Ưu tiên các nhóm có count cao để Dashboard có đủ dữ liệu nổi bật cho hiển thị và tìm kiếm.\n"
         "- Câu hỏi đại diện phải bao quát toàn bộ cụm ứng viên được gom, không chọn nguyên văn một ví dụ quá hẹp.\n"
         "- Không đưa thông báo/broadcast/nhắc lịch vào câu hỏi nổi bật nếu chúng không phải câu hỏi khách hàng.\n"
         "- Câu hỏi đầu ra phải ngắn, tự nhiên, có dấu hỏi, phù hợp để đưa vào FAQ.\n"
@@ -714,6 +717,20 @@ def select_ai_candidate_groups(local_groups):
         if len(prompt) <= AI_CANDIDATE_PROMPT_CHAR_LIMIT:
             break
         selected_count -= 4
+    return local_groups[:selected_count]
+
+
+def select_ai_display_candidate_groups(local_groups):
+    max_count = min(TOP_QUESTIONS_AI_CANDIDATE_LIMIT, len(local_groups))
+    if max_count <= 0:
+        return []
+
+    selected_count = max_count
+    while selected_count > TOP_QUESTIONS_DISPLAY_LIMIT:
+        prompt = build_candidate_group_prompt(local_groups[:selected_count])
+        if len(prompt) <= AI_CANDIDATE_PROMPT_CHAR_LIMIT:
+            break
+        selected_count -= 2
     return local_groups[:selected_count]
 
 
@@ -946,7 +963,12 @@ def cluster_question_items(items):
     return flattened_groups
 
 
-def build_top_question_rows_from_groups(items, groups, ai_generated=True):
+def build_top_question_rows_from_groups(
+    items,
+    groups,
+    ai_generated=True,
+    limit=TOP_QUESTIONS_RESPONSE_LIMIT,
+):
     item_by_id = {item["id"]: item for item in items}
     rows = []
     for group in groups:
@@ -991,12 +1013,77 @@ def build_top_question_rows_from_groups(items, groups, ai_generated=True):
             "aiGenerated": ai_generated,
         })
 
-    return merge_top_question_rows(rows)[:5]
+    return merge_top_question_rows(rows)[:limit]
 
 
-def build_fallback_top_question_rows(items):
+def build_fallback_top_question_rows(items, limit=TOP_QUESTIONS_RESPONSE_LIMIT):
     local_groups = build_local_question_groups(items)
-    return build_top_question_rows_from_groups(items, local_groups, ai_generated=False)
+    return build_top_question_rows_from_groups(items, local_groups, ai_generated=False, limit=limit)
+
+
+def build_ai_display_top_question_rows(items):
+    local_groups = build_local_question_groups(items)
+    candidate_groups = select_ai_display_candidate_groups(local_groups)
+    if not candidate_groups:
+        return []
+
+    merged_groups = cluster_candidate_groups_once(candidate_groups)
+    candidate_by_id = {group["id"]: group for group in candidate_groups}
+    flattened_groups = []
+
+    for merged in merged_groups:
+        item_ids = []
+        for group_id in merged.get("itemIds") or []:
+            candidate = candidate_by_id.get(group_id)
+            if not candidate:
+                continue
+            item_ids.extend(candidate.get("itemIds") or [])
+        if item_ids:
+            flattened_groups.append({"question": merged["question"], "itemIds": item_ids})
+
+    return build_top_question_rows_from_groups(
+        items,
+        flattened_groups,
+        ai_generated=True,
+        limit=TOP_QUESTIONS_DISPLAY_LIMIT,
+    )
+
+
+def related_question_identity_keys(row):
+    keys = set()
+    for related in row.get("relatedQuestions") or []:
+        key = question_identity_key(related.get("question"))
+        if key:
+            keys.add(key)
+    return keys
+
+
+def combine_ai_display_and_local_search_rows(display_rows, local_rows):
+    combined = []
+    seen_questions = set()
+    ai_related_questions = set()
+
+    for row in display_rows or []:
+        key = question_identity_key(row.get("question"))
+        if not key or key in seen_questions:
+            continue
+        combined.append(row)
+        seen_questions.add(key)
+        ai_related_questions.update(related_question_identity_keys(row))
+
+    for row in local_rows or []:
+        key = question_identity_key(row.get("question"))
+        related_keys = related_question_identity_keys(row)
+        if not key or key in seen_questions:
+            continue
+        if related_keys and related_keys & ai_related_questions:
+            continue
+        combined.append(row)
+        seen_questions.add(key)
+        if len(combined) >= TOP_QUESTIONS_RESPONSE_LIMIT:
+            break
+
+    return combined[:TOP_QUESTIONS_RESPONSE_LIMIT]
 
 
 def build_top_question_rows(raw_rows):
@@ -1019,20 +1106,29 @@ def build_top_question_rows(raw_rows):
         )
         items = items[:QUESTION_ANALYSIS_ITEM_LIMIT]
 
+    local_rows = build_fallback_top_question_rows(items)
+
     try:
-        groups = cluster_question_items(items)
+        ai_display_rows = build_ai_display_top_question_rows(items)
     except Exception as exc:
         logger.exception("Dashboard AI question grouping failed: %s", exc)
-        fallback_rows = build_fallback_top_question_rows(items)
-        if fallback_rows:
+        if local_rows:
             logger.info(
                 "Dashboard question grouping used database fallback with %s rows while AI is unavailable.",
-                len(fallback_rows),
+                len(local_rows),
             )
-            return fallback_rows, "fallback", AI_FALLBACK_MESSAGE
+            return local_rows, "fallback", AI_FALLBACK_MESSAGE
         return [], "ai_overloaded", AI_OVERLOAD_MESSAGE
 
-    return build_top_question_rows_from_groups(items, groups, ai_generated=True), "ok", ""
+    if ai_display_rows:
+        return combine_ai_display_and_local_search_rows(ai_display_rows, local_rows), "ok", ""
+
+    if local_rows:
+        logger.info(
+            "Dashboard question grouping used database fallback because AI returned no display rows."
+        )
+        return local_rows, "fallback", AI_FALLBACK_MESSAGE
+    return [], "ai_overloaded", AI_OVERLOAD_MESSAGE
 
 class DashboardService:
     def __init__(self):
@@ -1406,7 +1502,7 @@ class DashboardService:
             "trends": trends,
             "averageResponseTimeMinutes": summary.get('averageResponseTimeMinutes') or 0,
             "urgentAlerts": urgent_alerts,
-            "topQuestions": top_questions_mapped[:5],
+            "topQuestions": top_questions_mapped[:TOP_QUESTIONS_RESPONSE_LIMIT],
             "topQuestionsStatus": top_questions_status,
             "topQuestionsMessage": top_questions_message,
             "priorityConversations": priority_conversations_mapped[:10],

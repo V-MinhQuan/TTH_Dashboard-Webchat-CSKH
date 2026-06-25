@@ -6,10 +6,10 @@ const ORANGE = "#D73C01";
 // Cấu hình bảng màu cho từng trạng thái
 const STATUS_COLORS: Record<string, string> = {
   new: "#42A5F5",      // Xanh dương nhạt
-  open: "#1565C0",     // Xanh dương đậm
-  pending: "#B7791F",  // Vàng/Cam đất
-  closed: "#228A61",   // Xanh lá cây
-  unknown: "#94a3b8"   // Xám
+  open: NAVY,          // Xanh navy
+  pending: ORANGE,     // Cam cảnh báo
+  closed: "#1565C0",   // Xanh dương đậm
+  unknown: "#F36C2E"   // Cam nhạt
 };
 
 const STATUS_LABELS: Record<string, string> = {

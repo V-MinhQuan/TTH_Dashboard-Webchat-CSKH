@@ -11,7 +11,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 
-const NAVY      = "#003BB9";
+const NAVY      = "#003865";
 const ORANGE    = "#D73C01";   // used only for active border/icon accents
 const CTA       = "#ED5206";
 const CTA_SOFT  = "#F36C2E";
@@ -31,7 +31,7 @@ const chartTypes = [
   { id: "hbar", label: "Cột ngang", icon: BarChart },
 ];
 
-const COLORS = [NAVY, CTA, "rgba(0,59,185,0.6)", CTA_SOFT, "rgba(0,59,185,0.3)", ORANGE_200];
+const COLORS = [NAVY, CTA, "#1565C0", ORANGE, "#42A5F5", CTA_SOFT, "#0F6C8D", "#F59E0B"];
 
 function normalizeValue(value: string) {
   return String(value || "")

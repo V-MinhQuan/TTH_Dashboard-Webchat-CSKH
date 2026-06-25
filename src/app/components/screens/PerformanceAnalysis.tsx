@@ -141,7 +141,7 @@ export function PerformanceAnalysis({ filters, onFiltersChange, onNavigate }: Pe
                 <YAxis tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
                 <Tooltip />
                 <Legend iconSize={10} />
-                <Line type="monotone" dataKey="processed" name="Đã xử lý" stroke="#228A61" strokeWidth={2} />
+                <Line type="monotone" dataKey="processed" name="Đã xử lý" stroke="#1565C0" strokeWidth={2} />
                 <Line type="monotone" dataKey="unprocessed" name="Chưa xử lý" stroke={ORANGE} strokeWidth={2} />
               </LineChart>
             </ResponsiveContainer>

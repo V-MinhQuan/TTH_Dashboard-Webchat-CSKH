@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, type CSSProperties } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { Plus, Search, Filter, CheckCircle2, XCircle, Clock, Edit2 } from "lucide-react";
 import { toast } from "sonner";
@@ -14,12 +14,17 @@ import {
 const NAVY = "#003865";
 const ORANGE = "#D73C01";
 const ORANGE_50 = "#FFF4EE";
+const ORANGE_200 = "#FBCBB8";
 const AMBER_50 = "#FFF7E6";
 const AMBER_TEXT = "#B7791F";
+const ALL_FILTER_VALUE = "Tất cả";
 
 type SheetStatus = "Chờ xử lý" | "Đã duyệt" | "Cần chỉnh sửa" | "Từ chối";
 type RiskLevel = "Thấp" | "Trung bình" | "Cao";
 type SourceType = string;
+
+const SHEET_STATUSES: SheetStatus[] = ["Chờ xử lý", "Đã duyệt", "Cần chỉnh sửa", "Từ chối"];
+const RISK_LEVELS: RiskLevel[] = ["Thấp", "Trung bình", "Cao"];
 
 interface SheetRow {
   id: string;
@@ -46,6 +51,110 @@ const riskConfig: Record<RiskLevel, { bg: string; color: string }> = {
   "Trung bình": { bg: AMBER_50, color: AMBER_TEXT },
   Cao: { bg: ORANGE_50, color: ORANGE },
 };
+
+const tableHeaderCellStyle: CSSProperties = {
+  padding: "10px 14px",
+  textAlign: "left",
+  fontWeight: 600,
+  color: "rgba(0,62,154,0.5)",
+  fontSize: "11px",
+  letterSpacing: "0.04em",
+  borderBottom: "1px solid rgba(0,62,154,0.07)",
+  whiteSpace: "nowrap",
+  position: "sticky",
+  top: 0,
+  zIndex: 1,
+  backgroundColor: "#f8fafc",
+};
+
+const tableFilterLabelStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "6px",
+  whiteSpace: "nowrap",
+};
+
+const tableFilterControlStyle = (active: boolean): CSSProperties => ({
+  position: "relative",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: "24px",
+  height: "24px",
+  borderRadius: "8px",
+  border: active ? `1px solid ${ORANGE_200}` : "1px solid rgba(0,56,101,0.14)",
+  background: active ? ORANGE_50 : "#fff",
+  color: active ? ORANGE : "rgba(0,56,101,0.58)",
+  cursor: "pointer",
+  flexShrink: 0,
+});
+
+const tableFilterNativeSelectStyle: CSSProperties = {
+  position: "absolute",
+  inset: 0,
+  width: "100%",
+  height: "100%",
+  fontSize: "11px",
+  fontWeight: 600,
+  fontFamily: "inherit",
+  opacity: 0,
+  cursor: "pointer",
+  outline: "none",
+  border: 0,
+};
+
+const tableFilterOptionStyle: CSSProperties = {
+  fontSize: "11px",
+  fontWeight: 600,
+  fontFamily: "inherit",
+};
+
+function uniqueSortedText(values: unknown[]) {
+  const uniqueValues = new Set<string>();
+  values.forEach((value) => {
+    const text = String(value || "").trim();
+    if (text) uniqueValues.add(text);
+  });
+  return Array.from(uniqueValues).sort((left, right) => left.localeCompare(right, "vi-VN"));
+}
+
+function FilterableHeader({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: readonly string[];
+  onChange: (value: string) => void;
+}) {
+  const active = value !== ALL_FILTER_VALUE;
+  return (
+    <div style={tableFilterLabelStyle}>
+      <span>{label}</span>
+      <label
+        data-print-hidden="true"
+        title={active ? `Đang lọc: ${value}` : `Lọc theo ${label}`}
+        style={tableFilterControlStyle(active)}
+      >
+        <Filter size={11} aria-hidden="true" />
+        <select
+          aria-label={`Lọc thư viện phản hồi theo ${label}`}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          onClick={(event) => event.stopPropagation()}
+          style={tableFilterNativeSelectStyle}
+        >
+          <option value={ALL_FILTER_VALUE} style={tableFilterOptionStyle}>{ALL_FILTER_VALUE}</option>
+          {options.map((option) => (
+            <option key={option} value={option} style={tableFilterOptionStyle}>{option}</option>
+          ))}
+        </select>
+      </label>
+    </div>
+  );
+}
 
 function displayFailureSource(source: string) {
   const definition = getAiFailureDefinition(source);
@@ -93,8 +202,10 @@ export function SheetChatbot() {
   const [editingRow, setEditingRow] = useState<SheetRow | null>(null);
 
   const [search, setSearch] = useState("");
-  const [filterStatus, setFilterStatus] = useState("Tất cả");
-  const [filterRisk, setFilterRisk] = useState("Tất cả");
+  const [filterTopic, setFilterTopic] = useState(ALL_FILTER_VALUE);
+  const [filterSource, setFilterSource] = useState(ALL_FILTER_VALUE);
+  const [filterStatus, setFilterStatus] = useState(ALL_FILTER_VALUE);
+  const [filterRisk, setFilterRisk] = useState(ALL_FILTER_VALUE);
   const [showAddModal, setShowAddModal] = useState(false);
 
   const loadRows = useCallback(async () => {
@@ -136,14 +247,41 @@ export function SheetChatbot() {
     }
   }, [rows, isLoading]);
 
-  const filtered = rows.filter(r => {
+  const visibleRows = useMemo(
+    () => rows.filter((row) => role === "manager" || row.addedBy === currentUserName),
+    [currentUserName, role, rows],
+  );
+  const topicOptions = useMemo(
+    () => uniqueSortedText(visibleRows.map((row) => row.topic)),
+    [visibleRows],
+  );
+  const sourceOptions = useMemo(
+    () => uniqueSortedText(visibleRows.map((row) => displayFailureSource(row.source))),
+    [visibleRows],
+  );
+
+  useEffect(() => {
+    if (filterTopic !== ALL_FILTER_VALUE && !topicOptions.includes(filterTopic)) {
+      setFilterTopic(ALL_FILTER_VALUE);
+    }
+  }, [filterTopic, topicOptions]);
+
+  useEffect(() => {
+    if (filterSource !== ALL_FILTER_VALUE && !sourceOptions.includes(filterSource)) {
+      setFilterSource(ALL_FILTER_VALUE);
+    }
+  }, [filterSource, sourceOptions]);
+
+  const filtered = visibleRows.filter(r => {
+    const sourceLabel = displayFailureSource(r.source);
     const matchSearch = r.question.toLowerCase().includes(search.toLowerCase()) ||
       r.topic.toLowerCase().includes(search.toLowerCase()) ||
       r.addedBy.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = filterStatus === "Tất cả" || r.status === filterStatus;
-    const matchRisk = filterRisk === "Tất cả" || r.risk === filterRisk;
-    const matchRole = role === "manager" ? true : r.addedBy === currentUserName;
-    return matchSearch && matchStatus && matchRisk && matchRole;
+    const matchTopic = filterTopic === ALL_FILTER_VALUE || r.topic === filterTopic;
+    const matchSource = filterSource === ALL_FILTER_VALUE || sourceLabel === filterSource;
+    const matchStatus = filterStatus === ALL_FILTER_VALUE || r.status === filterStatus;
+    const matchRisk = filterRisk === ALL_FILTER_VALUE || r.risk === filterRisk;
+    return matchSearch && matchTopic && matchSource && matchStatus && matchRisk;
   });
 
   const updateStatus = async (id: string, status: SheetStatus) => {
@@ -178,8 +316,6 @@ export function SheetChatbot() {
     setEditingRow(null);
   };
 
-  const statuses: SheetStatus[] = ["Chờ xử lý", "Đã duyệt", "Cần chỉnh sửa", "Từ chối"];
-
   const kpiCounts = {
     total: filtered.length,
     pending: rows.filter(r => r.status === "Chờ xử lý").length,
@@ -213,16 +349,6 @@ export function SheetChatbot() {
           <Search size={15} style={{ color: "rgba(0,62,154,0.4)" }} />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Tìm theo câu hỏi, chủ đề, nhân viên..." style={{ border: "none", outline: "none", fontSize: "13px", color: NAVY, width: "100%", background: "transparent" }} />
         </div>
-        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={{ padding: "9px 12px", borderRadius: "10px", border: "1px solid rgba(0,62,154,0.1)", background: "#fff", color: NAVY, fontSize: "13px", outline: "none" }}>
-          <option>Tất cả</option>
-          {statuses.map(s => <option key={s}>{s}</option>)}
-        </select>
-        <select value={filterRisk} onChange={e => setFilterRisk(e.target.value)} style={{ padding: "9px 12px", borderRadius: "10px", border: "1px solid rgba(0,62,154,0.1)", background: "#fff", color: NAVY, fontSize: "13px", outline: "none" }}>
-          <option>Tất cả</option>
-          <option>Thấp</option>
-          <option>Trung bình</option>
-          <option>Cao</option>
-        </select>
       </div>
 
       {isLoading ? (
@@ -267,9 +393,23 @@ export function SheetChatbot() {
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
                 <thead>
                   <tr style={{ backgroundColor: "#f8fafc" }}>
-                    {["Thời gian thêm", "Người thêm", "Câu hỏi", "Câu trả lời đúng", "Chủ đề", "Nguồn", "Mức rủi ro", "Trạng thái", "Hành động"].map(h => (
-                      <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontWeight: 600, color: "rgba(0,62,154,0.5)", fontSize: "11px", letterSpacing: "0.04em", borderBottom: "1px solid rgba(0,62,154,0.07)", whiteSpace: "nowrap", position: "sticky", top: 0, zIndex: 1, backgroundColor: "#f8fafc" }}>{h}</th>
-                    ))}
+                    <th style={tableHeaderCellStyle}>Thời gian thêm</th>
+                    <th style={tableHeaderCellStyle}>Người thêm</th>
+                    <th style={tableHeaderCellStyle}>Câu hỏi</th>
+                    <th style={tableHeaderCellStyle}>Câu trả lời đúng</th>
+                    <th style={tableHeaderCellStyle}>
+                      <FilterableHeader label="Chủ đề" value={filterTopic} options={topicOptions} onChange={setFilterTopic} />
+                    </th>
+                    <th style={tableHeaderCellStyle}>
+                      <FilterableHeader label="Nguồn" value={filterSource} options={sourceOptions} onChange={setFilterSource} />
+                    </th>
+                    <th style={tableHeaderCellStyle}>
+                      <FilterableHeader label="Mức rủi ro" value={filterRisk} options={RISK_LEVELS} onChange={setFilterRisk} />
+                    </th>
+                    <th style={tableHeaderCellStyle}>
+                      <FilterableHeader label="Trạng thái" value={filterStatus} options={SHEET_STATUSES} onChange={setFilterStatus} />
+                    </th>
+                    <th style={tableHeaderCellStyle}>Hành động</th>
                   </tr>
                 </thead>
                 <tbody>

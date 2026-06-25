@@ -34,7 +34,18 @@ export default defineConfig({
   assetsInclude: ['**/*.svg', '**/*.csv'],
 
   optimizeDeps: {
-    exclude: ['exceljs', 'html2canvas', 'jspdf', 'lucide-react', 'recharts'],
+    include: [
+      'recharts',
+      'lodash/get',
+      'lodash/isNil',
+      'lodash/isString',
+      'lodash/isFunction',
+      'lodash/isObject',
+      'lodash/isEqual',
+      'lodash/sortBy',
+      'lodash/throttle',
+    ],
+    exclude: ['exceljs', 'html2canvas', 'jspdf', 'lucide-react'],
   },
 
   build: {

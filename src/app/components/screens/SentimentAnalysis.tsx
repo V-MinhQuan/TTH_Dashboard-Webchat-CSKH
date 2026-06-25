@@ -26,6 +26,10 @@ import { analyticsFiltersToSearchParams } from "../../utils/dateFilters";
 
 const NAVY = "#003865";
 const ORANGE = "#D73C01";
+const SENTIMENT_POSITIVE = "#1565C0";
+const SENTIMENT_NEUTRAL = "#F36C2E";
+const SENTIMENT_NEGATIVE = ORANGE;
+const SENTIMENT_TOPIC_COLORS = [NAVY, "#ED5206", SENTIMENT_POSITIVE, SENTIMENT_NEGATIVE, "#42A5F5", SENTIMENT_NEUTRAL];
 
 type NegLevel = "Rất tiêu cực" | "Tiêu cực" | "Hơi tiêu cực";
 
@@ -183,9 +187,9 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
   const [sentimentTrend, setSentimentTrend] = useState<any[]>([]);
   const [topicSentiment, setTopicSentiment] = useState<any[]>([]);
   const [donutData, setDonutData] = useState<any[]>([
-    { name: "Tích cực", value: 0, color: "#3E9675" },
-    { name: "Trung lập", value: 0, color: "#E5A850" },
-    { name: "Tiêu cực", value: 0, color: "#D26767" },
+    { name: "Tích cực", value: 0, color: SENTIMENT_POSITIVE },
+    { name: "Trung lập", value: 0, color: SENTIMENT_NEUTRAL },
+    { name: "Tiêu cực", value: 0, color: SENTIMENT_NEGATIVE },
   ]);
   const [negKeywords, setNegKeywords] = useState<any[]>([]);
   const [negativeConversations, setNegativeConversations] = useState<any[]>([]);
@@ -229,9 +233,9 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
           const neg = sumRes.data.summary?.negative || 0;
           
           setDonutData([
-            { name: "Tích cực", value: Math.round((pos / total) * 100) || 0, color: "#3E9675" },
-            { name: "Trung lập", value: Math.round((neu / total) * 100) || 0, color: "#E5A850" },
-            { name: "Tiêu cực", value: Math.round((neg / total) * 100) || 0, color: "#D26767" },
+            { name: "Tích cực", value: Math.round((pos / total) * 100) || 0, color: SENTIMENT_POSITIVE },
+            { name: "Trung lập", value: Math.round((neu / total) * 100) || 0, color: SENTIMENT_NEUTRAL },
+            { name: "Tiêu cực", value: Math.round((neg / total) * 100) || 0, color: SENTIMENT_NEGATIVE },
           ]);
         }
         
@@ -506,9 +510,9 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
             
             if (chartType === "pie" || chartType === "donut") {
               const pieData = [
-                { name: "Tích cực", value: safeData.reduce((a: number, c: any) => a + (c.positive || 0), 0), fill: "#3E9675" },
-                { name: "Trung lập", value: safeData.reduce((a: number, c: any) => a + (c.neutral || 0), 0), fill: "#E5A850" },
-                { name: "Tiêu cực", value: safeData.reduce((a: number, c: any) => a + (c.negative || 0), 0), fill: "#D26767" },
+                { name: "Tích cực", value: safeData.reduce((a: number, c: any) => a + (c.positive || 0), 0), fill: SENTIMENT_POSITIVE },
+                { name: "Trung lập", value: safeData.reduce((a: number, c: any) => a + (c.neutral || 0), 0), fill: SENTIMENT_NEUTRAL },
+                { name: "Tiêu cực", value: safeData.reduce((a: number, c: any) => a + (c.negative || 0), 0), fill: SENTIMENT_NEGATIVE },
               ];
               return (
                 <ResponsiveContainer width="100%" height={220}>
@@ -532,9 +536,9 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
                     {chartType === "hbar" ? <YAxis dataKey="date" type="category" tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} width={80} /> : <YAxis tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} unit="%" />}
                     <Tooltip formatter={(v: any) => `${v}%`} />
                     {showLegend && <Legend iconSize={10} />}
-                    <Bar dataKey="positive" name="Tích cực" fill="#3E9675" radius={chartType === "hbar" ? [0,4,4,0] : [4,4,0,0]} />
-                    <Bar dataKey="neutral" name="Trung lập" fill="#E5A850" radius={chartType === "hbar" ? [0,4,4,0] : [4,4,0,0]} />
-                    <Bar dataKey="negative" name="Tiêu cực" fill="#D26767" radius={chartType === "hbar" ? [0,4,4,0] : [4,4,0,0]} />
+                    <Bar dataKey="positive" name="Tích cực" fill={SENTIMENT_POSITIVE} radius={chartType === "hbar" ? [0,4,4,0] : [4,4,0,0]} />
+                    <Bar dataKey="neutral" name="Trung lập" fill={SENTIMENT_NEUTRAL} radius={chartType === "hbar" ? [0,4,4,0] : [4,4,0,0]} />
+                    <Bar dataKey="negative" name="Tiêu cực" fill={SENTIMENT_NEGATIVE} radius={chartType === "hbar" ? [0,4,4,0] : [4,4,0,0]} />
                   </BarChart>
                 </ResponsiveContainer>
               );
@@ -551,9 +555,9 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
                   <YAxis tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} unit="%" />
                   <Tooltip formatter={(v: any) => `${v}%`} />
                   {showLegend && <Legend iconSize={10} />}
-                  <SeriesComponent type="monotone" dataKey="positive" name="Tích cực" stroke="#3E9675" fill="#3E9675" strokeWidth={2} dot={{ r: 2 }} />
-                  <SeriesComponent type="monotone" dataKey="neutral" name="Trung lập" stroke="#E5A850" fill="#E5A850" strokeWidth={2} dot={{ r: 2 }} />
-                  <SeriesComponent type="monotone" dataKey="negative" name="Tiêu cực" stroke="#D26767" fill="#D26767" strokeWidth={2} dot={{ r: 2 }} />
+                  <SeriesComponent type="monotone" dataKey="positive" name="Tích cực" stroke={SENTIMENT_POSITIVE} fill={SENTIMENT_POSITIVE} strokeWidth={2} dot={{ r: 2 }} />
+                  <SeriesComponent type="monotone" dataKey="neutral" name="Trung lập" stroke={SENTIMENT_NEUTRAL} fill={SENTIMENT_NEUTRAL} strokeWidth={2} dot={{ r: 2 }} />
+                  <SeriesComponent type="monotone" dataKey="negative" name="Tiêu cực" stroke={SENTIMENT_NEGATIVE} fill={SENTIMENT_NEGATIVE} strokeWidth={2} dot={{ r: 2 }} />
                 </ChartComponent>
               </ResponsiveContainer>
             );
@@ -654,7 +658,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
                 <ResponsiveContainer width="100%" height={260}>
                   <PieChart>
                     <Pie data={pieData} cx="50%" cy="50%" innerRadius={chartType === "pie" ? 0 : 60} outerRadius={90} dataKey="value" label={showLegend ? { fontSize: 11, fill: "rgba(0,56,101,0.6)" } : false}>
-                      {pieData.map((d, i) => <Cell key={i} fill={`hsl(${(i * 50) % 360}, 70%, 55%)`} />)}
+                      {pieData.map((d, i) => <Cell key={i} fill={SENTIMENT_TOPIC_COLORS[i % SENTIMENT_TOPIC_COLORS.length]} />)}
                     </Pie>
                     <Tooltip />
                     {showLegend && <Legend iconSize={10} />}
@@ -672,9 +676,9 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
                     {chartType === "hbar" ? <YAxis dataKey="topic" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "rgba(0,56,101,0.4)" }} width={100} /> : <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "rgba(0,56,101,0.4)" }} tickFormatter={(v) => `${v}%`} />}
                     <Tooltip cursor={{ fill: "rgba(0,56,101,0.02)" }} formatter={(v: any) => `${v}%`} />
                     {showLegend && <Legend iconSize={8} iconType="square" wrapperStyle={{ bottom: 0 }} />}
-                    <Bar dataKey="positive" name="Tích cực" stackId="a" fill="#3E9675" />
-                    <Bar dataKey="neutral" name="Trung lập" stackId="a" fill="#E5A850" />
-                    <Bar dataKey="negative" name="Tiêu cực" stackId="a" fill="#D26767" radius={chartType === "hbar" ? [0,4,4,0] : [4,4,0,0]} />
+                    <Bar dataKey="positive" name="Tích cực" stackId="a" fill={SENTIMENT_POSITIVE} />
+                    <Bar dataKey="neutral" name="Trung lập" stackId="a" fill={SENTIMENT_NEUTRAL} />
+                    <Bar dataKey="negative" name="Tiêu cực" stackId="a" fill={SENTIMENT_NEGATIVE} radius={chartType === "hbar" ? [0,4,4,0] : [4,4,0,0]} />
                   </BarChart>
                 </ResponsiveContainer>
               );
@@ -691,9 +695,9 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
                   <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "rgba(0,56,101,0.4)" }} tickFormatter={(v) => `${v}%`} />
                   <Tooltip cursor={{ fill: "rgba(0,56,101,0.02)" }} formatter={(v: any) => `${v}%`} />
                   {showLegend && <Legend iconSize={8} iconType="square" wrapperStyle={{ bottom: 0 }} />}
-                  <SeriesComponent type="monotone" dataKey="positive" name="Tích cực" stroke="#3E9675" fill="#3E9675" strokeWidth={2} />
-                  <SeriesComponent type="monotone" dataKey="neutral" name="Trung lập" stroke="#E5A850" fill="#E5A850" strokeWidth={2} />
-                  <SeriesComponent type="monotone" dataKey="negative" name="Tiêu cực" stroke="#D26767" fill="#D26767" strokeWidth={2} />
+                  <SeriesComponent type="monotone" dataKey="positive" name="Tích cực" stroke={SENTIMENT_POSITIVE} fill={SENTIMENT_POSITIVE} strokeWidth={2} />
+                  <SeriesComponent type="monotone" dataKey="neutral" name="Trung lập" stroke={SENTIMENT_NEUTRAL} fill={SENTIMENT_NEUTRAL} strokeWidth={2} />
+                  <SeriesComponent type="monotone" dataKey="negative" name="Tiêu cực" stroke={SENTIMENT_NEGATIVE} fill={SENTIMENT_NEGATIVE} strokeWidth={2} />
                 </ChartComponent>
               </ResponsiveContainer>
             );

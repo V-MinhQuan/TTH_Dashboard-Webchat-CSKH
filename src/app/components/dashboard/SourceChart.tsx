@@ -1,14 +1,14 @@
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
 
-const NAVY = "#003BB9";
+const NAVY = "#003865";
 const ORANGE = "#D73C01";
 
 // Cấu hình bảng màu cho từng kênh dữ liệu
 const SOURCE_COLORS: Record<string, string> = {
-  ZaloOA: "#00B2FE",       // Xanh Zalo OA (Sky Blue sáng)
-  ZaloBusiness: "#0a61b4ff", // Xanh Zalo Business (Ink Navy đậm)
-  Facebook: "#1877F2",     // Xanh Facebook (Royal Blue)
-  ChatWidget: ORANGE,      // Cam Chat Widget
+  ZaloOA: "#42A5F5",
+  ZaloBusiness: NAVY,
+  Facebook: "#ED5206",
+  ChatWidget: ORANGE,
 };
 
 interface SourceChartProps {

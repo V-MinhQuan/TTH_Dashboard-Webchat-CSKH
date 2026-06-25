@@ -74,7 +74,7 @@ function normalizeFilters(value: unknown): FilterValues {
     topic: text("topic", defaultFilterValues.topic),
     conversationStatus: text("conversationStatus", defaultFilterValues.conversationStatus),
     aiStatus: isDeprecatedAiStatus(rawAiStatus) ? defaultFilterValues.aiStatus : rawAiStatus,
-    aiFailureType: text("aiFailureType", defaultFilterValues.aiFailureType),
+    aiFailureType: defaultFilterValues.aiFailureType,
   };
   if (typeof candidate.customDateFrom === "string" && candidate.customDateFrom.trim()) {
     normalized.customDateFrom = candidate.customDateFrom;

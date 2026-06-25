@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import logging
 from datetime import date, datetime
 from io import StringIO
 from typing import Iterable, Optional
@@ -15,6 +16,7 @@ from app.schemas.analytics import CustomChartRequest
 from app.services.analytics_service import AnalyticsService
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
+logger = logging.getLogger(__name__)
 AI_FAILED_EXPORT_PAGE_SIZE = 100
 AI_FAILED_EXPORT_MAX_ROWS = 50000
 AI_FAILED_EXPORT_COLUMNS = [
@@ -369,7 +371,11 @@ def ai_suggested_faqs(
     filters: dict = Depends(_analytics_filters),
     service: AnalyticsService = Depends(get_analytics_service),
 ):
-    data = service.get_suggested_faqs(filters)
+    try:
+        data = service.get_suggested_faqs(filters)
+    except Exception:
+        logger.exception("Failed to load suggested FAQ analytics")
+        data = []
     return {"success": True, "message": "Lấy danh sách đề xuất FAQ thành công.", "data": data}
 
 

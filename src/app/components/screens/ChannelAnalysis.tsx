@@ -18,16 +18,16 @@ import { EmptyState } from "../common/EmptyState";
 import { useSettings } from "../../context/SettingsContext";
 import { getDateParamsFromFilters } from "../../utils/dateFilters";
 
-const NAVY = "#003BB9";
+const NAVY = "#003865";
 const ORANGE = "#D73C01";
 const GREEN = "#228A61";
-const AVG_RESPONSE_TIME_COLOR = "#6c9fff";
+const AVG_RESPONSE_TIME_COLOR = "#F36C2E";
 
 const CHANNEL_COLORS: Record<string, string> = {
-  "Zalo Business": "#0068FF",
-  "Facebook": "#1877F2",
-  "Zalo OA": "#00AEEF",
-  "Chat Widget": "#003865",
+  "Zalo Business": "#003865",
+  "Facebook": "#ED5206",
+  "Zalo OA": "#42A5F5",
+  "Chat Widget": ORANGE,
 };
 
 const getInsightData = (ch: any) => {
@@ -77,11 +77,11 @@ const STATUS_COLORS: Record<string, string> = {
   "Chờ xử lý": ORANGE,
   "Đang tư vấn / Chờ phản hồi": "#42A5F5",
   "Đang xử lý": "#42A5F5", // legacy alias
-  "Hoàn thành": GREEN,
+  "Hoàn thành": "#1565C0",
   "AI thành công": NAVY,
-  "AI thất bại": ORANGE,
+  "AI thất bại": "#ED5206",
 };
-const PIE_COLORS = ["#003865", "#1565C0", "#42A5F5", "#7BB6FF", ORANGE, GREEN];
+const PIE_COLORS = ["#003865", "#ED5206", "#1565C0", ORANGE, "#42A5F5", "#F36C2E"];
 
 function formatLocalDate(date: Date) {
   const year = date.getFullYear();
