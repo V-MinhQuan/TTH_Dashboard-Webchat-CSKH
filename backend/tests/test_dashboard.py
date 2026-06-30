@@ -1,5 +1,6 @@
 import sys
 import json
+import sys
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -27,6 +28,24 @@ from app.core.auth import create_session_manager
 from app.main import app
 
 client = TestClient(app)
+
+
+class NoopQuestionGroupCache:
+    def get(self, *_args, **_kwargs):
+        return None
+
+    def upsert(self, *_args, **_kwargs):
+        return None
+
+
+@pytest.fixture(autouse=True)
+def disable_question_group_db_cache(monkeypatch):
+    dashboard_module.reset_ai_gateway_state()
+    monkeypatch.setattr(
+        dashboard_module,
+        "ai_question_group_cache_repository",
+        NoopQuestionGroupCache(),
+    )
 
 
 def auth_headers(role="staff"):
@@ -312,6 +331,59 @@ def test_build_top_question_rows_uses_database_fallback_without_ai_result(monkey
     assert rows[0]["aiGenerated"] is False
 
 
+def test_database_fallback_does_not_merge_unrelated_short_question_cues(monkeypatch):
+    raw_rows = [
+        {"question": "Dạ lịch thi xem chỗ nào ạ", "source": "facebook", "count": 6},
+        {"question": "Flic cho e xin lịch thi nâng cao với ạ", "source": "zalobusiness", "count": 4},
+        {"question": "Ko được nhận bằng sớm hơn ạ?", "source": "facebook", "count": 3},
+        {"question": "Dạ cho em hỏi là nhóm 3 người trở lên được không ạ?", "source": "facebook", "count": 2},
+        {"question": "Dạ khi nào ạ", "source": "zalooa", "count": 2},
+    ]
+
+    def fake_request_ai_question_groups(_: str) -> str:
+        raise QuestionGroupingAIError("quota exceeded")
+
+    monkeypatch.setattr(dashboard_module, "request_ai_question_groups", fake_request_ai_question_groups)
+
+    rows, status, _message = build_top_question_rows(raw_rows)
+
+    assert status == "fallback"
+    schedule_row = next(row for row in rows if row["question"].startswith("Lịch thi"))
+    related_questions = {item["question"] for item in schedule_row["relatedQuestions"]}
+    assert related_questions == {
+        "Dạ lịch thi xem chỗ nào ạ",
+        "Flic cho e xin lịch thi nâng cao với ạ",
+    }
+
+
+def test_database_fallback_does_not_turn_center_mentions_into_address_question(monkeypatch):
+    raw_rows = [
+        {
+            "question": "Cho em hỏi là nộp hồ sơ trực tiếp tại trung tâm phải không ạ?",
+            "source": "facebook",
+            "count": 3,
+        },
+        {
+            "question": "Lý thuyết thì ôn ở đâu ạ?",
+            "source": "zalobusiness",
+            "count": 2,
+        },
+    ]
+
+    def fake_request_ai_question_groups(_: str) -> str:
+        raise QuestionGroupingAIError("quota exceeded")
+
+    monkeypatch.setattr(dashboard_module, "request_ai_question_groups", fake_request_ai_question_groups)
+
+    rows, status, _message = build_top_question_rows(raw_rows)
+
+    assert status == "fallback"
+    questions = {row["question"] for row in rows}
+    assert "Trung tâm ở đâu?" not in questions
+    assert any("nộp hồ sơ" in question.lower() for question in questions)
+    assert any("ôn ở đâu" in question.lower() for question in questions)
+
+
 def test_prepare_question_items_filters_reminder_announcements():
     raw_rows = [
         {
@@ -326,6 +398,168 @@ def test_prepare_question_items_filters_reminder_announcements():
 
     assert len(items) == 1
     assert items[0]["question"] == "Dạ lịch thi tin học ạ"
+
+
+def test_prepare_question_items_filters_marketing_pitches():
+    raw_rows = [
+        {
+            "question": (
+                "Anh ơi, bên em đang có gói Audit Web giúp Organic Traffic tăng đều. "
+                "Anh quan tâm nhắn em Website để em tư vấn cụ thể tới anh?"
+            ),
+            "source": "zalobusiness",
+            "count": 1,
+        },
+        {"question": "Dạ lịch thi tin học ạ", "source": "facebook", "count": 2},
+    ]
+
+    items = prepare_question_items(raw_rows)
+
+    assert len(items) == 1
+    assert items[0]["question"] == "Dạ lịch thi tin học ạ"
+
+
+def test_ai_group_validation_rejects_child_with_wrong_intent(monkeypatch):
+    raw_rows = [
+        {"question": "Lịch thi TOEIC khi nào ạ?", "source": "facebook", "count": 10},
+        {"question": "Khi nào có chứng chỉ TOEIC?", "source": "zalooa", "count": 8},
+        {"question": "Học phí TOEIC là bao nhiêu?", "source": "chatwidget", "count": 6},
+    ]
+
+    def fake_request_ai_question_groups(_: str) -> str:
+        return json.dumps({
+            "groups": [
+                {
+                    "question": "Lịch thi TOEIC là khi nào?",
+                    "itemIds": ["g1", "g2"],
+                }
+            ]
+        }, ensure_ascii=False)
+
+    monkeypatch.setattr(dashboard_module, "request_ai_question_groups", fake_request_ai_question_groups)
+
+    rows, status, _message = build_top_question_rows(raw_rows)
+
+    assert status == "ok"
+    schedule_row = next(row for row in rows if row["question"] == "Lịch thi TOEIC là khi nào?")
+    assert {item["question"] for item in schedule_row["relatedQuestions"]} == {
+        "Lịch thi TOEIC khi nào ạ?"
+    }
+    assert any(row["question"].startswith("Khi nào có chứng chỉ TOEIC") for row in rows)
+    validation = dashboard_module.get_last_question_group_validation()
+    assert validation["rejectedCount"] >= 1
+    assert any(item["reason"] == "intent_mismatch" for item in validation["rejectedItems"])
+
+
+def test_ai_group_validation_rejects_child_with_wrong_canonical_topic(monkeypatch):
+    raw_rows = [
+        {"question": "Lịch thi TOEIC khi nào ạ?", "source": "facebook", "count": 10},
+        {"question": "Lịch thi MOS khi nào ạ?", "source": "zalooa", "count": 8},
+    ]
+
+    def fake_request_ai_question_groups(_: str) -> str:
+        return json.dumps({
+            "groups": [
+                {
+                    "question": "Lịch thi TOEIC là khi nào?",
+                    "itemIds": ["g1", "g2"],
+                }
+            ]
+        }, ensure_ascii=False)
+
+    monkeypatch.setattr(dashboard_module, "request_ai_question_groups", fake_request_ai_question_groups)
+
+    rows, status, _message = build_top_question_rows(raw_rows)
+
+    assert status == "ok"
+    toeic_row = next(row for row in rows if row["question"] == "Lịch thi TOEIC là khi nào?")
+    assert {item["question"] for item in toeic_row["relatedQuestions"]} == {
+        "Lịch thi TOEIC khi nào ạ?"
+    }
+    assert any("MOS" in row["question"] for row in rows)
+    validation = dashboard_module.get_last_question_group_validation()
+    assert any(item["reason"] == "topic_mismatch" for item in validation["rejectedItems"])
+
+
+def test_ai_gateway_provider_cooldown_skips_recently_failed_provider(monkeypatch):
+    calls = []
+
+    def fail_gemini(_prompt, _timeout):
+        calls.append("gemini")
+        raise QuestionGroupingAIError("quota exhausted")
+
+    def ok_openai(_prompt, _timeout):
+        calls.append("openai")
+        return '{"groups":[]}'
+
+    monkeypatch.setattr(dashboard_module, "request_gemini_question_groups", fail_gemini)
+    monkeypatch.setattr(dashboard_module, "request_openai_question_groups", ok_openai)
+
+    assert dashboard_module.request_ai_question_groups("prompt") == '{"groups":[]}'
+    calls.clear()
+    assert dashboard_module.request_ai_question_groups("prompt") == '{"groups":[]}'
+    assert calls == ["openai"]
+
+
+def test_dashboard_top_question_reads_db_cache_before_rebuilding(monkeypatch):
+    clear_dashboard_cache()
+    service = DashboardService()
+    cached_value = (
+        [{"question": "Lịch thi TOEIC là khi nào?", "count": 12, "aiGenerated": True}],
+        "ok",
+        "",
+    )
+
+    class FakeQuestionGroupCache:
+        def get(self, cache_key, **_kwargs):
+            assert cache_key.startswith("top_questions_ai:all")
+            return {"value": cached_value, "is_expired": False}
+
+        def upsert(self, *_args, **_kwargs):
+            raise AssertionError("Cache hit must not be overwritten.")
+
+    monkeypatch.setattr(dashboard_module, "ai_question_group_cache_repository", FakeQuestionGroupCache())
+    monkeypatch.setattr(
+        service,
+        "_cached_repo_call",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("DB source query should not run")),
+    )
+
+    assert service._get_cached_top_question_rows("2026-06-01", "2026-06-30") == cached_value
+
+
+def test_dashboard_top_question_writes_ok_result_to_db_cache(monkeypatch):
+    clear_dashboard_cache()
+    service = DashboardService()
+    raw_rows = [{"question": "Học phí TOEIC là bao nhiêu?", "source": "facebook", "count": 2}]
+    upsert_calls = []
+
+    class FakeQuestionGroupCache:
+        def get(self, *_args, **_kwargs):
+            return None
+
+        def upsert(self, *args, **kwargs):
+            upsert_calls.append((args, kwargs))
+
+    monkeypatch.setattr(dashboard_module, "ai_question_group_cache_repository", FakeQuestionGroupCache())
+    monkeypatch.setattr(service, "_cached_repo_call", lambda *_args, **_kwargs: raw_rows)
+    monkeypatch.setattr(
+        dashboard_module,
+        "build_top_question_rows",
+        lambda _rows: ([{"question": "Học phí TOEIC là bao nhiêu?", "count": 2, "aiGenerated": True}], "ok", ""),
+    )
+    dashboard_module._ai_gateway_last_success.update({"provider": "gemini", "model": "gemini-2.5-flash"})
+
+    result = service._get_cached_top_question_rows("2026-06-01", "2026-06-30", channel="Facebook")
+
+    assert result[1] == "ok"
+    assert len(upsert_calls) == 1
+    args, kwargs = upsert_calls[0]
+    assert args[0].startswith("top_questions_ai:Facebook")
+    assert kwargs["source_row_count"] == 1
+    assert kwargs["source_filters"] == {"channel": "Facebook"}
+    assert kwargs["provider"] == "gemini"
+    assert kwargs["model"] == "gemini-2.5-flash"
 
 
 def test_dashboard_top_question_uses_last_good_ai_result_when_current_ai_fails(monkeypatch, tmp_path):

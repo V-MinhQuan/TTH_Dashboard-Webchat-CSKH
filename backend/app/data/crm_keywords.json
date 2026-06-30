@@ -1,154 +1,170 @@
 [
   {
     "id": 1,
-    "word": "lệ phí",
-    "groupId": "toeic",
+    "word": "Sát hạch CNTT",
+    "groupId": "sat_hach_cntt",
     "status": "active",
     "createdAt": "2026-06-03T04:00:00.000Z",
-    "updatedAt": "2026-06-03T04:00:00.000Z"
+    "updatedAt": "2026-06-30T00:00:00.000Z"
   },
   {
     "id": 2,
-    "word": "lịch thi",
-    "groupId": "toeic",
+    "word": "Sát hạch Công nghệ thông tin",
+    "groupId": "sat_hach_cntt",
     "status": "active",
     "createdAt": "2026-06-03T04:00:00.000Z",
-    "updatedAt": "2026-06-03T04:00:00.000Z"
+    "updatedAt": "2026-06-30T00:00:00.000Z"
   },
   {
     "id": 3,
-    "word": "điểm thi",
-    "groupId": "toeic",
+    "word": "CNTT Cơ bản",
+    "groupId": "sat_hach_cntt",
     "status": "active",
     "createdAt": "2026-06-03T04:00:00.000Z",
-    "updatedAt": "2026-06-03T04:00:00.000Z"
+    "updatedAt": "2026-06-30T00:00:00.000Z"
   },
   {
     "id": 4,
-    "word": "chứng chỉ",
-    "groupId": "chuandaura",
+    "word": "CNTT Nâng cao",
+    "groupId": "sat_hach_cntt",
     "status": "active",
     "createdAt": "2026-06-03T04:00:00.000Z",
-    "updatedAt": "2026-06-03T04:00:00.000Z"
+    "updatedAt": "2026-06-30T00:00:00.000Z"
   },
   {
     "id": 5,
-    "word": "đăng ký thi",
-    "groupId": "toeic",
+    "word": "IC3",
+    "groupId": "sat_hach_cntt",
     "status": "active",
     "createdAt": "2026-06-03T04:00:00.000Z",
-    "updatedAt": "2026-06-03T04:00:00.000Z"
+    "updatedAt": "2026-06-30T00:00:00.000Z"
   },
   {
     "id": 6,
-    "word": "lịch thi",
-    "groupId": "vstep",
+    "word": "TOEIC",
+    "groupId": "toeic",
     "status": "active",
     "createdAt": "2026-06-03T04:00:00.000Z",
-    "updatedAt": "2026-06-03T04:00:00.000Z"
+    "updatedAt": "2026-06-30T00:00:00.000Z"
   },
   {
     "id": 7,
-    "word": "hồ sơ",
-    "groupId": "vstep",
+    "word": "lịch thi TOEIC",
+    "groupId": "toeic",
     "status": "active",
     "createdAt": "2026-06-03T04:00:00.000Z",
-    "updatedAt": "2026-06-03T04:00:00.000Z"
+    "updatedAt": "2026-06-30T00:00:00.000Z"
   },
   {
     "id": 8,
-    "word": "cấp chứng chỉ",
-    "groupId": "vstep",
+    "word": "đăng ký TOEIC",
+    "groupId": "toeic",
     "status": "active",
     "createdAt": "2026-06-03T04:00:00.000Z",
-    "updatedAt": "2026-06-03T04:00:00.000Z"
+    "updatedAt": "2026-06-30T00:00:00.000Z"
   },
   {
     "id": 9,
-    "word": "ôn tập",
-    "groupId": "vstep",
+    "word": "lệ phí TOEIC",
+    "groupId": "toeic",
     "status": "active",
     "createdAt": "2026-06-03T04:00:00.000Z",
-    "updatedAt": "2026-06-03T04:00:00.000Z"
+    "updatedAt": "2026-06-30T00:00:00.000Z"
   },
   {
     "id": 10,
-    "word": "kết quả thi",
-    "groupId": "vstep",
+    "word": "MOS",
+    "groupId": "mos",
     "status": "active",
     "createdAt": "2026-06-03T04:00:00.000Z",
-    "updatedAt": "2026-06-03T04:00:00.000Z"
+    "updatedAt": "2026-06-30T00:00:00.000Z"
   },
   {
     "id": 11,
-    "word": "CNTT Cơ bản",
-    "groupId": "tinhoc",
+    "word": "Microsoft Office Specialist",
+    "groupId": "mos",
     "status": "active",
     "createdAt": "2026-06-03T04:00:00.000Z",
-    "updatedAt": "2026-06-03T04:00:00.000Z"
+    "updatedAt": "2026-06-30T00:00:00.000Z"
   },
   {
     "id": 12,
-    "word": "CNTT Nâng cao",
-    "groupId": "tinhoc",
+    "word": "lịch thi MOS",
+    "groupId": "mos",
     "status": "active",
     "createdAt": "2026-06-03T04:00:00.000Z",
-    "updatedAt": "2026-06-03T04:00:00.000Z"
+    "updatedAt": "2026-06-30T00:00:00.000Z"
   },
   {
     "id": 13,
-    "word": "MOS",
-    "groupId": "tinhoc",
+    "word": "chứng chỉ MOS",
+    "groupId": "mos",
     "status": "active",
     "createdAt": "2026-06-03T04:00:00.000Z",
-    "updatedAt": "2026-06-03T04:00:00.000Z"
+    "updatedAt": "2026-06-30T00:00:00.000Z"
   },
   {
     "id": 14,
-    "word": "IC3",
-    "groupId": "tinhoc",
+    "word": "Học Tiếng Anh",
+    "groupId": "hoc_tieng_anh",
     "status": "active",
     "createdAt": "2026-06-03T04:00:00.000Z",
-    "updatedAt": "2026-06-03T04:00:00.000Z"
+    "updatedAt": "2026-06-30T00:00:00.000Z"
   },
   {
     "id": 15,
-    "word": "quên mật khẩu khóa học",
-    "groupId": "tinhoc",
+    "word": "Tiếng Anh",
+    "groupId": "hoc_tieng_anh",
     "status": "active",
     "createdAt": "2026-06-03T04:00:00.000Z",
-    "updatedAt": "2026-06-03T04:00:00.000Z"
+    "updatedAt": "2026-06-30T00:00:00.000Z"
   },
   {
     "id": 16,
-    "word": "chuẩn đầu ra",
-    "groupId": "chuandaura",
+    "word": "VSTEP",
+    "groupId": "hoc_tieng_anh",
     "status": "active",
     "createdAt": "2026-06-03T04:00:00.000Z",
-    "updatedAt": "2026-06-03T04:00:00.000Z"
+    "updatedAt": "2026-06-30T00:00:00.000Z"
   },
   {
     "id": 17,
-    "word": "đầu ra",
-    "groupId": "chuandaura",
+    "word": "chuẩn đầu ra ngoại ngữ",
+    "groupId": "hoc_tieng_anh",
     "status": "active",
     "createdAt": "2026-06-03T04:00:00.000Z",
-    "updatedAt": "2026-06-03T04:00:00.000Z"
+    "updatedAt": "2026-06-30T00:00:00.000Z"
   },
   {
     "id": 18,
-    "word": "thời hạn chứng chỉ",
-    "groupId": "chuandaura",
+    "word": "Học Tin học",
+    "groupId": "hoc_tin_hoc",
     "status": "active",
     "createdAt": "2026-06-03T04:00:00.000Z",
-    "updatedAt": "2026-06-03T04:00:00.000Z"
+    "updatedAt": "2026-06-30T00:00:00.000Z"
   },
   {
     "id": 19,
-    "word": "xét tốt nghiệp",
-    "groupId": "chuandaura",
+    "word": "khóa tin học",
+    "groupId": "hoc_tin_hoc",
     "status": "active",
     "createdAt": "2026-06-03T04:00:00.000Z",
-    "updatedAt": "2026-06-03T04:00:00.000Z"
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+  },
+  {
+    "id": 20,
+    "word": "tin học văn phòng",
+    "groupId": "hoc_tin_hoc",
+    "status": "active",
+    "createdAt": "2026-06-03T04:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+  },
+  {
+    "id": 21,
+    "word": "quên mật khẩu khóa học",
+    "groupId": "hoc_tin_hoc",
+    "status": "active",
+    "createdAt": "2026-06-03T04:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
   }
 ]

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Bell, Database, Users, Save, ChevronRight, User, MessageSquare, Eye, ArrowLeft, Shield, Sliders, X } from "lucide-react";
+import { Bell, Users, Save, ChevronRight, User, MessageSquare, Eye, X } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../../context/AuthContext";
 import { useSettings } from "../../context/SettingsContext";
@@ -100,7 +100,6 @@ function OtpModal({ isOpen, onClose, onConfirm }: { isOpen: boolean; onClose: ()
 
 const adminSections = [
   { id: "profile", label: "Thông tin người dùng", icon: User },
-  { id: "datasource", label: "Nguồn dữ liệu", icon: Database },
   { id: "users", label: "Người dùng & phân quyền", icon: Users },
   { id: "notifications", label: "Thông báo", icon: Bell },
 ];
@@ -340,64 +339,6 @@ export function Settings({ defaultSection = "profile" }: { defaultSection?: stri
               </div>
             );
           })}
-        </div>
-      );
-    }
-
-    if (activeSection === "datasource") {
-      return (
-        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-          <SectionTitle title="Nguồn dữ liệu" />
-          <Card>
-            <h3 style={{ fontSize: "14px", fontWeight: 600, color: NAVY, marginBottom: "16px" }}>Kết nối nguồn dữ liệu</h3>
-            {[
-              { key: "dataSourceZalo", label: "Zalo OA", desc: "Đồng bộ hội thoại từ Zalo Official Account" },
-              { key: "dataSourceZaloBiz", label: "Zalo Business", desc: "Đồng bộ hội thoại từ Zalo Business" },
-              { key: "dataSourceFb", label: "Facebook Messenger", desc: "Đồng bộ hội thoại từ Facebook Fanpage" },
-              { key: "dataSourceWidget", label: "Chat Widget", desc: "Đồng bộ hội thoại từ widget nhúng trên website" },
-            ].map(({ key, label, desc }) => (
-              <div key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: "13px", color: NAVY }}>{label}</div>
-                  <div style={{ fontSize: "12px", color: "rgba(0,56,101,0.5)", marginTop: "2px" }}>{desc}</div>
-                </div>
-                <Toggle value={(settings as any)[key]} onChange={(v) => update(key as keyof GlobalSettings, v)} />
-              </div>
-            ))}
-          </Card>
-          <Card>
-            <h3 style={{ fontSize: "14px", fontWeight: 600, color: NAVY, marginBottom: "12px" }}>Cài đặt đồng bộ</h3>
-            <div style={{ marginBottom: "16px" }}>
-              <div style={{ fontWeight: 600, fontSize: "13px", color: NAVY, marginBottom: "8px" }}>Chu kỳ đồng bộ dữ liệu</div>
-              <select value={settings.dataSyncInterval} onChange={(e) => update("dataSyncInterval", e.target.value)} style={{ ...fieldStyle }}>
-                <option value="1">Mỗi 1 phút</option>
-                <option value="5">Mỗi 5 phút</option>
-                <option value="15">Mỗi 15 phút</option>
-                <option value="30">Mỗi 30 phút</option>
-              </select>
-            </div>
-            <div>
-              <div style={{ fontWeight: 600, fontSize: "13px", color: NAVY, marginBottom: "8px" }}>Định dạng xuất mặc định</div>
-              <select value={settings.exportFormat} onChange={(e) => update("exportFormat", e.target.value)} style={{ ...fieldStyle }}>
-                <option value="xlsx">Excel (.xlsx)</option>
-                <option value="csv">CSV (.csv)</option>
-                <option value="pdf">PDF (.pdf)</option>
-              </select>
-            </div>
-          </Card>
-          <Card>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: "13px", color: NAVY }}>Thời gian lưu trữ dữ liệu</div>
-                <div style={{ fontSize: "12px", color: "rgba(0,56,101,0.5)", marginTop: "2px" }}>Dữ liệu hội thoại sẽ được lưu trong thời gian này</div>
-              </div>
-              <select value={settings.dataRetention} onChange={(e) => update("dataRetention", e.target.value)} style={{ ...fieldStyle }}>
-                <option value="30">30 ngày</option>
-                <option value="90">90 ngày</option>
-                <option value="365">1 năm</option>
-              </select>
-            </div>
-          </Card>
         </div>
       );
     }

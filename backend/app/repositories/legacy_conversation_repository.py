@@ -1,6 +1,7 @@
 import os
 from datetime import datetime, timedelta
 import pymssql
+from app.core.topic_taxonomy import TOPIC_NAME_BY_ID, canonical_topic_id
 from app.core.legacy_db import get_db_connection
 from app.repositories.display_filters import (
     valid_analytics_condition,
@@ -184,21 +185,72 @@ class ConversationRepository:
     def _topic_condition(self, text_column, topic=None):
         if not topic or topic == "Tất cả":
             return None
-        if topic == "TOEIC":
+        topic_id = canonical_topic_id(topic)
+        if topic_id == "toeic":
             return f"LOWER({text_column}) LIKE N'%toeic%'"
-        if topic == "VSTEP":
-            return f"LOWER({text_column}) LIKE N'%vstep%'"
-        if topic == "Chuẩn đầu ra":
-            return f"(LOWER({text_column}) LIKE N'%đầu ra%' OR LOWER({text_column}) LIKE N'%chuẩn đầu ra%')"
+        if topic_id == "mos":
+            return f"(LOWER({text_column}) LIKE N'%mos%' OR LOWER({text_column}) LIKE N'%microsoft office specialist%')"
+        if topic_id == "sat_hach_cntt":
+            return f"""(
+                LOWER({text_column}) LIKE N'%sát hạch%'
+                OR LOWER({text_column}) LIKE N'%sat hach%'
+                OR LOWER({text_column}) LIKE N'%cntt%'
+                OR LOWER({text_column}) LIKE N'%công nghệ thông tin%'
+                OR LOWER({text_column}) LIKE N'%cong nghe thong tin%'
+                OR LOWER({text_column}) LIKE N'%ic3%'
+                OR LOWER({text_column}) LIKE N'%thcb%'
+                OR LOWER({text_column}) LIKE N'%thnc%'
+                OR LOWER({text_column}) LIKE N'%tin cơ bản%'
+                OR LOWER({text_column}) LIKE N'%tin co ban%'
+                OR LOWER({text_column}) LIKE N'%tin nâng cao%'
+                OR LOWER({text_column}) LIKE N'%tin nang cao%'
+            )"""
+        if topic_id == "hoc_tieng_anh":
+            return f"""(
+                LOWER({text_column}) LIKE N'%học tiếng anh%'
+                OR LOWER({text_column}) LIKE N'%hoc tieng anh%'
+                OR LOWER({text_column}) LIKE N'%tiếng anh%'
+                OR LOWER({text_column}) LIKE N'%tieng anh%'
+                OR LOWER({text_column}) LIKE N'%anh văn%'
+                OR LOWER({text_column}) LIKE N'%anh van%'
+                OR LOWER({text_column}) LIKE N'%ngoại ngữ%'
+                OR LOWER({text_column}) LIKE N'%ngoai ngu%'
+                OR LOWER({text_column}) LIKE N'%vstep%'
+                OR LOWER({text_column}) LIKE N'%b1%'
+                OR LOWER({text_column}) LIKE N'%b2%'
+                OR LOWER({text_column}) LIKE N'%chuẩn đầu ra%'
+                OR LOWER({text_column}) LIKE N'%chuan dau ra%'
+            )"""
+        if topic_id == "hoc_tin_hoc":
+            return f"""(
+                LOWER({text_column}) LIKE N'%học tin học%'
+                OR LOWER({text_column}) LIKE N'%hoc tin hoc%'
+                OR LOWER({text_column}) LIKE N'%khóa tin học%'
+                OR LOWER({text_column}) LIKE N'%khoa tin hoc%'
+                OR LOWER({text_column}) LIKE N'%lớp tin học%'
+                OR LOWER({text_column}) LIKE N'%lop tin hoc%'
+                OR LOWER({text_column}) LIKE N'%tin học văn phòng%'
+                OR LOWER({text_column}) LIKE N'%tin hoc van phong%'
+                OR LOWER({text_column}) LIKE N'%học word%'
+                OR LOWER({text_column}) LIKE N'%hoc word%'
+                OR LOWER({text_column}) LIKE N'%học excel%'
+                OR LOWER({text_column}) LIKE N'%hoc excel%'
+                OR LOWER({text_column}) LIKE N'%học powerpoint%'
+                OR LOWER({text_column}) LIKE N'%hoc powerpoint%'
+                OR LOWER({text_column}) LIKE N'%quên mật khẩu khóa học%'
+                OR LOWER({text_column}) LIKE N'%quen mat khau khoa hoc%'
+            )"""
         if topic == "Tin học":
             return f"""(
                 LOWER({text_column}) LIKE N'%tin học%'
+                OR LOWER({text_column}) LIKE N'%cntt%'
                 OR LOWER({text_column}) LIKE N'%mos%'
                 OR LOWER({text_column}) LIKE N'%ic3%'
-                OR LOWER({text_column}) LIKE N'%cntt%'
-                OR LOWER({text_column}) LIKE N'%cơ bản%'
-                OR LOWER({text_column}) LIKE N'%nâng cao%'
             )"""
+        if topic == "Chuẩn đầu ra":
+            return f"(LOWER({text_column}) LIKE N'%đầu ra%' OR LOWER({text_column}) LIKE N'%chuẩn đầu ra%')"
+        if topic == "VSTEP":
+            return f"LOWER({text_column}) LIKE N'%vstep%'"
         if topic == "Tra cứu điểm":
             return f"""(
                 LOWER({text_column}) LIKE N'%điểm%'
@@ -215,10 +267,11 @@ class ConversationRepository:
             )"""
         if topic == "Khác":
             known_conditions = [
-                self._topic_condition(text_column, "TOEIC"),
-                self._topic_condition(text_column, "VSTEP"),
-                self._topic_condition(text_column, "Chuẩn đầu ra"),
-                self._topic_condition(text_column, "Tin học"),
+                self._topic_condition(text_column, TOPIC_NAME_BY_ID["sat_hach_cntt"]),
+                self._topic_condition(text_column, TOPIC_NAME_BY_ID["toeic"]),
+                self._topic_condition(text_column, TOPIC_NAME_BY_ID["mos"]),
+                self._topic_condition(text_column, TOPIC_NAME_BY_ID["hoc_tieng_anh"]),
+                self._topic_condition(text_column, TOPIC_NAME_BY_ID["hoc_tin_hoc"]),
                 self._topic_condition(text_column, "Tra cứu điểm"),
                 self._topic_condition(text_column, "Lịch thi"),
             ]
@@ -984,9 +1037,49 @@ class ConversationRepository:
             topic_case = """
                 CASE
                   WHEN LOWER({topic_text}) LIKE N'%toeic%' THEN 'TOEIC'
-                  WHEN LOWER({topic_text}) LIKE N'%vstep%' THEN 'VSTEP'
-                  WHEN LOWER({topic_text}) LIKE N'%đầu ra%' OR LOWER({topic_text}) LIKE N'%chuẩn đầu ra%' THEN N'Chuẩn đầu ra'
-                  WHEN LOWER({topic_text}) LIKE N'%tin học%' OR LOWER({topic_text}) LIKE N'%mos%' OR LOWER({topic_text}) LIKE N'%ic3%' OR LOWER({topic_text}) LIKE N'%cntt%' THEN N'Tin học'
+                  WHEN LOWER({topic_text}) LIKE N'%mos%' OR LOWER({topic_text}) LIKE N'%microsoft office specialist%' THEN 'MOS'
+                  WHEN LOWER({topic_text}) LIKE N'%sát hạch%'
+                    OR LOWER({topic_text}) LIKE N'%sat hach%'
+                    OR LOWER({topic_text}) LIKE N'%cntt%'
+                    OR LOWER({topic_text}) LIKE N'%công nghệ thông tin%'
+                    OR LOWER({topic_text}) LIKE N'%cong nghe thong tin%'
+                    OR LOWER({topic_text}) LIKE N'%ic3%'
+                    OR LOWER({topic_text}) LIKE N'%thcb%'
+                    OR LOWER({topic_text}) LIKE N'%thnc%'
+                    OR LOWER({topic_text}) LIKE N'%tin cơ bản%'
+                    OR LOWER({topic_text}) LIKE N'%tin co ban%'
+                    OR LOWER({topic_text}) LIKE N'%tin nâng cao%'
+                    OR LOWER({topic_text}) LIKE N'%tin nang cao%'
+                    THEN N'Sát hạch CNTT (Sát hạch Công nghệ thông tin)'
+                  WHEN LOWER({topic_text}) LIKE N'%học tiếng anh%'
+                    OR LOWER({topic_text}) LIKE N'%hoc tieng anh%'
+                    OR LOWER({topic_text}) LIKE N'%tiếng anh%'
+                    OR LOWER({topic_text}) LIKE N'%tieng anh%'
+                    OR LOWER({topic_text}) LIKE N'%anh văn%'
+                    OR LOWER({topic_text}) LIKE N'%anh van%'
+                    OR LOWER({topic_text}) LIKE N'%ngoại ngữ%'
+                    OR LOWER({topic_text}) LIKE N'%ngoai ngu%'
+                    OR LOWER({topic_text}) LIKE N'%vstep%'
+                    OR LOWER({topic_text}) LIKE N'%b1%'
+                    OR LOWER({topic_text}) LIKE N'%b2%'
+                    OR LOWER({topic_text}) LIKE N'%chuẩn đầu ra%'
+                    OR LOWER({topic_text}) LIKE N'%chuan dau ra%'
+                    THEN N'Học Tiếng Anh'
+                  WHEN LOWER({topic_text}) LIKE N'%học tin học%'
+                    OR LOWER({topic_text}) LIKE N'%hoc tin hoc%'
+                    OR LOWER({topic_text}) LIKE N'%khóa tin học%'
+                    OR LOWER({topic_text}) LIKE N'%khoa tin hoc%'
+                    OR LOWER({topic_text}) LIKE N'%lớp tin học%'
+                    OR LOWER({topic_text}) LIKE N'%lop tin hoc%'
+                    OR LOWER({topic_text}) LIKE N'%tin học văn phòng%'
+                    OR LOWER({topic_text}) LIKE N'%tin hoc van phong%'
+                    OR LOWER({topic_text}) LIKE N'%học word%'
+                    OR LOWER({topic_text}) LIKE N'%hoc word%'
+                    OR LOWER({topic_text}) LIKE N'%học excel%'
+                    OR LOWER({topic_text}) LIKE N'%hoc excel%'
+                    OR LOWER({topic_text}) LIKE N'%học powerpoint%'
+                    OR LOWER({topic_text}) LIKE N'%hoc powerpoint%'
+                    THEN N'Học Tin học'
                   WHEN LOWER({topic_text}) LIKE N'%điểm%' OR LOWER({topic_text}) LIKE N'%tra cứu điểm%' OR LOWER({topic_text}) LIKE N'%xem điểm%' OR LOWER({topic_text}) LIKE N'%kết quả thi%' THEN N'Tra cứu điểm'
                   WHEN LOWER({topic_text}) LIKE N'%lịch thi%' OR LOWER({topic_text}) LIKE N'%ngày thi%' OR LOWER({topic_text}) LIKE N'%ca thi%' OR LOWER({topic_text}) LIKE N'%giờ thi%' THEN N'Lịch thi'
                   ELSE N'Khác'
@@ -1892,9 +1985,10 @@ class ConversationRepository:
                   source,
                   CASE
                     WHEN has_toeic = 1 THEN 'TOEIC'
-                    WHEN has_vstep = 1 THEN 'VSTEP'
-                    WHEN has_chuandaura = 1 THEN N'Chuẩn đầu ra'
-                    WHEN has_tinhoc = 1 THEN N'Tin học'
+                    WHEN has_mos = 1 THEN 'MOS'
+                    WHEN has_sat_hach_cntt = 1 THEN N'Sát hạch CNTT (Sát hạch Công nghệ thông tin)'
+                    WHEN has_hoc_tieng_anh = 1 THEN N'Học Tiếng Anh'
+                    WHEN has_hoc_tin_hoc = 1 THEN N'Học Tin học'
                     WHEN has_tracuudiem = 1 THEN N'Tra cứu điểm'
                     WHEN has_lichthi = 1 THEN N'Lịch thi'
                     ELSE N'Khác'
@@ -1904,9 +1998,10 @@ class ConversationRepository:
                     CASE WHEN FromHost = 1 THEN ReceiverId ELSE SenderId END AS customer_id,
                     Source AS source,
                     MAX(CASE WHEN LOWER(TextContent) LIKE N'%toeic%' THEN 1 ELSE 0 END) AS has_toeic,
-                    MAX(CASE WHEN LOWER(TextContent) LIKE N'%vstep%' THEN 1 ELSE 0 END) AS has_vstep,
-                    MAX(CASE WHEN LOWER(TextContent) LIKE N'%đầu ra%' OR LOWER(TextContent) LIKE N'%chuẩn đầu ra%' THEN 1 ELSE 0 END) AS has_chuandaura,
-                    MAX(CASE WHEN LOWER(TextContent) LIKE N'%tin học%' OR LOWER(TextContent) LIKE N'%mos%' OR LOWER(TextContent) LIKE N'%ic3%' OR LOWER(TextContent) LIKE N'%cntt%' THEN 1 ELSE 0 END) AS has_tinhoc,
+                    MAX(CASE WHEN LOWER(TextContent) LIKE N'%mos%' OR LOWER(TextContent) LIKE N'%microsoft office specialist%' THEN 1 ELSE 0 END) AS has_mos,
+                    MAX(CASE WHEN LOWER(TextContent) LIKE N'%sát hạch%' OR LOWER(TextContent) LIKE N'%sat hach%' OR LOWER(TextContent) LIKE N'%cntt%' OR LOWER(TextContent) LIKE N'%công nghệ thông tin%' OR LOWER(TextContent) LIKE N'%cong nghe thong tin%' OR LOWER(TextContent) LIKE N'%ic3%' OR LOWER(TextContent) LIKE N'%thcb%' OR LOWER(TextContent) LIKE N'%thnc%' OR LOWER(TextContent) LIKE N'%tin cơ bản%' OR LOWER(TextContent) LIKE N'%tin co ban%' OR LOWER(TextContent) LIKE N'%tin nâng cao%' OR LOWER(TextContent) LIKE N'%tin nang cao%' THEN 1 ELSE 0 END) AS has_sat_hach_cntt,
+                    MAX(CASE WHEN LOWER(TextContent) LIKE N'%học tiếng anh%' OR LOWER(TextContent) LIKE N'%hoc tieng anh%' OR LOWER(TextContent) LIKE N'%tiếng anh%' OR LOWER(TextContent) LIKE N'%tieng anh%' OR LOWER(TextContent) LIKE N'%anh văn%' OR LOWER(TextContent) LIKE N'%anh van%' OR LOWER(TextContent) LIKE N'%ngoại ngữ%' OR LOWER(TextContent) LIKE N'%ngoai ngu%' OR LOWER(TextContent) LIKE N'%vstep%' OR LOWER(TextContent) LIKE N'%b1%' OR LOWER(TextContent) LIKE N'%b2%' OR LOWER(TextContent) LIKE N'%chuẩn đầu ra%' OR LOWER(TextContent) LIKE N'%chuan dau ra%' THEN 1 ELSE 0 END) AS has_hoc_tieng_anh,
+                    MAX(CASE WHEN LOWER(TextContent) LIKE N'%học tin học%' OR LOWER(TextContent) LIKE N'%hoc tin hoc%' OR LOWER(TextContent) LIKE N'%khóa tin học%' OR LOWER(TextContent) LIKE N'%khoa tin hoc%' OR LOWER(TextContent) LIKE N'%lớp tin học%' OR LOWER(TextContent) LIKE N'%lop tin hoc%' OR LOWER(TextContent) LIKE N'%tin học văn phòng%' OR LOWER(TextContent) LIKE N'%tin hoc van phong%' OR LOWER(TextContent) LIKE N'%học word%' OR LOWER(TextContent) LIKE N'%hoc word%' OR LOWER(TextContent) LIKE N'%học excel%' OR LOWER(TextContent) LIKE N'%hoc excel%' OR LOWER(TextContent) LIKE N'%học powerpoint%' OR LOWER(TextContent) LIKE N'%hoc powerpoint%' THEN 1 ELSE 0 END) AS has_hoc_tin_hoc,
                     MAX(CASE WHEN LOWER(TextContent) LIKE N'%điểm%' OR LOWER(TextContent) LIKE N'%tra cứu điểm%' OR LOWER(TextContent) LIKE N'%xem điểm%' OR LOWER(TextContent) LIKE N'%kết quả thi%' THEN 1 ELSE 0 END) AS has_tracuudiem,
                     MAX(CASE WHEN LOWER(TextContent) LIKE N'%lịch thi%' OR LOWER(TextContent) LIKE N'%ngày thi%' OR LOWER(TextContent) LIKE N'%ca thi%' OR LOWER(TextContent) LIKE N'%giờ thi%' THEN 1 ELSE 0 END) AS has_lichthi
                   FROM WebChat_MessageLogs

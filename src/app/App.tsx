@@ -11,17 +11,11 @@ import { LoginScreen } from "./components/screens/Login";
 // AI Chat Widget tạm ẩn chờ phát triển sau
 const Overview = lazy(() => import("./components/screens/Overview").then((m) => ({ default: m.Overview })));
 const ChannelAnalysis = lazy(() => import("./components/screens/ChannelAnalysis").then((m) => ({ default: m.ChannelAnalysis })));
-const QuestionAnalysis = lazy(() => import("./components/screens/QuestionAnalysis").then((m) => ({ default: m.QuestionAnalysis })));
 const KeywordAnalysis = lazy(() => import("./components/screens/KeywordAnalysis").then((m) => ({ default: m.KeywordAnalysis })));
-const PerformanceAnalysis = lazy(() => import("./components/screens/PerformanceAnalysis").then((m) => ({ default: m.PerformanceAnalysis })));
-const MyWorkspace = lazy(() => import("./components/screens/MyWorkspace").then((m) => ({ default: m.MyWorkspace })));
-const UrgentCenter = lazy(() => import("./components/screens/UrgentCenter").then((m) => ({ default: m.UrgentCenter })));
-const AIMonitoring = lazy(() => import("./components/screens/AIMonitoring").then((m) => ({ default: m.AIMonitoring })));
 const SentimentAnalysis = lazy(() => import("./components/screens/SentimentAnalysis").then((m) => ({ default: m.SentimentAnalysis })));
 const AIInsights = lazy(() => import("./components/screens/AIInsights").then((m) => ({ default: m.AIInsights })));
 const ChartBuilder = lazy(() => import("./components/screens/ChartBuilder").then((m) => ({ default: m.ChartBuilder })));
 const Settings = lazy(() => import("./components/screens/Settings").then((m) => ({ default: m.Settings })));
-const FAQ = lazy(() => import("./components/screens/FAQ").then((m) => ({ default: m.FAQ })));
 const SheetChatbot = lazy(() => import("./components/screens/SheetChatbot").then((m) => ({ default: m.SheetChatbot })));
 const PersonalInfo = lazy(() => import("./components/screens/PersonalInfo").then((m) => ({ default: m.PersonalInfo })));
 
@@ -38,12 +32,7 @@ const DEFAULT_SCREEN = "overview";
 const VALID_SCREEN_IDS = new Set([
   "overview",
   "channel",
-  "question",
   "keyword",
-  "performance",
-  "conversation",
-  "todo",
-  "ai_intervention",
   "sentiment",
   "aiinsights",
   "chartbuilder",
@@ -51,18 +40,12 @@ const VALID_SCREEN_IDS = new Set([
   "users",
   "profile",
   "personalinfo",
-  "faq",
   "chatbot_sheet",
 ]);
 const PATH_TO_SCREEN = new Map([
   ["/overview", "overview"],
   ["/channel", "channel"],
-  ["/question", "question"],
   ["/keyword", "keyword"],
-  ["/performance", "performance"],
-  ["/conversation", "conversation"],
-  ["/todo", "todo"],
-  ["/ai-intervention", "ai_intervention"],
   ["/sentiment", "sentiment"],
   ["/ai-insights", "aiinsights"],
   ["/aiinsights", "aiinsights"],
@@ -73,7 +56,6 @@ const PATH_TO_SCREEN = new Map([
   ["/profile", "profile"],
   ["/personal-info", "personalinfo"],
   ["/personalinfo", "personalinfo"],
-  ["/faq", "faq"],
   ["/chatbot-sheet", "chatbot_sheet"],
   ["/chatbot_sheet", "chatbot_sheet"],
 ]);
@@ -147,11 +129,13 @@ function MainApp() {
   const [activeScreen, setActiveScreen] = useState(getInitialActiveScreen);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshVersion, setRefreshVersion] = useState(0);
   const [screenSwitching, setScreenSwitching] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(() => formatTime(new Date()));
 
   const triggerRefresh = useCallback(() => {
     setIsRefreshing(true);
+    setRefreshVersion((version) => version + 1);
     setTimeout(() => {
       setIsRefreshing(false);
       setLastUpdated(formatTime(new Date()));
@@ -196,22 +180,12 @@ function MainApp() {
         return <Overview {...baseProps} isRefreshing={isRefreshing} lastUpdated={lastUpdated} onManualRefresh={triggerRefresh} />;
       case "channel":
         return <ChannelAnalysis {...baseProps} />;
-      case "question":
-        return <QuestionAnalysis {...baseProps} />;
       case "keyword":
         return <KeywordAnalysis {...baseProps} />;
-      // case "performance": // Tạm ẩn trang Hiệu suất
-      //   return <PerformanceAnalysis {...baseProps} />;
-      case "conversation":
-        return <MyWorkspace filters={filters} />;
-      case "todo":
-        return <UrgentCenter filters={filters} />;
-      case "ai_intervention":
-        return <AIMonitoring filters={filters} />;
       case "sentiment":
         return <SentimentAnalysis {...baseProps} />;
       case "aiinsights":
-        return <AIInsights {...baseProps} />;
+        return <AIInsights {...baseProps} refreshVersion={refreshVersion} />;
       case "chartbuilder":
         return <ChartBuilder {...baseProps} />;
       case "settings":
@@ -221,8 +195,6 @@ function MainApp() {
         return <Settings defaultSection="profile" />;
       case "personalinfo":
         return <PersonalInfo onNavigate={handleNavigate} />;
-      case "faq":
-        return <FAQ />;
       case "chatbot_sheet":
         return <SheetChatbot />;
       default:
@@ -230,7 +202,7 @@ function MainApp() {
     }
   };
 
-  const isFullHeight = activeScreen === "conversation" || activeScreen === "todo" || activeScreen === "ai_intervention" || activeScreen === "chartbuilder" || activeScreen === "chatbot_sheet" || activeScreen === "faq" || activeScreen === "personalinfo";
+  const isFullHeight = activeScreen === "chartbuilder" || activeScreen === "chatbot_sheet" || activeScreen === "personalinfo";
 
   return (
     <div

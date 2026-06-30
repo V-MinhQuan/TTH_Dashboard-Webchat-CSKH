@@ -9,6 +9,7 @@ import {
   useOptionalGlobalFilters,
   type FilterValues,
 } from "../context/GlobalFilterContext";
+import { TOPIC_FILTER_OPTIONS } from "../constants/topicTaxonomy";
 import { exportDashboardData, type ExportFormat } from "../services/exportService";
 import { getDateParamsFromFilters } from "../utils/dateFilters";
 import "../../styles/globals.css";
@@ -37,9 +38,7 @@ export interface FilterPanelProps {
 }
 
 const dateRanges = ["30 ngày qua", "7 ngày qua", "Hôm nay", "Tháng này", "Quý này", "Tùy chỉnh"];
-const fallbackTopics: readonly FilterCatalogOption[] = Object.freeze([
-  "TOEIC", "VSTEP", "Chuẩn đầu ra ngoại ngữ", "Tin học / MOS / IC3", "Thủ tục nhập học", "Đăng ký học phần", "Lịch thi", "Khác",
-].map((label) => Object.freeze({ value: label, label, available: true })));
+const fallbackTopics: readonly FilterCatalogOption[] = Object.freeze(TOPIC_FILTER_OPTIONS.map((option) => Object.freeze(option)));
 const conversationStatuses = [ALL, "Chờ xử lý", "Đang tư vấn / Chờ phản hồi", "Hoàn thành"];
 const aiStatuses = [ALL, "AI trả lời thành công", FAILED_AI_STATUS];
 
@@ -112,7 +111,10 @@ function textOptions(options: readonly string[]): readonly FilterCatalogOption[]
 
 function normalizeFilters(filters: FilterValues): FilterValues {
   const merged = { ...defaultFilterValues, ...filters };
-  return { ...merged, aiFailureType: ALL };
+  return {
+    ...merged,
+    aiFailureType: ALL,
+  };
 }
 
 type ActiveFilterKey = "dateRange" | "channel" | "topic" | "conversationStatus" | "aiStatus";

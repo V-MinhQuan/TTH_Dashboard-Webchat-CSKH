@@ -6,6 +6,7 @@ from uuid import UUID
 
 from app.config.chart_builder_catalog import get_dataset_catalog
 from app.core.config import get_settings
+from app.core.topic_taxonomy import canonical_topic_label, topic_filter_aliases
 from app.db.session import execute_all, execute_one, get_connection
 from app.repositories.display_filters import valid_analytics_condition, valid_message_condition
 from app.schemas.chart_builder import ChartDataRequest, SavedChartConfigCreate
@@ -405,8 +406,12 @@ class ChartBuilderRepository:
             conditions.append("a.source = ?")
             params.append(filters.channel)
         if include_topic and filters.topic:
-            conditions.append("a.detectedTopics LIKE ?")
-            params.append(f'%"{filters.topic}"%')
+            topic_conditions = []
+            for alias in topic_filter_aliases(filters.topic):
+                topic_conditions.append("a.detectedTopics LIKE ?")
+                params.append(f'%"{alias}"%')
+            if topic_conditions:
+                conditions.append("(" + " OR ".join(topic_conditions) + ")")
         return ChartBuilderRepository._where(conditions), tuple(params)
 
     @staticmethod
@@ -458,6 +463,7 @@ class ChartBuilderRepository:
         for row in rows:
             sentiment = str(row.get("sentimentLabel") or "neutral")
             for topic in self._json_array(row.get("detectedTopics")):
+                topic = canonical_topic_label(topic, default=topic)
                 item = stats.setdefault(topic, {"positive": 0, "neutral": 0, "negative": 0, "total": 0})
                 item[sentiment if sentiment in item else "neutral"] += 1
                 item["total"] += 1
@@ -486,7 +492,7 @@ class ChartBuilderRepository:
             elif request.group_by == "sentiment":
                 values = [str(row.get("sentimentLabel") or "neutral")] if keywords else []
             else:
-                values = self._json_array(row.get("detectedTopics")) if keywords else []
+                values = [canonical_topic_label(topic, default=topic) for topic in self._json_array(row.get("detectedTopics"))] if keywords else []
             for value in values:
                 counts[value] = counts.get(value, 0) + 1
         return [
@@ -502,6 +508,7 @@ class ChartBuilderRepository:
         counts: Dict[str, int] = {}
         for row in rows:
             for topic in self._json_array(row.get("detectedTopics")):
+                topic = canonical_topic_label(topic, default=topic)
                 counts[topic] = counts.get(topic, 0) + 1
         total = sum(counts.values())
         return [

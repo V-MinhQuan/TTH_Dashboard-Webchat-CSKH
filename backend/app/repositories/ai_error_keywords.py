@@ -44,6 +44,33 @@ class DuplicateAiErrorKeywordRecordError(RuntimeError):
     pass
 
 
+class AiErrorKeywordSchemaUnavailableError(RuntimeError):
+    pass
+
+
+def _is_missing_ai_keyword_table(exc: Exception) -> bool:
+    details = " ".join(str(item) for item in getattr(exc, "args", ())) or str(exc)
+    return "AiErrorKeywords" in details and (
+        "Invalid object name" in details
+        or "208" in details
+    )
+
+
+def _raise_if_schema_unavailable(exc: Exception) -> None:
+    if _is_missing_ai_keyword_table(exc):
+        raise AiErrorKeywordSchemaUnavailableError(
+            "Bảng dbo.AiErrorKeywords chưa được khởi tạo."
+        ) from exc
+
+
+def _with_schema_guard(operation: Callable[[], Any]) -> Any:
+    try:
+        return operation()
+    except Exception as exc:
+        _raise_if_schema_unavailable(exc)
+        raise
+
+
 def _is_unique_keyword_violation(exc: pyodbc.IntegrityError) -> bool:
     details = " ".join(str(item) for item in exc.args)
     return any(
@@ -110,7 +137,7 @@ class AiErrorKeywordRepository:
             OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
         """
         with self._connection_factory() as conn:
-            return execute_all(conn, query, params)
+            return _with_schema_guard(lambda: execute_all(conn, query, params))
 
     def count(
         self,
@@ -127,19 +154,23 @@ class AiErrorKeywordRepository:
             care_hub=care_hub,
         )
         with self._connection_factory() as conn:
-            row = execute_one(
-                conn,
-                f"SELECT COUNT_BIG(*) AS total FROM dbo.AiErrorKeywords {where_clause}",
-                params,
+            row = _with_schema_guard(
+                lambda: execute_one(
+                    conn,
+                    f"SELECT COUNT_BIG(*) AS total FROM dbo.AiErrorKeywords {where_clause}",
+                    params,
+                )
             )
         return int(row.get("total") or 0)
 
     def get_by_id(self, keyword_id: UUID) -> dict[str, Any]:
         with self._connection_factory() as conn:
-            return execute_one(
-                conn,
-                f"SELECT {_SELECT_COLUMNS} FROM dbo.AiErrorKeywords WHERE Id = ?",
-                (keyword_id,),
+            return _with_schema_guard(
+                lambda: execute_one(
+                    conn,
+                    f"SELECT {_SELECT_COLUMNS} FROM dbo.AiErrorKeywords WHERE Id = ?",
+                    (keyword_id,),
+                )
             )
 
     def find_by_normalized_keyword(
@@ -155,14 +186,16 @@ class AiErrorKeywordRepository:
             else (normalized_keyword,)
         )
         with self._connection_factory() as conn:
-            return execute_one(
-                conn,
-                f"""
-                    SELECT {_SELECT_COLUMNS}
-                    FROM dbo.AiErrorKeywords
-                    WHERE KeywordNormalized = ?{exclusion}
-                """,
-                params,
+            return _with_schema_guard(
+                lambda: execute_one(
+                    conn,
+                    f"""
+                        SELECT {_SELECT_COLUMNS}
+                        FROM dbo.AiErrorKeywords
+                        WHERE KeywordNormalized = ?{exclusion}
+                    """,
+                    params,
+                )
             )
 
     def create(
@@ -174,25 +207,27 @@ class AiErrorKeywordRepository:
     ) -> dict[str, Any]:
         try:
             with self._connection_factory() as conn:
-                row = execute_one(
-                    conn,
-                    f"""
-                        INSERT INTO dbo.AiErrorKeywords
-                            (Keyword, KeywordNormalized, ErrorGroup, Topic, CareHub,
-                             Description, Status, CreatedBy)
-                        OUTPUT {_OUTPUT_COLUMNS}
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        payload.keyword,
-                        normalized_keyword,
-                        payload.error_group.value,
-                        payload.topic,
-                        payload.care_hub,
-                        payload.description,
-                        payload.status.value,
-                        creator,
-                    ),
+                row = _with_schema_guard(
+                    lambda: execute_one(
+                        conn,
+                        f"""
+                            INSERT INTO dbo.AiErrorKeywords
+                                (Keyword, KeywordNormalized, ErrorGroup, Topic, CareHub,
+                                 Description, Status, CreatedBy)
+                            OUTPUT {_OUTPUT_COLUMNS}
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            payload.keyword,
+                            normalized_keyword,
+                            payload.error_group.value,
+                            payload.topic,
+                            payload.care_hub,
+                            payload.description,
+                            payload.status.value,
+                            creator,
+                        ),
+                    )
                 )
                 conn.commit()
                 return row
@@ -210,31 +245,33 @@ class AiErrorKeywordRepository:
     ) -> dict[str, Any]:
         try:
             with self._connection_factory() as conn:
-                row = execute_one(
-                    conn,
-                    f"""
-                        UPDATE dbo.AiErrorKeywords
-                        SET Keyword = ?,
-                            KeywordNormalized = ?,
-                            ErrorGroup = ?,
-                            Topic = ?,
-                            CareHub = ?,
-                            Description = ?,
-                            Status = ?,
-                            UpdatedAt = SYSUTCDATETIME()
-                        OUTPUT {_OUTPUT_COLUMNS}
-                        WHERE Id = ?
-                    """,
-                    (
-                        payload.keyword,
-                        normalized_keyword,
-                        payload.error_group.value,
-                        payload.topic,
-                        payload.care_hub,
-                        payload.description,
-                        payload.status.value,
-                        keyword_id,
-                    ),
+                row = _with_schema_guard(
+                    lambda: execute_one(
+                        conn,
+                        f"""
+                            UPDATE dbo.AiErrorKeywords
+                            SET Keyword = ?,
+                                KeywordNormalized = ?,
+                                ErrorGroup = ?,
+                                Topic = ?,
+                                CareHub = ?,
+                                Description = ?,
+                                Status = ?,
+                                UpdatedAt = SYSUTCDATETIME()
+                            OUTPUT {_OUTPUT_COLUMNS}
+                            WHERE Id = ?
+                        """,
+                        (
+                            payload.keyword,
+                            normalized_keyword,
+                            payload.error_group.value,
+                            payload.topic,
+                            payload.care_hub,
+                            payload.description,
+                            payload.status.value,
+                            keyword_id,
+                        ),
+                    )
                 )
                 conn.commit()
                 return row

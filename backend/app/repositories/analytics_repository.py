@@ -4,6 +4,7 @@ import unicodedata
 from typing import Any, Callable, Dict, List, Tuple
 
 from app.db.session import execute_all, execute_one, get_connection
+from app.core.topic_taxonomy import topic_filter_aliases
 from app.repositories.display_filters import conversation_status_case, valid_analytics_condition
 from app.repositories.schema_inspector import inspect_message_analytics_columns
 from app.utils.date_filters import build_date_filter
@@ -18,6 +19,72 @@ _CUSTOMER_INFO_APPLY = """
       WHERE ui.SenderId = c.CustomerId AND ui.Source = c.Source
     ) customerInfo
 """
+
+
+def _clamped_int(value: Any, default: int, minimum: int, maximum: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = default
+    return max(minimum, min(maximum, parsed))
+
+
+def _escape_like(value: str) -> str:
+    return (
+        str(value)
+        .replace("~", "~~")
+        .replace("%", "~%")
+        .replace("_", "~_")
+        .replace("[", "~[")
+    )
+
+
+def _clean_keyword_filters(value: Any) -> List[str]:
+    if not value:
+        return []
+    candidates = [value] if isinstance(value, str) else list(value)
+    seen = set()
+    keywords: List[str] = []
+    for item in candidates:
+        keyword = str(item or "").strip()
+        if not keyword:
+            continue
+        key = unicodedata.normalize("NFC", keyword).casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        keywords.append(keyword)
+    return keywords[:25]
+
+
+def _build_text_match_condition(
+    keywords: List[str],
+    *,
+    include_detected_topics: bool = True,
+) -> Tuple[str, List[Any]]:
+    conditions: List[str] = []
+    params: List[Any] = []
+    detected_topic_clause = (
+        "\n              OR ISNULL(a.detectedTopics, N'') LIKE ? ESCAPE '~'"
+        if include_detected_topics
+        else ""
+    )
+    for keyword in keywords:
+        pattern = f"%{_escape_like(keyword)}%"
+        conditions.append(
+            f"""
+            (
+              ISNULL(a.QuestionText, N'') LIKE ? ESCAPE '~'
+              OR ISNULL(a.RawQuestion, N'') LIKE ? ESCAPE '~'
+              OR ISNULL(a.MatchedNegativeKeywords, N'') LIKE ? ESCAPE '~'{detected_topic_clause}
+            )
+            """
+        )
+        params.extend([pattern, pattern, pattern])
+        if include_detected_topics:
+            params.append(pattern)
+    return " OR ".join(f"({condition})" for condition in conditions), params
+
 
 class AnalyticsRepository:
     def __init__(self, connection_factory: Callable = get_connection):
@@ -36,6 +103,7 @@ class AnalyticsRepository:
                 f"""
                 SELECT
                   COUNT(*) AS total,
+                  COUNT(DISTINCT a.conversationId) AS totalConversations,
                   SUM(CASE WHEN a.sentimentLabel = 'positive' THEN 1 ELSE 0 END) AS positive,
                   SUM(CASE WHEN a.sentimentLabel = 'neutral' THEN 1 ELSE 0 END) AS neutral,
                   SUM(CASE WHEN a.sentimentLabel = 'negative' THEN 1 ELSE 0 END) AS negative,
@@ -821,6 +889,112 @@ class AnalyticsRepository:
             else:
                 where = f"WHERE {condition_str}"
 
+            keywords = _clean_keyword_filters(filters.get("keywords"))
+            scope_keywords = _clean_keyword_filters(filters.get("scopeKeywords"))
+            exclude_keywords = _clean_keyword_filters(filters.get("excludeKeywords"))
+            candidate_limit = _clamped_int(filters.get("candidateLimit"), 120, 1, 300)
+            if keywords:
+                keyword_condition_sql, keyword_params = _build_text_match_condition(keywords)
+                filter_conditions = [f"({keyword_condition_sql})"]
+                filter_params = list(keyword_params)
+                if scope_keywords:
+                    scope_condition_sql, scope_params = _build_text_match_condition(scope_keywords)
+                    filter_conditions.append(f"({scope_condition_sql})")
+                    filter_params.extend(scope_params)
+                if exclude_keywords:
+                    exclude_condition_sql, exclude_params = _build_text_match_condition(
+                        exclude_keywords,
+                        include_detected_topics=False,
+                    )
+                    filter_conditions.append(f"NOT ({exclude_condition_sql})")
+                    filter_params.extend(exclude_params)
+                scoped_filter_sql = " AND ".join(filter_conditions)
+
+                rows = execute_all(
+                    conn,
+                    f"""
+                    WITH ValidMessages AS (
+                        SELECT
+                          a.id,
+                          a.messageId,
+                          a.source,
+                          a.detectedTopics,
+                          a.matchedNegativeKeywords AS MatchedNegativeKeywords,
+                          a.messageAt,
+                          {standardized_question_expr} AS StandardizedQuestion,
+                          NULLIF(LTRIM(RTRIM(cmsg.TextContent)), '') AS RawQuestion,
+                          NULLIF(LTRIM(RTRIM(mlog.TextContent)), '') AS SuggestedAnswer
+                        FROM dbo.WebChat_MessageAnalytics a
+                        LEFT JOIN dbo.WebChat_Conversations c ON c.Id = a.conversationId
+                        LEFT JOIN dbo.WebChat_MessageLogs mlog ON mlog.id_webchat_messagelogs = a.messageId
+                        {extra_join}
+                        OUTER APPLY (
+                            SELECT TOP 1 m.TextContent
+                            FROM dbo.WebChat_MessageLogs m
+                            WHERE m.Source = c.Source AND m.SenderId = c.CustomerId AND m.FromHost = 0 AND m.SentAt <= a.messageAt
+                            ORDER BY m.SentAt DESC
+                        ) cmsg
+                        {where}
+                    ),
+                    QuestionMessages AS (
+                        SELECT
+                          *,
+                          NULLIF(LEFT(LTRIM(RTRIM(ISNULL(a.StandardizedQuestion, a.RawQuestion))), 4000), N'') AS QuestionText
+                        FROM ValidMessages a
+                        WHERE a.StandardizedQuestion IS NOT NULL
+                           OR (
+                             a.RawQuestion IS NOT NULL
+                             AND (
+                               CHARINDEX(NCHAR(63), a.RawQuestion) > 0
+                               OR CHARINDEX(N'phải không', LOWER(a.RawQuestion)) > 0
+                               OR CHARINDEX(N'đúng không', LOWER(a.RawQuestion)) > 0
+                               OR CHARINDEX(N'làm sao', LOWER(a.RawQuestion)) > 0
+                               OR CHARINDEX(N'như thế nào', LOWER(a.RawQuestion)) > 0
+                               OR CHARINDEX(N'tại sao', LOWER(a.RawQuestion)) > 0
+                               OR CHARINDEX(N'thế nào', LOWER(a.RawQuestion)) > 0
+                               OR CHARINDEX(N'sao ', LOWER(a.RawQuestion)) > 0
+                               OR CHARINDEX(N'vậy ạ', LOWER(a.RawQuestion)) > 0
+                               OR CHARINDEX(N'khi nào', LOWER(a.RawQuestion)) > 0
+                               OR CHARINDEX(N'bao giờ', LOWER(a.RawQuestion)) > 0
+                               OR CHARINDEX(N'bao nhiêu', LOWER(a.RawQuestion)) > 0
+                               OR CHARINDEX(N'ở đâu', LOWER(a.RawQuestion)) > 0
+                               OR CHARINDEX(N'được không', LOWER(a.RawQuestion)) > 0
+                               OR CHARINDEX(N'hay không', LOWER(a.RawQuestion)) > 0
+                               OR CHARINDEX(N'là gì', LOWER(a.RawQuestion)) > 0
+                               OR CHARINDEX(N'cần những gì', LOWER(a.RawQuestion)) > 0
+                               OR (CHARINDEX(N'có ', LOWER(a.RawQuestion)) > 0 AND CHARINDEX(N' không', LOWER(a.RawQuestion)) > 0)
+                             )
+                           )
+                    ),
+                    FilteredMessages AS (
+                        SELECT *
+                        FROM QuestionMessages a
+                        WHERE a.QuestionText IS NOT NULL
+                          AND ({scoped_filter_sql})
+                    ),
+                    GroupedQuestions AS (
+                        SELECT TOP {candidate_limit}
+                          a.QuestionText AS question,
+                          COUNT(*) AS freq,
+                          MAX(a.id) AS sample_id
+                        FROM FilteredMessages a
+                        GROUP BY a.QuestionText
+                        ORDER BY freq DESC
+                    )
+                    SELECT
+                      fm.detectedTopics,
+                      fm.source,
+                      g.freq,
+                      g.question,
+                      fm.SuggestedAnswer AS suggestedAnswer
+                    FROM GroupedQuestions g
+                    JOIN FilteredMessages fm ON fm.id = g.sample_id
+                    ORDER BY g.freq DESC
+                    """,
+                    [*params, *filter_params],
+                )
+                return rows
+
             rows = execute_all(
                 conn,
                 f"""
@@ -850,24 +1024,24 @@ class AnalyticsRepository:
                        OR (
                          a.RawQuestion IS NOT NULL
                          AND (
-                           a.RawQuestion LIKE N'%?%'
-                           OR LOWER(a.RawQuestion) LIKE N'%phải không%'
-                           OR LOWER(a.RawQuestion) LIKE N'%đúng không%'
-                           OR LOWER(a.RawQuestion) LIKE N'%làm sao%'
-                           OR LOWER(a.RawQuestion) LIKE N'%như thế nào%'
-                           OR LOWER(a.RawQuestion) LIKE N'%tại sao%'
-                           OR LOWER(a.RawQuestion) LIKE N'%thế nào%'
-                           OR LOWER(a.RawQuestion) LIKE N'%sao %'
-                           OR LOWER(a.RawQuestion) LIKE N'%vậy ạ%'
-                           OR LOWER(a.RawQuestion) LIKE N'%khi nào%'
-                           OR LOWER(a.RawQuestion) LIKE N'%bao giờ%'
-                           OR LOWER(a.RawQuestion) LIKE N'%bao nhiêu%'
-                           OR LOWER(a.RawQuestion) LIKE N'%ở đâu%'
-                           OR LOWER(a.RawQuestion) LIKE N'%được không%'
-                           OR LOWER(a.RawQuestion) LIKE N'%hay không%'
-                           OR LOWER(a.RawQuestion) LIKE N'%là gì%'
-                           OR LOWER(a.RawQuestion) LIKE N'%cần những gì%'
-                           OR LOWER(a.RawQuestion) LIKE N'%có % không%'
+                           CHARINDEX(NCHAR(63), a.RawQuestion) > 0
+                           OR CHARINDEX(N'phải không', LOWER(a.RawQuestion)) > 0
+                           OR CHARINDEX(N'đúng không', LOWER(a.RawQuestion)) > 0
+                           OR CHARINDEX(N'làm sao', LOWER(a.RawQuestion)) > 0
+                           OR CHARINDEX(N'như thế nào', LOWER(a.RawQuestion)) > 0
+                           OR CHARINDEX(N'tại sao', LOWER(a.RawQuestion)) > 0
+                           OR CHARINDEX(N'thế nào', LOWER(a.RawQuestion)) > 0
+                           OR CHARINDEX(N'sao ', LOWER(a.RawQuestion)) > 0
+                           OR CHARINDEX(N'vậy ạ', LOWER(a.RawQuestion)) > 0
+                           OR CHARINDEX(N'khi nào', LOWER(a.RawQuestion)) > 0
+                           OR CHARINDEX(N'bao giờ', LOWER(a.RawQuestion)) > 0
+                           OR CHARINDEX(N'bao nhiêu', LOWER(a.RawQuestion)) > 0
+                           OR CHARINDEX(N'ở đâu', LOWER(a.RawQuestion)) > 0
+                           OR CHARINDEX(N'được không', LOWER(a.RawQuestion)) > 0
+                           OR CHARINDEX(N'hay không', LOWER(a.RawQuestion)) > 0
+                           OR CHARINDEX(N'là gì', LOWER(a.RawQuestion)) > 0
+                           OR CHARINDEX(N'cần những gì', LOWER(a.RawQuestion)) > 0
+                           OR (CHARINDEX(N'có ', LOWER(a.RawQuestion)) > 0 AND CHARINDEX(N' không', LOWER(a.RawQuestion)) > 0)
                          )
                        )
                 ),
@@ -918,14 +1092,18 @@ class AnalyticsRepository:
             params.append(sentiment)
         topic = filters.get("topic")
         if topic:
-            conditions.append("""
-                (
-                  LTRIM(RTRIM(a.detectedTopics)) = ?
-                  OR a.detectedTopics LIKE ? ESCAPE '~'
-                )
-            """)
-            escaped_topic = str(topic).replace("~", "~~").replace("%", "~%").replace("_", "~_").replace("[", "~[")
-            params.extend([topic, f'%"{escaped_topic}"%'])
+            topic_conditions = []
+            for alias in topic_filter_aliases(topic):
+                escaped_topic = _escape_like(alias)
+                topic_conditions.append("""
+                    (
+                      LTRIM(RTRIM(a.detectedTopics)) = ?
+                      OR a.detectedTopics LIKE ? ESCAPE '~'
+                    )
+                """)
+                params.extend([alias, f'%"{escaped_topic}"%'])
+            if topic_conditions:
+                conditions.append("(" + " OR ".join(topic_conditions) + ")")
         issue_type = filters.get("issueType")
         if issue_type:
             conditions.append("a.issueType = ?" if columns.get("issueType") else "1 = 0")

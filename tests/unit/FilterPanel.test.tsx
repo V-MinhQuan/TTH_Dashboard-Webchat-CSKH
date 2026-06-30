@@ -82,38 +82,23 @@ describe("FilterPanel", () => {
     });
   });
 
-  it("shows a canonical dependent failure filter labeled '8 nhóm' and clears it immutably when the parent changes", async () => {
+  it("uses a single global failed-AI filter without exposing detailed failure types", async () => {
     const user = userEvent.setup();
     const onFiltersChange = renderPanel();
 
-    // The AI status combobox label is "Trạng thái AI"
     await user.selectOptions(
       screen.getByRole("combobox", { name: "Trạng thái AI" }),
       "AI trả lời thất bại",
     );
 
-    // After selecting "AI trả lời thất bại", the subfilter appears with label "Loại lỗi AI (8 nhóm)"
-    expect(screen.getByRole("combobox", { name: "Loại lỗi AI (8 nhóm)" })).toBeInTheDocument();
-
-    // Select one of the 8 canonical failure types
-    await user.selectOptions(
-      screen.getByRole("combobox", { name: "Loại lỗi AI (8 nhóm)" }),
-      "AI không chắc chắn",
-    );
-
-    // Switching to success hides the subfilter
-    await user.selectOptions(
-      screen.getByRole("combobox", { name: "Trạng thái AI" }),
-      "AI trả lời thành công",
-    );
-
     expect(screen.queryByRole("combobox", { name: "Loại lỗi AI (8 nhóm)" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "AI không chắc chắn" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Áp dụng bộ lọc" }));
 
     expect(onFiltersChange).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        aiStatus: "AI trả lời thành công",
+        aiStatus: "AI trả lời thất bại",
         aiFailureType: "Tất cả",
       }),
     );

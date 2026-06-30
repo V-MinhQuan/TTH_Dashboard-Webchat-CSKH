@@ -2,16 +2,20 @@ import unicodedata
 import json
 import time
 from datetime import datetime, timedelta
+from app.core.topic_taxonomy import (
+    ORDERED_TOPIC_GROUP_IDS,
+    TOPIC_GROUPS,
+    TOPIC_GROUP_BY_ID,
+    canonical_topic_id,
+)
 from app.keywords.repository import keyword_repository
 
 GROUP_META = {
-    "toeic":      {"name": "TOEIC",                    "color": "#003865"},
-    "vstep":      {"name": "VSTEP",                    "color": "#1565C0"},
-    "tinhoc":     {"name": "Tin học / MOS / IC3",       "color": "#42A5F5"},
-    "chuandaura": {"name": "Chuẩn đầu ra / Chứng chỉ", "color": "#0288D1"},
+    group["id"]: {"name": group["name"], "color": group["color"]}
+    for group in TOPIC_GROUPS
 }
 
-ORDERED_GROUP_IDS = ["toeic", "vstep", "tinhoc", "chuandaura"]
+ORDERED_GROUP_IDS = ORDERED_TOPIC_GROUP_IDS
 KEYWORD_CACHE_TTL_SECONDS = 180
 _keyword_cache = {}
 
@@ -68,6 +72,10 @@ def matches_group_topic(topic: str, group: dict) -> bool:
     normalized_topic = normalize_keyword_filter(topic)
     if not normalized_topic or normalized_topic == "tat ca":
         return True
+
+    requested_group_id = canonical_topic_id(topic)
+    if requested_group_id:
+        return requested_group_id == group.get("id")
 
     group_name = GROUP_META.get(group.get("id"), {}).get("name", "")
     normalized_group_name = normalize_keyword_filter(group_name)
@@ -386,6 +394,7 @@ class KeywordService:
         results = []
         for group_id in ORDERED_GROUP_IDS:
             meta = GROUP_META[group_id]
+            group_scope_terms = TOPIC_GROUP_BY_ID.get(group_id, {}).get("scope_terms", [])
             keywords = [k for k in group_map.get(group_id, []) if k.get("status") == "active"]
 
             keywords_with_count = [
@@ -425,6 +434,7 @@ class KeywordService:
                 "changeRate": change_rate,
                 "aiFailed": ai_failed_totals.get(group_id, 0),
                 "keywords": top_keywords,
+                "scopeTerms": group_scope_terms,
                 "totalKeywords": len(sorted_keywords)
             })
 

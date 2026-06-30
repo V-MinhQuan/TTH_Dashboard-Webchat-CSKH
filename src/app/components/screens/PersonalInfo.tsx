@@ -90,7 +90,7 @@ export function PersonalInfo({ onNavigate }: PersonalInfoProps) {
     <div style={{ padding: "28px", maxWidth: "760px", margin: "0 auto" }}>
       {/* Back button */}
       <button
-        onClick={() => onNavigate(isManager ? "overview" : "conversation")}
+        onClick={() => onNavigate("overview")}
         style={{ display: "flex", alignItems: "center", gap: "6px", background: "none", border: "none", cursor: "pointer", color: "rgba(0,56,101,0.5)", fontSize: "13px", fontWeight: 500, marginBottom: "24px", padding: 0 }}
         onMouseEnter={(e) => (e.currentTarget as HTMLButtonElement).style.color = NAVY}
         onMouseLeave={(e) => (e.currentTarget as HTMLButtonElement).style.color = "rgba(0,56,101,0.5)"}
@@ -155,7 +155,7 @@ export function PersonalInfo({ onNavigate }: PersonalInfoProps) {
             <h3 style={{ fontSize: "14px", fontWeight: 700, color: NAVY, margin: 0 }}>Quyền truy cập hệ thống</h3>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-            {["Tổng quan", "Phân tích kênh", "Quản lý hội thoại", "AI Insights", "Keywords & Sentiment", "Thư viện phản hồi", "Cài đặt hệ thống", "Quản lý người dùng"].map(perm => (
+            {["Tổng quan", "Phân tích kênh", "Theo dõi cảnh báo hội thoại", "AI Insights", "Keywords & Sentiment", "Thư viện phản hồi", "Cài đặt hệ thống", "Quản lý người dùng"].map(perm => (
               <div key={perm} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: NAVY }}>
                 <CheckCircle size={14} style={{ color: "#228A61", flexShrink: 0 }} />
                 {perm}

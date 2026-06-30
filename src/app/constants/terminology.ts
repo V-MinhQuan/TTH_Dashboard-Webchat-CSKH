@@ -6,7 +6,6 @@ export const TERMINOLOGY = {
     // Admin page titles
     overview: "Tổng quan hệ thống",
     channel: "Phân tích theo kênh",
-    conversation: "Quản lý hội thoại",
     aiinsights: "Phân tích AI",
     keyword: "Phân tích Keywords",
     sentiment: "Phân tích cảm xúc",
@@ -15,16 +14,12 @@ export const TERMINOLOGY = {
     settings: "Cài đặt hệ thống",
 
     // Staff page titles
-    conversation_staff: "Hội thoại của tôi",
-    faq_staff: "FAQ",
     chatbot_sheet_staff: "Thư viện phản hồi của tôi",
-    performance_staff: "Hiệu suất cá nhân",
     profile_staff: "Hồ sơ cá nhân",
   },
   MENU_LABELS: {
     overview: "Tổng quan",
     channel: "Kênh",
-    conversation: "Hội thoại",
     aiinsights: "Phân tích AI",
     keyword: "Keywords",
     sentiment: "Cảm xúc",
@@ -33,8 +28,6 @@ export const TERMINOLOGY = {
     settings: "Cài đặt",
 
     // Staff extra
-    faq: "FAQ",
-    performance: "Hiệu suất",
     profile: "Hồ sơ",
   },
   ROLES: {

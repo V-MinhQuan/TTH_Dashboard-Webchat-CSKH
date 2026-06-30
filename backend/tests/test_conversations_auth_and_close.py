@@ -218,14 +218,10 @@ def test_list_query_parameterizes_filters_and_avoids_duplicate_customer_join():
         assert "Nguyễn" not in query
         assert "negative" not in query
         assert "TOEIC" not in query
-    assert count_params == [
-        "Facebook",
-        "pending",
-        "negative",
-        "%TOEIC%",
-        "%Nguyễn%",
-        "%Nguyễn%",
-    ]
+    assert count_params[:3] == ["Facebook", "pending", "negative"]
+    assert "%TOEIC%" in count_params[3:-2]
+    assert "%lịch thi TOEIC%" in count_params[3:-2]
+    assert count_params[-2:] == ["%Nguyễn%", "%Nguyễn%"]
     assert list_params == [*count_params, 0, 20]
 
 

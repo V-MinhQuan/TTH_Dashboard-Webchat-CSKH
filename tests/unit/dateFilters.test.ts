@@ -33,6 +33,7 @@ describe("date filter mapping", () => {
       topic: "TOEIC",
       conversationStatus: "Chờ xử lý",
       aiStatus: "AI trả lời thất bại",
+      aiFailureType: "AI không chắc chắn",
     })).toEqual({
       startDate: "2024-01-23",
       endDate: "2024-01-24",

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Callable, Dict, List, Tuple
 
 from app.db.session import execute_all, execute_one, get_connection
+from app.core.topic_taxonomy import topic_filter_aliases
 from app.repositories.display_filters import (
     conversation_status_case,
     valid_conversation_condition,
@@ -323,8 +324,12 @@ class ConversationRepository:
 
         topic = filters.get("topic")
         if topic:
-            conditions.append("latestAnalytics.detectedTopics LIKE ?")
-            params.append(f"%{topic}%")
+            topic_conditions = []
+            for alias in topic_filter_aliases(topic):
+                topic_conditions.append("latestAnalytics.detectedTopics LIKE ?")
+                params.append(f"%{alias}%")
+            if topic_conditions:
+                conditions.append("(" + " OR ".join(topic_conditions) + ")")
 
         search = filters.get("search")
         if search:

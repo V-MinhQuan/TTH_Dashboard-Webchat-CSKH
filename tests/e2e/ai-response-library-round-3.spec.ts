@@ -1,32 +1,33 @@
 import { expect, Page, test } from "@playwright/test";
 import { injectAuth } from "./fixtures/auth";
 
-test.describe("AI monitoring, thư viện phản hồi và từ khóa lỗi AI", () => {
-  test("AI Monitoring hiển thị danh tính an toàn và chuyển đầy đủ ngữ cảnh lỗi vào ghi chú nội bộ", async ({ page }) => {
+test.describe("AI insights và thư viện phản hồi", () => {
+  test("AI Insights hiển thị hội thoại lỗi và chuyển ngữ cảnh vào form phản hồi", async ({ page }) => {
     const createdRows: unknown[] = [];
-    await injectAuth(page, "ai_intervention");
-    await mockAiMonitoringApi(page, createdRows);
+    await injectAuth(page, "aiinsights");
+    await mockAiInsightsApi(page, createdRows);
 
     await page.goto("/");
 
-    await expect(page.getByText("Nguyễn Minh Anh", { exact: true })).toBeVisible();
-    await expect(page.getByText("KH ••••1234", { exact: true })).toBeVisible();
-    await expect(page.getByText("AI có nguy cơ tự tạo thông tin", { exact: true }).first()).toBeVisible();
+    const failedRow = page.getByRole("row", { name: /Lịch thi gần nhất là ngày nào\?.*AI có nguy cơ tự tạo thông tin/ });
+    await expect(failedRow.getByText("Nguyễn Minh Anh", { exact: true })).toBeVisible();
+    await expect(failedRow.getByText("customer-00001234", { exact: true })).toBeVisible();
+    await expect(failedRow.getByText("AI có nguy cơ tự tạo thông tin", { exact: true })).toBeVisible();
 
-    await page.getByRole("button", { name: "Thêm phản hồi" }).click();
+    await failedRow.getByRole("button", { name: "Thêm FAQ" }).click();
     const modal = page.getByRole("dialog", { name: "Thêm phản hồi" });
     await expect(modal).toBeVisible();
-    await expect(modal.getByLabel("Nguồn gốc lỗi sai")).toHaveValue("AI có nguy cơ tự tạo thông tin");
+    await expect(modal.getByLabel("Nguồn")).toHaveValue("Khác");
+    await expect(modal.getByLabel("Câu hỏi khách hàng")).toHaveValue("Lịch thi gần nhất là ngày nào?");
     await expect(modal.getByLabel("Câu trả lời đúng")).toHaveValue("");
     await expect(modal.getByLabel("Ghi chú nội bộ")).toHaveValue(/AI khẳng định lịch thi diễn ra ngày 30\/06\./);
-    await expect(modal.getByLabel("Ghi chú nội bộ")).toHaveValue(/Thông tin lịch thi không có trong cơ sở tri thức\./);
 
     await modal.getByLabel("Câu trả lời đúng").fill("Vui lòng xem lịch thi đã được FLIC công bố chính thức.");
     await modal.getByRole("button", { name: "Lưu phản hồi" }).click();
 
     await expect.poll(() => createdRows.length).toBe(1);
     expect(createdRows[0]).toMatchObject({
-      source: "AI có nguy cơ tự tạo thông tin",
+      source: "Khác",
       notes: expect.stringContaining("AI khẳng định lịch thi diễn ra ngày 30/06."),
     });
   });
@@ -38,16 +39,17 @@ test.describe("AI monitoring, thư viện phản hồi và từ khóa lỗi AI",
 
     await page.goto("/");
 
-    await expect(page.getByText("AI có nguy cơ tự tạo thông tin", { exact: true })).toBeVisible();
+    const responseRows = page.locator("tbody");
+    await expect(responseRows.getByText("AI có nguy cơ tự tạo thông tin", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Thêm phản hồi" }).click();
 
     const modal = page.getByRole("dialog", { name: "Thêm phản hồi" });
-    const source = modal.getByLabel("Nguồn gốc lỗi sai");
+    const source = modal.getByLabel("Nguồn");
     await expect(source.locator("option")).toHaveText([
       "Không tìm thấy dữ liệu",
-      "AI không chắc chắn",
-      "Câu hỏi ngoài phạm vi",
-      "AI có nguy cơ tự tạo thông tin",
+      "AI trả lời không chắc chắn",
+      "Lỗi hệ thống",
+      "Khác",
     ]);
     await expect(source.locator("option", { hasText: "Nhân viên đề xuất" })).toHaveCount(0);
 
@@ -56,39 +58,13 @@ test.describe("AI monitoring, thư viện phản hồi và từ khóa lỗi AI",
     await source.selectOption("Không tìm thấy dữ liệu");
     await modal.getByRole("button", { name: "Lưu phản hồi" }).click();
 
-    await expect(page.getByText("Lịch thi VSTEP tháng 7 khi nào?", { exact: true })).toBeVisible();
-    await expect(page.getByText("Không tìm thấy dữ liệu", { exact: true }).last()).toBeVisible();
+    await expect(responseRows.getByText("Lịch thi VSTEP tháng 7 khi nào?", { exact: true })).toBeVisible();
+    await expect(responseRows.getByText("Không tìm thấy dữ liệu", { exact: true })).toBeVisible();
   });
 
-  test("Phân tích từ khóa tạo và lưu từ khóa lỗi AI bằng API round 3", async ({ page }) => {
-    const createdKeywords: unknown[] = [];
-    await injectAuth(page, "keyword");
-    await mockKeywordApi(page, createdKeywords);
-
-    await page.goto("/");
-    await page.getByRole("button", { name: "Thêm từ khóa lỗi AI" }).click();
-
-    const dialog = page.getByRole("dialog", { name: "Thêm từ khóa lỗi AI" });
-    await dialog.getByLabel("Từ khóa lỗi AI").fill("không tìm thấy lịch thi");
-    await dialog.getByLabel("Nhóm lỗi AI").selectOption("Không tìm thấy dữ liệu");
-    await dialog.getByLabel("Chủ đề").fill("Lịch thi");
-    await dialog.getByLabel("Mô tả").fill("AI chưa có dữ liệu lịch thi mới nhất.");
-    await dialog.getByRole("button", { name: "Lưu từ khóa" }).click();
-
-    await expect.poll(() => createdKeywords.length).toBe(1);
-    expect(createdKeywords[0]).toEqual({
-      keyword: "không tìm thấy lịch thi",
-      error_group: "Không tìm thấy dữ liệu",
-      topic: "Lịch thi",
-      care_hub: null,
-      description: "AI chưa có dữ liệu lịch thi mới nhất.",
-      status: "active",
-    });
-    await expect(page.getByText("Đã thêm từ khóa lỗi AI", { exact: true })).toBeVisible();
-  });
 });
 
-async function mockAiMonitoringApi(page: Page, createdRows: unknown[]) {
+async function mockAiInsightsApi(page: Page, createdRows: unknown[]) {
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const pathname = new URL(request.url()).pathname;
@@ -152,32 +128,6 @@ async function mockResponseLibraryApi(page: Page, rows: Array<Record<string, unk
       pageSize: 500,
       stats: { total: rows.length, pending: rows.length, approved: 0, needsEdit: 0, rejected: 0 },
     }));
-  });
-}
-
-async function mockKeywordApi(page: Page, createdKeywords: unknown[]) {
-  await page.route("**/api/**", async (route) => {
-    const request = route.request();
-    const pathname = new URL(request.url()).pathname;
-
-    if (pathname === "/api/ai-error-keywords" && request.method() === "POST") {
-      const payload = JSON.parse(request.postData() || "{}");
-      createdKeywords.push(payload);
-      return route.fulfill(json({ success: true, data: { id: "keyword-1", ...payload } }, 201));
-    }
-    if (pathname === "/api/admin/crm-keywords/groups") {
-      return route.fulfill(json({ success: true, data: [] }));
-    }
-    if (pathname === "/api/admin/crm-keywords/heatmap") {
-      return route.fulfill(json({ success: true, data: [], columns: [] }));
-    }
-    if (pathname === "/api/admin/crm-keywords/trends") {
-      return route.fulfill(json({ success: true, data: [] }));
-    }
-    if (pathname === "/api/analytics/ai/suggested-faqs") {
-      return route.fulfill(json({ success: true, data: [] }));
-    }
-    return route.fulfill(json({ success: true, data: [] }));
   });
 }
 

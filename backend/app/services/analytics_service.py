@@ -1,15 +1,23 @@
 from __future__ import annotations
 
 import json
+import logging
 import unicodedata
+from collections import Counter
 from typing import Any, Dict, Iterable, List
 
+from app.core.topic_taxonomy import canonical_topic_id, canonical_topic_label, normalize_topic_text
 from app.repositories.analytics_repository import AnalyticsRepository
 from app.repositories.schema_inspector import issue_metadata_available
 from app.utils.customer_identity import customer_display_name, identity_text
 
 
 TOPIC_LABELS = {
+    "sat_hach_cntt": "Sát hạch CNTT (Sát hạch Công nghệ thông tin)",
+    "toeic": "TOEIC",
+    "mos": "MOS",
+    "hoc_tieng_anh": "Học Tiếng Anh",
+    "hoc_tin_hoc": "Học Tin học",
     "registration": "Dang ky",
     "schedule": "Lich thi",
     "fee": "Le phi",
@@ -19,6 +27,7 @@ TOPIC_LABELS = {
     "other": "Khac",
     "Khac": "Khac",
 }
+logger = logging.getLogger(__name__)
 
 
 class AnalyticsService:
@@ -34,6 +43,7 @@ class AnalyticsService:
             "neutral": int(row.get("neutral") or 0),
             "negative": int(row.get("negative") or 0),
             "total": int(row.get("total") or 0),
+            "totalConversations": int(row.get("totalConversations") or 0),
         }
         return {
             "summary": summary,
@@ -43,6 +53,8 @@ class AnalyticsService:
                 "negative": _round(row.get("avgNegative")),
             },
             "total": summary["total"],
+            "totalMessages": summary["total"],
+            "totalConversations": summary["totalConversations"],
             "positive": summary["positive"],
             "neutral": summary["neutral"],
             "negative": summary["negative"],
@@ -118,7 +130,7 @@ class AnalyticsService:
             neu = int(row.get("neutral") or 0)
             neg = int(row.get("negative") or 0)
             for topic in _json_array(row.get("detectedTopics")):
-                key = str(topic)
+                key = _topic_label(topic)
                 if key not in topic_stats:
                     topic_stats[key] = {"count": 0, "positive": 0, "neutral": 0, "negative": 0}
                 topic_stats[key]["count"] += count
@@ -128,7 +140,7 @@ class AnalyticsService:
         return [
             {
                 "topicKey": topic,
-                "topicLabel": TOPIC_LABELS.get(topic, topic),
+                "topicLabel": _topic_label(topic),
                 "count": stats["count"],
                 "positive": stats["positive"],
                 "neutral": stats["neutral"],
@@ -255,10 +267,12 @@ class AnalyticsService:
         for row in payload.get("rows", []):
             topics = _json_array(row.get("detectedTopics"))
             for topic in topics:
-                if not topic: continue
-                if topic not in result_map:
-                    result_map[topic] = {
-                        "topic": topic,
+                topic_label = _topic_label(topic)
+                if not topic_label:
+                    continue
+                if topic_label not in result_map:
+                    result_map[topic_label] = {
+                        "topic": topic_label,
                         "saiCauTra": 0,
                         "khongHieu": 0,
                         "thieuThongTin": 0,
@@ -271,17 +285,17 @@ class AnalyticsService:
                         "ngoaiPhamVi": 0,
                         "hallucination": 0,
                     }
-                result_map[topic]["saiCauTra"] += int(row.get("saiCauTra") or 0)
-                result_map[topic]["thieuDL"] += int(row.get("thieuDL") or 0)
-                result_map[topic]["khongHieu"] += int(row.get("khongHieu") or 0)
-                result_map[topic]["thieuThongTin"] += int(row.get("thieuThongTin") or 0)
-                result_map[topic]["khongChinhXac"] += int(row.get("khongChinhXac") or 0)
-                result_map[topic]["loiHeThong"] += int(row.get("loiHeThong") or 0)
-                result_map[topic]["loiTriThuc"] += int(row.get("loiTriThuc") or 0)
-                result_map[topic]["khac"] += int(row.get("khac") or 0)
-                result_map[topic]["khongChac"] += int(row.get("khongChac") or 0)
-                result_map[topic]["ngoaiPhamVi"] += int(row.get("ngoaiPhamVi") or 0)
-                result_map[topic]["hallucination"] += int(row.get("hallucination") or 0)
+                result_map[topic_label]["saiCauTra"] += int(row.get("saiCauTra") or 0)
+                result_map[topic_label]["thieuDL"] += int(row.get("thieuDL") or 0)
+                result_map[topic_label]["khongHieu"] += int(row.get("khongHieu") or 0)
+                result_map[topic_label]["thieuThongTin"] += int(row.get("thieuThongTin") or 0)
+                result_map[topic_label]["khongChinhXac"] += int(row.get("khongChinhXac") or 0)
+                result_map[topic_label]["loiHeThong"] += int(row.get("loiHeThong") or 0)
+                result_map[topic_label]["loiTriThuc"] += int(row.get("loiTriThuc") or 0)
+                result_map[topic_label]["khac"] += int(row.get("khac") or 0)
+                result_map[topic_label]["khongChac"] += int(row.get("khongChac") or 0)
+                result_map[topic_label]["ngoaiPhamVi"] += int(row.get("ngoaiPhamVi") or 0)
+                result_map[topic_label]["hallucination"] += int(row.get("hallucination") or 0)
         return list(result_map.values())
 
     def get_failed_conversations(self, filters: Dict[str, Any]) -> Dict[str, Any]:
@@ -300,6 +314,9 @@ class AnalyticsService:
 
     def get_suggested_faqs(self, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
         rows = self.repository.get_suggested_faqs(filters)
+        if _clean_keywords(filters.get("keywords")):
+            return self._get_keyword_scoped_suggested_faqs(rows, filters)
+
         res = []
         for row in rows:
             question = str(row.get("question") or "").strip()
@@ -323,6 +340,96 @@ class AnalyticsService:
             })
         return sorted(res, key=lambda x: x["freq"], reverse=True)
 
+    def _get_keyword_scoped_suggested_faqs(self, rows: List[Dict[str, Any]], filters: Dict[str, Any]) -> List[Dict[str, Any]]:
+        from app.services.legacy_dashboard_service import (
+            QuestionGroupingAIError,
+            build_fallback_top_question_rows,
+            build_top_question_rows_from_groups,
+            clean_question_text,
+            cluster_question_items,
+        )
+
+        limit = _clamped_int(filters.get("limit"), 5, 1, 20)
+        topic_label = str(filters.get("topicLabel") or "").strip()
+        items = []
+        row_by_question: Dict[str, Dict[str, Any]] = {}
+
+        for row in rows:
+            question = clean_question_text(row.get("question") or "")
+            if not question:
+                continue
+            freq = max(1, int(row.get("freq") or 0))
+            row_by_question[question] = row
+            items.append({
+                "id": f"q{len(items) + 1}",
+                "question": question,
+                "count": freq,
+                "sourceCounts": Counter({str(row.get("source") or ""): freq}),
+                "variants": [{"question": question, "count": freq}],
+            })
+
+        if not items:
+            return []
+
+        ai_generated = True
+        try:
+            grouped_rows = build_top_question_rows_from_groups(
+                items,
+                cluster_question_items(items),
+                ai_generated=True,
+                limit=limit,
+            )
+        except QuestionGroupingAIError as exc:
+            logger.warning("Keyword-scoped suggested FAQ AI grouping failed; using DB fallback: %s", exc)
+            ai_generated = False
+            grouped_rows = build_fallback_top_question_rows(items, limit=limit)
+        except Exception as exc:
+            logger.exception("Keyword-scoped suggested FAQ grouping failed; using DB fallback")
+            ai_generated = False
+            grouped_rows = build_fallback_top_question_rows(items, limit=limit)
+
+        result = []
+        for grouped in grouped_rows:
+            related_questions = grouped.get("relatedQuestions") or []
+            sample_row = None
+            for related in related_questions:
+                sample_row = row_by_question.get(clean_question_text(related.get("question") or ""))
+                if sample_row:
+                    break
+            if sample_row is None:
+                sample_row = row_by_question.get(clean_question_text(grouped.get("question") or ""))
+            sample_row = sample_row or {}
+
+            freq = int(grouped.get("count") or 0)
+            question = _topic_scoped_faq_question(str(grouped.get("question") or "").strip(), topic_label)
+            if not question or freq <= 0:
+                continue
+
+            topics = list(_json_array(sample_row.get("detectedTopics")))
+            detected_topic = topics[0] if topics else (topic_label or "Khác")
+            topic = topic_label or _infer_keyword_topic(
+                topics=topics,
+                question=question,
+                suggested_answer=str(sample_row.get("suggestedAnswer") or ""),
+            )
+            result.append({
+                "question": question,
+                "suggestedAnswer": str(sample_row.get("suggestedAnswer") or "").strip(),
+                "topic": topic,
+                "detectedTopic": detected_topic,
+                "freq": freq,
+                "priority": "Ưu tiên cao" if freq > 30 else ("Ưu tiên trung bình" if freq > 10 else "Ưu tiên thấp"),
+                "source": (
+                    f"Tổng hợp bằng AI từ {freq} hội thoại chứa từ khóa chủ đề"
+                    if ai_generated and grouped.get("aiGenerated")
+                    else f"Tổng hợp từ {freq} hội thoại chứa từ khóa chủ đề"
+                ),
+                "aiGenerated": bool(ai_generated and grouped.get("aiGenerated")),
+                "sourceQuestions": related_questions[:8],
+            })
+
+        return sorted(result, key=lambda x: x["freq"], reverse=True)[:limit]
+
 
     def get_custom_chart_data(self, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
             rows = self.repository.get_custom_chart_data(filters)
@@ -336,10 +443,10 @@ class AnalyticsService:
                     if not topics:
                         topics = ["Khac"]
                     for topic in topics:
-                        key = str(topic)
+                        key = _topic_label(topic)
                         if key not in topic_stats:
                             topic_stats[key] = {k: 0 for k in row.keys() if k != "name"}
-                            topic_stats[key]["name"] = TOPIC_LABELS.get(key, key)
+                            topic_stats[key]["name"] = _topic_label(key)
                         for k, v in row.items():
                             if k != "name":
                                 topic_stats[key][k] += (v or 0)
@@ -361,6 +468,51 @@ class AnalyticsService:
                     row["name"] = _channel_label(str(row.get("name") or "Unknown"))
             return normalized
 
+
+def _clamped_int(value: Any, default: int, minimum: int, maximum: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = default
+    return max(minimum, min(maximum, parsed))
+
+
+def _clean_keywords(value: Any) -> List[str]:
+    if not value:
+        return []
+    candidates = [value] if isinstance(value, str) else list(value)
+    return [str(item or "").strip() for item in candidates if str(item or "").strip()]
+
+
+def _topic_scoped_faq_question(question: str, topic_label: str) -> str:
+    text = str(question or "").strip()
+    if not text:
+        return ""
+
+    topic = _normalize_topic_text(topic_label)
+    topic_id = canonical_topic_id(topic_label)
+    normalized = _normalize_topic_text(text)
+    if "toeic" in topic and "toeic" not in normalized:
+        return _question_with_course(text, normalized, "TOEIC")
+    if topic_id == "mos" and not any(token in normalized for token in ("mos", "microsoft office specialist")):
+        return _question_with_course(text, normalized, "MOS")
+    if topic_id == "sat_hach_cntt" and not any(token in normalized for token in ("sat hach", "cntt", "cong nghe thong tin", "ic3", "thcb", "thnc")):
+        return _question_with_course(text, normalized, "Sát hạch CNTT")
+    if topic_id == "hoc_tieng_anh" and not any(token in normalized for token in ("hoc tieng anh", "tieng anh", "anh van", "ngoai ngu", "vstep", "b1", "b2")):
+        return _question_with_course(text, normalized, "Tiếng Anh")
+    if topic_id == "hoc_tin_hoc" and not any(token in normalized for token in ("hoc tin hoc", "tin hoc van phong", "word", "excel", "powerpoint")):
+        return _question_with_course(text, normalized, "Tin học")
+    return text
+
+
+def _question_with_course(question: str, normalized_question: str, course: str) -> str:
+    if "chung chi" in normalized_question:
+        return f"Khi nào có chứng chỉ {course}?"
+    if "lich thi" in normalized_question:
+        return f"Lịch thi {course} là khi nào?"
+    return f"{question.rstrip(' ?.')} {course}?"
+
+
 def _channel_label(value: str) -> str:
     normalized = value.strip().lower()
     labels = {
@@ -378,35 +530,16 @@ def _channel_label(value: str) -> str:
     return labels.get(normalized, "Không xác định" if normalized in {"", "unknown"} else value)
 
 def _normalize_topic_text(value: str) -> str:
-    normalized = unicodedata.normalize("NFD", str(value or ""))
-    without_diacritics = "".join(c for c in normalized if unicodedata.category(c) != "Mn")
-    return " ".join(without_diacritics.lower().split())
+    return normalize_topic_text(value)
 
 
 def _infer_keyword_topic(topics: Iterable[Any], question: str, suggested_answer: str) -> str:
     raw_text = " ".join([*(str(topic) for topic in topics), question, suggested_answer])
-    text = _normalize_topic_text(raw_text)
-    if "toeic" in text:
-        return "TOEIC"
-    if "vstep" in text:
-        return "VSTEP"
-    if any(token in text for token in (
-        "tin hoc",
-        "tin co ban",
-        "tin nang cao",
-        "mos",
-        "ic3",
-        "cntt",
-        "sat hach",
-        "excel",
-        "word",
-        "powerpoint",
-    )):
-        return "Tin học / MOS / IC3"
-    if any(token in text for token in ("chuan dau ra", "dau ra", "chung chi")):
-        return "Chuẩn đầu ra / Chứng chỉ"
+    topic_id = canonical_topic_id(raw_text)
+    if topic_id:
+        return canonical_topic_label(topic_id)
     topics_list = list(topics)
-    return str(topics_list[0]) if topics_list else "Khác"
+    return _topic_label(topics_list[0]) if topics_list else "Khác"
 
 
 def _topic_label(topic: Any) -> str:
@@ -415,7 +548,8 @@ def _topic_label(topic: Any) -> str:
         return "Khác"
     if value.lower() in {"khac", "khác", "other", "unknown", "none"}:
         return "Khác"
-    return TOPIC_LABELS.get(value, value)
+    canonical = canonical_topic_label(value, default="")
+    return canonical or TOPIC_LABELS.get(value, value)
 
 
 def _dominant_topic(topic_counts: Dict[str, int]) -> str:
@@ -457,7 +591,14 @@ def _normalize_review_record(row: Dict[str, Any]) -> Dict[str, Any]:
     item["issueType"] = item.get("issueType") or None
     item["issueReason"] = item.get("issueReason") or None
     item["issueConfidence"] = None if item.get("issueConfidence") is None else float(item.get("issueConfidence") or 0)
-    item["detectedTopics"] = list(_json_array(item.get("detectedTopics")))
+    canonical_topics = []
+    seen_topics = set()
+    for topic in _json_array(item.get("detectedTopics")):
+        label = _topic_label(topic)
+        if label and label not in seen_topics:
+            canonical_topics.append(label)
+            seen_topics.add(label)
+    item["detectedTopics"] = canonical_topics
     item["matchedNegativeKeywords"] = list(_json_array(item.get("matchedNegativeKeywords")))
     item["messageAt"] = None if item.get("messageAt") is None else str(item.get("messageAt"))
     return item

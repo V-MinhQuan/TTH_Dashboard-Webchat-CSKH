@@ -1,17 +1,21 @@
 import type { FilterValues } from "../components/FilterPanel";
 import { getAiFailureDefinition } from "../constants/aiFailureTaxonomy";
+import {
+  TOPIC_TAXONOMY,
+  mapTopicToGroupId as mapTopicToTaxonomyGroupId,
+  normalizeTopicText,
+  topicLabelForGroupId,
+} from "../constants/topicTaxonomy";
 import { buildApiUrl, fetchApiJson } from "../services/dashboardApi";
 import * as round3Api from "../services/round3Api";
 
 export const NAVY = "#003865";
 export const ORANGE = "#D73C01";
 export const CTA = "#ED5206";
-export const TOPIC_GROUP_COLORS: Record<string, string> = {
-  toeic: NAVY,
-  vstep: CTA,
-  tinhoc: "#1565C0",
-  chuandaura: "#F36C2E",
-};
+export { TOPIC_TAXONOMY };
+export const TOPIC_GROUP_COLORS: Record<string, string> = Object.fromEntries(
+  TOPIC_TAXONOMY.map((topic) => [topic.id, topic.color]),
+);
 export const TOPIC_DONUT_COLORS = Object.values(TOPIC_GROUP_COLORS);
 
 export type AiErrorKeywordPayload = {
@@ -76,6 +80,9 @@ export type SuggestedFaqItem = {
   topic: string;
   freq: number;
   priority: string;
+  source?: string;
+  aiGenerated?: boolean;
+  sourceQuestions?: { question: string; count: number }[];
 };
 
 export type SuggestedFaqResponse = {
@@ -91,21 +98,14 @@ export type MissingFaqItem = {
   suggestedAnswer?: string;
 };
 
-const topicGroupMeta: Pick<KeywordGroup, "id" | "name" | "color">[] = [
-  { id: "toeic", name: "TOEIC", color: TOPIC_GROUP_COLORS.toeic },
-  { id: "vstep", name: "VSTEP", color: TOPIC_GROUP_COLORS.vstep },
-  { id: "tinhoc", name: "Tin học / MOS / IC3", color: TOPIC_GROUP_COLORS.tinhoc },
-  { id: "chuandaura", name: "Chuẩn đầu ra / Chứng chỉ", color: TOPIC_GROUP_COLORS.chuandaura },
-];
+const topicGroupMeta: Pick<KeywordGroup, "id" | "name" | "color">[] = TOPIC_TAXONOMY.map((topic) => ({
+  id: topic.id,
+  name: topic.label,
+  color: topic.color,
+}));
 
 export function mapTopicToGroupId(value: string): string | null {
-  if (!value) return null;
-  const t = value.toLowerCase();
-  if (t.includes("toeic")) return "toeic";
-  if (t.includes("vstep")) return "vstep";
-  if (t.includes("tin học") || t.includes("mos") || t.includes("ic3") || t.includes("cntt") || t.includes("sát hạch")) return "tinhoc";
-  if (t.includes("chuẩn đầu ra") || t.includes("chứng chỉ")) return "chuandaura";
-  return null;
+  return mapTopicToTaxonomyGroupId(value);
 }
 
 export function normalizeFaqText(value: string) {
@@ -128,13 +128,7 @@ export function failureSourceFromSuggestion(source: string) {
 }
 
 export function topicForGroupId(groupId: string | null) {
-  const topicMapSheet: Record<string, string> = {
-    toeic: "TOEIC",
-    vstep: "VSTEP",
-    tinhoc: "MOS/IC3",
-    chuandaura: "Chuẩn đầu ra ngoại ngữ",
-  };
-  return groupId ? topicMapSheet[groupId] || "TOEIC" : "TOEIC";
+  return topicLabelForGroupId(groupId);
 }
 
 export function aiWrongAnswerNote(value: string | undefined) {
@@ -267,22 +261,17 @@ export function mapApiGroups(apiGroups: any[]): KeywordGroup[] {
 }
 
 export function mapTrendRows(apiRows: any[]) {
-  return apiRows.map((row: any) => ({
-    date: row.date,
-    TOEIC: row.TOEIC || 0,
-    VSTEP: row.VSTEP || 0,
-    "Tin học": row["Tin học / MOS / IC3"] || row["Tin học"] || 0,
-    "Chuẩn đầu ra": row["Chuẩn đầu ra / Chứng chỉ"] || row["Chuẩn đầu ra"] || 0,
-  }));
+  return apiRows.map((row: any) => {
+    const mapped: Record<string, number | string> = { date: row.date };
+    TOPIC_TAXONOMY.forEach((topic) => {
+      mapped[topic.label] = row[topic.label] || row[topic.shortLabel] || 0;
+    });
+    return mapped;
+  });
 }
 
 export function normalizeFilterValue(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .trim();
+  return normalizeTopicText(value);
 }
 
 export function matchesKeywordFilter(topic: string, keyword: string) {

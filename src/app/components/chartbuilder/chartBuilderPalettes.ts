@@ -25,7 +25,7 @@ const AUTO_PALETTE_COLORS = new Set(
 export const CHART_BUILDER_PALETTE_LABELS: Record<ChartTheme, string> = {
   flic: "FLIC cam/xanh",
   navy: "Xanh chủ đạo",
-  warm: "Cam chủ đạo",
+  warm: "Đơn sắc",
   monochrome: "Cam/xanh nhẹ",
 };
 

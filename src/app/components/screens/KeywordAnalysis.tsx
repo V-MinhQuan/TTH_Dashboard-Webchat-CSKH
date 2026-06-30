@@ -1,23 +1,19 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Brain, X, Plus } from "lucide-react";
+import { AlertTriangle, Brain, X } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
   LineChart, Line,
   PieChart, Pie, Cell,
 } from "recharts";
 import { FilterPanel, FilterValues } from "../FilterPanel";
-import { toast } from "sonner";
 import { buildApiUrl, fetchApiJson } from "../../services/dashboardApi";
-import { useAuth } from "../../context/AuthContext";
 import { FeedbackFormDialog } from "../feedback/FeedbackFormDialog";
-import { AI_FAILURE_TAXONOMY } from "../../constants/aiFailureTaxonomy";
 import { cn } from "../ui/utils";
 import {
   aiWrongAnswerNote,
   buildApiParams,
   buildTrendApiParams,
-  emptyAiErrorKeywordForm,
   failureSourceFromSuggestion,
   mapApiGroups,
   mapTopicToGroupId,
@@ -27,11 +23,10 @@ import {
   normalizeFaqText,
   normalizeFilterValue,
   ORANGE,
-  persistAiErrorKeyword,
+  TOPIC_TAXONOMY,
   TOPIC_GROUP_COLORS,
   TOPIC_DONUT_COLORS,
   topicForGroupId,
-  type AiErrorKeywordPayload,
   type KeywordGroup,
   type KeywordGroupsResponse,
   type KeywordHeatmapResponse,
@@ -50,51 +45,68 @@ interface Props {
 const cardShellClass = "bg-white rounded-[16px] p-5 border border-[rgba(0,56,101,0.08)] shadow-[0_2px_8px_rgba(0,56,101,0.05)]";
 const labelTextClass = "text-[11px] text-[rgba(0,56,101,0.5)]";
 const navyTitleClass = "text-[#003865] font-bold";
-const modalLabelClass = "text-[#003865] text-xs font-semibold";
-const modalInputClass = "mt-1.5 w-full box-border rounded-lg border border-[rgba(0,56,101,0.16)] px-3 py-2.5 text-[#003865] outline-none";
-const TOPIC_LINE_STYLES = {
-  toeic: { color: TOPIC_GROUP_COLORS.toeic, dash: undefined },
-  vstep: { color: TOPIC_GROUP_COLORS.vstep, dash: "7 3" },
-  tinhoc: { color: TOPIC_GROUP_COLORS.tinhoc, dash: "2 4" },
-  chuandaura: { color: TOPIC_GROUP_COLORS.chuandaura, dash: "10 3 2 3" },
-} as const;
+const TOPIC_LINE_DASHES: Record<string, string | undefined> = {
+  sat_hach_cntt: undefined,
+  toeic: "7 3",
+  mos: "2 4",
+  hoc_tieng_anh: "10 3 2 3",
+  hoc_tin_hoc: "4 3",
+};
+const TOPIC_LINE_STYLES = Object.fromEntries(
+  TOPIC_TAXONOMY.map((topic) => [
+    topic.id,
+    { color: TOPIC_GROUP_COLORS[topic.id], dash: TOPIC_LINE_DASHES[topic.id] },
+  ]),
+) as Record<string, { color: string; dash?: string }>;
 
 const groupToneClasses: Record<string, { activeBorder: string; activeShadow: string; text: string; strip: string }> = {
-  toeic: {
+  sat_hach_cntt: {
     activeBorder: "border-[#003865]",
     activeShadow: "shadow-[0_4px_16px_rgba(0,56,101,0.13)]",
     text: "text-[#003865]",
     strip: "bg-[#003865]",
   },
-  vstep: {
+  toeic: {
     activeBorder: "border-[#ED5206]",
     activeShadow: "shadow-[0_4px_16px_rgba(237,82,6,0.16)]",
     text: "text-[#ED5206]",
     strip: "bg-[#ED5206]",
   },
-  tinhoc: {
+  mos: {
     activeBorder: "border-[#1565C0]",
     activeShadow: "shadow-[0_4px_16px_rgba(21,101,192,0.16)]",
     text: "text-[#1565C0]",
     strip: "bg-[#1565C0]",
   },
-  chuandaura: {
+  hoc_tieng_anh: {
     activeBorder: "border-[#F36C2E]",
     activeShadow: "shadow-[0_4px_16px_rgba(243,108,46,0.16)]",
     text: "text-[#F36C2E]",
     strip: "bg-[#F36C2E]",
   },
+  hoc_tin_hoc: {
+    activeBorder: "border-[#0288D1]",
+    activeShadow: "shadow-[0_4px_16px_rgba(2,136,209,0.16)]",
+    text: "text-[#0288D1]",
+    strip: "bg-[#0288D1]",
+  },
 };
 
-const defaultGroupTone = groupToneClasses.toeic;
+const defaultGroupTone = groupToneClasses.sat_hach_cntt;
 const heatScaleClasses = ["bg-[#f1f5f9]", "bg-[#EBF2FF]", "bg-[#B9DCFF]", "bg-[#42A5F5]", "bg-[#1565C0]", "bg-[#003865]"];
 const loadingBarHeights = ["h-[58%]", "h-[82%]", "h-[44%]", "h-[70%]", "h-[38%]", "h-[92%]"];
-const emptyMissingFaqGroups: Record<string, MissingFaqItem[]> = {
-  toeic: [],
-  vstep: [],
-  tinhoc: [],
-  chuandaura: [],
-};
+const emptyMissingFaqGroups: Record<string, MissingFaqItem[]> = Object.fromEntries(
+  TOPIC_TAXONOMY.map((topic) => [topic.id, [] as MissingFaqItem[]]),
+);
+const GROUP_FAQ_LIMIT = 1;
+const GROUP_FAQ_CANDIDATE_LIMIT = 120;
+const GROUP_FAQ_KEYWORD_LIMIT = 24;
+const GROUP_FAQ_SCOPE_TERMS: Record<string, string[]> = Object.fromEntries(
+  TOPIC_TAXONOMY.map((topic) => [topic.id, [...topic.scopeTerms]]),
+);
+const GROUP_FAQ_EXCLUDE_TERMS: Record<string, string[]> = Object.fromEntries(
+  TOPIC_TAXONOMY.map((topic) => [topic.id, [...topic.excludeTerms]]),
+);
 const emptyKeywordOptionalErrors = {
   suggestedFaqs: false,
 };
@@ -147,22 +159,44 @@ function heatLegendClass(val: number) {
   return "bg-[#EBF2FF]";
 }
 
+function uniqueGroupKeywords(group: KeywordGroup) {
+  const seen = new Set<string>();
+  return group.keywords
+    .map((keyword) => keyword.word?.trim())
+    .filter((word): word is string => Boolean(word))
+    .filter((word) => {
+      const key = normalizeFilterValue(word);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, GROUP_FAQ_KEYWORD_LIMIT);
+}
+
+function buildGroupSuggestedFaqParams(baseParams: URLSearchParams, group: KeywordGroup) {
+  const keywords = uniqueGroupKeywords(group);
+  const params = new URLSearchParams(baseParams);
+  params.set("topicLabel", group.name);
+  params.set("limit", String(GROUP_FAQ_LIMIT));
+  params.set("candidateLimit", String(GROUP_FAQ_CANDIDATE_LIMIT));
+  params.delete("keywords");
+  params.delete("scopeKeywords");
+  params.delete("excludeKeywords");
+  keywords.forEach((keyword) => params.append("keywords", keyword));
+  (GROUP_FAQ_SCOPE_TERMS[group.id] || []).forEach((keyword) => params.append("scopeKeywords", keyword));
+  (GROUP_FAQ_EXCLUDE_TERMS[group.id] || []).forEach((keyword) => params.append("excludeKeywords", keyword));
+  return { params, keywords };
+}
+
 async function loadKeywordAnalysisData(filters: FilterValues, signal?: AbortSignal): Promise<KeywordAnalysisQueryData> {
   const params = buildApiParams(filters);
   const trendParams = buildTrendApiParams(filters);
   let suggestedFaqsLoadFailed = false;
 
-  const [groupsJson, hJson, tJson, faqsJson] = await Promise.all([
+  const [groupsJson, hJson, tJson] = await Promise.all([
     fetchApiJson<KeywordGroupsResponse>(buildApiUrl("/api/admin/crm-keywords/groups", params), { signal }),
     fetchApiJson<KeywordHeatmapResponse>(buildApiUrl("/api/admin/crm-keywords/heatmap", params), { signal }),
     fetchApiJson<KeywordTrendResponse>(buildApiUrl("/api/admin/crm-keywords/trends", trendParams), { signal }),
-    fetchApiJson<SuggestedFaqResponse>(buildApiUrl("/api/analytics/ai/suggested-faqs", params), { signal })
-      .catch((error) => {
-        if (signal?.aborted) throw error;
-        suggestedFaqsLoadFailed = true;
-        console.warn("Optional suggested FAQ request failed:", error);
-        return null;
-      }),
   ]);
 
   if (!groupsJson.success || !Array.isArray(groupsJson.data)) {
@@ -174,35 +208,46 @@ async function loadKeywordAnalysisData(filters: FilterValues, signal?: AbortSign
   if (!tJson.success || !Array.isArray(tJson.data)) {
     throw new Error(tJson.message || "Không thể tải dữ liệu xu hướng Keywords.");
   }
-  const missingFaqs: Record<string, MissingFaqItem[]> = {
-    toeic: [],
-    vstep: [],
-    tinhoc: [],
-    chuandaura: [],
-  };
+  const groups = mapApiGroups(groupsJson.data);
+  const missingFaqs: Record<string, MissingFaqItem[]> = Object.fromEntries(
+    TOPIC_TAXONOMY.map((topic) => [topic.id, [] as MissingFaqItem[]]),
+  );
 
-  const suggestedFaqsUnavailable = suggestedFaqsLoadFailed || Boolean(faqsJson && !faqsJson.success);
-  const suggestedFaqRows = faqsJson?.success && Array.isArray(faqsJson.data) ? faqsJson.data : [];
-  suggestedFaqRows.forEach((item) => {
-    const groupId = mapTopicToGroupId(`${item.topic || ""} ${item.question || ""} ${item.suggestedAnswer || ""}`);
-    if (!groupId || !item.question?.trim()) return;
+  await Promise.all(groups.map(async (group) => {
+    const { params: faqParams, keywords } = buildGroupSuggestedFaqParams(params, group);
+    if (keywords.length === 0) return;
 
-    missingFaqs[groupId].push({
-      question: item.question.trim(),
-      source: `Phát hiện từ ${item.freq} hội thoại`,
-      suggestedAnswer: item.suggestedAnswer || "",
-      added: false,
-    });
-  });
+    try {
+      const faqsJson = await fetchApiJson<SuggestedFaqResponse>(buildApiUrl("/api/analytics/ai/suggested-faqs", faqParams), { signal });
+      if (!faqsJson.success || !Array.isArray(faqsJson.data)) {
+        suggestedFaqsLoadFailed = true;
+        return;
+      }
+
+      faqsJson.data.slice(0, GROUP_FAQ_LIMIT).forEach((item) => {
+        if (!item.question?.trim()) return;
+        missingFaqs[group.id].push({
+          question: item.question.trim(),
+          source: item.source || `Tổng hợp từ ${item.freq} hội thoại chứa từ khóa chủ đề`,
+          suggestedAnswer: item.suggestedAnswer || "",
+          added: false,
+        });
+      });
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      suggestedFaqsLoadFailed = true;
+      console.warn(`Optional suggested FAQ request failed for ${group.id}:`, error);
+    }
+  }));
 
   return {
-    groups: mapApiGroups(groupsJson.data),
+    groups,
     heatmapRows: hJson.data,
     trendRows: mapTrendRows(tJson.data),
     heatmapColsDyn: hJson.columns && Array.isArray(hJson.columns) ? hJson.columns : [],
     missingFaqs,
     optionalErrors: {
-      suggestedFaqs: suggestedFaqsUnavailable,
+      suggestedFaqs: suggestedFaqsLoadFailed,
     },
   };
 }
@@ -225,8 +270,8 @@ function KeywordLoadingState() {
         <ShimmerBlock className="mb-2 h-6 w-[220px]" />
         <ShimmerBlock className="h-[15px] w-[320px]" />
       </div>
-      <div className="mb-6 grid grid-cols-4 gap-3.5">
-        {[0, 1, 2, 3].map((i) => (
+      <div className="mb-6 grid grid-cols-1 gap-3.5 md:grid-cols-2 xl:grid-cols-5">
+        {[0, 1, 2, 3, 4].map((i) => (
           <div key={i} className="min-h-[142px] rounded-[14px] border border-[rgba(0,56,101,0.08)] bg-white p-[18px]">
             <ShimmerBlock className="mb-[18px] h-4 w-[45%]" />
             <ShimmerBlock className="mb-2.5 h-[30px] w-[28%]" />
@@ -274,59 +319,12 @@ function KeywordErrorState({ message, onRetry }: { message: string; onRetry: () 
 }
 
 export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Props) {
-  const { role } = useAuth();
   // appliedFilters chỉ cập nhật khi bấm "Áp dụng", không re-fetch khi thay đổi bộ lọc chưa áp dụng
   const [appliedFilters, setAppliedFilters] = useState<FilterValues>(filters);
   const [addedFaqKeys, setAddedFaqKeys] = useState<Record<string, Record<string, boolean>>>({});
 
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [activeMissingFaq, setActiveMissingFaq] = useState<{ groupId: string; index: number; item: MissingFaqItem } | null>(null);
-  const [showAiErrorKeywordModal, setShowAiErrorKeywordModal] = useState(false);
-  const [isSavingAiErrorKeyword, setIsSavingAiErrorKeyword] = useState(false);
-  const [aiErrorKeywordForm, setAiErrorKeywordForm] = useState(emptyAiErrorKeywordForm);
-
-  const handleCreateAiErrorKeyword = async () => {
-    const normalized = {
-      keyword: aiErrorKeywordForm.keyword.trim(),
-      errorGroup: aiErrorKeywordForm.errorGroup,
-      topic: aiErrorKeywordForm.topic.trim(),
-      description: aiErrorKeywordForm.description.trim(),
-    };
-
-    if (!normalized.keyword || !normalized.topic || !normalized.description) {
-      toast.error("Vui lòng nhập đầy đủ từ khóa, chủ đề và mô tả.");
-      return;
-    }
-    if (normalized.keyword.length > 200 || normalized.description.length > 1000) {
-      toast.error("Từ khóa hoặc mô tả vượt quá độ dài cho phép.");
-      return;
-    }
-    if ([normalized.keyword, normalized.topic, normalized.description].some((value) => /<[^>]*>|javascript:/iu.test(value))) {
-      toast.error("Nội dung chứa HTML hoặc mã không an toàn.");
-      return;
-    }
-
-    const payload: AiErrorKeywordPayload = {
-      keyword: normalized.keyword,
-      error_group: normalized.errorGroup,
-      topic: normalized.topic,
-      care_hub: null,
-      description: normalized.description,
-      status: "active",
-    };
-
-    try {
-      setIsSavingAiErrorKeyword(true);
-      await persistAiErrorKeyword(payload);
-      setAiErrorKeywordForm(emptyAiErrorKeywordForm);
-      setShowAiErrorKeywordModal(false);
-      toast.success("Đã thêm từ khóa lỗi AI");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Không thể lưu từ khóa lỗi AI.");
-    } finally {
-      setIsSavingAiErrorKeyword(false);
-    }
-  };
 
   const getFaqNeededCount = (groupId: string) => {
     const items = missingFaqs[groupId] || [];
@@ -424,9 +422,10 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
 
     const aliases: Record<string, string[]> = {
       toeic: ["toeic"],
-      vstep: ["vstep"],
-      tinhoc: ["tin hoc", "tin hoc co so", "mos ic3", "mos", "ic3"],
-      chuandaura: ["chuan dau ra", "chung chi", "chuẩn đầu ra"],
+      sat_hach_cntt: ["sat hach cntt", "sat hach cong nghe thong tin", "cntt", "cong nghe thong tin", "ic3", "thcb", "thnc"],
+      mos: ["mos", "microsoft office specialist"],
+      hoc_tieng_anh: ["hoc tieng anh", "tieng anh", "anh van", "ngoai ngu", "vstep", "b1", "b2", "chuan dau ra"],
+      hoc_tin_hoc: ["hoc tin hoc", "khoa tin hoc", "lop tin hoc", "tin hoc van phong"],
     };
 
     if (aliases[g.id]?.some((alias) => normalizedTopic === alias || normalizedTopic.includes(alias) || alias.includes(normalizedTopic))) {
@@ -458,21 +457,12 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
       <div className="mb-5 flex items-start justify-between gap-4">
         <div>
           <h1 className="mb-1 text-xl font-bold text-[#003865]">Phân tích từ khóa</h1>
-          <p className="m-0 text-[13px] text-[rgba(0,56,101,0.5)]">Phân tích theo 4 nhóm chủ đề chính</p>
+          <p className="m-0 text-[13px] text-[rgba(0,56,101,0.5)]">Phân tích theo 5 nhóm chủ đề chính</p>
         </div>
-        {role === "manager" && (
-          <button
-            type="button"
-            onClick={() => setShowAiErrorKeywordModal(true)}
-            className="inline-flex cursor-pointer items-center gap-[7px] rounded-[9px] border-0 bg-[#003865] px-4 py-[9px] text-xs font-bold text-white"
-          >
-            <Plus size={14} /> Thêm từ khóa lỗi AI
-          </button>
-        )}
       </div>
 
       {/* Summary cards */}
-      <div className="mb-6 grid grid-cols-4 gap-3.5">
+      <div className="mb-6 grid grid-cols-1 gap-3.5 md:grid-cols-2 xl:grid-cols-5">
         {finalGroups.map((g) => (
           <div key={g.id} onClick={() => setActiveGroup(activeGroup === g.id ? null : g.id)} className={summaryCardClass(g, activeGroup)}>
             <span aria-hidden="true" className={cn("absolute inset-y-0 left-0 w-1", toneForGroup(g.id).strip)} />
@@ -547,10 +537,20 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
             <YAxis tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
             <Tooltip />
             <Legend iconSize={10} />
-            {(!activeGroup || activeGroup === "toeic") && <Line type="monotone" dataKey="TOEIC" stroke={TOPIC_LINE_STYLES.toeic.color} strokeDasharray={TOPIC_LINE_STYLES.toeic.dash} strokeWidth={2.8} dot={{ r: 3, fill: TOPIC_LINE_STYLES.toeic.color }} />}
-            {(!activeGroup || activeGroup === "vstep") && <Line type="monotone" dataKey="VSTEP" stroke={TOPIC_LINE_STYLES.vstep.color} strokeDasharray={TOPIC_LINE_STYLES.vstep.dash} strokeWidth={2.8} dot={{ r: 3, fill: TOPIC_LINE_STYLES.vstep.color }} />}
-            {(!activeGroup || activeGroup === "tinhoc") && <Line type="monotone" dataKey="Tin học" stroke={TOPIC_LINE_STYLES.tinhoc.color} strokeDasharray={TOPIC_LINE_STYLES.tinhoc.dash} strokeWidth={2.8} dot={{ r: 3, fill: TOPIC_LINE_STYLES.tinhoc.color }} />}
-            {(!activeGroup || activeGroup === "chuandaura") && <Line type="monotone" dataKey="Chuẩn đầu ra" stroke={TOPIC_LINE_STYLES.chuandaura.color} strokeDasharray={TOPIC_LINE_STYLES.chuandaura.dash} strokeWidth={2.8} dot={{ r: 3, fill: TOPIC_LINE_STYLES.chuandaura.color }} />}
+            {TOPIC_TAXONOMY.map((topic) => {
+              const style = TOPIC_LINE_STYLES[topic.id];
+              return (!activeGroup || activeGroup === topic.id) ? (
+                <Line
+                  key={topic.id}
+                  type="monotone"
+                  dataKey={topic.label}
+                  stroke={style.color}
+                  strokeDasharray={style.dash}
+                  strokeWidth={2.8}
+                  dot={{ r: 3, fill: style.color }}
+                />
+              ) : null;
+            })}
           </LineChart>
         </ResponsiveContainer>
       </div>
@@ -674,96 +674,6 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
         ))}
       </div>
 
-      {showAiErrorKeywordModal && (
-        <div className="fixed inset-0 z-[220] flex items-center justify-center bg-[rgba(0,56,101,0.45)] p-5 backdrop-blur-[4px]">
-          <div role="dialog" aria-label="Thêm từ khóa lỗi AI" className="w-[520px] max-w-full rounded-[18px] bg-white p-[26px] shadow-[0_20px_60px_rgba(0,0,0,0.18)]">
-            <div className="mb-5 flex items-center justify-between">
-              <div>
-                <h3 className="m-0 text-[17px] font-bold text-[#003865]">Thêm từ khóa lỗi AI</h3>
-                <p className="mt-[5px] mb-0 text-xs text-[rgba(0,56,101,0.55)]">Từ khóa sẽ được lưu vào database sau khi kiểm tra hợp lệ.</p>
-              </div>
-              <button
-                type="button"
-                aria-label="Đóng"
-                onClick={() => { setShowAiErrorKeywordModal(false); setAiErrorKeywordForm(emptyAiErrorKeywordForm); }}
-                className="cursor-pointer border-0 bg-transparent p-1 text-[rgba(0,56,101,0.5)]"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="flex flex-col gap-3.5">
-              <label className={modalLabelClass}>
-                Từ khóa lỗi AI
-                <input
-                  aria-label="Từ khóa lỗi AI"
-                  maxLength={200}
-                  value={aiErrorKeywordForm.keyword}
-                  onChange={(event) => setAiErrorKeywordForm((current) => ({ ...current, keyword: event.target.value }))}
-                  className={modalInputClass}
-                />
-              </label>
-
-              <label className={modalLabelClass}>
-                Nhóm lỗi AI
-                <select
-                  aria-label="Nhóm lỗi AI"
-                  value={aiErrorKeywordForm.errorGroup}
-                  onChange={(event) => setAiErrorKeywordForm((current) => ({ ...current, errorGroup: event.target.value }))}
-                  className={cn(modalInputClass, "bg-white")}
-                >
-                  {AI_FAILURE_TAXONOMY.map((item) => <option key={item.id} value={item.apiValue}>{item.label}</option>)}
-                </select>
-              </label>
-
-              <label className={modalLabelClass}>
-                Chủ đề
-                <input
-                  aria-label="Chủ đề"
-                  maxLength={200}
-                  value={aiErrorKeywordForm.topic}
-                  onChange={(event) => setAiErrorKeywordForm((current) => ({ ...current, topic: event.target.value }))}
-                  className={modalInputClass}
-                />
-              </label>
-
-              <label className={modalLabelClass}>
-                Mô tả
-                <textarea
-                  aria-label="Mô tả"
-                  maxLength={1000}
-                  rows={4}
-                  value={aiErrorKeywordForm.description}
-                  onChange={(event) => setAiErrorKeywordForm((current) => ({ ...current, description: event.target.value }))}
-                  className={cn(modalInputClass, "resize-y font-[inherit]")}
-                />
-              </label>
-            </div>
-
-            <div className="mt-[22px] flex justify-end gap-2.5">
-              <button
-                type="button"
-                onClick={() => { setShowAiErrorKeywordModal(false); setAiErrorKeywordForm(emptyAiErrorKeywordForm); }}
-                className="cursor-pointer rounded-lg border border-[rgba(0,56,101,0.16)] bg-white px-4 py-[9px] font-semibold text-[#003865]"
-              >
-                Hủy
-              </button>
-              <button
-                type="button"
-                disabled={isSavingAiErrorKeyword}
-                onClick={() => void handleCreateAiErrorKeyword()}
-                className={cn(
-                  "rounded-lg border-0 px-[18px] py-[9px] font-bold text-white",
-                  isSavingAiErrorKeyword ? "cursor-not-allowed bg-slate-400" : "cursor-pointer bg-[#ED5206]",
-                )}
-              >
-                {isSavingAiErrorKeyword ? "Đang lưu..." : "Lưu từ khóa"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Modal đề xuất FAQ bổ sung */}
       {selectedGroupId && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-[rgba(0,56,101,0.45)] backdrop-blur-[4px]">
@@ -775,7 +685,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
                 </div>
                 <div>
                   <h3 className={cn(navyTitleClass, "m-0 text-base")}>FAQ đề xuất bổ sung</h3>
-                  <span className="text-xs text-[rgba(0,56,101,0.5)]">Nhóm {selectedGroupId.toUpperCase()} · Chọn câu hỏi để biên soạn câu trả lời</span>
+                  <span className="text-xs text-[rgba(0,56,101,0.5)]">Nhóm {selectedGroupId.toUpperCase()} · Chọn câu hỏi để mở Form FAQ</span>
                 </div>
               </div>
               <button onClick={() => setSelectedGroupId(null)} className="cursor-pointer border-0 bg-transparent p-1 text-[rgba(0,56,101,0.4)]"><X size={20} /></button>
@@ -833,7 +743,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
                             })}
                             className="cursor-pointer rounded-lg border border-[#ED5206] bg-white px-3 py-[5px] text-[11px] font-semibold text-[#ED5206]"
                           >
-                            Soạn câu trả lời
+                            Thêm FAQ
                           </button>
                         </div>
                       </div>

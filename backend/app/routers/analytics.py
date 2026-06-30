@@ -369,10 +369,24 @@ def ai_staff_reported_errors(
 @router.get("/ai/suggested-faqs")
 def ai_suggested_faqs(
     filters: dict = Depends(_analytics_filters),
+    keywords: Optional[list[str]] = Query(default=None),
+    scopeKeywords: Optional[list[str]] = Query(default=None),
+    excludeKeywords: Optional[list[str]] = Query(default=None),
+    topicLabel: Optional[str] = Query(default=None),
+    limit: int = Query(default=5, ge=1, le=20),
+    candidateLimit: int = Query(default=120, ge=1, le=300),
     service: AnalyticsService = Depends(get_analytics_service),
 ):
     try:
-        data = service.get_suggested_faqs(filters)
+        data = service.get_suggested_faqs({
+            **filters,
+            "keywords": keywords or [],
+            "scopeKeywords": scopeKeywords or [],
+            "excludeKeywords": excludeKeywords or [],
+            "topicLabel": topicLabel,
+            "limit": limit,
+            "candidateLimit": candidateLimit,
+        })
     except Exception:
         logger.exception("Failed to load suggested FAQ analytics")
         data = []

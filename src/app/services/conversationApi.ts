@@ -135,11 +135,19 @@ function safeIdentityText(value: unknown) {
   return "";
 }
 
+function maskCustomerIdentity(customerId: string, phoneNumber: string) {
+  const source = customerId || phoneNumber;
+  if (!source) return "";
+  const compact = source.replace(/\s+/g, "");
+  const suffix = compact.slice(-4);
+  return suffix ? `KH ••••${suffix}` : "KH không xác định";
+}
+
 export function getCustomerPresentation(customerName: unknown, customerId: unknown, phoneNumber?: unknown) {
   const name = safeIdentityText(customerName);
   const id = safeIdentityText(customerId);
   const phone = safeIdentityText(phoneNumber);
-  const primary = name || id || phone || "Không xác định";
+  const primary = name || maskCustomerIdentity(id, phone) || "Không xác định";
   const secondary = name ? (id || phone || null) : id && phone && phone !== id ? phone : null;
 
   return { primary, secondary } as const;

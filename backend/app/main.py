@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import get_settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import configure_logging
-from app.routers import analytics, auth, chart_builder, conversations, dashboard, feedback, health, sentiment, settings
+from app.routers import ai_error_keywords, analytics, auth, chart_builder, conversations, dashboard, feedback, health, sentiment, settings
 from app.routers.legacy import router as legacy_router
 from app.tasks.background import enqueue_background_workers
 
@@ -39,6 +39,7 @@ app.include_router(sentiment.router)
 app.include_router(conversations.router)
 app.include_router(settings.router)
 app.include_router(feedback.router)
+app.include_router(ai_error_keywords.router)
 
 # ── Legacy router (compatibility layer) ──────────────────────────────────────
 # Mounted AFTER modular routers so that new endpoints take precedence.

@@ -68,12 +68,13 @@ function normalizeFilters(value: unknown): FilterValues {
     return typeof raw === "string" && raw.trim() ? raw.trim() : fallback;
   };
   const rawAiStatus = text("aiStatus", defaultFilterValues.aiStatus);
+  const aiStatus = isDeprecatedAiStatus(rawAiStatus) ? defaultFilterValues.aiStatus : rawAiStatus;
   const normalized: FilterValues = {
     dateRange: text("dateRange", defaultFilterValues.dateRange),
     channel: text("channel", defaultFilterValues.channel),
     topic: text("topic", defaultFilterValues.topic),
     conversationStatus: text("conversationStatus", defaultFilterValues.conversationStatus),
-    aiStatus: isDeprecatedAiStatus(rawAiStatus) ? defaultFilterValues.aiStatus : rawAiStatus,
+    aiStatus,
     aiFailureType: defaultFilterValues.aiFailureType,
   };
   if (typeof candidate.customDateFrom === "string" && candidate.customDateFrom.trim()) {

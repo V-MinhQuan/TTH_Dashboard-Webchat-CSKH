@@ -11,6 +11,8 @@ from pathlib import Path
 import httpx
 
 from app.core.config import get_settings
+from app.core.topic_taxonomy import canonical_topic_label, canonical_topic_id
+from app.repositories.ai_question_group_cache import AiQuestionGroupCacheRepository
 from app.repositories.legacy_conversation_repository import ConversationRepository
 from app.services.conversation_cleaner import conversation_cleaner_service
 from app.utils.customer_identity import customer_display_name
@@ -20,6 +22,7 @@ AI_QUESTION_CACHE_TTL_SECONDS = 3600
 AI_QUESTION_STALE_CACHE_TTL_SECONDS = 300
 AI_QUESTION_FALLBACK_CACHE_TTL_SECONDS = 60
 AI_QUESTION_LAST_GOOD_CACHE_TTL_SECONDS = 86400
+AI_QUESTION_DB_CACHE_TTL_SECONDS = 3600
 DEFAULT_KPI_DATE_WINDOW_DAYS = 30
 DASHBOARD_QUERY_WORKERS = 9
 AI_QUESTION_LAST_GOOD_CACHE_FILE = (
@@ -27,9 +30,18 @@ AI_QUESTION_LAST_GOOD_CACHE_FILE = (
 )
 _dashboard_cache = {}
 logger = logging.getLogger(__name__)
+ai_question_group_cache_repository = AiQuestionGroupCacheRepository()
 
 AI_OVERLOAD_MESSAGE = "Hệ thống AI hiện đang quá tải."
 AI_FALLBACK_MESSAGE = "AI đang quá tải, đang hiển thị nhóm câu hỏi tạm thời từ database."
+AI_GATEWAY_FEATURE = "dashboard_top_questions"
+AI_GATEWAY_PROMPT_VERSION = "dashboard-top-questions-v1"
+AI_GATEWAY_PROVIDER_COOLDOWN_SECONDS = 30
+AI_GATEWAY_MODEL_COOLDOWN_SECONDS = 120
+AI_GATEWAY_QUOTA_COOLDOWN_SECONDS = 300
+_ai_gateway_cooldowns = {}
+_ai_gateway_last_success = {}
+_last_question_group_validation = {}
 GEMINI_QUESTION_MODELS = [
     "gemini-2.5-flash",
     "gemini-2.5-flash-lite",
@@ -61,27 +73,105 @@ QUESTION_STOPWORDS = {
     "a",
     "ad",
     "anh",
+    "bao",
+    "br",
+    "cach",
     "chi",
     "cho",
     "co",
     "cua",
     "da",
+    "dau",
     "duoc",
     "em",
     "gi",
+    "gio",
+    "hoi",
     "khong",
+    "khi",
     "la",
+    "luc",
+    "mai",
     "minh",
+    "nao",
     "nay",
+    "ngay",
     "nha",
     "nhe",
+    "nhieu",
     "nhu",
+    "roi",
+    "sao",
+    "thang",
     "the",
     "thi",
     "toi",
     "va",
     "vay",
     "voi",
+}
+QUESTION_PHRASE_TOKENS = {
+    "hoc_phi": (
+        "hoc phi",
+        "le phi",
+        "chi phi",
+        "gia khoa hoc",
+        "phi thi",
+        "hoc phi thi",
+    ),
+    "lich_thi": (
+        "lich thi",
+        "ngay thi",
+        "gio thi",
+        "ca thi",
+        "dot thi",
+        "lich hoc",
+    ),
+    "chung_chi": (
+        "chung chi",
+        "chung nhan",
+        "nhan bang",
+        "lay bang",
+        "bang",
+    ),
+    "phieu_diem": (
+        "phieu diem",
+        "tra cuu diem",
+        "xem diem",
+        "ket qua thi",
+        "ket qua",
+    ),
+    "dang_ky": (
+        "dang ky",
+        "dang ki",
+        "ghi danh",
+        "link dang",
+        "form dang",
+    ),
+    "ho_so": (
+        "ho so",
+        "giay to",
+        "cccd",
+        "can cuoc",
+        "the sinh vien",
+        "photo",
+        "cong chung",
+    ),
+    "thanh_toan": (
+        "thanh toan",
+        "chuyen khoan",
+        "minh chung",
+        "qr",
+        "nop tien",
+    ),
+    "dia_chi": (
+        "dia chi",
+        "trung tam o dau",
+        "van phong o dau",
+        "flic o dau",
+        "co so o dau",
+        "dia diem",
+    ),
 }
 QUESTION_GROUP_SCHEMA = {
     "type": "object",
@@ -235,6 +325,108 @@ def clear_dashboard_cache(preserve_ai_questions: bool = False):
 class QuestionGroupingAIError(Exception):
     pass
 
+
+def reset_ai_gateway_state():
+    _ai_gateway_cooldowns.clear()
+    _ai_gateway_last_success.clear()
+
+
+def get_ai_gateway_last_success():
+    return dict(_ai_gateway_last_success)
+
+
+def get_last_question_group_validation():
+    return dict(_last_question_group_validation)
+
+
+def _cooldown_key(provider: str, model: str | None = None, key_index: int | None = None) -> str:
+    parts = [provider]
+    if model:
+        parts.append(model)
+    if key_index is not None:
+        parts.append(f"key:{key_index}")
+    return ":".join(parts)
+
+
+def _is_ai_gateway_cooling_down(provider: str, model: str | None = None, key_index: int | None = None) -> bool:
+    key = _cooldown_key(provider, model, key_index)
+    until = _ai_gateway_cooldowns.get(key)
+    if not until:
+        return False
+    if time.time() >= until:
+        _ai_gateway_cooldowns.pop(key, None)
+        return False
+    return True
+
+
+def _mark_ai_gateway_cooldown(
+    provider: str,
+    *,
+    model: str | None = None,
+    key_index: int | None = None,
+    seconds: int = AI_GATEWAY_PROVIDER_COOLDOWN_SECONDS,
+) -> None:
+    if seconds <= 0:
+        return
+    _ai_gateway_cooldowns[_cooldown_key(provider, model, key_index)] = time.time() + seconds
+
+
+def _ai_error_status(exc: Exception) -> str:
+    if isinstance(exc, httpx.HTTPStatusError):
+        return str(exc.response.status_code)
+    if isinstance(exc, httpx.TimeoutException):
+        return "timeout"
+    if isinstance(exc, httpx.TransportError):
+        return "transport_error"
+    return exc.__class__.__name__
+
+
+def _cooldown_seconds_for_ai_error(exc: Exception) -> int:
+    status = _ai_error_status(exc)
+    if status == "429":
+        return AI_GATEWAY_QUOTA_COOLDOWN_SECONDS
+    if status in {"500", "502", "503", "504", "timeout", "transport_error"}:
+        return AI_GATEWAY_MODEL_COOLDOWN_SECONDS
+    return 0
+
+
+def _record_ai_gateway_success(provider: str, model: str, key_index: int, latency_ms: int) -> None:
+    _ai_gateway_last_success.clear()
+    _ai_gateway_last_success.update({
+        "feature": AI_GATEWAY_FEATURE,
+        "provider": provider,
+        "model": model,
+        "keyIndex": key_index,
+        "latencyMs": latency_ms,
+    })
+    logger.info(
+        "AI gateway success feature=%s provider=%s model=%s key_index=%s latency_ms=%s",
+        AI_GATEWAY_FEATURE,
+        provider,
+        model,
+        key_index,
+        latency_ms,
+    )
+
+
+def _record_ai_gateway_failure(provider: str, model: str, key_index: int, exc: Exception, latency_ms: int) -> None:
+    status = _ai_error_status(exc)
+    cooldown_seconds = _cooldown_seconds_for_ai_error(exc)
+    if cooldown_seconds:
+        _mark_ai_gateway_cooldown(provider, model=model, key_index=key_index, seconds=cooldown_seconds)
+    logger.warning(
+        "AI gateway failure feature=%s provider=%s model=%s key_index=%s status=%s latency_ms=%s cooldown_seconds=%s error=%s",
+        AI_GATEWAY_FEATURE,
+        provider,
+        model,
+        key_index,
+        status,
+        latency_ms,
+        cooldown_seconds,
+        exc,
+    )
+
+
 def _as_number(value):
     try:
         return float(value or 0)
@@ -296,15 +488,10 @@ def hash_str(s: str) -> int:
     return abs(h)
 
 def classify_topic(text: str = '', c_id: str = '') -> str:
+    topic = canonical_topic_label(text, c_id, default="")
+    if topic:
+        return topic
     t = str(text).lower()
-    if 'toeic' in t:
-        return 'TOEIC'
-    if 'vstep' in t:
-        return 'VSTEP'
-    if 'đầu ra' in t or 'chuẩn đầu ra' in t:
-        return 'Chuẩn đầu ra'
-    if any(k in t for k in ('tin học', 'mos', 'ic3', 'cntt', 'cơ bản', 'nâng cao')):
-        return 'Tin học'
     if any(k in t for k in ('điểm', 'tra cứu điểm', 'xem điểm', 'kết quả thi')):
         return 'Tra cứu điểm'
     if any(k in t for k in ('lịch thi', 'ngày thi', 'ca thi', 'giờ thi')):
@@ -321,15 +508,16 @@ def source_topic(value) -> str:
     if not value:
         return 'Chưa xác định'
     if isinstance(value, (list, tuple)):
-        return str(value[0]).strip() if value else 'Chưa xác định'
+        return canonical_topic_label(value[0], default=str(value[0]).strip()) if value else 'Chưa xác định'
     text = str(value).strip()
     try:
         parsed = json.loads(text)
     except (TypeError, ValueError, json.JSONDecodeError):
         parsed = None
     if isinstance(parsed, list) and parsed:
-        return str(parsed[0]).strip() or 'Chưa xác định'
-    return text or 'Chưa xác định'
+        first = str(parsed[0]).strip()
+        return canonical_topic_label(first, default=first or 'Chưa xác định')
+    return canonical_topic_label(text, default=text or 'Chưa xác định')
 
 def build_alert_description(alert_type: str, last_cust_text: str = '', last_ai_text: str = '') -> str:
     customer_text = excerpt_text(last_cust_text, 100)
@@ -408,6 +596,19 @@ def is_customer_question(value: str = "") -> bool:
     )
     if (normalized_plain.startswith("all ") or any(cue in normalized_plain for cue in announcement_cues)) and "?" not in text:
         return False
+    marketing_cues = (
+        "ben em dang",
+        "goi audit",
+        "organic traffic",
+        "ai overview",
+        "eeat",
+        "hoa hong",
+        "doi tac",
+        "ctv",
+        "hop tac",
+    )
+    if any(cue in normalized_plain for cue in marketing_cues):
+        return False
 
     if normalized_plain in {"da", "da khong", "khong", "vang", "ok", "okay", "cam on", "cảm ơn"}:
         return False
@@ -449,11 +650,16 @@ def is_customer_question(value: str = "") -> bool:
 
 
 def detect_question_course(normalized_text: str = "") -> str:
-    if "toeic" in normalized_text:
+    topic_id = canonical_topic_id(normalized_text)
+    if topic_id == "toeic":
         return "TOEIC"
-    if "vstep" in normalized_text:
-        return "VSTEP"
-    if any(token in normalized_text for token in ("tin hoc", "cntt", "mos", "ic3")):
+    if topic_id == "mos":
+        return "MOS"
+    if topic_id == "sat_hach_cntt":
+        return "Sát hạch CNTT"
+    if topic_id == "hoc_tieng_anh":
+        return "Tiếng Anh"
+    if topic_id == "hoc_tin_hoc":
         return "Tin học"
     return ""
 
@@ -496,7 +702,17 @@ def build_local_representative_question(representative: str, related_questions) 
         return with_course("Cách tra cứu điểm và kết quả thi{course} như thế nào?", course)
     if any(token in normalized for token in ("dang ky", "ghi danh")):
         return with_course("Cách đăng ký khóa học{course} như thế nào?", course)
-    if any(token in normalized for token in ("dia chi", "o dau", "trung tam")):
+    if any(
+        token in normalized
+        for token in (
+            "dia chi",
+            "trung tam o dau",
+            "van phong o dau",
+            "flic o dau",
+            "trung tam nam o dau",
+            "van phong nam o dau",
+        )
+    ):
         return "Trung tâm ở đâu?"
 
     return clean_local_representative_question(representative)
@@ -587,17 +803,111 @@ def prepare_question_items(raw_rows):
 def question_tokens(value: str = ""):
     normalized = strip_vietnamese_marks(clean_question_text(value)).lower()
     tokens = re.findall(r"[a-z0-9]+", normalized)
+    phrase_tokens = {
+        token
+        for token, phrases in QUESTION_PHRASE_TOKENS.items()
+        if any(phrase in normalized for phrase in phrases)
+    }
     return {
         token
         for token in tokens
         if len(token) > 1 and token not in QUESTION_STOPWORDS
-    }
+    } | phrase_tokens
 
 
 def token_overlap_score(left, right) -> float:
     if not left or not right:
         return 0.0
     return len(left & right) / max(1, min(len(left), len(right)))
+
+
+def question_intents(value: str = ""):
+    normalized = strip_vietnamese_marks(clean_question_text(value)).lower()
+    return {
+        token
+        for token, phrases in QUESTION_PHRASE_TOKENS.items()
+        if any(phrase in normalized for phrase in phrases)
+    }
+
+
+def item_validation_text(item) -> str:
+    examples = [item.get("question") or ""]
+    examples.extend(variant.get("question") or "" for variant in item.get("variants") or [])
+    examples.extend(item.get("examples") or [])
+    return " ".join(clean_question_text(example) for example in examples if example)
+
+
+def question_topic_id(value: str = "") -> str | None:
+    return canonical_topic_id(value)
+
+
+def question_item_compatibility(representative: str, item) -> tuple[bool, str]:
+    item_text = item_validation_text(item)
+    if not item_text:
+        return False, "empty_item"
+
+    representative_text = clean_question_text(representative)
+    if not representative_text:
+        return True, ""
+
+    representative_topic = question_topic_id(representative_text)
+    item_topic = question_topic_id(item_text)
+    if representative_topic and item_topic and representative_topic != item_topic:
+        return False, "topic_mismatch"
+
+    representative_intents = question_intents(representative_text)
+    item_intents = question_intents(item_text)
+    if representative_intents and item_intents and not (representative_intents & item_intents):
+        return False, "intent_mismatch"
+
+    overlap = token_overlap_score(question_tokens(representative_text), question_tokens(item_text))
+    if representative_intents and not item_intents and overlap < 0.25:
+        return False, "intent_missing_on_child"
+    if item_intents and not representative_intents and overlap < 0.25:
+        return False, "intent_missing_on_parent"
+
+    return True, ""
+
+
+def validated_group_item_ids(representative: str, item_ids, item_by_id, *, validation=None):
+    accepted_ids = []
+    for item_id in item_ids or []:
+        item = item_by_id.get(item_id)
+        if not item:
+            continue
+        is_compatible, reason = question_item_compatibility(representative, item)
+        if is_compatible:
+            accepted_ids.append(item_id)
+            continue
+        if validation is not None:
+            validation.setdefault("rejectedItems", []).append({
+                "representative": clean_question_text(representative),
+                "itemId": item_id,
+                "question": item.get("question"),
+                "reason": reason,
+            })
+    return accepted_ids
+
+
+def validate_ai_question_groups(groups, source_items):
+    item_by_id = {item["id"]: item for item in source_items}
+    validation = {"rejectedItems": [], "source": "ai"}
+    validated = []
+    for group in groups or []:
+        representative = clean_question_text(group.get("question"))
+        accepted_ids = validated_group_item_ids(
+            representative,
+            group.get("itemIds") or [],
+            item_by_id,
+            validation=validation,
+        )
+        if accepted_ids:
+            validated.append({"question": representative, "itemIds": accepted_ids})
+    validation["rejectedCount"] = len(validation["rejectedItems"])
+    validation["groupCount"] = len(validated)
+    _last_question_group_validation.clear()
+    _last_question_group_validation.update(validation)
+    return validated
 
 
 def build_local_question_groups(items):
@@ -809,13 +1119,22 @@ def request_gemini_question_groups(prompt: str, timeout_seconds: float) -> str:
     deadline = time.time() + min(timeout_seconds, GEMINI_PROVIDER_BUDGET_SECONDS)
     with httpx.Client() as client:
         for model in GEMINI_QUESTION_MODELS:
-            for api_key in api_keys:
+            for key_index, api_key in enumerate(api_keys, start=1):
+                if _is_ai_gateway_cooling_down("gemini", model, key_index):
+                    logger.info(
+                        "AI gateway skipped cooled-down Gemini target feature=%s model=%s key_index=%s",
+                        AI_GATEWAY_FEATURE,
+                        model,
+                        key_index,
+                    )
+                    continue
                 remaining = deadline - time.time()
                 if remaining <= 0:
                     raise QuestionGroupingAIError(
                         str(last_error) if last_error else "Gemini provider budget exceeded."
                     )
                 request_timeout = min(remaining, GEMINI_REQUEST_TIMEOUT_SECONDS)
+                started_at = time.time()
                 try:
                     response = client.post(
                         f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
@@ -835,12 +1154,23 @@ def request_gemini_question_groups(prompt: str, timeout_seconds: float) -> str:
                     response.raise_for_status()
                     text = extract_gemini_text(response.json())
                     if text:
-                        logger.info("Dashboard question grouping used Gemini model %s.", model)
+                        _record_ai_gateway_success(
+                            "gemini",
+                            model,
+                            key_index,
+                            int((time.time() - started_at) * 1000),
+                        )
                         return text
                     raise QuestionGroupingAIError("Gemini returned an empty response.")
                 except Exception as exc:
                     last_error = exc
-                    logger.warning("Gemini question grouping failed on %s: %s", model, exc)
+                    _record_ai_gateway_failure(
+                        "gemini",
+                        model,
+                        key_index,
+                        exc,
+                        int((time.time() - started_at) * 1000),
+                    )
 
     raise QuestionGroupingAIError(str(last_error) if last_error else "Gemini failed.")
 
@@ -856,13 +1186,22 @@ def request_openai_question_groups(prompt: str, timeout_seconds: float) -> str:
     deadline = time.time() + min(timeout_seconds, OPENAI_PROVIDER_BUDGET_SECONDS)
     with httpx.Client() as client:
         for model in OPENAI_QUESTION_MODELS:
-            for api_key in api_keys:
+            for key_index, api_key in enumerate(api_keys, start=1):
+                if _is_ai_gateway_cooling_down("openai", model, key_index):
+                    logger.info(
+                        "AI gateway skipped cooled-down OpenAI target feature=%s model=%s key_index=%s",
+                        AI_GATEWAY_FEATURE,
+                        model,
+                        key_index,
+                    )
+                    continue
                 remaining = deadline - time.time()
                 if remaining <= 0:
                     raise QuestionGroupingAIError(
                         str(last_error) if last_error else "OpenAI provider budget exceeded."
                     )
                 request_timeout = min(remaining, OPENAI_REQUEST_TIMEOUT_SECONDS)
+                started_at = time.time()
                 try:
                     response = client.post(
                         "https://api.openai.com/v1/responses",
@@ -894,12 +1233,23 @@ def request_openai_question_groups(prompt: str, timeout_seconds: float) -> str:
                     response.raise_for_status()
                     text = extract_openai_text(response.json())
                     if text:
-                        logger.info("Dashboard question grouping used OpenAI model %s.", model)
+                        _record_ai_gateway_success(
+                            "openai",
+                            model,
+                            key_index,
+                            int((time.time() - started_at) * 1000),
+                        )
                         return text
                     raise QuestionGroupingAIError("OpenAI returned an empty response.")
                 except Exception as exc:
                     last_error = exc
-                    logger.warning("OpenAI question grouping failed on %s: %s", model, exc)
+                    _record_ai_gateway_failure(
+                        "openai",
+                        model,
+                        key_index,
+                        exc,
+                        int((time.time() - started_at) * 1000),
+                    )
 
     raise QuestionGroupingAIError(str(last_error) if last_error else "OpenAI failed.")
 
@@ -907,24 +1257,36 @@ def request_openai_question_groups(prompt: str, timeout_seconds: float) -> str:
 def request_ai_question_groups(prompt: str) -> str:
     timeout_seconds = get_settings().ai_question_timeout_seconds
     errors = []
-    for provider_request in (request_gemini_question_groups, request_openai_question_groups):
+    for provider_name, provider_request in (
+        ("gemini", request_gemini_question_groups),
+        ("openai", request_openai_question_groups),
+    ):
+        if _is_ai_gateway_cooling_down(provider_name):
+            errors.append(f"{provider_name} provider is cooling down")
+            continue
         try:
             return provider_request(prompt, timeout_seconds)
         except Exception as exc:
             errors.append(str(exc))
+            _mark_ai_gateway_cooldown(
+                provider_name,
+                seconds=AI_GATEWAY_PROVIDER_COOLDOWN_SECONDS,
+            )
     raise QuestionGroupingAIError("; ".join(errors) or "All AI providers failed.")
 
 
 def cluster_question_items_once(items):
     prompt = build_question_group_prompt(items)
     text = request_ai_question_groups(prompt)
-    return parse_ai_question_groups(text, [item["id"] for item in items])
+    groups = parse_ai_question_groups(text, [item["id"] for item in items])
+    return validate_ai_question_groups(groups, items)
 
 
 def cluster_candidate_groups_once(candidate_groups):
     prompt = build_candidate_group_prompt(candidate_groups)
     text = request_ai_question_groups(prompt)
-    return parse_ai_question_groups(text, [group["id"] for group in candidate_groups])
+    groups = parse_ai_question_groups(text, [group["id"] for group in candidate_groups])
+    return validate_ai_question_groups(groups, candidate_groups)
 
 
 def cluster_question_items(items):
@@ -970,14 +1332,23 @@ def build_top_question_rows_from_groups(
     limit=TOP_QUESTIONS_RESPONSE_LIMIT,
 ):
     item_by_id = {item["id"]: item for item in items}
+    validation = {"rejectedItems": [], "source": "row_build"} if ai_generated else None
     rows = []
     for group in groups:
         related_counts = Counter()
         source_counts = Counter()
         total_count = 0
         representative = clean_question_text(group.get("question"))
+        group_item_ids = group.get("itemIds") or []
+        if ai_generated:
+            group_item_ids = validated_group_item_ids(
+                representative,
+                group_item_ids,
+                item_by_id,
+                validation=validation,
+            )
 
-        for item_id in group.get("itemIds") or []:
+        for item_id in group_item_ids:
             item = item_by_id.get(item_id)
             if not item:
                 continue
@@ -1012,6 +1383,18 @@ def build_top_question_rows_from_groups(
             "sourceQuestionCount": len(related_questions),
             "aiGenerated": ai_generated,
         })
+
+    if validation is not None:
+        validation["rejectedCount"] = len(validation["rejectedItems"])
+        validation["groupCount"] = len(rows)
+        if validation["rejectedItems"]:
+            previous_rejected = list(_last_question_group_validation.get("rejectedItems") or [])
+            _last_question_group_validation.clear()
+            _last_question_group_validation.update({
+                **validation,
+                "rejectedItems": previous_rejected + validation["rejectedItems"],
+                "rejectedCount": len(previous_rejected) + validation["rejectedCount"],
+            })
 
     return merge_top_question_rows(rows)[:limit]
 
@@ -1087,6 +1470,7 @@ def combine_ai_display_and_local_search_rows(display_rows, local_rows):
 
 
 def build_top_question_rows(raw_rows):
+    _last_question_group_validation.clear()
     raw_rows = list(raw_rows or [])
     if len(raw_rows) > QUESTION_RAW_ROW_LIMIT:
         logger.info(
@@ -1168,6 +1552,11 @@ class DashboardService:
             cached_top_questions = get_top_question_runtime_cache(top_questions_cache_key)
             if cached_top_questions is not None:
                 return cached_top_questions
+            db_cached_top_questions = ai_question_group_cache_repository.get(top_questions_cache_key)
+            if db_cached_top_questions and _is_valid_last_good_top_question_result(db_cached_top_questions["value"]):
+                set_cached_value(top_questions_cache_key, db_cached_top_questions["value"])
+                set_cached_value(last_good_cache_key, db_cached_top_questions["value"])
+                return db_cached_top_questions["value"]
 
         raw_top_questions = self._cached_repo_call(
             f'top_questions_base:{channel or "all"}',
@@ -1180,6 +1569,20 @@ class DashboardService:
             set_cached_value(top_questions_cache_key, top_questions)
             set_cached_value(last_good_cache_key, top_questions)
             set_persistent_last_good_value(last_good_cache_key, top_questions)
+            ai_metadata = get_ai_gateway_last_success()
+            ai_question_group_cache_repository.upsert(
+                top_questions_cache_key,
+                top_questions,
+                source_from_date=start_date,
+                source_to_date=end_date,
+                source_filters={"channel": channel} if channel else {},
+                source_row_count=len(raw_top_questions or []),
+                provider=ai_metadata.get("provider"),
+                model=ai_metadata.get("model"),
+                prompt_version=AI_GATEWAY_PROMPT_VERSION,
+                validation=get_last_question_group_validation(),
+                ttl_seconds=AI_QUESTION_DB_CACHE_TTL_SECONDS,
+            )
             return top_questions
 
         if top_questions[1] == "fallback" and _top_question_result_rows(top_questions):
@@ -1190,6 +1593,14 @@ class DashboardService:
             last_good_cache_key,
             AI_QUESTION_LAST_GOOD_CACHE_TTL_SECONDS,
         ) or get_persistent_last_good_value(last_good_cache_key)
+        if last_good_top_questions is None:
+            db_last_good_top_questions = ai_question_group_cache_repository.get(
+                top_questions_cache_key,
+                allow_expired=True,
+            )
+            if db_last_good_top_questions and _is_valid_last_good_top_question_result(db_last_good_top_questions["value"]):
+                last_good_top_questions = db_last_good_top_questions["value"]
+
         if last_good_top_questions is not None:
             rows, _status, _message = last_good_top_questions
             stale_result = (

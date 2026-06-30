@@ -18,18 +18,13 @@ from pydantic import ValidationError
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
-# The owned router must import require_role exactly as specified. The concurrent
-# auth module currently names the same factory require_roles, so expose a test-only
-# alias without editing or replacing that module.
 from app.core import auth as auth_module
-
-if not hasattr(auth_module, "require_role"):
-    auth_module.require_role = auth_module.require_roles
 
 
 from app.core.exceptions import register_exception_handlers
 from app.repositories.ai_error_keywords import (
     AiErrorKeywordRepository,
+    AiErrorKeywordSchemaUnavailableError,
     DuplicateAiErrorKeywordRecordError,
 )
 from app.routers.ai_error_keywords import (
@@ -404,6 +399,11 @@ class FakeApiService:
         return AiErrorKeywordRead.model_validate(_row(creator=creator))
 
 
+class MissingSchemaApiService:
+    def list(self, **_kwargs):
+        raise AiErrorKeywordSchemaUnavailableError("Bảng dbo.AiErrorKeywords chưa được khởi tạo.")
+
+
 def test_create_endpoint_uses_authenticated_creator_and_manager_role():
     service = FakeApiService()
     app = FastAPI()
@@ -446,6 +446,32 @@ def test_create_endpoint_rejects_spoofed_creator():
 
     assert response.status_code == 422
     assert service.create_call is None
+
+
+def test_list_endpoint_reports_missing_schema_without_stack_trace():
+    app = FastAPI()
+    register_exception_handlers(app)
+    app.include_router(router)
+    app.dependency_overrides[get_ai_error_keyword_service] = MissingSchemaApiService
+    app.dependency_overrides[require_manager] = lambda: auth_module.SessionClaims(
+        username="quản_lý",
+        role="manager",
+        issued_at=1,
+        expires_at=2,
+    )
+
+    with TestClient(app) as client:
+        response = client.get("/api/ai-error-keywords")
+
+    assert response.status_code == 503
+    assert response.json()["success"] is False
+    assert "create_ai_error_keywords.sql" in response.json()["message"]
+
+
+def test_main_app_mounts_ai_error_keyword_routes():
+    from app.main import app as main_app
+
+    assert any(route.path == "/api/ai-error-keywords" for route in main_app.routes)
 
 
 def test_migration_and_rollback_are_idempotent_and_scoped():

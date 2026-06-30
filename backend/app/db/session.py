@@ -21,7 +21,7 @@ class _PymssqlCursor:
 
     @staticmethod
     def _query(query: str) -> str:
-        return query.replace("?", "%s")
+        return query.replace("%", "%%").replace("?", "%s")
 
     def execute(self, query: str, params: Iterable[Any] = ()) -> Any:
         return self._cursor.execute(self._query(query), tuple(params))

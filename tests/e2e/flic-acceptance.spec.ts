@@ -159,7 +159,7 @@ test("all requested entry points use the same create feedback form with the sour
 
   await page.getByRole("button", { name: "Từ khóa nổi bật" }).click();
   await page.getByRole("button", { name: /FAQ cần thêm/ }).click();
-  await page.getByRole("button", { name: "Soạn câu trả lời" }).click();
+  await page.getByRole("button", { name: "Thêm FAQ" }).click();
   await expect(page.getByRole("heading", { name: "Thêm phản hồi" })).toBeVisible();
   await expect(page.getByLabel("Câu hỏi khách hàng")).toHaveValue(failedConversation.textContent);
   await page.getByRole("button", { name: "Đóng form phản hồi" }).click();

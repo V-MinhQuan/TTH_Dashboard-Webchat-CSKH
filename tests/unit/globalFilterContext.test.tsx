@@ -57,4 +57,22 @@ describe("GlobalFilterContext", () => {
     expect(result.current.draftFilters.aiStatus).toBe(defaultFilterValues.aiStatus);
     expect(result.current.appliedFilters.aiStatus).toBe(defaultFilterValues.aiStatus);
   });
+
+  it("normalizes detailed AI failure type out of global filters", () => {
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <GlobalFilterProvider>{children}</GlobalFilterProvider>
+    );
+    const { result } = renderHook(() => useGlobalFilters(), { wrapper });
+
+    act(() => result.current.applyFilters({
+      ...defaultFilterValues,
+      aiStatus: "AI trả lời thất bại",
+      aiFailureType: "AI không chắc chắn",
+    }));
+    expect(result.current.appliedFilters.aiStatus).toBe("AI trả lời thất bại");
+    expect(result.current.appliedFilters.aiFailureType).toBe(defaultFilterValues.aiFailureType);
+
+    act(() => result.current.updateDraft({ aiStatus: "AI trả lời thành công" }));
+    expect(result.current.draftFilters.aiFailureType).toBe(defaultFilterValues.aiFailureType);
+  });
 });

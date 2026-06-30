@@ -23,11 +23,12 @@ import { toast } from "sonner";
 import { closeConversation, fetchApiJson, buildApiUrl } from "../../services/dashboardApi";
 import { bulkCloseConversations, getCustomerPresentation } from "../../services/conversationApi";
 import { analyticsFiltersToSearchParams } from "../../utils/dateFilters";
+import { mapTopicToGroupId, topicLabelForGroupId } from "../../constants/topicTaxonomy";
 
 const NAVY = "#003865";
 const ORANGE = "#D73C01";
-const SENTIMENT_POSITIVE = "#1565C0";
-const SENTIMENT_NEUTRAL = "#F36C2E";
+const SENTIMENT_POSITIVE = "#1a6460";
+const SENTIMENT_NEUTRAL = "#E5A850";
 const SENTIMENT_NEGATIVE = ORANGE;
 const SENTIMENT_TOPIC_COLORS = [NAVY, "#ED5206", SENTIMENT_POSITIVE, SENTIMENT_NEGATIVE, "#42A5F5", SENTIMENT_NEUTRAL];
 
@@ -62,45 +63,19 @@ function getNegativeLevel(sentimentLabel: unknown, sentimentScore: unknown): Neg
   return "Hơi tiêu cực";
 }
 
-function getDatesFromRange(range: string, customFrom?: string, customTo?: string): { startDate?: string; endDate?: string } {
-  const today = new Date();
-  const formatDateStr = (d: Date) => {
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
-  };
-
-  if (range === "Hôm nay") {
-    return { startDate: formatDateStr(today), endDate: formatDateStr(today) };
-  }
-  if (range === "7 ngày qua") {
-    const start = new Date();
-    start.setDate(today.getDate() - 7);
-    return { startDate: formatDateStr(start), endDate: formatDateStr(today) };
-  }
-  if (range === "30 ngày qua") {
-    const start = new Date();
-    start.setDate(today.getDate() - 30);
-    return { startDate: formatDateStr(start), endDate: formatDateStr(today) };
-  }
-  if (range === "Tháng này") {
-    const start = new Date(today.getFullYear(), today.getMonth(), 1);
-    return { startDate: formatDateStr(start), endDate: formatDateStr(today) };
-  }
-  if (range === "Tháng trước") {
-    const start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-    const end = new Date(today.getFullYear(), today.getMonth(), 0);
-    return { startDate: formatDateStr(start), endDate: formatDateStr(end) };
-  }
-  if (range === "Tùy chỉnh" && customFrom && customTo) {
-    return { startDate: customFrom, endDate: customTo };
-  }
-  return {};
-}
-
 function buildSentimentQueryParams(filters: FilterValues) {
   return analyticsFiltersToSearchParams(filters);
+}
+
+function displayCanonicalTopic(value: unknown) {
+  const raw = Array.isArray(value) && value.length > 0
+    ? String(value[0] || "")
+    : typeof value === "string"
+      ? value
+      : "";
+  const groupId = mapTopicToGroupId(raw);
+  if (groupId) return topicLabelForGroupId(groupId);
+  return raw.trim() || "Chưa xác định";
 }
 
 function mapPositiveConversation(conv: any) {
@@ -115,9 +90,7 @@ function mapPositiveConversation(conv: any) {
     customer: customer.primary,
     customerReference: customer.secondary,
     content: conv.textContent || "Chưa có dữ liệu",
-    topic: Array.isArray(conv.detectedTopics) && conv.detectedTopics.length > 0
-      ? conv.detectedTopics.join(", ")
-      : "Chưa xác định",
+    topic: displayCanonicalTopic(conv.detectedTopics),
     channel: conv.source || "Chưa xác định",
     label: "Tích cực",
     score: Number.isFinite(Number(conv.sentimentScore)) ? Number(conv.sentimentScore) : null,
@@ -300,7 +273,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
               customer: customer.primary,
               customerReference: customer.secondary,
               complaint: conv.textContent || "Chưa có dữ liệu",
-              topic: Array.isArray(conv.detectedTopics) && conv.detectedTopics.length > 0 ? conv.detectedTopics.join(", ") : (conv.detectedTopics || "Chưa xác định"),
+              topic: displayCanonicalTopic(conv.detectedTopics),
               channel: conv.source || "Chưa xác định",
               level: getNegativeLevel(conv.sentimentLabel, conv.sentimentScore),
               waitTime: waitTimeStr,
@@ -380,6 +353,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
   const posPctStr = summaryData?.summary?.total ? Math.round((summaryData.summary.positive / summaryData.summary.total) * 100) + "%" : "0%";
   const neuPctStr = summaryData?.summary?.total ? Math.round((summaryData.summary.neutral / summaryData.summary.total) * 100) + "%" : "0%";
   const negPctStr = summaryData?.summary?.total ? Math.round((summaryData.summary.negative / summaryData.summary.total) * 100) + "%" : "0%";
+  const analyzedConversationCount = Number(summaryData?.totalConversations ?? summaryData?.summary?.totalConversations ?? 0);
   const satisfactionValue = summaryData?.avgSatisfaction ? (summaryData.avgSatisfaction > 5 ? summaryData.avgSatisfaction / 20 : summaryData.avgSatisfaction) : 0;
   const satisfactionStr = satisfactionValue > 0 ? satisfactionValue.toFixed(1) + "/5" : "0/5";
   const satisfactionPctLabel = satisfactionValue > 0 ? `${Math.round(satisfactionValue * 20)} điểm ` : "0 điểm %";
@@ -470,7 +444,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
           {/* KPI Cards */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "16px", marginBottom: "24px" }}>
             {[
-              { icon: MessageCircle, label: "Tổng số hội thoại", value: summaryData?.summary?.total?.toString() || "0", change: "Theo bộ lọc", color: "#003BB9", bg: "#eff6ff", trend: "Số lượng hội thoại đã phân tích" },
+              { icon: MessageCircle, label: "Hội thoại đã phân tích", value: analyzedConversationCount.toLocaleString("vi-VN"), change: "Theo bộ lọc", color: "#003BB9", bg: "#eff6ff", trend: "Có ít nhất một bản ghi cảm xúc" },
               { icon: Smile, label: "Tỷ lệ Tích cực", value: posPctStr, change: "Theo bộ lọc", color: "#228A61", bg: "#f0fdf4", trend: "Phần trăm cảm xúc hài lòng" },
               { icon: Meh, label: "Tỷ lệ Trung lập", value: neuPctStr, change: "Theo bộ lọc", color: "#E5A850", bg: "#fffbeb", trend: "Phần trăm cảm xúc bình thường" },
               { icon: AlertCircle, label: "Tỷ lệ Tiêu cực", value: negPctStr, change: "Theo bộ lọc", color: ORANGE, bg: "#fff5f5", trend: "Phần trăm cảm xúc cần chú ý" },

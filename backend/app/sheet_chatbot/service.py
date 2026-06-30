@@ -2,6 +2,7 @@ import re
 import unicodedata
 from difflib import SequenceMatcher
 
+from app.core.topic_taxonomy import canonical_topic_label
 from app.sheet_chatbot.repository import sheet_chatbot_repository
 
 
@@ -297,12 +298,7 @@ class SheetChatbotService:
         return next((index for index, row in enumerate(rows) if str(row.get("id")) == str(row_id)), -1)
 
     def _map_faq_topic(self, topic):
-        normalized = normalize_text(topic)
-        if "chuan dau ra" in normalized:
-            return "Chuẩn đầu ra"
-        if any(key in normalized for key in ("cntt", "tin hoc", "mos", "ic3")):
-            return "MOS"
-        return topic or "Khác"
+        return canonical_topic_label(topic, default=topic or "Khác")
 
 
 sheet_chatbot_service = SheetChatbotService()

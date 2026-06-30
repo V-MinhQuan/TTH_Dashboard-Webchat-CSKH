@@ -38,7 +38,6 @@ export function Sidebar({ activeScreen, onNavigate, collapsed, onToggleCollapse 
     { id: "aiinsights", label: "Hiệu suất AI", icon: Bot },
     { id: "keyword", label: "Từ khóa nổi bật", icon: Hash },
     { id: "sentiment", label: "Phân tích cảm xúc", icon: Heart },
-    // { id: "performance", label: "Hiệu suất", icon: TrendingUp }, // Tạm ẩn
     { id: "chartbuilder", label: "Biểu đồ", icon: BarChart2 },
     { id: "chatbot_sheet", label: "Thư viện phản hồi", icon: FileText },
     { id: "settings", label: "Cài đặt", icon: Settings },
