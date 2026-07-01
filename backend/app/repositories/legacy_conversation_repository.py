@@ -192,8 +192,8 @@ class ConversationRepository:
             return f"(LOWER({text_column}) LIKE N'%mos%' OR LOWER({text_column}) LIKE N'%microsoft office specialist%')"
         if topic_id == "sat_hach_cntt":
             return f"""(
-                LOWER({text_column}) LIKE N'%sát hạch%'
-                OR LOWER({text_column}) LIKE N'%sat hach%'
+                LOWER({text_column}) LIKE N'%[s]át hạch%'
+                OR LOWER({text_column}) LIKE N'%[s]at hach%'
                 OR LOWER({text_column}) LIKE N'%cntt%'
                 OR LOWER({text_column}) LIKE N'%công nghệ thông tin%'
                 OR LOWER({text_column}) LIKE N'%cong nghe thong tin%'
@@ -1038,8 +1038,8 @@ class ConversationRepository:
                 CASE
                   WHEN LOWER({topic_text}) LIKE N'%toeic%' THEN 'TOEIC'
                   WHEN LOWER({topic_text}) LIKE N'%mos%' OR LOWER({topic_text}) LIKE N'%microsoft office specialist%' THEN 'MOS'
-                  WHEN LOWER({topic_text}) LIKE N'%sát hạch%'
-                    OR LOWER({topic_text}) LIKE N'%sat hach%'
+                  WHEN LOWER({topic_text}) LIKE N'%[s]át hạch%'
+                    OR LOWER({topic_text}) LIKE N'%[s]at hach%'
                     OR LOWER({topic_text}) LIKE N'%cntt%'
                     OR LOWER({topic_text}) LIKE N'%công nghệ thông tin%'
                     OR LOWER({topic_text}) LIKE N'%cong nghe thong tin%'
@@ -1999,7 +1999,7 @@ class ConversationRepository:
                     Source AS source,
                     MAX(CASE WHEN LOWER(TextContent) LIKE N'%toeic%' THEN 1 ELSE 0 END) AS has_toeic,
                     MAX(CASE WHEN LOWER(TextContent) LIKE N'%mos%' OR LOWER(TextContent) LIKE N'%microsoft office specialist%' THEN 1 ELSE 0 END) AS has_mos,
-                    MAX(CASE WHEN LOWER(TextContent) LIKE N'%sát hạch%' OR LOWER(TextContent) LIKE N'%sat hach%' OR LOWER(TextContent) LIKE N'%cntt%' OR LOWER(TextContent) LIKE N'%công nghệ thông tin%' OR LOWER(TextContent) LIKE N'%cong nghe thong tin%' OR LOWER(TextContent) LIKE N'%ic3%' OR LOWER(TextContent) LIKE N'%thcb%' OR LOWER(TextContent) LIKE N'%thnc%' OR LOWER(TextContent) LIKE N'%tin cơ bản%' OR LOWER(TextContent) LIKE N'%tin co ban%' OR LOWER(TextContent) LIKE N'%tin nâng cao%' OR LOWER(TextContent) LIKE N'%tin nang cao%' THEN 1 ELSE 0 END) AS has_sat_hach_cntt,
+                    MAX(CASE WHEN LOWER(TextContent) LIKE N'%[s]át hạch%' OR LOWER(TextContent) LIKE N'%[s]at hach%' OR LOWER(TextContent) LIKE N'%cntt%' OR LOWER(TextContent) LIKE N'%công nghệ thông tin%' OR LOWER(TextContent) LIKE N'%cong nghe thong tin%' OR LOWER(TextContent) LIKE N'%ic3%' OR LOWER(TextContent) LIKE N'%thcb%' OR LOWER(TextContent) LIKE N'%thnc%' OR LOWER(TextContent) LIKE N'%tin cơ bản%' OR LOWER(TextContent) LIKE N'%tin co ban%' OR LOWER(TextContent) LIKE N'%tin nâng cao%' OR LOWER(TextContent) LIKE N'%tin nang cao%' THEN 1 ELSE 0 END) AS has_sat_hach_cntt,
                     MAX(CASE WHEN LOWER(TextContent) LIKE N'%học tiếng anh%' OR LOWER(TextContent) LIKE N'%hoc tieng anh%' OR LOWER(TextContent) LIKE N'%tiếng anh%' OR LOWER(TextContent) LIKE N'%tieng anh%' OR LOWER(TextContent) LIKE N'%anh văn%' OR LOWER(TextContent) LIKE N'%anh van%' OR LOWER(TextContent) LIKE N'%ngoại ngữ%' OR LOWER(TextContent) LIKE N'%ngoai ngu%' OR LOWER(TextContent) LIKE N'%vstep%' OR LOWER(TextContent) LIKE N'%b1%' OR LOWER(TextContent) LIKE N'%b2%' OR LOWER(TextContent) LIKE N'%chuẩn đầu ra%' OR LOWER(TextContent) LIKE N'%chuan dau ra%' THEN 1 ELSE 0 END) AS has_hoc_tieng_anh,
                     MAX(CASE WHEN LOWER(TextContent) LIKE N'%học tin học%' OR LOWER(TextContent) LIKE N'%hoc tin hoc%' OR LOWER(TextContent) LIKE N'%khóa tin học%' OR LOWER(TextContent) LIKE N'%khoa tin hoc%' OR LOWER(TextContent) LIKE N'%lớp tin học%' OR LOWER(TextContent) LIKE N'%lop tin hoc%' OR LOWER(TextContent) LIKE N'%tin học văn phòng%' OR LOWER(TextContent) LIKE N'%tin hoc van phong%' OR LOWER(TextContent) LIKE N'%học word%' OR LOWER(TextContent) LIKE N'%hoc word%' OR LOWER(TextContent) LIKE N'%học excel%' OR LOWER(TextContent) LIKE N'%hoc excel%' OR LOWER(TextContent) LIKE N'%học powerpoint%' OR LOWER(TextContent) LIKE N'%hoc powerpoint%' THEN 1 ELSE 0 END) AS has_hoc_tin_hoc,
                     MAX(CASE WHEN LOWER(TextContent) LIKE N'%điểm%' OR LOWER(TextContent) LIKE N'%tra cứu điểm%' OR LOWER(TextContent) LIKE N'%xem điểm%' OR LOWER(TextContent) LIKE N'%kết quả thi%' THEN 1 ELSE 0 END) AS has_tracuudiem,

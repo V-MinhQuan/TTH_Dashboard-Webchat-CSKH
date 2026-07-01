@@ -899,7 +899,12 @@ def test_channel_topic_stats_counts_only_failed_ai_messages(mock_get_db):
     assert "customer.SentAt <= m.SentAt" in query
     assert "m.FromHost = 1" in query
     assert "m.HostDisplayName = 'AI Assistant'" in query
+    assert "LIKE N'%[s]át hạch%'" in query
+    assert "LIKE N'%[s]at hach%'" in query
+    assert "LIKE N'%sát hạch%'" not in query
+    assert "LIKE N'%sat hach%'" not in query
     assert "m.TextContent LIKE N'%không tìm thấy%'" in query
+    assert query.count("%s") == len(params)
     assert params == ("2026-06-01", "2026-06-30 23:59:59.999")
     conn.close.assert_called_once()
 

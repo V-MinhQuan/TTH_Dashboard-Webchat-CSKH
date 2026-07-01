@@ -4,6 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from app.core.topic_taxonomy import canonical_topic_labels
 from app.services.ai_issue_classifier import classify_ai_issue, remove_accents
 
 
@@ -56,3 +57,13 @@ def test_ai_issue_classifier_returns_no_issue_for_normal_answer():
 
     assert result.issue_flag is False
     assert result.issue_type is None
+
+
+def test_topic_inference_maps_customer_text_to_five_canonical_groups():
+    assert canonical_topic_labels("Em muốn đăng ký thi IC3 CNTT cơ bản") == [
+        "Sát hạch CNTT (Sát hạch Công nghệ thông tin)",
+    ]
+    assert canonical_topic_labels("Trung tâm có lớp tin học văn phòng học Word và Excel không?") == [
+        "Học Tin học",
+    ]
+    assert canonical_topic_labels("Em cần lịch thi TOEIC và chứng chỉ MOS") == ["TOEIC", "MOS"]

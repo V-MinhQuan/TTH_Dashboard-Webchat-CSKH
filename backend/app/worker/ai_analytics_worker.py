@@ -1,8 +1,10 @@
 import asyncio
+import json
 import logging
 from datetime import datetime
 
-from app.db.session import get_connection
+from app.core.topic_taxonomy import canonical_topic_labels
+from app.db.session import get_connection, rows_to_dicts
 from app.repositories.display_filters import valid_message_condition
 from app.services.ai_issue_classifier import classify_ai_issue
 
@@ -19,6 +21,7 @@ def process_new_messages():
             SELECT 
                 m.id_webchat_messageLogs AS messageId,
                 m.TextContent,
+                customerMessage.TextContent AS CustomerText,
                 m.SentAt,
                 m.SenderId,
                 m.Source,
@@ -33,6 +36,17 @@ def process_new_messages():
                     WHEN m.FromHost = 1 THEN m.ReceiverId
                     ELSE m.SenderId
                 END
+            OUTER APPLY (
+                SELECT TOP 1 cm.TextContent
+                FROM dbo.WebChat_MessageLogs cm
+                WHERE cm.Source = c.Source
+                  AND cm.SenderId = c.CustomerId
+                  AND cm.FromHost = 0
+                  AND cm.TextContent IS NOT NULL
+                  AND cm.SentAt <= m.SentAt
+                  AND {valid_message_condition("cm")}
+                ORDER BY cm.SentAt DESC, cm.id_webchat_messagelogs DESC
+            ) customerMessage
             WHERE m.FromHost = 1 
               AND m.HostDisplayName = 'AI Assistant'
               AND m.TextContent IS NOT NULL
@@ -40,24 +54,28 @@ def process_new_messages():
               AND a.messageId IS NULL
         """)
         
-        messages = c.fetchall()
+        messages = rows_to_dicts(c)
         if not messages:
             return 0
             
         inserts = []
         for msg in messages:
-            msg_id = msg[0]
-            classification = classify_ai_issue(msg[1])
-            sent_at = msg[2]
-            source = msg[4]
-            receiver_id = msg[5]
-            conv_id = msg[6]
+            msg_id = msg["messageId"]
+            classification = classify_ai_issue(msg["TextContent"])
+            detected_topics = json.dumps(
+                canonical_topic_labels(msg.get("CustomerText"), msg.get("TextContent")),
+                ensure_ascii=False,
+            )
+            sent_at = msg["SentAt"]
+            source = msg["Source"]
+            receiver_id = msg["ReceiverId"]
+            conv_id = msg["conversationId"]
             issue_flag = 1 if classification.issue_flag else 0
             
             inserts.append((
                 msg_id, conv_id, receiver_id, source, 'neutral', 0.0, issue_flag,
                 sent_at, datetime.now(), issue_flag, classification.issue_type,
-                classification.issue_reason, classification.issue_confidence
+                classification.issue_reason, classification.issue_confidence, detected_topics
             ))
             
         # Apply inserts
@@ -65,8 +83,8 @@ def process_new_messages():
             batch = inserts[i:i+100]
             c.executemany("""
                 INSERT INTO dbo.WebChat_MessageAnalytics 
-                (messageId, conversationId, customerId, source, sentimentLabel, sentimentScore, needStaffReview, messageAt, analyzedAt, issueFlag, issueType, issueReason, issueConfidence)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (messageId, conversationId, customerId, source, sentimentLabel, sentimentScore, needStaffReview, messageAt, analyzedAt, issueFlag, issueType, issueReason, issueConfidence, detectedTopics)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, batch)
             
         conn.commit()

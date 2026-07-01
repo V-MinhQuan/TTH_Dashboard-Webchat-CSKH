@@ -6,7 +6,13 @@ import unicodedata
 from collections import Counter
 from typing import Any, Dict, Iterable, List
 
-from app.core.topic_taxonomy import canonical_topic_id, canonical_topic_label, normalize_topic_text
+from app.core.topic_taxonomy import (
+    ORDERED_TOPIC_GROUP_IDS,
+    TOPIC_NAME_BY_ID,
+    canonical_topic_id,
+    canonical_topic_label,
+    normalize_topic_text,
+)
 from app.repositories.analytics_repository import AnalyticsRepository
 from app.repositories.schema_inspector import issue_metadata_available
 from app.utils.customer_identity import customer_display_name, identity_text
@@ -263,28 +269,31 @@ class AnalyticsService:
 
     def get_ai_failure_by_topic(self, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
         payload = self.repository.get_ai_failure_by_topic(filters)
-        result_map = {}
+        result_map = {
+            TOPIC_NAME_BY_ID[topic_id]: {
+                "topic": TOPIC_NAME_BY_ID[topic_id],
+                "saiCauTra": 0,
+                "khongHieu": 0,
+                "thieuThongTin": 0,
+                "khongChinhXac": 0,
+                "thieuDL": 0,
+                "loiHeThong": 0,
+                "loiTriThuc": 0,
+                "khac": 0,
+                "khongChac": 0,
+                "ngoaiPhamVi": 0,
+                "hallucination": 0,
+            }
+            for topic_id in ORDERED_TOPIC_GROUP_IDS
+        }
         for row in payload.get("rows", []):
-            topics = _json_array(row.get("detectedTopics"))
-            for topic in topics:
-                topic_label = _topic_label(topic)
-                if not topic_label:
-                    continue
-                if topic_label not in result_map:
-                    result_map[topic_label] = {
-                        "topic": topic_label,
-                        "saiCauTra": 0,
-                        "khongHieu": 0,
-                        "thieuThongTin": 0,
-                        "khongChinhXac": 0,
-                        "thieuDL": 0,
-                        "loiHeThong": 0,
-                        "loiTriThuc": 0,
-                        "khac": 0,
-                        "khongChac": 0,
-                        "ngoaiPhamVi": 0,
-                        "hallucination": 0,
-                    }
+            topic_ids = {
+                topic_id
+                for topic_id in (canonical_topic_id(topic) for topic in _json_array(row.get("detectedTopics")))
+                if topic_id in TOPIC_NAME_BY_ID
+            }
+            for topic_id in topic_ids:
+                topic_label = TOPIC_NAME_BY_ID[topic_id]
                 result_map[topic_label]["saiCauTra"] += int(row.get("saiCauTra") or 0)
                 result_map[topic_label]["thieuDL"] += int(row.get("thieuDL") or 0)
                 result_map[topic_label]["khongHieu"] += int(row.get("khongHieu") or 0)
@@ -296,7 +305,7 @@ class AnalyticsService:
                 result_map[topic_label]["khongChac"] += int(row.get("khongChac") or 0)
                 result_map[topic_label]["ngoaiPhamVi"] += int(row.get("ngoaiPhamVi") or 0)
                 result_map[topic_label]["hallucination"] += int(row.get("hallucination") or 0)
-        return list(result_map.values())
+        return [result_map[TOPIC_NAME_BY_ID[topic_id]] for topic_id in ORDERED_TOPIC_GROUP_IDS]
 
     def get_failed_conversations(self, filters: Dict[str, Any]) -> Dict[str, Any]:
         payload = self.repository.get_failed_conversations(filters)

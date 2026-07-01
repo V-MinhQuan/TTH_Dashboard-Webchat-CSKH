@@ -132,6 +132,42 @@ def test_ai_status_filter_maps_public_success_failed_values_to_issue_flag():
     assert all_params == []
 
 
+class AiFailureTopicRepository:
+    def get_ai_failure_by_topic(self, filters):
+        self.filters = dict(filters)
+        return {
+            "rows": [
+                {"detectedTopics": '["TOEIC", "Lịch thi"]', "thieuDL": 2, "khongChac": 1},
+                {"detectedTopics": '["MOS", "TOEIC"]', "thieuDL": 3, "khongChac": 1},
+                {"detectedTopics": '["Học Tiếng Anh", "Đăng ký thi"]', "thieuDL": 4, "khongChac": 2},
+                {"detectedTopics": '["Đăng ký thi"]', "thieuDL": 99, "khongChac": 99},
+            ],
+            "optionalColumns": {},
+        }
+
+
+def test_ai_failure_by_topic_returns_only_five_canonical_topic_groups():
+    repository = AiFailureTopicRepository()
+    service = AnalyticsService(repository=repository)
+
+    result = service.get_ai_failure_by_topic({"aiStatus": "failed"})
+
+    assert [row["topic"] for row in result] == [
+        "Sát hạch CNTT (Sát hạch Công nghệ thông tin)",
+        "TOEIC",
+        "MOS",
+        "Học Tiếng Anh",
+        "Học Tin học",
+    ]
+    assert "Lịch thi" not in [row["topic"] for row in result]
+    assert "Đăng ký thi" not in [row["topic"] for row in result]
+    assert result[1]["thieuDL"] == 5
+    assert result[1]["khongChac"] == 2
+    assert result[2]["thieuDL"] == 3
+    assert result[3]["thieuDL"] == 4
+    assert result[0]["thieuDL"] == 0
+
+
 class FailedConversationExportService:
     def __init__(self):
         self.calls = []

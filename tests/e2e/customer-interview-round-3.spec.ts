@@ -43,15 +43,18 @@ test.describe("Customer interview round 3", () => {
     await page.goto("/");
 
     await expect(page.getByRole("combobox", { name: "Số chủ đề hiển thị" })).toHaveValue("5");
-    await expect(page.getByRole("button", { name: "Xem chi tiết chủ đề Lệ phí" })).toBeVisible();
-    await page.getByRole("button", { name: "Xem chi tiết chủ đề Lệ phí" }).click();
+    await expect(page.getByRole("button", { name: "Xem chi tiết chủ đề TOEIC" })).toBeVisible();
+    await page.getByRole("button", { name: "Xem chi tiết chủ đề TOEIC" }).click();
 
-    await expect(page.getByRole("heading", { name: "Chi tiết chủ đề: Lệ phí" })).toBeVisible();
-    const classification = page.getByRole("table", { name: "Phân loại lỗi của chủ đề Lệ phí" });
+    await expect(page.getByRole("heading", { name: "Chi tiết chủ đề: TOEIC" })).toBeVisible();
+    const classification = page.getByRole("table", { name: "Phân loại lỗi của chủ đề TOEIC" });
     await expect(classification).toContainText("Không tìm thấy dữ liệu");
     await expect(classification).toContainText("4");
+    await expect(classification).toContainText("AI không chắc chắn");
+    await expect(classification).not.toContainText("AI có nguy cơ tự tạo thông tin");
+    await expect(classification).not.toContainText("Câu hỏi ngoài phạm vi");
 
-    const related = page.getByRole("region", { name: "Hội thoại liên quan đến chủ đề Lệ phí" });
+    const related = page.getByRole("region", { name: "Hội thoại liên quan đến chủ đề TOEIC" });
     await expect(related).toContainText("Trần Hải Yến");
     await expect(related).toContainText("KH ••••4321");
 
@@ -120,17 +123,17 @@ async function mockAiInsightsRound3Api(page: Page, requestedPaths: string[]) {
       "/api/analytics/ai/staff-activity": { reported_errors: 2, pending_review: 1 },
       "/api/analytics/ai/failure-trend": [{ date: "2026-06-19", failure: 5, hallucination: 1, uncertain: 2 }],
       "/api/analytics/ai/failure-by-topic": [
-        { topic: "Lệ phí", thieuDL: 4, khongHieu: 0, khongChac: 2, ngoaiPhamVi: 1, hallucination: 1 },
+        { topic: "TOEIC", thieuDL: 4, khongHieu: 0, khongChac: 2, ngoaiPhamVi: 1, hallucination: 1 },
+        { topic: "Lệ phí", thieuDL: 99, khongHieu: 0, khongChac: 99, ngoaiPhamVi: 0, hallucination: 0 },
         { topic: "Lịch thi", thieuDL: 3, khongHieu: 0, khongChac: 1, ngoaiPhamVi: 0, hallucination: 0 },
-        { topic: "Chứng chỉ", thieuDL: 2, khongHieu: 0, khongChac: 1, ngoaiPhamVi: 0, hallucination: 0 },
-        { topic: "Đăng ký", thieuDL: 2, khongHieu: 0, khongChac: 0, ngoaiPhamVi: 0, hallucination: 0 },
-        { topic: "Hồ sơ", thieuDL: 1, khongHieu: 0, khongChac: 0, ngoaiPhamVi: 0, hallucination: 0 },
-        { topic: "Kỹ thuật", thieuDL: 1, khongHieu: 0, khongChac: 0, ngoaiPhamVi: 0, hallucination: 0 },
+        { topic: "MOS", thieuDL: 2, khongHieu: 0, khongChac: 1, ngoaiPhamVi: 0, hallucination: 0 },
+        { topic: "Học Tiếng Anh", thieuDL: 2, khongHieu: 0, khongChac: 0, ngoaiPhamVi: 0, hallucination: 0 },
+        { topic: "Sát hạch CNTT (Sát hạch Công nghệ thông tin)", thieuDL: 1, khongHieu: 0, khongChac: 0, ngoaiPhamVi: 0, hallucination: 0 },
       ],
       "/api/analytics/ai/failed-conversations": {
         records: [
-          failedConversation("ai-1", "Lệ phí", "customer-00009999", "Trần Hải Yến"),
-          failedConversation("ai-2", "Lệ phí", "customer-00004321", null),
+          failedConversation("ai-1", "TOEIC", "customer-00009999", "Trần Hải Yến"),
+          failedConversation("ai-2", "TOEIC", "customer-00004321", null),
           failedConversation("ai-3", "Lịch thi", "customer-00005555", null),
         ],
         pagination: { page: 1, pageSize: 100, total: 3 },

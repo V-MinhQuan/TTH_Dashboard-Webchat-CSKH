@@ -139,6 +139,71 @@ def canonical_topic_id(*values: Any) -> str | None:
     return None
 
 
+def canonical_topic_ids(*values: Any) -> list[str]:
+    raw_text = " ".join(str(value or "") for value in values).strip()
+    text = normalize_topic_text(raw_text)
+    if not text or text == "tat ca":
+        return []
+
+    if raw_text in TOPIC_GROUP_BY_ID:
+        return [raw_text]
+    if text in TOPIC_GROUP_BY_ID:
+        return [text]
+
+    result: list[str] = []
+
+    def add(topic_id: str) -> None:
+        if topic_id not in result:
+            result.append(topic_id)
+
+    if _has_code_token(text, "toeic"):
+        add("toeic")
+    if _has_code_token(text, "mos") or "microsoft office specialist" in text:
+        add("mos")
+    if _has_code_token(text, "vstep") or _has_code_token(text, "b1") or _has_code_token(text, "b2"):
+        add("hoc_tieng_anh")
+
+    if any(token in text for token in (
+        "sat hach",
+        "cntt",
+        "cong nghe thong tin",
+        "tin co ban",
+        "tin nang cao",
+    )) or any(_has_code_token(text, code) for code in ("ic3", "thcb", "thnc")):
+        add("sat_hach_cntt")
+
+    if any(token in text for token in (
+        "hoc tieng anh",
+        "tieng anh",
+        "anh van",
+        "ngoai ngu",
+        "chuan dau ra",
+        "dau ra",
+        "xet tot nghiep",
+    )):
+        add("hoc_tieng_anh")
+
+    if any(token in text for token in (
+        "hoc tin hoc",
+        "khoa tin hoc",
+        "lop tin hoc",
+        "tin hoc van phong",
+        "hoc word",
+        "hoc excel",
+        "hoc powerpoint",
+        "on tin hoc",
+        "quen mat khau khoa hoc",
+    )):
+        add("hoc_tin_hoc")
+
+    if not result:
+        topic_id = canonical_topic_id(raw_text)
+        if topic_id:
+            add(topic_id)
+
+    return [topic_id for topic_id in ORDERED_TOPIC_GROUP_IDS if topic_id in result]
+
+
 def _has_code_token(text: str, code: str) -> bool:
     return re.search(rf"(?<![a-z0-9_]){re.escape(code)}(?![a-z0-9_])", text) is not None
 
@@ -146,6 +211,10 @@ def _has_code_token(text: str, code: str) -> bool:
 def canonical_topic_label(*values: Any, default: str = "Khác") -> str:
     topic_id = canonical_topic_id(*values)
     return TOPIC_NAME_BY_ID.get(topic_id, default) if topic_id else default
+
+
+def canonical_topic_labels(*values: Any) -> list[str]:
+    return [TOPIC_NAME_BY_ID[topic_id] for topic_id in canonical_topic_ids(*values)]
 
 
 def topic_filter_aliases(value: Any) -> list[str]:

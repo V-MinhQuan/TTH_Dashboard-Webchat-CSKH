@@ -12,8 +12,8 @@ import { getSheetChatbotRows, type SheetChatbotStats } from "../../services/shee
 import { FeedbackFormDialog } from "../feedback/FeedbackFormDialog";
 import { bulkCloseConversations, getCustomerPresentation } from "../../services/conversationApi";
 import { exportFailedConversationsCsv, getAllFailedConversations, getFailedConversations, getTopicFailures, type TopicFailureRecord } from "../../services/round3Api";
-import { AI_FAILURE_TAXONOMY, getAiFailureDefinition } from "../../constants/aiFailureTaxonomy";
-import { mapTopicToGroupId, topicLabelForGroupId } from "../../constants/topicTaxonomy";
+import { getAiFailureDefinition } from "../../constants/aiFailureTaxonomy";
+import { TOPIC_TAXONOMY, mapTopicToGroupId, topicLabelForGroupId } from "../../constants/topicTaxonomy";
 import { StatusBadge } from "../common/StatusBadge";
 import { analyticsFiltersToSearchParams } from "../../utils/dateFilters";
 
@@ -34,7 +34,25 @@ const BLUE_200 = "#B9DCFF";
 const OCEAN_PRIMARY = "#003865";
 const OCEAN_SECONDARY = "#ED5206";
 const FAILED_QUESTIONS_PAGE_SIZE = 10;
+const TOPIC_DETAIL_CONVERSATIONS_PAGE_SIZE = 3;
 const TABLE_FILTER_ALL = "Tất cả";
+const AI_TOPIC_FAILURE_TYPES = [
+  { id: "no_data", label: "Không tìm thấy dữ liệu", key: "thieuDL" },
+  { id: "uncertain", label: "AI không chắc chắn", key: "khongChac" },
+] as const;
+const TOPIC_FAILURE_NUMERIC_KEYS = [
+  "thieuDL",
+  "khongChac",
+  "saiCauTra",
+  "khongChinhXac",
+  "khongHieu",
+  "thieuThongTin",
+  "loiTriThuc",
+  "loiHeThong",
+  "khac",
+  "ngoaiPhamVi",
+  "hallucination",
+] as const;
 type OptionalAIInsightsDataKey = "staffReportedErrors" | "suggestedFAQs" | "recentChatbotRows";
 const emptyOptionalAIInsightsErrors: Record<OptionalAIInsightsDataKey, boolean> = {
   staffReportedErrors: false,
@@ -275,15 +293,26 @@ const AIInsightsSkeleton = () => (
 );
 
 function displayTopic(value: unknown) {
-  const raw = Array.isArray(value) && value.length > 0
-    ? String(value[0] || "")
-    : typeof value === "string"
-      ? value
-      : "";
-  const groupId = mapTopicToGroupId(raw);
-  if (groupId) return topicLabelForGroupId(groupId);
+  const topics = displayTopics(value);
+  if (topics.length > 0) return topics[0];
+  const raw = typeof value === "string" ? value : "";
   if (raw.trim()) return raw.trim();
   return "Không phân loại trong database";
+}
+
+function displayTopics(value: unknown) {
+  const candidates = Array.isArray(value)
+    ? value.map((item) => String(item || ""))
+    : typeof value === "string"
+      ? [value]
+      : [];
+  const topics: string[] = [];
+  candidates.forEach((candidate) => {
+    const groupId = mapTopicToGroupId(candidate);
+    const label = groupId ? topicLabelForGroupId(groupId) : "";
+    if (label && !topics.includes(label)) topics.push(label);
+  });
+  return topics;
 }
 
 function displayDateTime(value: unknown) {
@@ -343,20 +372,40 @@ function downloadBlob(filename: string, blob: Blob) {
   URL.revokeObjectURL(url);
 }
 
-function topicFailureCount(row: TopicFailureRecord, definition: (typeof AI_FAILURE_TAXONOMY)[number]) {
-  const primary = Number(row[definition.analyticsKey] || 0);
-  if (definition.id === "wrong_answer") return primary + Number(row.hallucination || 0);
-  if (definition.id === "not_understood") return primary + Number(row.khongChac || 0);
-  if (definition.id === "missing_info") return primary + Number(row.ngoaiPhamVi || 0);
-  return primary;
+function createEmptyTopicFailure(topic: string): TopicFailureRecord {
+  return TOPIC_FAILURE_NUMERIC_KEYS.reduce(
+    (record, key) => ({ ...record, [key]: 0 }),
+    { topic } as TopicFailureRecord,
+  );
 }
 
-function topicFailureTotal(row: TopicFailureRecord) {
-  return AI_FAILURE_TAXONOMY.reduce((total, definition) => total + topicFailureCount(row, definition), 0);
+function addTopicFailureCounts(target: TopicFailureRecord, source: TopicFailureRecord) {
+  TOPIC_FAILURE_NUMERIC_KEYS.forEach((key) => {
+    target[key] = Number(target[key] || 0) + Number(source[key] || 0);
+  });
+}
+
+function canonicalizeTopicFailures(rows: TopicFailureRecord[]) {
+  const grouped = new Map(
+    TOPIC_TAXONOMY.map((topic) => [topic.id, createEmptyTopicFailure(topic.label)]),
+  );
+
+  rows.forEach((row) => {
+    const groupId = mapTopicToGroupId(String(row.topic || ""));
+    if (!groupId) return;
+    const target = grouped.get(groupId);
+    if (target) addTopicFailureCounts(target, row);
+  });
+
+  return TOPIC_TAXONOMY.map((topic) => grouped.get(topic.id) || createEmptyTopicFailure(topic.label));
+}
+
+function topicFailureVisibleCount(row: TopicFailureRecord, key: (typeof AI_TOPIC_FAILURE_TYPES)[number]["key"]) {
+  return Number(row[key] || 0);
 }
 
 function visibleTopicFailureTotal(row: TopicFailureRecord) {
-  return Number(row.thieuDL || 0) + Number(row.khongChac || 0);
+  return AI_TOPIC_FAILURE_TYPES.reduce((total, item) => total + topicFailureVisibleCount(row, item.key), 0);
 }
 
 function mapFailedConversation(record: any) {
@@ -365,13 +414,16 @@ function mapFailedConversation(record: any) {
     record.customerId,
     record.phoneNumber,
   );
+  const topics = displayTopics(record.detectedTopics);
+  const topic = topics[0] || displayTopic(record.detectedTopics);
   return {
     id: record.id,
     messageId: record.messageId,
     question: record.textContent || "Chưa có dữ liệu",
     aiAnswer: record.aiAnswer || "Không tìm thấy câu trả lời AI tương ứng",
     conversationId: Number(record.conversationId),
-    topic: displayTopic(record.detectedTopics),
+    topic,
+    topics: topics.length > 0 ? topics : [topic],
     channel: record.source || "Chưa xác định",
     failReason: displayFailureType(record.issueType),
     confidence: Number(record.issueConfidence) || 0,
@@ -453,6 +505,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
   const [topN, setTopN] = useState(5);
   const [selectedTopicDetail, setSelectedTopicDetail] = useState<string | null>(null);
+  const [selectedTopicConversationPage, setSelectedTopicConversationPage] = useState(1);
   const [failedPage, setFailedPage] = useState(1);
   const [failedTopicFilter, setFailedTopicFilter] = useState(TABLE_FILTER_ALL);
   const [failedReasonFilter, setFailedReasonFilter] = useState(TABLE_FILTER_ALL);
@@ -570,24 +623,53 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
     };
   }, [filters, refreshVersion]);
 
+  const canonicalFailureByTopic = useMemo(
+    () => canonicalizeTopicFailures(failureByTopic),
+    [failureByTopic],
+  );
   const topFailureTopics = useMemo(
-    () => [...failureByTopic]
-      .filter((row) => visibleTopicFailureTotal(row) > 0)
+    () => [...canonicalFailureByTopic]
       .sort((left, right) => visibleTopicFailureTotal(right) - visibleTopicFailureTotal(left))
       .slice(0, topN),
-    [failureByTopic, topN],
+    [canonicalFailureByTopic, topN],
   );
   const selectedTopicFailure = useMemo(
     () => selectedTopicDetail
-      ? failureByTopic.find((row) => row.topic === selectedTopicDetail) || null
+      ? canonicalFailureByTopic.find((row) => row.topic === selectedTopicDetail) || null
       : null,
-    [failureByTopic, selectedTopicDetail],
+    [canonicalFailureByTopic, selectedTopicDetail],
   );
   const selectedTopicRelatedConversations = useMemo(
     () => selectedTopicDetail
-      ? failedConversations.filter((conversation) => conversation.topic === selectedTopicDetail)
+      ? failedConversations.filter((conversation) => (
+        Array.isArray(conversation.topics)
+          ? conversation.topics.includes(selectedTopicDetail)
+          : conversation.topic === selectedTopicDetail
+      ))
       : [],
     [failedConversations, selectedTopicDetail],
+  );
+  const selectedTopicConversationTotalPages = Math.max(
+    1,
+    Math.ceil(selectedTopicRelatedConversations.length / TOPIC_DETAIL_CONVERSATIONS_PAGE_SIZE),
+  );
+  const selectedTopicConversationPageSafe = Math.min(
+    selectedTopicConversationPage,
+    selectedTopicConversationTotalPages,
+  );
+  const paginatedSelectedTopicRelatedConversations = useMemo(
+    () => selectedTopicRelatedConversations.slice(
+      (selectedTopicConversationPageSafe - 1) * TOPIC_DETAIL_CONVERSATIONS_PAGE_SIZE,
+      selectedTopicConversationPageSafe * TOPIC_DETAIL_CONVERSATIONS_PAGE_SIZE,
+    ),
+    [selectedTopicConversationPageSafe, selectedTopicRelatedConversations],
+  );
+  const selectedTopicConversationStartNumber = selectedTopicRelatedConversations.length === 0
+    ? 0
+    : (selectedTopicConversationPageSafe - 1) * TOPIC_DETAIL_CONVERSATIONS_PAGE_SIZE + 1;
+  const selectedTopicConversationEndNumber = Math.min(
+    selectedTopicConversationPageSafe * TOPIC_DETAIL_CONVERSATIONS_PAGE_SIZE,
+    selectedTopicRelatedConversations.length,
   );
 
   const failedTopicOptions = useMemo(
@@ -660,10 +742,20 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
   }, [failedReasonFilter, failedReasonOptions]);
 
   useEffect(() => {
-    if (selectedTopicDetail && !failureByTopic.some((row) => row.topic === selectedTopicDetail)) {
+    if (selectedTopicDetail && !canonicalFailureByTopic.some((row) => row.topic === selectedTopicDetail)) {
       setSelectedTopicDetail(null);
     }
-  }, [failureByTopic, selectedTopicDetail]);
+  }, [canonicalFailureByTopic, selectedTopicDetail]);
+
+  useEffect(() => {
+    setSelectedTopicConversationPage(1);
+  }, [selectedTopicDetail]);
+
+  useEffect(() => {
+    setSelectedTopicConversationPage((page) => (
+      Math.min(Math.max(page, 1), selectedTopicConversationTotalPages)
+    ));
+  }, [selectedTopicConversationTotalPages]);
 
   useEffect(() => {
     setFailedPage(1);
@@ -930,7 +1022,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
                   <label htmlFor="top-n-topics-select" style={{ display: "inline-flex", alignItems: "center", gap: "8px", color: NAVY, fontSize: "12px", fontWeight: 600, whiteSpace: "nowrap" }}>
                     Số chủ đề
                     <select id="top-n-topics-select" aria-label="Số chủ đề hiển thị" value={topN} onChange={(event) => setTopN(Number(event.target.value))} style={{ padding: "5px 8px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.16)", color: NAVY, background: "#fff" }}>
-                      {[5, 10, 20].map((value) => <option key={value} value={value}>{value}</option>)}
+                      {[5].map((value) => <option key={value} value={value}>{value}</option>)}
                     </select>
                   </label>
                 )}
@@ -1231,20 +1323,18 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
 
           {/* Top chủ đề cần bổ sung */}
           <div style={{ backgroundColor: "#fff", borderRadius: "20px", border: "1px solid rgba(0,56,101,0.08)", boxShadow: "0 2px 12px rgba(0,56,101,0.06)", overflow: "hidden", marginBottom: "24px", padding: "20px 24px" }}>
-            <h3 style={{ color: NAVY, fontSize: "14px", fontWeight: 700, margin: "0 0 16px 0" }}>Top chủ đề cần bổ sung dữ liệu</h3>
+            <h3 style={{ color: NAVY, fontSize: "14px", fontWeight: 700, margin: "0 0 16px 0" }}>Những chủ đề cần bổ sung dữ liệu</h3>
             <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
               {(() => {
-                const computedTopics = failureByTopic.map(item => {
-                  const count = Object.keys(item)
-                    .filter(k => k !== "topic")
-                    .reduce((sum, key) => sum + (Number(item[key]) || 0), 0);
-                  return { topic: item.topic, count };
-                }).sort((a, b) => b.count - a.count).slice(0, 5);
+                const computedTopics = topFailureTopics.map(item => ({
+                  topic: item.topic,
+                  count: visibleTopicFailureTotal(item),
+                }));
 
                 const maxCount = Math.max(...computedTopics.map(t => t.count), 1);
                 const dataToRender = computedTopics.length > 0 ? computedTopics.map(t => ({ ...t, pct: Math.round((t.count / maxCount) * 100) })) : [];
 
-                if (dataToRender.length === 0) {
+                if (dataToRender.length === 0 || maxCount <= 0) {
                   return <div style={{ fontSize: "12px", color: "rgba(0,56,101,0.5)", fontStyle: "italic", padding: "10px 0" }}>Chưa có dữ liệu chủ đề nào cần bổ sung.</div>;
                 }
 
@@ -1257,7 +1347,10 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
                     <div style={{ fontSize: "12px", color: "rgba(0,56,101,0.65)", fontWeight: 600, width: "50px", textAlign: "right" }}>{item.count} lần</div>
                     <button
                       type="button"
-                      onClick={() => setSelectedTopicDetail(item.topic)}
+                      onClick={() => {
+                        setSelectedTopicConversationPage(1);
+                        setSelectedTopicDetail(item.topic);
+                      }}
                       style={{ padding: "5px 10px", borderRadius: "8px", border: selectedTopicDetail === item.topic ? `1px solid ${CTA}` : "1px solid rgba(0,56,101,0.12)", background: selectedTopicDetail === item.topic ? ORANGE_50 : "#f8fafc", color: selectedTopicDetail === item.topic ? CTA : NAVY, cursor: "pointer", fontSize: "11px", fontWeight: 700, whiteSpace: "nowrap" }}
                     >
                       Xem chi tiết chủ đề {item.topic}
@@ -1290,8 +1383,8 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
                       </tr>
                     </thead>
                     <tbody>
-                      {AI_FAILURE_TAXONOMY.map((definition) => {
-                        const count = topicFailureCount(selectedTopicFailure, definition);
+                      {AI_TOPIC_FAILURE_TYPES.map((definition) => {
+                        const count = topicFailureVisibleCount(selectedTopicFailure, definition.key);
                         return (
                           <tr key={definition.id}>
                             <td className="flic-td-left" style={{ padding: "10px 12px", color: NAVY }}>{definition.label}</td>
@@ -1310,7 +1403,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
                     {selectedTopicRelatedConversations.length === 0 && (
                       <div style={{ padding: "16px", color: "rgba(0,56,101,0.55)", fontSize: "12px" }}>Không có hội thoại liên quan trong dữ liệu đã tải.</div>
                     )}
-                    {selectedTopicRelatedConversations.slice(0, 5).map((conversation) => (
+                    {paginatedSelectedTopicRelatedConversations.map((conversation) => (
                       <div key={conversation.id} style={{ padding: "12px", borderBottom: "1px solid rgba(0,56,101,0.05)" }}>
                         <div style={{ color: NAVY, fontSize: "12px", fontWeight: 700 }}>{conversation.customerName}</div>
                         {conversation.customerReference && <div style={{ color: "rgba(0,56,101,0.48)", fontSize: "11px", fontWeight: 600 }}>{conversation.customerReference}</div>}
@@ -1318,6 +1411,34 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
                       </div>
                     ))}
                   </div>
+                  {selectedTopicRelatedConversations.length > 0 && (
+                    <div style={{ padding: "10px 12px", borderTop: "1px solid rgba(0,56,101,0.06)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
+                      <span style={{ color: "rgba(0,56,101,0.58)", fontSize: "12px", fontWeight: 600 }}>
+                        Hiển thị {selectedTopicConversationStartNumber}-{selectedTopicConversationEndNumber} / {selectedTopicRelatedConversations.length} hội thoại
+                      </span>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedTopicConversationPage((page) => Math.max(1, page - 1))}
+                          disabled={selectedTopicConversationPageSafe <= 1}
+                          style={{ padding: "6px 10px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.12)", background: selectedTopicConversationPageSafe <= 1 ? "#f1f5f9" : "#fff", color: selectedTopicConversationPageSafe <= 1 ? "rgba(0,56,101,0.35)" : NAVY, cursor: selectedTopicConversationPageSafe <= 1 ? "not-allowed" : "pointer", fontSize: "12px", fontWeight: 700 }}
+                        >
+                          Trước
+                        </button>
+                        <span style={{ color: NAVY, fontSize: "12px", fontWeight: 700 }}>
+                          Trang {selectedTopicConversationPageSafe}/{selectedTopicConversationTotalPages}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedTopicConversationPage((page) => Math.min(selectedTopicConversationTotalPages, page + 1))}
+                          disabled={selectedTopicConversationPageSafe >= selectedTopicConversationTotalPages}
+                          style={{ padding: "6px 10px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.12)", background: selectedTopicConversationPageSafe >= selectedTopicConversationTotalPages ? "#f1f5f9" : "#fff", color: selectedTopicConversationPageSafe >= selectedTopicConversationTotalPages ? "rgba(0,56,101,0.35)" : NAVY, cursor: selectedTopicConversationPageSafe >= selectedTopicConversationTotalPages ? "not-allowed" : "pointer", fontSize: "12px", fontWeight: 700 }}
+                        >
+                          Sau
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </section>
               </div>
             </div>
