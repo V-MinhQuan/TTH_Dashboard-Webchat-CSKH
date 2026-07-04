@@ -1,5 +1,6 @@
 import { buildApiUrl, fetchApiJson } from "./dashboardApi";
 import { getAiFailureDefinition } from "../constants/aiFailureTaxonomy";
+import { mapTopicToGroupId, topicLabelForGroupId } from "../constants/topicTaxonomy";
 
 export const SHEET_CHATBOT_SOURCE_OPTIONS = [
   "Không tìm thấy dữ liệu",
@@ -107,6 +108,10 @@ export async function getSheetChatbotRows(params?: {
   risk?: string;
   addedBy?: string;
   role?: string | null;
+  startDate?: string;
+  endDate?: string;
+  channel?: string;
+  topic?: string;
 }) {
   const url = buildApiUrl("/api/admin/sheet-chatbot", {
     page: params?.page ?? 1,
@@ -116,6 +121,10 @@ export async function getSheetChatbotRows(params?: {
     risk: params?.risk,
     addedBy: params?.addedBy,
     role: params?.role || undefined,
+    startDate: params?.startDate,
+    endDate: params?.endDate,
+    channel: params?.channel,
+    topic: params?.topic,
   });
   const response = await fetchApiJson<SheetChatbotListResponse>(url, { cache: false });
   return {
@@ -185,7 +194,7 @@ export async function getSheetChatbotDuplicates(question: string, minSimilarity 
 function normalizeCreatePayload(payload: SheetChatbotCreatePayload): SheetChatbotCreatePayload {
   const question = requiredText(payload.question, "Câu hỏi khách hàng");
   const correctAnswer = requiredText(payload.correctAnswer, "Câu trả lời đúng");
-  const topic = requiredText(payload.topic, "Chủ đề");
+  const topic = normalizeSheetChatbotTopic(requiredText(payload.topic, "Chủ đề"));
 
   return {
     ...payload,
@@ -203,7 +212,7 @@ function normalizeUpdatePayload(payload: SheetChatbotUpdatePayload): SheetChatbo
     ...payload,
     question: payload.question === undefined ? undefined : requiredText(payload.question, "Câu hỏi khách hàng"),
     correctAnswer: payload.correctAnswer === undefined ? undefined : requiredText(payload.correctAnswer, "Câu trả lời đúng"),
-    topic: payload.topic === undefined ? undefined : requiredText(payload.topic, "Chủ đề"),
+    topic: payload.topic === undefined ? undefined : normalizeSheetChatbotTopic(requiredText(payload.topic, "Chủ đề")),
     source: payload.source === undefined ? undefined : normalizeSheetChatbotSource(payload.source),
     notes: payload.notes?.trim(),
     addedBy: payload.addedBy?.trim(),
@@ -212,7 +221,11 @@ function normalizeUpdatePayload(payload: SheetChatbotUpdatePayload): SheetChatbo
 
 function normalizeSheetChatbotRow(row: SheetChatbotRow): SheetChatbotRow {
   const source = getAiFailureDefinition(row.source)?.apiValue ?? row.source;
-  return { ...row, source };
+  return { ...row, source, topic: normalizeSheetChatbotTopic(row.topic) };
+}
+
+function normalizeSheetChatbotTopic(value: string) {
+  return topicLabelForGroupId(mapTopicToGroupId(value));
 }
 
 function requiredText(value: string, label: string) {

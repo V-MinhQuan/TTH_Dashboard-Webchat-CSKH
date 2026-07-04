@@ -18,8 +18,6 @@ export interface FilterValues {
   aiFailureType: string;
 }
 
-export type AIStatusFilter = "all" | "success" | "failed";
-
 export const defaultFilterValues: Readonly<FilterValues> = Object.freeze({
   dateRange: "30 ngày qua",
   channel: "Tất cả",
@@ -45,18 +43,15 @@ interface GlobalFilterContextValue extends FilterState {
 const STORAGE_KEY = "flic_dashboard_filters:v1";
 const GlobalFilterContext = createContext<GlobalFilterContextValue | null>(null);
 
-function isDeprecatedAiStatus(value: string) {
+function normalizeDateRange(value: string) {
   const normalized = value
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
-  return (
-    normalized === "uncertain" ||
-    normalized.includes("khong chac") ||
-    normalized.includes("khong ch") ||
-    normalized.includes("khÃ´ng") ||
-    normalized.includes("khã´ng")
-  );
+  if (normalized === "thang nay" || normalized === "quy nay") {
+    return defaultFilterValues.dateRange;
+  }
+  return value;
 }
 
 function normalizeFilters(value: unknown): FilterValues {
@@ -67,14 +62,12 @@ function normalizeFilters(value: unknown): FilterValues {
     const raw = candidate[key];
     return typeof raw === "string" && raw.trim() ? raw.trim() : fallback;
   };
-  const rawAiStatus = text("aiStatus", defaultFilterValues.aiStatus);
-  const aiStatus = isDeprecatedAiStatus(rawAiStatus) ? defaultFilterValues.aiStatus : rawAiStatus;
   const normalized: FilterValues = {
-    dateRange: text("dateRange", defaultFilterValues.dateRange),
+    dateRange: normalizeDateRange(text("dateRange", defaultFilterValues.dateRange)),
     channel: text("channel", defaultFilterValues.channel),
     topic: text("topic", defaultFilterValues.topic),
-    conversationStatus: text("conversationStatus", defaultFilterValues.conversationStatus),
-    aiStatus,
+    conversationStatus: defaultFilterValues.conversationStatus,
+    aiStatus: defaultFilterValues.aiStatus,
     aiFailureType: defaultFilterValues.aiFailureType,
   };
   if (typeof candidate.customDateFrom === "string" && candidate.customDateFrom.trim()) {

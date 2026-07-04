@@ -4,12 +4,15 @@ import { Plus, Search, Filter, CheckCircle2, XCircle, Clock, Edit2 } from "lucid
 import { toast } from "sonner";
 import { ErrorSourceBadge } from "../common/ErrorSourceBadge";
 import { getAiFailureDefinition } from "../../constants/aiFailureTaxonomy";
+import { TOPIC_FILTER_OPTIONS } from "../../constants/topicTaxonomy";
 import { FeedbackFormDialog } from "../feedback/FeedbackFormDialog";
+import type { FilterValues } from "../FilterPanel";
 import {
   getSheetChatbotRows,
   mergeSheetChatbotToFaq,
   updateSheetChatbotStatus,
 } from "../../services/sheetChatbotApi";
+import { mapGlobalFiltersToAnalyticsRequest } from "../../utils/dateFilters";
 
 const NAVY = "#003865";
 const ORANGE = "#D73C01";
@@ -37,6 +40,10 @@ interface SheetRow {
   risk: RiskLevel;
   status: SheetStatus;
   notes: string;
+}
+
+interface SheetChatbotProps {
+  filters: FilterValues;
 }
 
 const statusConfig: Record<SheetStatus, { bg: string; color: string; icon: typeof CheckCircle2 }> = {
@@ -192,7 +199,7 @@ function formatAddedAt(value: string) {
   return date.toLocaleDateString("vi-VN");
 }
 
-export function SheetChatbot() {
+export function SheetChatbot({ filters }: SheetChatbotProps) {
   const { role, user } = useAuth();
   const currentUserName = role === "manager" ? "Admin FLIC" : user?.name || "Thu Trang";
   const apiRole = role === "manager" ? "manager" : "staff";
@@ -213,11 +220,13 @@ export function SheetChatbot() {
     setLoadError(null);
 
     try {
+      const globalFilterParams = mapGlobalFiltersToAnalyticsRequest(filters);
       const response = await getSheetChatbotRows({
         page: 1,
         pageSize: 500,
         role: apiRole,
         addedBy: apiRole === "manager" ? undefined : currentUserName,
+        ...globalFilterParams,
       });
       setRows(response.data);
     } catch (error) {
@@ -228,7 +237,7 @@ export function SheetChatbot() {
     } finally {
       setIsLoading(false);
     }
-  }, [apiRole, currentUserName]);
+  }, [apiRole, currentUserName, filters]);
 
   useEffect(() => {
     loadRows();
@@ -251,9 +260,9 @@ export function SheetChatbot() {
     () => rows.filter((row) => role === "manager" || row.addedBy === currentUserName),
     [currentUserName, role, rows],
   );
-  const topicOptions = useMemo(
-    () => uniqueSortedText(visibleRows.map((row) => row.topic)),
-    [visibleRows],
+  const topicOptions = useMemo<readonly string[]>(
+    () => TOPIC_FILTER_OPTIONS.map((option) => option.label),
+    [],
   );
   const sourceOptions = useMemo(
     () => uniqueSortedText(visibleRows.map((row) => displayFailureSource(row.source))),
@@ -318,9 +327,9 @@ export function SheetChatbot() {
 
   const kpiCounts = {
     total: filtered.length,
-    pending: rows.filter(r => r.status === "Chờ xử lý").length,
-    approved: rows.filter(r => r.status === "Đã duyệt").length,
-    rejected: rows.filter(r => r.status === "Từ chối").length,
+    pending: filtered.filter(r => r.status === "Chờ xử lý").length,
+    approved: filtered.filter(r => r.status === "Đã duyệt").length,
+    rejected: filtered.filter(r => r.status === "Từ chối").length,
   };
 
   return (

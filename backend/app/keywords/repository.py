@@ -6,6 +6,7 @@ from app.repositories.display_filters import valid_conversation_condition, valid
 
 # File JSON stored in data/crm_keywords.json relative to backend root
 JSON_FILE_PATH = os.path.join(os.path.dirname(__file__), "../data/crm_keywords.json")
+KEYWORD_COUNT_BATCH_SIZE = 80
 
 
 def _parse_filter_datetime(value, is_end=False):
@@ -242,6 +243,19 @@ class KeywordRepository:
         """
         if not words:
             return {}
+        if len(words) > KEYWORD_COUNT_BATCH_SIZE:
+            merged = {}
+            for start in range(0, len(words), KEYWORD_COUNT_BATCH_SIZE):
+                chunk = words[start:start + KEYWORD_COUNT_BATCH_SIZE]
+                merged.update(self.batch_count_keyword_occurrences(
+                    chunk,
+                    start_date=start_date,
+                    end_date=end_date,
+                    channel=channel,
+                    conversation_status=conversation_status,
+                    ai_status=ai_status,
+                ))
+            return {word: merged.get(word, 0) for word in words}
 
         join_sql, filter_clauses, filter_params = _build_message_filters(
             start_date=start_date,
@@ -347,16 +361,18 @@ class KeywordRepository:
         filter_clauses.extend(["m.SentAt >= ?", "m.SentAt <= ?"])
         filter_params.extend([
             _parse_filter_datetime(previous_start),
-            _parse_filter_datetime(current_end),
+            _parse_filter_datetime(current_end, is_end=True),
         ])
 
         select_parts = []
         select_params = []
+        all_words = []
 
         for group_id, words in group_words_map.items():
             if not words:
                 continue
 
+            all_words.extend(words)
             group_or = " OR ".join(["m.TextContent LIKE ?" for _ in words])
 
             select_parts.append(
@@ -365,7 +381,7 @@ class KeywordRepository:
             select_params.extend([f"%{word}%" for word in words])
             select_params.extend([
                 _parse_filter_datetime(current_start),
-                _parse_filter_datetime(current_end),
+                _parse_filter_datetime(current_end, is_end=True),
             ])
 
             select_parts.append(
@@ -374,23 +390,27 @@ class KeywordRepository:
             select_params.extend([f"%{word}%" for word in words])
             select_params.extend([
                 _parse_filter_datetime(previous_start),
-                _parse_filter_datetime(previous_end),
+                _parse_filter_datetime(previous_end, is_end=True),
             ])
 
         if not select_parts:
             return {}
 
+        unique_words = list(dict.fromkeys(all_words))
+        word_filter_sql = " OR ".join(["m.TextContent LIKE ?" for _ in unique_words])
+        word_filter_params = [f"%{word}%" for word in unique_words]
         where_extra = " AND " + " AND ".join(f"({clause})" for clause in filter_clauses)
         query = f"""
             SELECT {', '.join(select_parts)}
             FROM WebChat_MessageLogs m
             {join_sql}
             WHERE m.TextContent IS NOT NULL AND m.TextContent != ''
+              AND ({word_filter_sql})
             {where_extra}
         """
 
         try:
-            rows = execute_query(query, tuple(select_params + filter_params))
+            rows = execute_query(query, tuple(select_params + word_filter_params + filter_params))
             row = rows[0] if rows else {}
             return {
                 group_id: {
@@ -456,6 +476,82 @@ class KeywordRepository:
             return {group_id: row.get(group_id) or 0 for group_id in group_words_map}
         except Exception as e:
             print("Lỗi batch_count_groups:", e)
+            raise
+
+    def batch_count_keywords_and_groups(
+        self,
+        group_words_map: dict,
+        start_date: str = None,
+        end_date: str = None,
+        channel: str = None,
+        conversation_status: str = None,
+        ai_status: str = None,
+    ) -> dict:
+        if not group_words_map:
+            return {"keyword_counts": {}, "group_totals": {}}
+
+        unique_words = list(dict.fromkeys(
+            word
+            for words in group_words_map.values()
+            for word in words
+            if word
+        ))
+        if not unique_words:
+            return {"keyword_counts": {}, "group_totals": {}}
+
+        join_sql, filter_clauses, filter_params = _build_message_filters(
+            start_date=start_date,
+            end_date=end_date,
+            channel=channel,
+            conversation_status=conversation_status,
+            ai_status=ai_status,
+        )
+
+        select_parts = []
+        select_params = []
+        for i, word in enumerate(unique_words):
+            select_parts.append(f"SUM(CASE WHEN m.TextContent LIKE ? THEN 1 ELSE 0 END) AS kw_{i}")
+            select_params.append(f"%{word}%")
+
+        for group_id, words in group_words_map.items():
+            words = [word for word in words if word]
+            if not words:
+                continue
+
+            group_or = " OR ".join(["m.TextContent LIKE ?" for _ in words])
+            select_parts.append(f"SUM(CASE WHEN ({group_or}) THEN 1 ELSE 0 END) AS [{group_id}]")
+            select_params.extend([f"%{word}%" for word in words])
+
+        if not select_parts:
+            return {"keyword_counts": {}, "group_totals": {}}
+
+        word_filter_sql = " OR ".join(["m.TextContent LIKE ?" for _ in unique_words])
+        word_filter_params = [f"%{word}%" for word in unique_words]
+        where_extra = (" AND " + " AND ".join(f"({clause})" for clause in filter_clauses)) if filter_clauses else ""
+        query = f"""
+            SELECT {', '.join(select_parts)}
+            FROM WebChat_MessageLogs m
+            {join_sql}
+            WHERE m.TextContent IS NOT NULL AND m.TextContent != ''
+              AND ({word_filter_sql})
+            {where_extra}
+        """
+
+        try:
+            rows = execute_query(query, tuple(select_params + word_filter_params + filter_params))
+            row = rows[0] if rows else {}
+            return {
+                "keyword_counts": {
+                    word: row.get(f"kw_{i}") or 0
+                    for i, word in enumerate(unique_words)
+                },
+                "group_totals": {
+                    group_id: row.get(group_id) or 0
+                    for group_id in group_words_map
+                },
+            }
+        except Exception as e:
+            print("Lỗi batch_count_keywords_and_groups:", e)
             raise
 
     def batch_count_ai_failed_groups(

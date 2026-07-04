@@ -444,27 +444,42 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
           {/* KPI Cards */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "16px", marginBottom: "24px" }}>
             {[
-              { icon: MessageCircle, label: "Hội thoại đã phân tích", value: analyzedConversationCount.toLocaleString("vi-VN"), change: "Theo bộ lọc", color: "#003BB9", bg: "#eff6ff", trend: "Có ít nhất một bản ghi cảm xúc" },
-              { icon: Smile, label: "Tỷ lệ Tích cực", value: posPctStr, change: "Theo bộ lọc", color: "#228A61", bg: "#f0fdf4", trend: "Phần trăm cảm xúc hài lòng" },
-              { icon: Meh, label: "Tỷ lệ Trung lập", value: neuPctStr, change: "Theo bộ lọc", color: "#E5A850", bg: "#fffbeb", trend: "Phần trăm cảm xúc bình thường" },
-              { icon: AlertCircle, label: "Tỷ lệ Tiêu cực", value: negPctStr, change: "Theo bộ lọc", color: ORANGE, bg: "#fff5f5", trend: "Phần trăm cảm xúc cần chú ý" },
+              { icon: MessageCircle, label: "Hội thoại đã phân tích", value: analyzedConversationCount.toLocaleString("vi-VN"), color: "#003BB9", bg: "#eff6ff" },
+              { icon: Smile, label: "Tỷ lệ Tích cực", value: posPctStr, color: "#228A61", bg: "#f0fdf4" },
+              { icon: Meh, label: "Tỷ lệ Trung lập", value: neuPctStr, color: "#E5A850", bg: "#fffbeb" },
+              { icon: AlertCircle, label: "Tỷ lệ Tiêu cực", value: negPctStr, color: ORANGE, bg: "#fff5f5" },
               { icon: Activity, label: "Mức độ hài lòng chung", value: satisfactionStr, change: `(${satisfactionPctLabel})`, color: "#a855f7", bg: "#faf5ff", trend: "Điểm trung bình (quy đổi)" },
             ].map(({ icon: Icon, label, value, change, color, bg, trend }) => (
-              <div key={label} style={{ backgroundColor: "#fff", borderRadius: "20px", border: "1px solid rgba(0,56,101,0.08)", boxShadow: "0 2px 12px rgba(0,56,101,0.06)", padding: "24px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "16px" }}>
-                  <div style={{ width: "48px", height: "48px", borderRadius: "14px", backgroundColor: "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <Icon size={28} style={{ color }} />
+              <div key={label} style={{ 
+                backgroundColor: "#fff", 
+                borderRadius: "20px", 
+                border: "1px solid rgba(0,56,101,0.08)", 
+                boxShadow: "0 2px 12px rgba(0,56,101,0.06)", 
+                padding: "20px 24px",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "center",
+                minHeight: "140px"
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+                  <div style={{ width: "42px", height: "42px", borderRadius: "14px", backgroundColor: "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <Icon size={28} style={{ color }} strokeWidth={2} />
                   </div>
-              <div>
-                <div style={{ fontSize: "13px", color: "rgba(0,56,101,0.55)", fontWeight: 500 }}>{label}</div>
-                <div style={{ fontSize: "28px", fontWeight: 700, color: NAVY, lineHeight: 1.2 }}>{value}</div>
+                  <div style={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                    <div style={{ fontSize: "13px", color: "rgba(0,56,101,0.55)", fontWeight: 500, marginBottom: "4px" }}>{label}</div>
+                    <div style={{ fontSize: "28px", fontWeight: 700, color: NAVY, lineHeight: 1.1 }}>{value}</div>
+                    
+                    {(trend || change) && (
+                      <div style={{ marginTop: "6px", display: "flex", flexDirection: "column", gap: "2px" }}>
+                        {trend && <div style={{ fontSize: "11px", color: "rgba(0,56,101,0.45)" }}>{trend}</div>}
+                        {change && <div style={{ fontSize: "11px", color: "rgba(0,56,101,0.45)", fontWeight: 500 }}>{change}</div>}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
-            </div>
-            <div style={{ fontSize: "12px", color: "rgba(0,56,101,0.45)" }}>{trend}</div>
-            <div style={{ marginTop: "10px", fontSize: "11px", padding: "3px 8px", borderRadius: "20px", backgroundColor: "#f1f5f9", color: "rgba(0,56,101,0.5)", display: "inline-block", fontWeight: 500 }}>{change}</div>
+            ))}
           </div>
-        ))}
-      </div>
 
       {/* Charts */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginBottom: "24px" }}>

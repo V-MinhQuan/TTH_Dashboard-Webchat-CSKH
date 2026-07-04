@@ -128,7 +128,7 @@ async function mockAiInsightsRound3Api(page: Page, requestedPaths: string[]) {
         { topic: "Lịch thi", thieuDL: 3, khongHieu: 0, khongChac: 1, ngoaiPhamVi: 0, hallucination: 0 },
         { topic: "MOS", thieuDL: 2, khongHieu: 0, khongChac: 1, ngoaiPhamVi: 0, hallucination: 0 },
         { topic: "Học Tiếng Anh", thieuDL: 2, khongHieu: 0, khongChac: 0, ngoaiPhamVi: 0, hallucination: 0 },
-        { topic: "Sát hạch CNTT (Sát hạch Công nghệ thông tin)", thieuDL: 1, khongHieu: 0, khongChac: 0, ngoaiPhamVi: 0, hallucination: 0 },
+        { topic: "Sát hạch CNTT", thieuDL: 1, khongHieu: 0, khongChac: 0, ngoaiPhamVi: 0, hallucination: 0 },
       ],
       "/api/analytics/ai/failed-conversations": {
         records: [

@@ -47,6 +47,10 @@ async def list_feedback(
     risk: Annotated[str | None, Query(max_length=50)] = None,
     addedBy: Annotated[str | None, Query(max_length=255)] = None,
     role: Annotated[str | None, Query(max_length=50)] = None,
+    startDate: Annotated[str | None, Query(max_length=30)] = None,
+    endDate: Annotated[str | None, Query(max_length=30)] = None,
+    channel: Annotated[str | None, Query(max_length=80)] = None,
+    topic: Annotated[str | None, Query(max_length=120)] = None,
 ):
     filters = {
         "page": page,
@@ -56,6 +60,10 @@ async def list_feedback(
         "risk": risk,
         "addedBy": session.username if session.role == "staff" else addedBy,
         "role": session.role if session.role == "staff" else role,
+        "startDate": startDate,
+        "endDate": endDate,
+        "channel": channel,
+        "topic": topic,
     }
     result = await service.get_rows(filters)
     return {

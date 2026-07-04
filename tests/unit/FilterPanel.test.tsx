@@ -82,26 +82,13 @@ describe("FilterPanel", () => {
     });
   });
 
-  it("uses a single global failed-AI filter without exposing detailed failure types", async () => {
-    const user = userEvent.setup();
-    const onFiltersChange = renderPanel();
+  it("does not expose conversation status or AI status filters", () => {
+    renderPanel();
 
-    await user.selectOptions(
-      screen.getByRole("combobox", { name: "Trạng thái AI" }),
-      "AI trả lời thất bại",
-    );
-
+    expect(screen.queryByRole("combobox", { name: "Trạng thái hội thoại" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Trạng thái AI" })).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "Loại lỗi AI (8 nhóm)" })).not.toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "AI không chắc chắn" })).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Áp dụng bộ lọc" }));
-
-    expect(onFiltersChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        aiStatus: "AI trả lời thất bại",
-        aiFailureType: "Tất cả",
-      }),
-    );
   });
 
   it("does not expose sentiment in the global filter and keeps active filters removable", async () => {
@@ -163,8 +150,8 @@ describe("FilterPanel", () => {
     const onFiltersChange = renderPanel();
 
     await user.selectOptions(screen.getByRole("combobox", { name: "Khoảng thời gian" }), "Tùy chỉnh");
-    await user.type(screen.getByLabelText("Từ ngày và giờ"), "2026-06-20T12:00");
-    await user.type(screen.getByLabelText("Đến ngày và giờ"), "2026-06-20T10:00");
+    await user.type(screen.getByLabelText("Từ ngày"), "2026-06-21");
+    await user.type(screen.getByLabelText("Đến ngày"), "2026-06-20");
     await user.click(screen.getByRole("button", { name: "Áp dụng bộ lọc" }));
 
     expect(onFiltersChange).not.toHaveBeenCalled();
@@ -176,7 +163,7 @@ describe("FilterPanel", () => {
     const onFiltersChange = renderPanel();
 
     await user.selectOptions(screen.getByRole("combobox", { name: "Khoảng thời gian" }), "Tùy chỉnh");
-    await user.type(screen.getByLabelText("Từ ngày và giờ"), "2026-06-20T10:00");
+    await user.type(screen.getByLabelText("Từ ngày"), "2026-06-20");
     await user.click(screen.getByRole("button", { name: "Áp dụng bộ lọc" }));
     expect(toast.error).toHaveBeenCalledWith("Vui lòng chọn đầy đủ thời gian bắt đầu và kết thúc.");
 
@@ -226,14 +213,15 @@ describe("FilterPanel", () => {
     expect(container).not.toContainElement(menu);
   });
 
-  it("limits AI status choices to all, success, and failed", () => {
+  it("limits date range choices to day-based presets and custom", () => {
     renderPanel();
 
-    const aiStatusSelect = screen.getByRole("combobox", { name: "Trạng thái AI" });
-    expect(within(aiStatusSelect).getAllByRole("option").map((option) => option.textContent)).toEqual([
-      "Tất cả",
-      "AI trả lời thành công",
-      "AI trả lời thất bại",
+    const dateRangeSelect = screen.getByRole("combobox", { name: "Khoảng thời gian" });
+    expect(within(dateRangeSelect).getAllByRole("option").map((option) => option.textContent)).toEqual([
+      "30 ngày qua",
+      "7 ngày qua",
+      "Hôm nay",
+      "Tùy chỉnh",
     ]);
   });
 

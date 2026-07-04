@@ -11,7 +11,13 @@ from pathlib import Path
 import httpx
 
 from app.core.config import get_settings
-from app.core.topic_taxonomy import canonical_topic_label, canonical_topic_id
+from app.core.topic_taxonomy import (
+    ORDERED_TOPIC_GROUP_IDS,
+    TOPIC_NAME_BY_ID,
+    canonical_topic_ids,
+    canonical_topic_label,
+    canonical_topic_id,
+)
 from app.repositories.ai_question_group_cache import AiQuestionGroupCacheRepository
 from app.repositories.legacy_conversation_repository import ConversationRepository
 from app.services.conversation_cleaner import conversation_cleaner_service
@@ -24,7 +30,7 @@ AI_QUESTION_FALLBACK_CACHE_TTL_SECONDS = 60
 AI_QUESTION_LAST_GOOD_CACHE_TTL_SECONDS = 86400
 AI_QUESTION_DB_CACHE_TTL_SECONDS = 3600
 DEFAULT_KPI_DATE_WINDOW_DAYS = 30
-DASHBOARD_QUERY_WORKERS = 9
+DASHBOARD_QUERY_WORKERS = 6
 AI_QUESTION_LAST_GOOD_CACHE_FILE = (
     Path(__file__).resolve().parents[3] / ".cache" / "dashboard_top_questions_last_good.json"
 )
@@ -35,7 +41,7 @@ ai_question_group_cache_repository = AiQuestionGroupCacheRepository()
 AI_OVERLOAD_MESSAGE = "Hệ thống AI hiện đang quá tải."
 AI_FALLBACK_MESSAGE = "AI đang quá tải, đang hiển thị nhóm câu hỏi tạm thời từ database."
 AI_GATEWAY_FEATURE = "dashboard_top_questions"
-AI_GATEWAY_PROMPT_VERSION = "dashboard-top-questions-v1"
+AI_GATEWAY_PROMPT_VERSION = "dashboard-top-questions-v3"
 AI_GATEWAY_PROVIDER_COOLDOWN_SECONDS = 30
 AI_GATEWAY_MODEL_COOLDOWN_SECONDS = 120
 AI_GATEWAY_QUOTA_COOLDOWN_SECONDS = 300
@@ -488,15 +494,11 @@ def hash_str(s: str) -> int:
     return abs(h)
 
 def classify_topic(text: str = '', c_id: str = '') -> str:
-    topic = canonical_topic_label(text, c_id, default="")
-    if topic:
-        return topic
-    t = str(text).lower()
-    if any(k in t for k in ('điểm', 'tra cứu điểm', 'xem điểm', 'kết quả thi')):
-        return 'Tra cứu điểm'
-    if any(k in t for k in ('lịch thi', 'ngày thi', 'ca thi', 'giờ thi')):
-        return 'Lịch thi'
-    return 'Khác'
+    topic_ids = question_topic_ids(" ".join([str(text or ""), str(c_id or "")]))
+    for topic_id in ORDERED_TOPIC_GROUP_IDS:
+        if topic_id != "khac" and topic_id in topic_ids:
+            return TOPIC_NAME_BY_ID[topic_id]
+    return canonical_topic_label(text, c_id, default="Khác")
 
 def excerpt_text(value: str = '', limit: int = 100) -> str:
     text = ' '.join(str(value or '').split())
@@ -508,7 +510,7 @@ def source_topic(value) -> str:
     if not value:
         return 'Chưa xác định'
     if isinstance(value, (list, tuple)):
-        return canonical_topic_label(value[0], default=str(value[0]).strip()) if value else 'Chưa xác định'
+        return canonical_topic_label(value[0], default="Khác") if value else 'Chưa xác định'
     text = str(value).strip()
     try:
         parsed = json.loads(text)
@@ -516,8 +518,29 @@ def source_topic(value) -> str:
         parsed = None
     if isinstance(parsed, list) and parsed:
         first = str(parsed[0]).strip()
-        return canonical_topic_label(first, default=first or 'Chưa xác định')
-    return canonical_topic_label(text, default=text or 'Chưa xác định')
+        return canonical_topic_label(first, default="Khác" if first else "Chưa xác định")
+    return canonical_topic_label(text, default="Khác" if text else "Chưa xác định")
+
+def topic_filter_matches(value: str = '', requested: str = '') -> bool:
+    if not requested or requested == 'Tất cả':
+        return True
+    requested_id = canonical_topic_id(requested)
+    value_id = canonical_topic_id(value)
+    return bool(requested_id and value_id and requested_id == value_id)
+
+def alert_matches_ai_status(alert_type: str = '', ai_status: str = '') -> bool:
+    if not ai_status or ai_status == 'Tất cả':
+        return True
+    status = str(ai_status).strip().lower()
+    if status in ('failed', 'ai trả lời thất bại'):
+        return alert_type in ('ai_no_data', 'ai_uncertain')
+    if status in ('success', 'ai trả lời thành công'):
+        return False
+    if 'không tìm thấy dữ liệu' in status:
+        return alert_type == 'ai_no_data'
+    if 'không chắc chắn' in status or 'không chắc' in status:
+        return alert_type == 'ai_uncertain'
+    return True
 
 def build_alert_description(alert_type: str, last_cust_text: str = '', last_ai_text: str = '') -> str:
     customer_text = excerpt_text(last_cust_text, 100)
@@ -649,17 +672,129 @@ def is_customer_question(value: str = "") -> bool:
     return any(cue in normalized for cue in question_cues)
 
 
+def normalized_question_domain_text(value: str = "") -> str:
+    normalized = strip_vietnamese_marks(clean_question_text(value)).lower()
+    normalized = re.sub(r"[^a-z0-9]+", " ", normalized)
+    return re.sub(r"\s+", " ", normalized).strip()
+
+
+def question_topic_ids(value: str = "") -> set[str]:
+    text = clean_question_text(value)
+    topic_ids = set(canonical_topic_ids(text))
+    normalized = normalized_question_domain_text(text)
+    compact = normalized.replace(" ", "")
+    tin_hoc_exam_context = any(
+        cue in normalized
+        for cue in (
+            "thi tin hoc",
+            "du thi tin hoc",
+            "lich thi tin hoc",
+            "bang tin hoc",
+            "chung chi tin hoc",
+            "nop bang tin hoc",
+            "nop chung chi tin hoc",
+            "nhan bang tin hoc",
+            "nhan chung chi tin hoc",
+            "cap bang tin hoc",
+            "cap chung chi tin hoc",
+            "ket qua tin hoc",
+            "diem tin hoc",
+            "tin hoc co ban",
+            "tin hoc nang cao",
+            "tin co ban",
+            "tin nang cao",
+        )
+    )
+    tin_hoc_exam_context = tin_hoc_exam_context or (
+        ("module" in normalized or "thuc hanh" in normalized)
+        and any(
+            cue in normalized
+            for cue in ("thi", "diem", "ket qua", "chung chi", "xet tot nghiep", "ra truong")
+        )
+    )
+    tin_hoc_exam_context = tin_hoc_exam_context or (
+        any(cue in normalized for cue in ("excel", "word", "powerpoint"))
+        and any(cue in normalized for cue in ("thi", "diem", "ket qua", "module", "thuc hanh", "tot nghiep"))
+    )
+
+    if re.search(r"\btoeic\b", normalized):
+        topic_ids.add("toeic")
+    if re.search(r"\bmos\b", normalized) or "microsoft office specialist" in normalized:
+        topic_ids.add("mos")
+    if any(
+        cue in normalized
+        for cue in (
+            "sat hach",
+            "cntt",
+            "cong nghe thong tin",
+            "ic3",
+            "thcb",
+            "thnc",
+            "tin hoc co ban",
+            "tin hoc nang cao",
+            "tin co ban",
+            "tin nang cao",
+        )
+    ) or tin_hoc_exam_context or ("lich thi" in normalized and "tin hoc" in normalized):
+        topic_ids.add("sat_hach_cntt")
+    if any(
+        cue in normalized
+        for cue in (
+            "tieng anh",
+            "anh van",
+            "ngoai ngu",
+            "vstep",
+            "v step",
+            "chuan dau ra ngoai ngu",
+        )
+    ) or compact in {"b1", "b2"} or re.search(r"\bb[12]\b", normalized):
+        topic_ids.add("hoc_tieng_anh")
+    if any(
+        cue in normalized
+        for cue in (
+            "hoc tin hoc",
+            "khoa tin hoc",
+            "lop tin hoc",
+            "tin hoc van phong",
+            "microsoft office",
+            "hoc word",
+            "hoc excel",
+            "hoc powerpoint",
+        )
+    ):
+        topic_ids.add("hoc_tin_hoc")
+
+    course_only_context = any(
+        cue in normalized
+        for cue in (
+            "hoc tin hoc",
+            "khoa tin hoc",
+            "lop tin hoc",
+            "tin hoc van phong",
+            "hoc word",
+            "hoc excel",
+            "hoc powerpoint",
+            "hoc phi tin hoc",
+        )
+    )
+    if "sat_hach_cntt" in topic_ids and tin_hoc_exam_context and not course_only_context:
+        topic_ids.discard("hoc_tin_hoc")
+
+    topic_ids.discard("khac")
+    return topic_ids
+
+
 def detect_question_course(normalized_text: str = "") -> str:
-    topic_id = canonical_topic_id(normalized_text)
-    if topic_id == "toeic":
+    topic_ids = question_topic_ids(normalized_text)
+    if "toeic" in topic_ids:
         return "TOEIC"
-    if topic_id == "mos":
+    if "mos" in topic_ids:
         return "MOS"
-    if topic_id == "sat_hach_cntt":
+    if "sat_hach_cntt" in topic_ids:
         return "Sát hạch CNTT"
-    if topic_id == "hoc_tieng_anh":
+    if "hoc_tieng_anh" in topic_ids:
         return "Tiếng Anh"
-    if topic_id == "hoc_tin_hoc":
+    if "hoc_tin_hoc" in topic_ids:
         return "Tin học"
     return ""
 
@@ -838,7 +973,26 @@ def item_validation_text(item) -> str:
 
 
 def question_topic_id(value: str = "") -> str | None:
+    topic_ids = question_topic_ids(value)
+    if len(topic_ids) == 1:
+        return next(iter(topic_ids))
     return canonical_topic_id(value)
+
+
+def question_item_topic_ids(item) -> set[str]:
+    texts = [item.get("question") or ""]
+    texts.extend(variant.get("question") or "" for variant in item.get("variants") or [])
+    texts.extend(item.get("examples") or [])
+    topic_ids = set()
+    for text in texts:
+        topic_ids.update(question_topic_ids(text))
+    return topic_ids
+
+
+def topic_sets_are_compatible(left: set[str], right: set[str]) -> bool:
+    if not left or not right:
+        return True
+    return left == right
 
 
 def question_item_compatibility(representative: str, item) -> tuple[bool, str]:
@@ -850,9 +1004,9 @@ def question_item_compatibility(representative: str, item) -> tuple[bool, str]:
     if not representative_text:
         return True, ""
 
-    representative_topic = question_topic_id(representative_text)
-    item_topic = question_topic_id(item_text)
-    if representative_topic and item_topic and representative_topic != item_topic:
+    representative_topics = question_topic_ids(representative_text)
+    item_topics = question_item_topic_ids(item)
+    if not topic_sets_are_compatible(representative_topics, item_topics):
         return False, "topic_mismatch"
 
     representative_intents = question_intents(representative_text)
@@ -916,6 +1070,7 @@ def build_local_question_groups(items):
 
     for item in items:
         tokens = question_tokens(item["question"])
+        item_topic_ids = question_item_topic_ids(item)
         candidate_indexes = set()
         for token in tokens:
             candidate_indexes.update(token_index.get(token, set()))
@@ -923,6 +1078,8 @@ def build_local_question_groups(items):
         best_index = None
         best_score = 0.0
         for index in candidate_indexes:
+            if not topic_sets_are_compatible(groups[index].get("topicIds", set()), item_topic_ids):
+                continue
             score = token_overlap_score(tokens, groups[index]["tokens"])
             if score > best_score:
                 best_score = score
@@ -935,6 +1092,7 @@ def build_local_question_groups(items):
                 "count": item["count"],
                 "itemIds": [item["id"]],
                 "tokens": set(tokens),
+                "topicIds": set(item_topic_ids),
                 "variantCounts": Counter(),
                 "bestCount": item["count"],
             }
@@ -949,6 +1107,7 @@ def build_local_question_groups(items):
         group = groups[best_index]
         group["count"] += item["count"]
         group["itemIds"].append(item["id"])
+        group["topicIds"].update(item_topic_ids)
         for variant in item.get("variants") or []:
             group["variantCounts"][variant["question"]] += variant["count"]
 
@@ -1495,7 +1654,7 @@ def build_top_question_rows(raw_rows):
     try:
         ai_display_rows = build_ai_display_top_question_rows(items)
     except Exception as exc:
-        logger.exception("Dashboard AI question grouping failed: %s", exc)
+        logger.warning("Dashboard AI question grouping unavailable, using database fallback: %s", exc)
         if local_rows:
             logger.info(
                 "Dashboard question grouping used database fallback with %s rows while AI is unavailable.",
@@ -1514,12 +1673,39 @@ def build_top_question_rows(raw_rows):
         return local_rows, "fallback", AI_FALLBACK_MESSAGE
     return [], "ai_overloaded", AI_OVERLOAD_MESSAGE
 
+
+def build_database_top_question_rows(raw_rows):
+    _last_question_group_validation.clear()
+    raw_rows = list(raw_rows or [])
+    if len(raw_rows) > QUESTION_RAW_ROW_LIMIT:
+        logger.info(
+            "Dashboard question grouping limited to top %s/%s raw question rows for fast DB fallback.",
+            QUESTION_RAW_ROW_LIMIT,
+            len(raw_rows),
+        )
+        raw_rows = raw_rows[:QUESTION_RAW_ROW_LIMIT]
+    items = prepare_question_items(raw_rows)
+    if not items:
+        return [], "ok", ""
+    if len(items) > QUESTION_ANALYSIS_ITEM_LIMIT:
+        logger.info(
+            "Dashboard question grouping limited to top %s/%s preprocessed question items for fast DB fallback.",
+            QUESTION_ANALYSIS_ITEM_LIMIT,
+            len(items),
+        )
+        items = items[:QUESTION_ANALYSIS_ITEM_LIMIT]
+
+    local_rows = build_fallback_top_question_rows(items)
+    if local_rows:
+        return local_rows, "fallback", AI_FALLBACK_MESSAGE
+    return [], "ok", ""
+
 class DashboardService:
     def __init__(self):
         self.repository = ConversationRepository()
 
-    def _cached_repo_call(self, cache_name, start_date, end_date, fn):
-        cache_key = make_cache_key(cache_name, start_date, end_date, {})
+    def _cached_repo_call(self, cache_name, start_date, end_date, fn, filters=None):
+        cache_key = make_cache_key(cache_name, start_date, end_date, filters or {})
         cached = get_cached_value(cache_key)
         if cached is not None:
             return cached
@@ -1535,15 +1721,38 @@ class DashboardService:
         start = today - timedelta(days=DEFAULT_KPI_DATE_WINDOW_DAYS)
         return start.strftime('%Y-%m-%d'), today.strftime('%Y-%m-%d')
 
-    def _get_cached_top_question_rows(self, start_date=None, end_date=None, channel=None, force_refresh=False):
+    def _previous_kpi_date_range(self, start_date=None, end_date=None):
+        try:
+            current_start = datetime.strptime(start_date, '%Y-%m-%d').date()
+            current_end = datetime.strptime(end_date, '%Y-%m-%d').date()
+        except (TypeError, ValueError):
+            return None, None
+
+        days = (current_end - current_start).days + 1
+        if days <= 0:
+            return None, None
+
+        previous_end = current_start - timedelta(days=1)
+        previous_start = previous_end - timedelta(days=days - 1)
+        return previous_start.strftime('%Y-%m-%d'), previous_end.strftime('%Y-%m-%d')
+
+    def _get_cached_top_question_rows(
+        self,
+        start_date=None,
+        end_date=None,
+        channel=None,
+        force_refresh=False,
+        use_ai_on_miss=True,
+    ):
+        cache_scope = f'{AI_GATEWAY_PROMPT_VERSION}:{channel or "all"}'
         top_questions_cache_key = make_cache_key(
-            f'top_questions_ai:{channel or "all"}',
+            f'top_questions_ai:{cache_scope}',
             start_date,
             end_date,
             {},
         )
         last_good_cache_key = make_cache_key(
-            f'top_questions_ai_last_good:{channel or "all"}',
+            f'top_questions_ai_last_good:{cache_scope}',
             start_date,
             end_date,
             {},
@@ -1564,7 +1773,11 @@ class DashboardService:
             end_date,
             lambda: self.repository.get_top_questions_data(start_date, end_date, channel),
         )
-        top_questions = build_top_question_rows(raw_top_questions)
+        top_questions = (
+            build_top_question_rows(raw_top_questions)
+            if force_refresh or use_ai_on_miss
+            else build_database_top_question_rows(raw_top_questions)
+        )
         if top_questions[1] == "ok" and _top_question_result_rows(top_questions):
             set_cached_value(top_questions_cache_key, top_questions)
             set_cached_value(last_good_cache_key, top_questions)
@@ -1614,7 +1827,79 @@ class DashboardService:
 
         return top_questions
 
-    def _get_fast_kpis(self, start_date=None, end_date=None, filters=None, force_refresh=False):
+    def _map_priority_conversations(self, raw_priority_conversations):
+        priority_conversations_mapped = []
+        for row in raw_priority_conversations or []:
+            wait_mins = row.get('wait_mins') or 0
+            is_overtime = wait_mins > 600
+            priority = 'Ưu tiên thấp'
+            if wait_mins > 600:
+                priority = 'Ưu tiên cao'
+            elif wait_mins > 120:
+                priority = 'Ưu tiên trung bình'
+
+            status_text = 'Đang xử lý' if row.get('status') == 'open' else 'Chờ xử lý'
+            customer = customer_display_name(
+                row.get('customer_name'),
+                row.get('customer_id'),
+                row.get('phone_number'),
+            )
+            priority_conversations_mapped.append({
+                "id": f"HT-{row.get('id')}",
+                "conversationId": row.get('id'),
+                "customerId": row.get('customer_id'),
+                "source": normalize_source_key(row.get('source')),
+                "customerName": row.get('customer_name'),
+                "phoneNumber": row.get('phone_number'),
+                "customerDisplayName": customer,
+                "customer": customer,
+                "channel": format_channel(row.get('source')),
+                "topic": 'Khác',
+                "wait": format_wait_time(wait_mins),
+                "status": status_text,
+                "priority": priority,
+                "isOvertime": is_overtime
+            })
+        return priority_conversations_mapped
+
+    def get_priority_conversations(self, start_date=None, end_date=None, filters=None, limit=10):
+        if filters is None:
+            filters = {}
+        raw_priority_conversations = self.repository.get_priority_conversations_data(
+            start_date,
+            end_date,
+            filters.get('channel'),
+            filters.get('conversationStatus'),
+            filters.get('topic'),
+            filters.get('aiStatus'),
+            limit=limit,
+        )
+        return self._map_priority_conversations(raw_priority_conversations)[:limit]
+
+    def get_top_questions(self, start_date=None, end_date=None, filters=None, limit=TOP_QUESTIONS_RESPONSE_LIMIT):
+        if filters is None:
+            filters = {}
+
+        channel = filters.get('channel')
+        topic = filters.get('topic')
+        force_refresh = bool(filters.get('forceRefresh', False))
+        rows, status, message = self._get_cached_top_question_rows(
+            start_date,
+            end_date,
+            channel,
+            force_refresh=force_refresh,
+            use_ai_on_miss=force_refresh,
+        )
+        if topic and topic != 'Tất cả':
+            rows = [q for q in rows if topic_filter_matches(q.get('topic'), topic)]
+
+        return {
+            "topQuestions": rows[:limit],
+            "topQuestionsStatus": status,
+            "topQuestionsMessage": message,
+        }
+
+    def _map_urgent_alert_rows(self, raw_urgent_alerts, raw_overtime_alerts, filters=None):
         if filters is None:
             filters = {}
 
@@ -1624,30 +1909,336 @@ class DashboardService:
         ai_status = filters.get('aiStatus')
         source_filter = channel_to_source_key(channel)
 
+        rows = list(raw_urgent_alerts or [])
+        alert_keys = {(row.get('id'), normalize_source_key(row.get('source'))) for row in rows}
+        for row in raw_overtime_alerts or []:
+            key = (row.get('id'), normalize_source_key(row.get('source')))
+            if row.get('alert_type') == 'overtime' and key not in alert_keys:
+                rows.append(row)
+                alert_keys.add(key)
+
+        urgent_alerts = []
+        for row in rows:
+            last_cust_text = row.get('last_cust_text') or ''
+            last_ai_text = row.get('last_ai_text') or ''
+            alert_type = row.get('alert_type') or 'none'
+            wait_mins = row.get('wait_mins') or 0
+
+            if alert_type == 'none':
+                continue
+
+            alert_topic = source_topic(row.get('detected_topics'))
+            alert_channel = format_channel(row.get('source'))
+            customer = customer_display_name(row.get('customer_name'), row.get('customer_id'))
+
+            if alert_type == 'overtime':
+                urgent_alerts.append({
+                    "id": row.get('id'),
+                    "conversationId": row.get('conversation_id') or row.get('id'),
+                    "type": "overtime",
+                    "priority": "Ưu tiên cao",
+                    "title": "Hội thoại chờ quá 10 giờ",
+                    "customer": customer,
+                    "channel": alert_channel,
+                    "topic": alert_topic,
+                    "waitTime": format_wait_time(wait_mins),
+                    "desc": build_alert_description(alert_type, last_cust_text, last_ai_text),
+                    "raw_source": normalize_source_key(row.get('source')),
+                    "raw_status": 'pending',
+                    "raw_ai_status": 'Chưa có phản hồi'
+                })
+            elif alert_type == 'ai_no_data':
+                urgent_alerts.append({
+                    "id": row.get('id'),
+                    "conversationId": row.get('conversation_id'),
+                    "type": "ai_no_data",
+                    "priority": "Ưu tiên cao",
+                    "title": "AI không tìm thấy dữ liệu",
+                    "customer": customer,
+                    "channel": alert_channel,
+                    "topic": alert_topic,
+                    "waitTime": format_wait_time(wait_mins),
+                    "desc": build_alert_description(alert_type, last_cust_text, last_ai_text),
+                    "raw_source": normalize_source_key(row.get('source')),
+                    "raw_status": 'open',
+                    "raw_ai_status": 'Không tìm thấy dữ liệu'
+                })
+            elif alert_type == 'ai_uncertain':
+                urgent_alerts.append({
+                    "id": row.get('id'),
+                    "conversationId": row.get('conversation_id'),
+                    "type": "ai_uncertain",
+                    "priority": "Ưu tiên cao",
+                    "title": "AI không chắc chắn",
+                    "customer": customer,
+                    "channel": alert_channel,
+                    "topic": alert_topic,
+                    "waitTime": format_wait_time(wait_mins),
+                    "desc": build_alert_description(alert_type, last_cust_text, last_ai_text),
+                    "raw_source": normalize_source_key(row.get('source')),
+                    "raw_status": 'open',
+                    "raw_ai_status": 'AI trả lời không chắc chắn'
+                })
+
+        if source_filter:
+            urgent_alerts = [a for a in urgent_alerts if a['raw_source'] == source_filter]
+
+        if topic and topic != 'Tất cả':
+            urgent_alerts = [a for a in urgent_alerts if topic_filter_matches(a.get('topic'), topic)]
+
+        if conversation_status and conversation_status != 'Tất cả':
+            status_filter = {
+                'Chờ xử lý': 'pending',
+                'Đang xử lý': 'open',
+                'Hoàn thành': 'closed',
+            }.get(conversation_status)
+            if status_filter:
+                urgent_alerts = [a for a in urgent_alerts if a['raw_status'] == status_filter]
+
+        if ai_status and ai_status != 'Tất cả':
+            urgent_alerts = [a for a in urgent_alerts if alert_matches_ai_status(a.get('type'), ai_status)]
+
+        return urgent_alerts
+
+    def get_urgent_alerts(self, start_date=None, end_date=None, filters=None):
+        if filters is None:
+            filters = {}
+
+        channel = filters.get('channel')
+        topic = filters.get('topic')
+        conversation_status = filters.get('conversationStatus')
+        ai_status = filters.get('aiStatus')
+        scoped_cache_filters = {
+            "channel": channel,
+            "topic": topic,
+            "conversationStatus": conversation_status,
+            "aiStatus": ai_status,
+        }
+        should_load_overtime_alerts = not (ai_status and ai_status != 'Tất cả')
+        raw_urgent_alerts = self._cached_repo_call(
+            'urgent_alerts_scoped',
+            start_date,
+            end_date,
+            lambda: self.repository.get_urgent_alerts_data(
+                start_date,
+                end_date,
+                include_overtime=False,
+                channel=channel,
+                conversation_status=conversation_status,
+                topic=topic,
+                ai_status=ai_status,
+            ),
+            scoped_cache_filters,
+        )
+        raw_overtime_alerts = [] if not should_load_overtime_alerts else self._cached_repo_call(
+            'urgent_overtime_scoped',
+            start_date,
+            end_date,
+            lambda: self.repository.get_overtime_alerts_data(
+                start_date,
+                end_date,
+                channel=channel,
+                conversation_status=conversation_status,
+                topic=topic,
+                ai_status=ai_status,
+            ),
+            scoped_cache_filters,
+        )
+        return self._map_urgent_alert_rows(raw_urgent_alerts, raw_overtime_alerts, filters)
+
+    def get_kpi_comparison(self, start_date=None, end_date=None, filters=None):
+        if filters is None:
+            filters = {}
+        filters = dict(filters)
+        filters.pop('forceRefresh', None)
+
+        start_date, end_date = self._normalize_kpi_date_range(start_date, end_date)
+        cache_key = make_cache_key('kpi_comparison', start_date, end_date, filters)
+        cached = get_cached_value(cache_key)
+        if cached is not None:
+            return cached
+
+        previous_start_date, previous_end_date = self._previous_kpi_date_range(start_date, end_date)
+        if not previous_start_date or not previous_end_date:
+            result = {
+                "previous": {
+                    "totalConversations": 0,
+                    "totalMessages": 0,
+                    "activeConversations": 0,
+                    "closedConversations": 0,
+                    "aiFailures": 0,
+                }
+            }
+            set_cached_value(cache_key, result)
+            return result
+
+        channel = filters.get('channel')
+        topic = filters.get('topic')
+        conversation_status = filters.get('conversationStatus')
+        ai_status = filters.get('aiStatus')
+
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            futures = {
+                'summary': executor.submit(
+                    self.repository.get_conversation_summary,
+                    previous_start_date,
+                    previous_end_date,
+                    channel,
+                    conversation_status,
+                    topic,
+                    ai_status,
+                ),
+                'message_counts': executor.submit(
+                    self.repository.get_message_counts_filtered,
+                    previous_start_date,
+                    previous_end_date,
+                    channel,
+                    conversation_status,
+                    topic,
+                    ai_status,
+                ),
+                'ai_daily_stats': executor.submit(
+                    self.repository.get_ai_daily_stats,
+                    previous_start_date,
+                    previous_end_date,
+                    channel,
+                    conversation_status,
+                    topic,
+                    ai_status,
+                ),
+            }
+            query_results = {name: future.result() for name, future in futures.items()}
+
+        previous_summary = query_results.get('summary') or {}
+        previous_message_counts = query_results.get('message_counts') or []
+        previous_ai_daily_stats = query_results.get('ai_daily_stats') or []
+
+        previous_total_messages = sum((row.get('count') or 0) for row in previous_message_counts)
+        previous_status_summary = previous_summary.get('statusSummary') or {}
+        result = {
+            "previous": {
+                "totalConversations": previous_summary.get('totalConversations') or 0,
+                "totalMessages": previous_total_messages,
+                "activeConversations": previous_status_summary.get('pending') or 0,
+                "closedConversations": previous_status_summary.get('closed') or 0,
+                "aiFailures": sum(row.get('ai_fail') or 0 for row in previous_ai_daily_stats),
+            }
+        }
+        set_cached_value(cache_key, result)
+        return result
+
+    def _get_fast_kpis(self, start_date=None, end_date=None, filters=None, force_refresh=False):
+        if filters is None:
+            filters = {}
+
+        channel = filters.get('channel')
+        topic = filters.get('topic')
+        conversation_status = filters.get('conversationStatus')
+        ai_status = filters.get('aiStatus')
+        include_priority_conversations = filters.get('includePriorityConversations', True)
+        include_urgent_alerts = filters.get('includeUrgentAlerts', True)
+        include_top_questions = filters.get('includeTopQuestions', True)
+        include_trend_comparison = filters.get('includeTrendComparison', True)
+        source_filter = channel_to_source_key(channel)
+        scoped_cache_filters = {
+            "channel": channel,
+            "topic": topic,
+            "conversationStatus": conversation_status,
+            "aiStatus": ai_status,
+        }
+        should_load_overtime_alerts = not (ai_status and ai_status != 'Tất cả')
+        previous_start_date, previous_end_date = self._previous_kpi_date_range(start_date, end_date)
+
         query_tasks = {
             'summary': lambda: self.repository.get_conversation_summary(start_date, end_date, channel, conversation_status, topic, ai_status),
             'message_counts': lambda: self.repository.get_message_counts_filtered(start_date, end_date, channel, conversation_status, topic, ai_status),
-            'trends': lambda: self._cached_repo_call('trends_base', start_date, end_date, lambda: self.repository.get_trends(start_date, end_date)),
-            'urgent_alerts': lambda: self._cached_repo_call('urgent_alerts_base', start_date, end_date, lambda: self.repository.get_urgent_alerts_data(start_date, end_date)),
-            'overtime_alerts': lambda: self._cached_repo_call('urgent_overtime_all_fast', None, None, lambda: self.repository.get_overtime_alerts_data(None, None)),
-            'top_questions': lambda: self._get_cached_top_question_rows(start_date, end_date, channel, force_refresh),
-            'priority_conversations': lambda: self.repository.get_priority_conversations_data(start_date, end_date, channel, conversation_status, topic, ai_status),
             'daily_conversations': lambda: self.repository.get_daily_conversation_summary(start_date, end_date, channel, conversation_status, topic, ai_status),
             'ai_daily_stats': lambda: self.repository.get_ai_daily_stats(start_date, end_date, channel, conversation_status, topic, ai_status),
         }
+        if include_urgent_alerts:
+            query_tasks['urgent_alerts'] = lambda: self._cached_repo_call(
+                'urgent_alerts_scoped',
+                start_date,
+                end_date,
+                lambda: self.repository.get_urgent_alerts_data(
+                    start_date,
+                    end_date,
+                    include_overtime=False,
+                    channel=channel,
+                    conversation_status=conversation_status,
+                    topic=topic,
+                    ai_status=ai_status,
+                ),
+                scoped_cache_filters,
+            )
+            query_tasks['overtime_alerts'] = lambda: [] if not should_load_overtime_alerts else self._cached_repo_call(
+                'urgent_overtime_scoped',
+                start_date,
+                end_date,
+                lambda: self.repository.get_overtime_alerts_data(
+                    start_date,
+                    end_date,
+                    channel=channel,
+                    conversation_status=conversation_status,
+                    topic=topic,
+                    ai_status=ai_status,
+                ),
+                scoped_cache_filters,
+            )
+        if include_top_questions:
+            query_tasks['top_questions'] = lambda: self._get_cached_top_question_rows(
+                start_date,
+                end_date,
+                channel,
+                force_refresh=force_refresh,
+                use_ai_on_miss=force_refresh,
+            )
+        if include_trend_comparison and previous_start_date and previous_end_date:
+            query_tasks['previous_summary'] = lambda: self.repository.get_conversation_summary(
+                previous_start_date,
+                previous_end_date,
+                channel,
+                conversation_status,
+                topic,
+                ai_status,
+            )
+            query_tasks['previous_message_counts'] = lambda: self.repository.get_message_counts_filtered(
+                previous_start_date,
+                previous_end_date,
+                channel,
+                conversation_status,
+                topic,
+                ai_status,
+            )
+            query_tasks['previous_ai_daily_stats'] = lambda: self.repository.get_ai_daily_stats(
+                previous_start_date,
+                previous_end_date,
+                channel,
+                conversation_status,
+                topic,
+                ai_status,
+            )
+        if include_priority_conversations:
+            query_tasks['priority_conversations'] = lambda: self.repository.get_priority_conversations_data(start_date, end_date, channel, conversation_status, topic, ai_status)
 
-        with ThreadPoolExecutor(max_workers=DASHBOARD_QUERY_WORKERS) as executor:
-            futures = {name: executor.submit(fn) for name, fn in query_tasks.items()}
+        topic_filter_active = bool(topic and topic != 'Tất cả')
+        if topic_filter_active and len(query_tasks) > 4:
+            query_results = {name: fn() for name, fn in query_tasks.items()}
+        else:
+            with ThreadPoolExecutor(max_workers=DASHBOARD_QUERY_WORKERS) as executor:
+                futures = {name: executor.submit(fn) for name, fn in query_tasks.items()}
             query_results = {name: future.result() for name, future in futures.items()}
 
         summary = query_results.get('summary') or {}
         raw_message_counts = query_results.get('message_counts') or []
-        trends = query_results.get('trends') or {}
         raw_urgent_alerts = query_results.get('urgent_alerts') or []
         raw_overtime_alerts = query_results.get('overtime_alerts') or []
         raw_priority_conversations = query_results.get('priority_conversations') or []
         daily_conversations = query_results.get('daily_conversations') or []
         ai_daily_stats = query_results.get('ai_daily_stats') or []
+        previous_summary = query_results.get('previous_summary') or {}
+        previous_message_counts = query_results.get('previous_message_counts') or []
+        previous_ai_daily_stats = query_results.get('previous_ai_daily_stats') or []
         ai_failures = sum(row.get('ai_fail') or 0 for row in ai_daily_stats)
 
         alert_keys = {(row.get('id'), normalize_source_key(row.get('source'))) for row in raw_urgent_alerts}
@@ -1728,6 +2319,48 @@ class DashboardService:
 
         filtered_ai_failures = ai_failures
 
+        def sum_message_count_rows(rows):
+            total = 0
+            for item in rows or []:
+                source = normalize_source_key(item.get('source'))
+                if source_filter and source != source_filter:
+                    continue
+                total += item.get('count', 0) or 0
+            return total
+
+        def calc_trend(current_value, previous_value):
+            current = current_value or 0
+            previous = previous_value or 0
+            if previous == 0:
+                return 100 if current > 0 else 0
+            return int(round(((current - previous) / previous) * 100))
+
+        if include_trend_comparison:
+            previous_status_summary = previous_summary.get('statusSummary') or {}
+            previous_total_messages = sum_message_count_rows(previous_message_counts)
+            previous_ai_failures = sum(row.get('ai_fail') or 0 for row in previous_ai_daily_stats)
+            trends = {
+                "totalConversations": calc_trend(total_conversations, previous_summary.get('totalConversations') or 0),
+                "totalMessages": calc_trend(total_messages, previous_total_messages),
+                "activeConversations": calc_trend(
+                    summary.get('statusSummary', {}).get('pending') or 0,
+                    previous_status_summary.get('pending') or 0,
+                ),
+                "closedConversations": calc_trend(
+                    summary.get('statusSummary', {}).get('closed') or 0,
+                    previous_status_summary.get('closed') or 0,
+                ),
+                "aiFailures": calc_trend(filtered_ai_failures, previous_ai_failures),
+            }
+        else:
+            trends = {
+                "totalConversations": 0,
+                "totalMessages": 0,
+                "activeConversations": 0,
+                "closedConversations": 0,
+                "aiFailures": 0,
+            }
+
         urgent_alerts = []
         for row in raw_urgent_alerts:
             last_cust_text = row.get('last_cust_text') or ''
@@ -1794,6 +2427,9 @@ class DashboardService:
         if source_filter:
             urgent_alerts = [a for a in urgent_alerts if a['raw_source'] == source_filter]
 
+        if topic and topic != 'Tất cả':
+            urgent_alerts = [a for a in urgent_alerts if topic_filter_matches(a.get('topic'), topic)]
+
         if conversation_status and conversation_status != 'Tất cả':
             status_filter = {
                 'Chờ xử lý': 'pending',
@@ -1803,44 +2439,16 @@ class DashboardService:
             if status_filter:
                 urgent_alerts = [a for a in urgent_alerts if a['raw_status'] == status_filter]
 
+        if ai_status and ai_status != 'Tất cả':
+            urgent_alerts = [a for a in urgent_alerts if alert_matches_ai_status(a.get('type'), ai_status)]
+
         top_questions_mapped, top_questions_status, top_questions_message = (
             query_results.get('top_questions') or ([], "ok", "")
         )
         if topic and topic != 'Tất cả':
-            top_questions_mapped = [q for q in top_questions_mapped if q['topic'] == topic]
+            top_questions_mapped = [q for q in top_questions_mapped if topic_filter_matches(q.get('topic'), topic)]
 
-        priority_conversations_mapped = []
-        for row in raw_priority_conversations:
-            wait_mins = row.get('wait_mins') or 0
-            is_overtime = wait_mins > 600
-            priority = 'Ưu tiên thấp'
-            if wait_mins > 600:
-                priority = 'Ưu tiên cao'
-            elif wait_mins > 120:
-                priority = 'Ưu tiên trung bình'
-
-            status_text = 'Đang xử lý' if row.get('status') == 'open' else 'Chờ xử lý'
-            customer = customer_display_name(
-                row.get('customer_name'),
-                row.get('customer_id'),
-                row.get('phone_number'),
-            )
-            priority_conversations_mapped.append({
-                "id": f"HT-{row.get('id')}",
-                "conversationId": row.get('id'),
-                "customerId": row.get('customer_id'),
-                "source": normalize_source_key(row.get('source')),
-                "customerName": row.get('customer_name'),
-                "phoneNumber": row.get('phone_number'),
-                "customerDisplayName": customer,
-                "customer": customer,
-                "channel": format_channel(row.get('source')),
-                "topic": 'Khác',
-                "wait": format_wait_time(wait_mins),
-                "status": status_text,
-                "priority": priority,
-                "isOvertime": is_overtime
-            })
+        priority_conversations_mapped = self._map_priority_conversations(raw_priority_conversations)
 
         start_d = None
         end_d = None

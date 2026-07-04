@@ -43,10 +43,10 @@ describe("GlobalFilterContext", () => {
     expect(result.current.draftFilters.topic).toBe("Tất cả");
   });
 
-  it("normalizes deprecated AI status values restored from storage", () => {
+  it("normalizes removed status and date-range filters restored from storage", () => {
     sessionStorage.setItem("flic_dashboard_filters:v1", JSON.stringify({
-      draftFilters: { ...defaultFilterValues, aiStatus: "AI không chắc chắn" },
-      appliedFilters: { ...defaultFilterValues, aiStatus: "uncertain" },
+      draftFilters: { ...defaultFilterValues, dateRange: "Tháng này", conversationStatus: "Chờ xử lý", aiStatus: "AI không chắc chắn" },
+      appliedFilters: { ...defaultFilterValues, dateRange: "Quý này", conversationStatus: "Hoàn thành", aiStatus: "uncertain" },
     }));
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <GlobalFilterProvider>{children}</GlobalFilterProvider>
@@ -56,9 +56,13 @@ describe("GlobalFilterContext", () => {
 
     expect(result.current.draftFilters.aiStatus).toBe(defaultFilterValues.aiStatus);
     expect(result.current.appliedFilters.aiStatus).toBe(defaultFilterValues.aiStatus);
+    expect(result.current.draftFilters.conversationStatus).toBe(defaultFilterValues.conversationStatus);
+    expect(result.current.appliedFilters.conversationStatus).toBe(defaultFilterValues.conversationStatus);
+    expect(result.current.draftFilters.dateRange).toBe(defaultFilterValues.dateRange);
+    expect(result.current.appliedFilters.dateRange).toBe(defaultFilterValues.dateRange);
   });
 
-  it("normalizes detailed AI failure type out of global filters", () => {
+  it("normalizes removed AI fields out of global filters", () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <GlobalFilterProvider>{children}</GlobalFilterProvider>
     );
@@ -69,10 +73,11 @@ describe("GlobalFilterContext", () => {
       aiStatus: "AI trả lời thất bại",
       aiFailureType: "AI không chắc chắn",
     }));
-    expect(result.current.appliedFilters.aiStatus).toBe("AI trả lời thất bại");
+    expect(result.current.appliedFilters.aiStatus).toBe(defaultFilterValues.aiStatus);
     expect(result.current.appliedFilters.aiFailureType).toBe(defaultFilterValues.aiFailureType);
 
     act(() => result.current.updateDraft({ aiStatus: "AI trả lời thành công" }));
+    expect(result.current.draftFilters.aiStatus).toBe(defaultFilterValues.aiStatus);
     expect(result.current.draftFilters.aiFailureType).toBe(defaultFilterValues.aiFailureType);
   });
 });

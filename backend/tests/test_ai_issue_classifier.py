@@ -37,11 +37,11 @@ def test_ai_issue_classifier_maps_unclear_intent_to_uncertain():
     assert result.issue_type == "AI không chắc chắn"
 
 
-def test_ai_issue_classifier_detects_hallucination_risk_keywords():
+def test_ai_issue_classifier_maps_hallucination_risk_to_uncertain():
     result = classify_ai_issue("Tôi tự suy luận câu trả lời này từ thông tin chưa xác nhận.")
 
     assert result.issue_flag is True
-    assert result.issue_type == "AI có nguy cơ tự tạo thông tin"
+    assert result.issue_type == "AI không chắc chắn"
 
 
 def test_ai_issue_classifier_is_accent_insensitive():
@@ -59,11 +59,12 @@ def test_ai_issue_classifier_returns_no_issue_for_normal_answer():
     assert result.issue_type is None
 
 
-def test_topic_inference_maps_customer_text_to_five_canonical_groups():
+def test_topic_inference_maps_customer_text_to_six_canonical_groups():
     assert canonical_topic_labels("Em muốn đăng ký thi IC3 CNTT cơ bản") == [
-        "Sát hạch CNTT (Sát hạch Công nghệ thông tin)",
+        "Sát hạch CNTT",
     ]
     assert canonical_topic_labels("Trung tâm có lớp tin học văn phòng học Word và Excel không?") == [
         "Học Tin học",
     ]
     assert canonical_topic_labels("Em cần lịch thi TOEIC và chứng chỉ MOS") == ["TOEIC", "MOS"]
+    assert canonical_topic_labels("Em cần gặp tư vấn viên") == ["Khác"]

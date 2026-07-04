@@ -125,6 +125,10 @@ def get_kpi(
     conversationStatus: str = None,
     aiStatus: str = None,
     forceRefresh: bool = False,
+    includePriorityConversations: bool = True,
+    includeUrgentAlerts: bool = True,
+    includeTopQuestions: bool = True,
+    includeTrendComparison: bool = True,
 ):
     if startDate:
         try:
@@ -157,6 +161,10 @@ def get_kpi(
         "conversationStatus": conversationStatus,
         "aiStatus": aiStatus,
         "forceRefresh": forceRefresh,
+        "includePriorityConversations": includePriorityConversations,
+        "includeUrgentAlerts": includeUrgentAlerts,
+        "includeTopQuestions": includeTopQuestions,
+        "includeTrendComparison": includeTrendComparison,
     }
     
     kpis = dashboard_service.get_kpis(startDate, endDate, filters)
@@ -327,7 +335,8 @@ async def get_group_stats(
     topic: str = None,
     conversationStatus: str = None,
     aiStatus: str = None,
-    topN: int = 5
+    topN: int = 5,
+    includeChangeRate: bool = True,
 ):
     try:
         res = await keyword_service.get_group_stats({
@@ -337,7 +346,8 @@ async def get_group_stats(
             "topic": topic,
             "conversationStatus": conversationStatus,
             "aiStatus": aiStatus,
-            "topN": topN
+            "topN": topN,
+            "includeChangeRate": includeChangeRate,
         })
         return {
             "success": True,
@@ -373,6 +383,38 @@ async def get_trend_data(
             "success": True,
             "message": "Get trend data successfully",
             "data": res
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/api/admin/crm-keywords/analysis")
+async def get_keyword_analysis_data(
+    months: int = 8,
+    channel: str = None,
+    startDate: str = None,
+    endDate: str = None,
+    topic: str = None,
+    conversationStatus: str = None,
+    aiStatus: str = None,
+    granularity: str = "month",
+    topN: int = 5,
+):
+    try:
+        res = await keyword_service.get_analysis_data({
+            "months": months,
+            "channel": channel,
+            "startDate": startDate,
+            "endDate": endDate,
+            "topic": topic,
+            "conversationStatus": conversationStatus,
+            "aiStatus": aiStatus,
+            "granularity": granularity,
+            "topN": topN,
+        })
+        return {
+            "success": True,
+            "message": "Get keyword analysis data successfully",
+            "data": res,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -471,7 +513,11 @@ async def get_sheet_chatbot_rows(
     status: str = None,
     risk: str = None,
     addedBy: str = None,
-    role: str = None
+    role: str = None,
+    startDate: str = None,
+    endDate: str = None,
+    channel: str = None,
+    topic: str = None
 ):
     try:
         res = await sheet_chatbot_service.get_rows({
@@ -481,7 +527,11 @@ async def get_sheet_chatbot_rows(
             "status": status,
             "risk": risk,
             "addedBy": addedBy,
-            "role": role
+            "role": role,
+            "startDate": startDate,
+            "endDate": endDate,
+            "channel": channel,
+            "topic": topic
         })
         return {
             "success": True,

@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -36,15 +36,7 @@ describe("ChartCard filter panel", () => {
 
     await user.click(screen.getByTitle("Lọc dữ liệu"));
 
-    const aiStatusLabel = screen.getByText("TRẠNG THÁI AI");
-    const aiStatusSelect = aiStatusLabel.parentElement?.querySelector("select");
-
-    expect(aiStatusSelect).not.toBeNull();
-    expect(within(aiStatusSelect as HTMLSelectElement).getAllByRole("option").map((option) => option.textContent)).toEqual([
-      "Tất cả",
-      "AI trả lời thành công",
-      "AI trả lời thất bại",
-    ]);
-    expect(within(aiStatusSelect as HTMLSelectElement).queryByRole("option", { name: "AI không chắc chắn" })).toBeNull();
+    expect(screen.queryByText("TRẠNG THÁI AI")).toBeNull();
+    expect(screen.queryByRole("option", { name: "AI không chắc chắn" })).toBeNull();
   });
 });

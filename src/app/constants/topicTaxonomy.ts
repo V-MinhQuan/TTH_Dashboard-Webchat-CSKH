@@ -1,24 +1,37 @@
 export const TOPIC_TAXONOMY = [
   {
     id: "sat_hach_cntt",
-    label: "Sát hạch CNTT (Sát hạch Công nghệ thông tin)",
+    label: "Sát hạch CNTT",
     shortLabel: "Sát hạch CNTT",
     color: "#003865",
     sheetTopic: "Sát hạch CNTT",
     scopeTerms: [
       "Sát hạch CNTT",
       "Sát hạch Công nghệ thông tin",
-      "CNTT",
-      "Công nghệ thông tin",
-      "CNTT Cơ bản",
-      "CNTT Nâng cao",
+      "thi CNTT",
+      "thi Công nghệ thông tin",
+      "đăng ký thi CNTT",
+      "đăng ký sát hạch CNTT",
+      "lịch thi CNTT",
+      "ngày thi CNTT",
+      "ca thi CNTT",
+      "lệ phí thi CNTT",
+      "phí thi CNTT",
+      "điểm thi CNTT",
+      "kết quả thi CNTT",
+      "xem điểm CNTT",
+      "chứng chỉ CNTT",
+      "nhận chứng chỉ CNTT",
+      "cấp chứng chỉ CNTT",
+      "CNTT cơ bản",
+      "CNTT nâng cao",
+      "Tin học cơ bản",
+      "Tin học nâng cao",
       "Tin cơ bản",
       "Tin nâng cao",
       "THCB",
       "THNC",
       "IC3",
-      "thi CNTT",
-      "chứng chỉ CNTT",
     ],
     excludeTerms: ["TOEIC", "MOS", "VSTEP", "B1", "B2", "Học Tiếng Anh", "Học Tin học"],
   },
@@ -28,7 +41,24 @@ export const TOPIC_TAXONOMY = [
     shortLabel: "TOEIC",
     color: "#ED5206",
     sheetTopic: "TOEIC",
-    scopeTerms: ["TOEIC", "thi TOEIC", "lịch thi TOEIC", "đăng ký TOEIC", "lệ phí TOEIC", "điểm thi TOEIC", "chứng chỉ TOEIC"],
+    scopeTerms: [
+      "TOEIC",
+      "thi TOEIC",
+      "đăng ký TOEIC",
+      "đăng ký thi TOEIC",
+      "lịch thi TOEIC",
+      "ngày thi TOEIC",
+      "ca thi TOEIC",
+      "lệ phí TOEIC",
+      "phí thi TOEIC",
+      "điểm TOEIC",
+      "điểm thi TOEIC",
+      "kết quả TOEIC",
+      "xem điểm TOEIC",
+      "chứng chỉ TOEIC",
+      "nhận chứng chỉ TOEIC",
+      "cấp chứng chỉ TOEIC",
+    ],
     excludeTerms: ["MOS", "VSTEP", "CNTT", "IC3", "Sát hạch", "Học Tin học"],
   },
   {
@@ -37,7 +67,25 @@ export const TOPIC_TAXONOMY = [
     shortLabel: "MOS",
     color: "#1565C0",
     sheetTopic: "MOS",
-    scopeTerms: ["MOS", "Microsoft Office Specialist", "thi MOS", "lịch thi MOS", "chứng chỉ MOS", "điểm thi MOS"],
+    scopeTerms: [
+      "MOS",
+      "Microsoft Office Specialist",
+      "thi MOS",
+      "đăng ký MOS",
+      "đăng ký thi MOS",
+      "lịch thi MOS",
+      "ngày thi MOS",
+      "ca thi MOS",
+      "lệ phí MOS",
+      "phí thi MOS",
+      "điểm MOS",
+      "điểm thi MOS",
+      "kết quả MOS",
+      "xem điểm MOS",
+      "chứng chỉ MOS",
+      "nhận chứng chỉ MOS",
+      "cấp chứng chỉ MOS",
+    ],
     excludeTerms: ["TOEIC", "VSTEP", "CNTT", "IC3", "Sát hạch"],
   },
   {
@@ -53,11 +101,24 @@ export const TOPIC_TAXONOMY = [
       "Ngoại ngữ",
       "khóa tiếng Anh",
       "lớp tiếng Anh",
+      "khóa Anh văn",
+      "lớp Anh văn",
+      "học tiếng Anh",
+      "đăng ký khóa tiếng Anh",
+      "đăng ký lớp tiếng Anh",
+      "ôn tiếng Anh",
+      "luyện tiếng Anh",
+      "tiếng Anh giao tiếp",
+      "học giao tiếp tiếng Anh",
+      "luyện nghe",
+      "luyện nói",
+      "luyện đọc",
+      "luyện viết",
       "VSTEP",
       "B1",
       "B2",
-      "ôn tiếng Anh",
       "chuẩn đầu ra ngoại ngữ",
+      "học phí tiếng Anh",
     ],
     excludeTerms: ["MOS", "CNTT", "IC3", "Sát hạch CNTT", "Học Tin học"],
   },
@@ -71,14 +132,32 @@ export const TOPIC_TAXONOMY = [
       "Học Tin học",
       "khóa tin học",
       "lớp tin học",
+      "học tin học",
+      "đăng ký khóa tin học",
+      "đăng ký lớp tin học",
       "tin học văn phòng",
+      "Microsoft Office",
+      "Word",
+      "Excel",
+      "PowerPoint",
       "học Word",
       "học Excel",
       "học PowerPoint",
       "ôn tin học",
+      "học phí tin học",
+      "đăng nhập khóa học",
       "quên mật khẩu khóa học",
     ],
     excludeTerms: ["TOEIC", "VSTEP", "Sát hạch CNTT", "CNTT Cơ bản", "CNTT Nâng cao", "IC3"],
+  },
+  {
+    id: "khac",
+    label: "Khác",
+    shortLabel: "Khác",
+    color: "#64748B",
+    sheetTopic: "Khác",
+    scopeTerms: ["Khác"],
+    excludeTerms: [],
   },
 ] as const;
 
@@ -119,57 +198,39 @@ export function mapTopicToGroupId(value: string): TopicGroupId | null {
     "chuan dau ra": "hoc_tieng_anh",
     "chuan dau ra / chung chi": "hoc_tieng_anh",
     "chuan dau ra ngoai ngu": "hoc_tieng_anh",
+    "other": "khac",
+    "unknown": "khac",
+    "none": "khac",
   };
   if (legacyExact[normalized]) return legacyExact[normalized];
 
-  if (hasCodeToken(normalized, "vstep") || hasCodeToken(normalized, "b1") || hasCodeToken(normalized, "b2")) {
-    return "hoc_tieng_anh";
-  }
-  if (hasCodeToken(normalized, "toeic")) return "toeic";
-  if (hasCodeToken(normalized, "mos") || normalized.includes("microsoft office specialist")) return "mos";
-  if (
-    normalized.includes("sat hach") ||
-    normalized.includes("cntt") ||
-    normalized.includes("cong nghe thong tin") ||
-    normalized.includes("ic3") ||
-    normalized.includes("thcb") ||
-    normalized.includes("thnc") ||
-    normalized.includes("tin co ban") ||
-    normalized.includes("tin nang cao")
-  ) {
-    return "sat_hach_cntt";
-  }
-  if (
-    normalized.includes("hoc tieng anh") ||
-    normalized.includes("tieng anh") ||
-    normalized.includes("anh van") ||
-    normalized.includes("ngoai ngu") ||
-    normalized.includes("chuan dau ra") ||
-    normalized.includes("dau ra") ||
-    normalized.includes("xet tot nghiep")
-  ) {
-    return "hoc_tieng_anh";
-  }
-  if (
-    normalized.includes("hoc tin hoc") ||
-    normalized.includes("khoa tin hoc") ||
-    normalized.includes("lop tin hoc") ||
-    normalized.includes("tin hoc van phong") ||
-    normalized.includes("hoc word") ||
-    normalized.includes("hoc excel") ||
-    normalized.includes("hoc powerpoint") ||
-    normalized.includes("on tin hoc")
-  ) {
-    return "hoc_tin_hoc";
-  }
+  if (matchesScopeTerms(normalized, "toeic")) return "toeic";
+  if (matchesScopeTerms(normalized, "mos")) return "mos";
+  if (matchesScopeTerms(normalized, "sat_hach_cntt")) return "sat_hach_cntt";
+  if (matchesScopeTerms(normalized, "hoc_tieng_anh")) return "hoc_tieng_anh";
+  if (matchesScopeTerms(normalized, "hoc_tin_hoc")) return "hoc_tin_hoc";
 
-  return null;
+  return "khac";
 }
 
 function hasCodeToken(text: string, code: string) {
   return new RegExp(`(^|[^a-z0-9_])${code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^a-z0-9_])`).test(text);
 }
 
+function matchesScopeTerms(text: string, topicId: Exclude<TopicGroupId, "khac">) {
+  const topic = TOPIC_TAXONOMY.find((item) => item.id === topicId);
+  if (!topic) return false;
+
+  return topic.scopeTerms.some((term) => {
+    const normalizedTerm = normalizeTopicText(term);
+    if (!normalizedTerm || normalizedTerm === "khac") return false;
+    if (/^[a-z0-9]+$/.test(normalizedTerm) && normalizedTerm.length <= 10) {
+      return hasCodeToken(text, normalizedTerm);
+    }
+    return text.includes(normalizedTerm);
+  });
+}
+
 export function topicLabelForGroupId(groupId: string | null | undefined) {
-  return topicGroupById(groupId)?.label || TOPIC_TAXONOMY[0].label;
+  return topicGroupById(groupId)?.label || "Khác";
 }

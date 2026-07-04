@@ -39,13 +39,11 @@ describe("date filter mapping", () => {
       endDate: "2024-01-24",
       channel: "Facebook",
       topic: "TOEIC",
-      conversationStatus: "Chờ xử lý",
-      aiStatus: "failed",
     });
 
     expect(mapGlobalFiltersToAnalyticsRequest({
       ...defaultFilterValues,
       aiStatus: "AI trả lời thành công",
-    })).toMatchObject({ aiStatus: "success" });
+    })).not.toHaveProperty("aiStatus");
   });
 });

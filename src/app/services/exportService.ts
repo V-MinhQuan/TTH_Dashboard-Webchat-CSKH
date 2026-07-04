@@ -16,8 +16,6 @@ function filterSummary(filters: FilterValues) {
     ["Đến ngày", filters.customDateTo],
     ["Kênh", filters.channel],
     ["Chủ đề", filters.topic],
-    ["Trạng thái hội thoại", filters.conversationStatus],
-    ["Trạng thái AI", filters.aiStatus],
   ].filter((entry): entry is [string, string] => Boolean(entry[1]));
 }
 

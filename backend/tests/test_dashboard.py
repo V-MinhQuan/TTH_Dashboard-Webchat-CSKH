@@ -177,6 +177,108 @@ def test_dashboard_service_computes_correct_kpis(
     assert kpi["averageResponseTimeMinutes"] == 15
 
 
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_conversation_summary')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_message_counts_filtered')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_trends')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_urgent_alerts_data')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_overtime_alerts_data')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_top_questions_data')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_priority_conversations_data')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_daily_conversation_summary')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_ai_daily_stats')
+def test_dashboard_service_can_skip_priority_conversations_for_fast_kpis(
+    mock_ai_daily, mock_daily, mock_priority, mock_top_q, mock_overtime, mock_alerts, mock_trends, mock_counts, mock_summary
+):
+    clear_dashboard_cache()
+    mock_summary.return_value = {
+        "totalConversations": 1,
+        "newCustomers": 1,
+        "statusSummary": {"new": 0, "open": 1, "pending": 0, "closed": 0, "unknown": 0},
+        "sourceSummary": {"Facebook": 1},
+        "averageResponseTimeMinutes": 0,
+    }
+    mock_counts.return_value = []
+    mock_trends.return_value = {}
+    mock_alerts.return_value = []
+    mock_overtime.return_value = []
+    mock_top_q.return_value = []
+    mock_daily.return_value = []
+    mock_ai_daily.return_value = []
+
+    kpi = DashboardService().get_kpis(
+        "2026-06-01",
+        "2026-06-30",
+        {
+            "includePriorityConversations": False,
+            "includeUrgentAlerts": False,
+            "includeTopQuestions": False,
+            "includeTrendComparison": False,
+        },
+    )
+
+    mock_priority.assert_not_called()
+    mock_alerts.assert_not_called()
+    mock_overtime.assert_not_called()
+    mock_top_q.assert_not_called()
+    assert mock_summary.call_count == 1
+    assert mock_counts.call_count == 1
+    assert mock_ai_daily.call_count == 1
+    assert kpi["priorityConversations"] == []
+    assert kpi["urgentAlerts"] == []
+    assert kpi["topQuestions"] == []
+
+
+def test_dashboard_service_runs_expanded_topic_kpis_without_thread_pool(monkeypatch):
+    clear_dashboard_cache()
+
+    class TopicRepo:
+        def get_conversation_summary(self, *args):
+            return {
+                "totalConversations": 1,
+                "newCustomers": 1,
+                "statusSummary": {"new": 0, "open": 1, "pending": 0, "closed": 0, "unknown": 0},
+                "sourceSummary": {"ZaloOA": 0, "ZaloBusiness": 0, "Facebook": 1, "ChatWidget": 0},
+                "averageResponseTimeMinutes": 0,
+            }
+
+        def get_message_counts_filtered(self, *args):
+            return [{"source": "Facebook", "count": 2}]
+
+        def get_daily_conversation_summary(self, *args):
+            return []
+
+        def get_ai_daily_stats(self, *args):
+            return []
+
+        def get_urgent_alerts_data(self, *args, **kwargs):
+            return []
+
+        def get_overtime_alerts_data(self, *args, **kwargs):
+            return []
+
+    def fail_thread_pool(*_args, **_kwargs):
+        raise AssertionError("Topic-filtered KPI queries must not use the thread pool")
+
+    monkeypatch.setattr(dashboard_module, "ThreadPoolExecutor", fail_thread_pool)
+    service = DashboardService()
+    service.repository = TopicRepo()
+
+    result = service.get_kpis(
+        "2026-01-01",
+        "2026-06-01",
+        {
+            "topic": "Học Tiếng Anh",
+            "includePriorityConversations": False,
+            "includeUrgentAlerts": True,
+            "includeTopQuestions": False,
+            "includeTrendComparison": False,
+        },
+    )
+
+    assert result["totalConversations"] == 1
+    assert result["totalMessages"] == 2
+
+
 def test_prepare_question_items_cleans_noise_and_merges_duplicates():
     raw_rows = [
         {"question": " Học phí là bao nhiêu??? ", "source": "facebook"},
@@ -356,6 +458,82 @@ def test_database_fallback_does_not_merge_unrelated_short_question_cues(monkeypa
     }
 
 
+def test_database_fallback_does_not_mix_cntt_schedule_with_english_schedule(monkeypatch):
+    raw_rows = [
+        {"question": "Dạ lịch thi tin học ạ", "source": "facebook", "count": 4},
+        {
+            "question": "Với có lịch học V-step tháng 5 tầm tháng 8 - 9 thi không ạ",
+            "source": "zalobusiness",
+            "count": 2,
+        },
+        {"question": "Em muốn hỏi lịch thi tin học nâng cao ạ", "source": "facebook", "count": 2},
+    ]
+
+    def fake_request_ai_question_groups(_: str) -> str:
+        raise QuestionGroupingAIError("quota exceeded")
+
+    monkeypatch.setattr(dashboard_module, "request_ai_question_groups", fake_request_ai_question_groups)
+
+    rows, status, _message = build_top_question_rows(raw_rows)
+
+    assert status == "fallback"
+    cntt_row = next(row for row in rows if row["question"] == "Lịch thi Sát hạch CNTT là khi nào?")
+    english_row = next(
+        row
+        for row in rows
+        if any("V-step" in item["question"] for item in row["relatedQuestions"])
+    )
+    cntt_related = {item["question"] for item in cntt_row["relatedQuestions"]}
+    english_related = {item["question"] for item in english_row["relatedQuestions"]}
+
+    assert english_row["topic"] == "Học Tiếng Anh"
+    assert "Với có lịch học V-step tháng 5 tầm tháng 8 - 9 thi không ạ" not in cntt_related
+    assert cntt_related == {
+        "Dạ lịch thi tin học ạ",
+        "Em muốn hỏi lịch thi tin học nâng cao ạ",
+    }
+    assert english_related == {
+        "Với có lịch học V-step tháng 5 tầm tháng 8 - 9 thi không ạ",
+    }
+
+
+def test_database_fallback_separates_it_certificate_from_english_certificate(monkeypatch):
+    it_question = (
+        "Dạ cho em hỏi về việc nộp bằng tin học cho trường để xét chuẩn đầu ra "
+        "thì có quy định ngày nộp cụ thể không ạ?"
+    )
+    english_question = "Dạ chị cho em khi nào nộp bằng Tiếng Anh xét đầu ra vậy ạ"
+    raw_rows = [
+        {"question": english_question, "source": "facebook", "count": 4},
+        {"question": it_question, "source": "zalobusiness", "count": 3},
+        {"question": "Em đăng ký thi chứng chỉ ngoại ngữ làm thủ tục onl rồi ạ", "source": "facebook", "count": 2},
+    ]
+
+    def fake_request_ai_question_groups(_: str) -> str:
+        raise QuestionGroupingAIError("quota exceeded")
+
+    monkeypatch.setattr(dashboard_module, "request_ai_question_groups", fake_request_ai_question_groups)
+
+    rows, status, _message = build_top_question_rows(raw_rows)
+
+    assert status == "fallback"
+    english_row = next(
+        row for row in rows
+        if any(english_question == item["question"] for item in row["relatedQuestions"])
+    )
+    it_row = next(
+        row for row in rows
+        if any(it_question == item["question"] for item in row["relatedQuestions"])
+    )
+    english_related = {item["question"] for item in english_row["relatedQuestions"]}
+    it_related = {item["question"] for item in it_row["relatedQuestions"]}
+
+    assert english_row["topic"] == "Học Tiếng Anh"
+    assert it_row["topic"] == "Sát hạch CNTT"
+    assert it_question not in english_related
+    assert it_related == {it_question}
+
+
 def test_database_fallback_does_not_turn_center_mentions_into_address_question(monkeypatch):
     raw_rows = [
         {
@@ -512,7 +690,7 @@ def test_dashboard_top_question_reads_db_cache_before_rebuilding(monkeypatch):
 
     class FakeQuestionGroupCache:
         def get(self, cache_key, **_kwargs):
-            assert cache_key.startswith("top_questions_ai:all")
+            assert cache_key.startswith(f"top_questions_ai:{dashboard_module.AI_GATEWAY_PROMPT_VERSION}:all")
             return {"value": cached_value, "is_expired": False}
 
         def upsert(self, *_args, **_kwargs):
@@ -555,7 +733,7 @@ def test_dashboard_top_question_writes_ok_result_to_db_cache(monkeypatch):
     assert result[1] == "ok"
     assert len(upsert_calls) == 1
     args, kwargs = upsert_calls[0]
-    assert args[0].startswith("top_questions_ai:Facebook")
+    assert args[0].startswith(f"top_questions_ai:{dashboard_module.AI_GATEWAY_PROMPT_VERSION}:Facebook")
     assert kwargs["source_row_count"] == 1
     assert kwargs["source_filters"] == {"channel": "Facebook"}
     assert kwargs["provider"] == "gemini"
@@ -677,16 +855,85 @@ def test_dashboard_service_defaults_unbounded_kpis_to_fast_date_window(
 
     DashboardService().get_kpis()
 
-    start_arg, end_arg = mock_summary.call_args.args[:2]
+    start_arg, end_arg = mock_alerts.call_args.args[:2]
     assert start_arg is not None
     assert end_arg is not None
     assert (
         datetime.strptime(end_arg, "%Y-%m-%d") - datetime.strptime(start_arg, "%Y-%m-%d")
     ).days == dashboard_module.DEFAULT_KPI_DATE_WINDOW_DAYS
+    assert any(call.args[:2] == (start_arg, end_arg) for call in mock_summary.call_args_list)
 
     assert mock_alerts.call_count == 1
     assert mock_alerts.call_args.args[:2] == (start_arg, end_arg)
+    assert mock_alerts.call_args.kwargs == {
+        "include_overtime": False,
+        "channel": None,
+        "conversation_status": None,
+        "topic": None,
+        "ai_status": None,
+    }
     assert mock_overtime.call_count == 1
+    assert mock_overtime.call_args.args[:2] == (start_arg, end_arg)
+
+
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_conversation_summary')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_message_counts_filtered')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_trends')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_urgent_alerts_data')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_overtime_alerts_data')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_top_questions_data')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_priority_conversations_data')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_daily_conversation_summary')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_ai_daily_stats')
+def test_dashboard_service_filters_urgent_alerts_by_topic_and_date_scope(
+    mock_ai_daily, mock_daily, mock_priority, mock_top_q, mock_overtime, mock_alerts, mock_trends, mock_counts, mock_summary
+):
+    clear_dashboard_cache()
+    mock_summary.return_value = {
+        "totalConversations": 0,
+        "newCustomers": 0,
+        "statusSummary": {"new": 0, "open": 0, "pending": 0, "closed": 0, "unknown": 0},
+        "sourceSummary": {"ZaloOA": 0, "ZaloBusiness": 0, "Facebook": 0, "ChatWidget": 0},
+        "averageResponseTimeMinutes": 0,
+    }
+    mock_counts.return_value = []
+    mock_trends.return_value = {}
+    mock_alerts.return_value = []
+    mock_overtime.return_value = [
+        {
+            "id": "toeic-1",
+            "conversation_id": "conv-toeic",
+            "customer_id": "C1",
+            "customer_name": None,
+            "source": "facebook",
+            "alert_type": "overtime",
+            "detected_topics": "TOEIC",
+            "wait_mins": 700,
+            "last_cust_text": "Tư vấn TOEIC",
+            "last_ai_text": "",
+        },
+        {
+            "id": "mos-1",
+            "conversation_id": "conv-mos",
+            "customer_id": "C2",
+            "customer_name": None,
+            "source": "facebook",
+            "alert_type": "overtime",
+            "detected_topics": "MOS",
+            "wait_mins": 800,
+            "last_cust_text": "Tư vấn MOS",
+            "last_ai_text": "",
+        },
+    ]
+    mock_top_q.return_value = []
+    mock_priority.return_value = []
+    mock_daily.return_value = []
+    mock_ai_daily.return_value = []
+
+    result = DashboardService().get_kpis("2026-06-01", "2026-06-30", {"topic": "TOEIC"})
+
+    assert mock_overtime.call_args.args[:2] == ("2026-06-01", "2026-06-30")
+    assert [alert["conversationId"] for alert in result["urgentAlerts"]] == ["conv-toeic"]
 
 # ==========================================
 # 3. Tests for API Endpoints
@@ -734,6 +981,181 @@ def test_api_get_kpis_start_greater_than_end():
     assert response.status_code == 400
     assert response.json()["success"] is False
     assert "không thể lớn hơn ngày kết thúc" in response.json()["message"]
+
+
+@patch('app.repositories.legacy_conversation_repository.get_db_connection')
+def test_conversation_summary_with_topic_uses_fast_topic_scope(mock_get_db):
+    conn = MagicMock()
+    cursor = MagicMock()
+    conn.cursor.return_value.__enter__.return_value = cursor
+    cursor.fetchone.return_value = {
+        "total_conversations": 3,
+        "new_customers": 2,
+        "open_count": 1,
+        "pending_count": 1,
+        "closed_count": 1,
+        "unknown_count": 0,
+        "zalooa_count": 0,
+        "zalobusiness_count": 0,
+        "facebook_count": 3,
+        "chatwidget_count": 0,
+        "other_count": 0,
+        "zalooa_unresolved": 0,
+        "zalobusiness_unresolved": 0,
+        "facebook_unresolved": 2,
+        "chatwidget_unresolved": 0,
+        "avg_response_minutes": 12.4,
+    }
+    mock_get_db.return_value = conn
+
+    result = ConversationRepository().get_conversation_summary(
+        "2026-01-01",
+        "2026-06-01",
+        topic="Học Tiếng Anh",
+    )
+
+    query, params = cursor.execute.call_args.args
+    assert "WITH topic_scope AS" in query
+    assert "FROM WebChat_MessageLogs m" in query
+    assert "INNER JOIN topic_scope" in query
+    assert "FROM WebChat_Conversations c" in query
+    assert "OUTER APPLY" in query
+    assert "LOWER(m.TextContent) LIKE %s" in query
+    assert "%tiếng anh%" in params
+    assert "Học Tiếng Anh" not in query
+    assert query.count("%s") == len(params)
+    assert params[0] == "2026-01-01"
+    assert params[1] == "2026-06-01 23:59:59.999"
+    assert result["totalConversations"] == 3
+    assert result["statusSummary"]["pending"] == 1
+    assert result["sourceSummary"]["Facebook"] == 3
+    assert result["unresolvedSummary"]["Facebook"] == 2
+    assert result["averageResponseTimeMinutes"] == 12
+    conn.close.assert_called_once()
+
+
+@patch('app.repositories.legacy_conversation_repository.get_db_connection')
+def test_message_counts_with_topic_counts_messages_from_topic_scope(mock_get_db):
+    conn = MagicMock()
+    cursor = MagicMock()
+    conn.cursor.return_value.__enter__.return_value = cursor
+    cursor.fetchall.return_value = [{"source": "Facebook", "count": 12}]
+    mock_get_db.return_value = conn
+
+    result = ConversationRepository().get_message_counts_filtered(
+        "2026-01-01",
+        "2026-06-01",
+        topic="Học Tiếng Anh",
+    )
+
+    query, params = cursor.execute.call_args.args
+    assert result == [{"source": "Facebook", "count": 12}]
+    assert "WITH topic_scope AS" in query
+    assert "FROM WebChat_MessageLogs topic_msg" in query
+    assert "INNER JOIN topic_scope" in query
+    assert "FROM WebChat_MessageLogs m" in query
+    assert "LOWER(topic_msg.TextContent) LIKE %s" in query
+    assert "LOWER(m.TextContent) LIKE %s" not in query
+    assert "%tiếng anh%" in params
+    assert "Học Tiếng Anh" not in query
+    assert query.count("%s") == len(params)
+    assert params[0] == "2026-01-01"
+    assert params[1] == "2026-06-01 23:59:59.999"
+    conn.close.assert_called_once()
+
+
+@patch('app.routers.dashboard.legacy_ds.get_kpi_comparison')
+def test_api_get_dashboard_kpi_comparison_uses_filter_params(mock_get_kpi_comparison):
+    mock_get_kpi_comparison.return_value = {
+        "previous": {
+            "totalConversations": 10,
+            "totalMessages": 20,
+            "activeConversations": 3,
+            "closedConversations": 7,
+            "aiFailures": 1,
+        }
+    }
+
+    response = client.get(
+        "/api/dashboard/kpi-comparison"
+        "?startDate=2026-06-01"
+        "&endDate=2026-06-30"
+        "&channel=Facebook"
+        "&topic=TOEIC"
+        "&conversationStatus=Chờ xử lý"
+        "&aiStatus=AI trả lời thất bại"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["success"] is True
+    mock_get_kpi_comparison.assert_called_once_with(
+        "2026-06-01",
+        "2026-06-30",
+        {
+            "channel": "Facebook",
+            "topic": "TOEIC",
+            "conversationStatus": "Chờ xử lý",
+            "aiStatus": "AI trả lời thất bại",
+        },
+    )
+
+@patch('app.routers.dashboard.legacy_ds.get_urgent_alerts')
+def test_api_get_dashboard_urgent_alerts_uses_filter_params(mock_get_urgent_alerts):
+    mock_get_urgent_alerts.return_value = []
+
+    response = client.get(
+        "/api/dashboard/urgent-alerts"
+        "?startDate=2026-06-01"
+        "&endDate=2026-06-30"
+        "&channel=facebook"
+        "&topic=TOEIC"
+        "&conversationStatus=Đang xử lý"
+        "&aiStatus=AI trả lời thất bại"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["success"] is True
+    mock_get_urgent_alerts.assert_called_once_with(
+        "2026-06-01",
+        "2026-06-30",
+        {
+            "channel": "facebook",
+            "topic": "TOEIC",
+            "conversationStatus": "Đang xử lý",
+            "aiStatus": "AI trả lời thất bại",
+        },
+    )
+
+@patch('app.routers.dashboard.legacy_ds.get_top_questions')
+def test_api_get_dashboard_top_questions_uses_filter_params(mock_get_top_questions):
+    mock_get_top_questions.return_value = {
+        "topQuestions": [],
+        "topQuestionsStatus": "ok",
+        "topQuestionsMessage": "",
+    }
+
+    response = client.get(
+        "/api/dashboard/top-questions"
+        "?startDate=2026-06-01"
+        "&endDate=2026-06-30"
+        "&channel=facebook"
+        "&topic=TOEIC"
+        "&forceRefresh=true"
+        "&limit=12"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["success"] is True
+    mock_get_top_questions.assert_called_once_with(
+        "2026-06-01",
+        "2026-06-30",
+        {
+            "channel": "facebook",
+            "topic": "TOEIC",
+            "forceRefresh": True,
+        },
+        limit=12,
+    )
 
 def test_api_unknown_route_returns_404():
     response = client.get("/api/unknown-route")
@@ -899,13 +1321,14 @@ def test_channel_topic_stats_counts_only_failed_ai_messages(mock_get_db):
     assert "customer.SentAt <= m.SentAt" in query
     assert "m.FromHost = 1" in query
     assert "m.HostDisplayName = 'AI Assistant'" in query
-    assert "LIKE N'%[s]át hạch%'" in query
-    assert "LIKE N'%[s]at hach%'" in query
-    assert "LIKE N'%sát hạch%'" not in query
-    assert "LIKE N'%sat hach%'" not in query
-    assert "m.TextContent LIKE N'%không tìm thấy%'" in query
+    assert "LIKE %s" in query
+    assert "%[s]át hạch%" in params
+    assert "%[s]at hach%" in params
+    assert "%sát hạch%" not in params
+    assert "%sat hach%" not in params
+    assert "%không tìm thấy%" in params
     assert query.count("%s") == len(params)
-    assert params == ("2026-06-01", "2026-06-30 23:59:59.999")
+    assert params[-2:] == ("2026-06-01", "2026-06-30 23:59:59.999")
     conn.close.assert_called_once()
 
 @patch('app.repositories.legacy_conversation_repository.get_db_connection')

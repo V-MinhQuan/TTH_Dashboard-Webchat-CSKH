@@ -1,7 +1,7 @@
 import os
 from datetime import datetime, timedelta
 import pymssql
-from app.core.topic_taxonomy import TOPIC_NAME_BY_ID, canonical_topic_id
+from app.core.topic_taxonomy import TOPIC_NAME_BY_ID, canonical_topic_id, canonical_topic_label
 from app.core.legacy_db import get_db_connection
 from app.repositories.display_filters import (
     valid_analytics_condition,
@@ -10,6 +10,10 @@ from app.repositories.display_filters import (
 )
 
 class ConversationRepository:
+    def _escape_pymssql_literal_percent(self, query: str) -> str:
+        """Keep literal LIKE '%' patterns from being parsed as pymssql placeholders."""
+        return query.replace("%", "%%").replace("%%s", "%s")
+
     def _normalized_source_expr(self, source_column):
         return f"LOWER(LTRIM(RTRIM({source_column})))"
 
@@ -182,98 +186,117 @@ class ConversationRepository:
             return "is_uncertain = 1"
         return None
 
-    def _topic_condition(self, text_column, topic=None):
+    def _topic_condition(self, text_column, topic=None, params=None):
         if not topic or topic == "Tất cả":
             return None
+
+        def like_any(needles):
+            parts = []
+            for needle in needles:
+                if params is not None:
+                    parts.append(f"LOWER({text_column}) LIKE %s")
+                    params.append(f"%{str(needle).lower()}%")
+                else:
+                    escaped = str(needle).lower().replace("'", "''")
+                    parts.append(f"LOWER({text_column}) LIKE N'%{escaped}%'")
+            return "(" + " OR ".join(parts) + ")"
+
         topic_id = canonical_topic_id(topic)
         if topic_id == "toeic":
-            return f"LOWER({text_column}) LIKE N'%toeic%'"
+            return like_any(["toeic"])
         if topic_id == "mos":
-            return f"(LOWER({text_column}) LIKE N'%mos%' OR LOWER({text_column}) LIKE N'%microsoft office specialist%')"
+            return like_any(["mos", "microsoft office specialist"])
         if topic_id == "sat_hach_cntt":
-            return f"""(
-                LOWER({text_column}) LIKE N'%[s]át hạch%'
-                OR LOWER({text_column}) LIKE N'%[s]at hach%'
-                OR LOWER({text_column}) LIKE N'%cntt%'
-                OR LOWER({text_column}) LIKE N'%công nghệ thông tin%'
-                OR LOWER({text_column}) LIKE N'%cong nghe thong tin%'
-                OR LOWER({text_column}) LIKE N'%ic3%'
-                OR LOWER({text_column}) LIKE N'%thcb%'
-                OR LOWER({text_column}) LIKE N'%thnc%'
-                OR LOWER({text_column}) LIKE N'%tin cơ bản%'
-                OR LOWER({text_column}) LIKE N'%tin co ban%'
-                OR LOWER({text_column}) LIKE N'%tin nâng cao%'
-                OR LOWER({text_column}) LIKE N'%tin nang cao%'
-            )"""
+            return like_any([
+                "sát hạch",
+                "sat hach",
+                "cntt",
+                "công nghệ thông tin",
+                "cong nghe thong tin",
+                "ic3",
+                "thcb",
+                "thnc",
+                "tin cơ bản",
+                "tin co ban",
+                "tin học cơ bản",
+                "tin hoc co ban",
+                "tin nâng cao",
+                "tin nang cao",
+                "tin học nâng cao",
+                "tin hoc nang cao",
+                "chứng chỉ cntt",
+                "chung chi cntt",
+                "nhận chứng chỉ cntt",
+                "nhan chung chi cntt",
+                "cấp chứng chỉ cntt",
+                "cap chung chi cntt",
+                "cntt cơ bản",
+                "cntt co ban",
+                "cntt nâng cao",
+                "cntt nang cao",
+                "chứng chỉ cơ bản",
+                "chung chi co ban",
+                "chứng chỉ nâng cao",
+                "chung chi nang cao",
+            ])
         if topic_id == "hoc_tieng_anh":
-            return f"""(
-                LOWER({text_column}) LIKE N'%học tiếng anh%'
-                OR LOWER({text_column}) LIKE N'%hoc tieng anh%'
-                OR LOWER({text_column}) LIKE N'%tiếng anh%'
-                OR LOWER({text_column}) LIKE N'%tieng anh%'
-                OR LOWER({text_column}) LIKE N'%anh văn%'
-                OR LOWER({text_column}) LIKE N'%anh van%'
-                OR LOWER({text_column}) LIKE N'%ngoại ngữ%'
-                OR LOWER({text_column}) LIKE N'%ngoai ngu%'
-                OR LOWER({text_column}) LIKE N'%vstep%'
-                OR LOWER({text_column}) LIKE N'%b1%'
-                OR LOWER({text_column}) LIKE N'%b2%'
-                OR LOWER({text_column}) LIKE N'%chuẩn đầu ra%'
-                OR LOWER({text_column}) LIKE N'%chuan dau ra%'
-            )"""
+            return like_any([
+                "tiếng anh",
+                "anh văn",
+                "ngoại ngữ",
+                "vstep",
+                "b1",
+                "b2",
+                "chuẩn đầu ra",
+            ])
         if topic_id == "hoc_tin_hoc":
-            return f"""(
-                LOWER({text_column}) LIKE N'%học tin học%'
-                OR LOWER({text_column}) LIKE N'%hoc tin hoc%'
-                OR LOWER({text_column}) LIKE N'%khóa tin học%'
-                OR LOWER({text_column}) LIKE N'%khoa tin hoc%'
-                OR LOWER({text_column}) LIKE N'%lớp tin học%'
-                OR LOWER({text_column}) LIKE N'%lop tin hoc%'
-                OR LOWER({text_column}) LIKE N'%tin học văn phòng%'
-                OR LOWER({text_column}) LIKE N'%tin hoc van phong%'
-                OR LOWER({text_column}) LIKE N'%học word%'
-                OR LOWER({text_column}) LIKE N'%hoc word%'
-                OR LOWER({text_column}) LIKE N'%học excel%'
-                OR LOWER({text_column}) LIKE N'%hoc excel%'
-                OR LOWER({text_column}) LIKE N'%học powerpoint%'
-                OR LOWER({text_column}) LIKE N'%hoc powerpoint%'
-                OR LOWER({text_column}) LIKE N'%quên mật khẩu khóa học%'
-                OR LOWER({text_column}) LIKE N'%quen mat khau khoa hoc%'
-            )"""
+            return like_any([
+                "học tin học",
+                "hoc tin hoc",
+                "khóa tin học",
+                "khoa tin hoc",
+                "lớp tin học",
+                "lop tin hoc",
+                "tin học văn phòng",
+                "tin hoc van phong",
+                "học word",
+                "hoc word",
+                "học excel",
+                "hoc excel",
+                "học powerpoint",
+                "hoc powerpoint",
+                "microsoft office",
+                "word",
+                "excel",
+                "powerpoint",
+                "đăng ký khóa tin học",
+                "dang ky khoa tin hoc",
+                "đăng ký lớp tin học",
+                "dang ky lop tin hoc",
+                "học phí tin học",
+                "hoc phi tin hoc",
+                "đăng nhập khóa học",
+                "dang nhap khoa hoc",
+                "quên mật khẩu khóa học",
+                "quen mat khau khoa hoc",
+            ])
         if topic == "Tin học":
-            return f"""(
-                LOWER({text_column}) LIKE N'%tin học%'
-                OR LOWER({text_column}) LIKE N'%cntt%'
-                OR LOWER({text_column}) LIKE N'%mos%'
-                OR LOWER({text_column}) LIKE N'%ic3%'
-            )"""
+            return like_any(["tin học", "cntt", "mos", "ic3"])
         if topic == "Chuẩn đầu ra":
-            return f"(LOWER({text_column}) LIKE N'%đầu ra%' OR LOWER({text_column}) LIKE N'%chuẩn đầu ra%')"
+            return like_any(["đầu ra", "chuẩn đầu ra"])
         if topic == "VSTEP":
-            return f"LOWER({text_column}) LIKE N'%vstep%'"
+            return like_any(["vstep"])
         if topic == "Tra cứu điểm":
-            return f"""(
-                LOWER({text_column}) LIKE N'%điểm%'
-                OR LOWER({text_column}) LIKE N'%tra cứu điểm%'
-                OR LOWER({text_column}) LIKE N'%xem điểm%'
-                OR LOWER({text_column}) LIKE N'%kết quả thi%'
-            )"""
+            return like_any(["điểm", "tra cứu điểm", "xem điểm", "kết quả thi"])
         if topic == "Lịch thi":
-            return f"""(
-                LOWER({text_column}) LIKE N'%lịch thi%'
-                OR LOWER({text_column}) LIKE N'%ngày thi%'
-                OR LOWER({text_column}) LIKE N'%ca thi%'
-                OR LOWER({text_column}) LIKE N'%giờ thi%'
-            )"""
-        if topic == "Khác":
+            return like_any(["lịch thi", "ngày thi", "ca thi", "giờ thi"])
+        if topic_id == "khac" or topic == "Khác":
             known_conditions = [
-                self._topic_condition(text_column, TOPIC_NAME_BY_ID["sat_hach_cntt"]),
-                self._topic_condition(text_column, TOPIC_NAME_BY_ID["toeic"]),
-                self._topic_condition(text_column, TOPIC_NAME_BY_ID["mos"]),
-                self._topic_condition(text_column, TOPIC_NAME_BY_ID["hoc_tieng_anh"]),
-                self._topic_condition(text_column, TOPIC_NAME_BY_ID["hoc_tin_hoc"]),
-                self._topic_condition(text_column, "Tra cứu điểm"),
-                self._topic_condition(text_column, "Lịch thi"),
+                self._topic_condition(text_column, TOPIC_NAME_BY_ID["sat_hach_cntt"], params),
+                self._topic_condition(text_column, TOPIC_NAME_BY_ID["toeic"], params),
+                self._topic_condition(text_column, TOPIC_NAME_BY_ID["mos"], params),
+                self._topic_condition(text_column, TOPIC_NAME_BY_ID["hoc_tieng_anh"], params),
+                self._topic_condition(text_column, TOPIC_NAME_BY_ID["hoc_tin_hoc"], params),
             ]
             return " AND ".join(f"NOT ({condition})" for condition in known_conditions if condition)
         return None
@@ -307,7 +330,7 @@ class ConversationRepository:
             conditions.append(f"{self._conversation_status_case(conversation_alias, status_alias)} = %s")
             params.append(status_filter)
 
-        topic_sql = self._topic_condition("topic_msg.TextContent", topic)
+        topic_sql = self._topic_condition("topic_msg.TextContent", topic, params)
         if topic_sql:
             exists_conditions = [
                 f"{self._normalized_source_expr('topic_msg.Source')} = {self._normalized_source_expr(f'{conversation_alias}.Source')}",
@@ -378,7 +401,7 @@ class ConversationRepository:
             channel,
         )
 
-        topic_sql = self._topic_condition(f"{message_alias}.TextContent", topic)
+        topic_sql = self._topic_condition(f"{message_alias}.TextContent", topic, params)
         if topic_sql:
             conditions.append(topic_sql)
 
@@ -407,7 +430,149 @@ class ConversationRepository:
             """)
             params.append(status_filter)
 
+    def _get_topic_scoped_conversation_summary(
+        self,
+        start_date=None,
+        end_date=None,
+        channel=None,
+        conversation_status=None,
+        topic=None,
+        ai_status=None,
+    ):
+        conn = get_db_connection()
+        try:
+            scope_conditions = []
+            params = []
+            self._append_message_scope_filters(
+                scope_conditions,
+                params,
+                start_date,
+                end_date,
+                channel,
+                None,
+                topic,
+                ai_status,
+                "m",
+            )
+            scope_conditions.extend([
+                "m.Source IS NOT NULL",
+                """(
+                    (m.FromHost = 1 AND m.ReceiverId IS NOT NULL)
+                    OR (m.FromHost = 0 AND m.SenderId IS NOT NULL)
+                )""",
+            ])
+
+            topic_scope_where = "WHERE " + " AND ".join(scope_conditions)
+            status_filter = self._status_filter_value(conversation_status)
+            classified_where = "WHERE status = %s" if status_filter else ""
+            if status_filter:
+                params.append(status_filter)
+
+            message_source_case = self._source_key_case_expr("m.Source")
+            conversation_source_case = self._source_key_case_expr("c.Source")
+
+            query = f"""
+                WITH topic_scope AS (
+                  SELECT DISTINCT
+                    CAST({self._message_customer_expr("m")} AS NVARCHAR(255)) AS customer_id,
+                    {message_source_case} AS source_key
+                  FROM WebChat_MessageLogs m
+                  {topic_scope_where}
+                ),
+                classified AS (
+                  SELECT
+                    {conversation_source_case} AS source_key,
+                    CAST(c.CustomerId AS NVARCHAR(255)) AS customer_id,
+                    CASE
+                      WHEN s.NoResponseNeeded = 1 AND (s.MarkedAt IS NULL OR c.LastCustomerMessageAt <= s.MarkedAt) THEN 'closed'
+                      WHEN c.LastHostMessageAt IS NULL OR c.LastCustomerMessageAt > c.LastHostMessageAt THEN 'pending'
+                      ELSE 'open'
+                    END AS status,
+                    CASE
+                      WHEN c.LastHostMessageAt IS NOT NULL
+                       AND c.LastCustomerMessageAt IS NOT NULL
+                       AND c.LastHostMessageAt >= c.LastCustomerMessageAt
+                      THEN DATEDIFF(MINUTE, c.LastCustomerMessageAt, c.LastHostMessageAt)
+                      ELSE NULL
+                    END AS response_minutes
+                  FROM WebChat_Conversations c
+                  INNER JOIN topic_scope t
+                    ON t.customer_id = CAST(c.CustomerId AS NVARCHAR(255))
+                   AND t.source_key = {conversation_source_case}
+                  OUTER APPLY (
+                    SELECT TOP 1
+                      status_meta.NoResponseNeeded,
+                      status_meta.MarkedAt
+                    FROM WebChat_ConversationStatus status_meta
+                    WHERE CAST(status_meta.CustomerId AS NVARCHAR(255)) = CAST(c.CustomerId AS NVARCHAR(255))
+                      AND {self._normalized_source_expr('status_meta.Source')} = {self._normalized_source_expr('c.Source')}
+                    ORDER BY CASE WHEN status_meta.MarkedAt IS NULL THEN 0 ELSE 1 END DESC, status_meta.MarkedAt DESC
+                  ) s
+                  WHERE {valid_conversation_condition("c")}
+                )
+                SELECT
+                  COUNT(*) AS total_conversations,
+                  COUNT(DISTINCT customer_id) AS new_customers,
+                  SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) AS open_count,
+                  SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending_count,
+                  SUM(CASE WHEN status = 'closed' THEN 1 ELSE 0 END) AS closed_count,
+                  SUM(CASE WHEN status NOT IN ('open', 'pending', 'closed') THEN 1 ELSE 0 END) AS unknown_count,
+                  SUM(CASE WHEN source_key = 'ZaloOA' THEN 1 ELSE 0 END) AS zalooa_count,
+                  SUM(CASE WHEN source_key = 'ZaloBusiness' THEN 1 ELSE 0 END) AS zalobusiness_count,
+                  SUM(CASE WHEN source_key = 'Facebook' THEN 1 ELSE 0 END) AS facebook_count,
+                  SUM(CASE WHEN source_key = 'ChatWidget' THEN 1 ELSE 0 END) AS chatwidget_count,
+                  SUM(CASE WHEN source_key = 'other' THEN 1 ELSE 0 END) AS other_count,
+                  SUM(CASE WHEN source_key = 'ZaloOA' AND status IN ('pending', 'open') THEN 1 ELSE 0 END) AS zalooa_unresolved,
+                  SUM(CASE WHEN source_key = 'ZaloBusiness' AND status IN ('pending', 'open') THEN 1 ELSE 0 END) AS zalobusiness_unresolved,
+                  SUM(CASE WHEN source_key = 'Facebook' AND status IN ('pending', 'open') THEN 1 ELSE 0 END) AS facebook_unresolved,
+                  SUM(CASE WHEN source_key = 'ChatWidget' AND status IN ('pending', 'open') THEN 1 ELSE 0 END) AS chatwidget_unresolved,
+                  AVG(response_minutes) AS avg_response_minutes
+                FROM classified
+                {classified_where}
+            """
+
+            with conn.cursor(as_dict=True) as cursor:
+                cursor.execute(query, tuple(params))
+                row = cursor.fetchone() or {}
+                return {
+                    "totalConversations": row.get("total_conversations") or 0,
+                    "newCustomers": row.get("new_customers") or 0,
+                    "statusSummary": {
+                        "new": 0,
+                        "open": row.get("open_count") or 0,
+                        "pending": row.get("pending_count") or 0,
+                        "closed": row.get("closed_count") or 0,
+                        "unknown": row.get("unknown_count") or 0,
+                    },
+                    "sourceSummary": {
+                        "ZaloOA": row.get("zalooa_count") or 0,
+                        "ZaloBusiness": row.get("zalobusiness_count") or 0,
+                        "Facebook": row.get("facebook_count") or 0,
+                        "ChatWidget": row.get("chatwidget_count") or 0,
+                        "other": row.get("other_count") or 0,
+                    },
+                    "unresolvedSummary": {
+                        "ZaloOA": row.get("zalooa_unresolved") or 0,
+                        "ZaloBusiness": row.get("zalobusiness_unresolved") or 0,
+                        "Facebook": row.get("facebook_unresolved") or 0,
+                        "ChatWidget": row.get("chatwidget_unresolved") or 0,
+                    },
+                    "averageResponseTimeMinutes": int(round(row.get("avg_response_minutes") or 0)),
+                }
+        finally:
+            conn.close()
+
     def get_conversation_summary(self, start_date=None, end_date=None, channel=None, conversation_status=None, topic=None, ai_status=None):
+        if topic and str(topic).strip() != "Tất cả":
+            return self._get_topic_scoped_conversation_summary(
+                start_date,
+                end_date,
+                channel,
+                conversation_status,
+                topic,
+                ai_status,
+            )
+
         conn = get_db_connection()
         try:
             conditions = []
@@ -652,7 +817,7 @@ class ConversationRepository:
             """
 
             with conn.cursor(as_dict=True) as cursor:
-                cursor.execute(query, tuple(params))
+                cursor.execute(self._escape_pymssql_literal_percent(query), tuple(params))
                 return cursor.fetchall()
         finally:
             conn.close()
@@ -749,7 +914,7 @@ class ConversationRepository:
             """
 
             with conn.cursor(as_dict=True) as cursor:
-                cursor.execute(query, tuple(params))
+                cursor.execute(self._escape_pymssql_literal_percent(query), tuple(params))
                 return cursor.fetchall()
         finally:
             conn.close()
@@ -757,34 +922,96 @@ class ConversationRepository:
     def get_priority_conversations_data(self, start_date=None, end_date=None, channel=None, conversation_status=None, topic=None, ai_status=None, limit=10):
         conn = get_db_connection()
         try:
+            try:
+                limit_value = int(limit or 10)
+            except (TypeError, ValueError):
+                limit_value = 10
+            limit_value = max(1, min(limit_value, 50))
+
             conditions = [
-                "(s.NoResponseNeeded IS NULL OR s.NoResponseNeeded = 0 OR c.LastCustomerMessageAt > s.MarkedAt)"
+                valid_conversation_condition("c"),
+                "c.LastCustomerMessageAt IS NOT NULL",
+                "(s.NoResponseNeeded IS NULL OR s.NoResponseNeeded = 0 OR c.LastCustomerMessageAt > s.MarkedAt)",
             ]
             params = []
-            self._append_conversation_scope_filters(
+            self._append_date_and_channel_filters(
                 conditions,
                 params,
+                "c.LastCustomerMessageAt",
+                "c.Source",
                 start_date,
                 end_date,
                 channel,
-                conversation_status,
-                topic,
-                ai_status,
             )
-            conditions.append(f"""
-                EXISTS (
-                  SELECT 1
-                  FROM WebChat_MessageLogs customer_msg
-                  WHERE customer_msg.FromHost = 0
-                    AND {valid_message_condition("customer_msg")}
-                    AND customer_msg.TextContent IS NOT NULL
-                    AND CAST(customer_msg.SenderId AS NVARCHAR(255)) = CAST(c.CustomerId AS NVARCHAR(255))
-                    AND {self._normalized_source_expr('customer_msg.Source')} = {self._normalized_source_expr('c.Source')}
+
+            status_filter = self._status_filter_value(conversation_status)
+            if status_filter:
+                conditions.append(f"{self._conversation_status_case('c', 's')} = %s")
+                params.append(status_filter)
+
+            ai_sql = self._ai_status_condition(ai_status, "ai_msg")
+            if ai_sql:
+                exists_conditions = [
+                    f"{self._normalized_source_expr('ai_msg.Source')} = {self._normalized_source_expr('c.Source')}",
+                    "CAST(ai_msg.ReceiverId AS NVARCHAR(255)) = CAST(c.CustomerId AS NVARCHAR(255))",
+                    valid_message_condition("ai_msg"),
+                    ai_sql,
+                ]
+                if start_date:
+                    exists_conditions.append("ai_msg.SentAt >= %s")
+                    params.append(start_date)
+                if end_date:
+                    exists_conditions.append("ai_msg.SentAt <= %s")
+                    params.append(f"{end_date} 23:59:59.999")
+                conditions.append(f"""
+                    EXISTS (
+                      SELECT 1
+                      FROM WebChat_MessageLogs ai_msg
+                      WHERE {" AND ".join(exists_conditions)}
+                    )
+                """)
+
+            topic_cte = ""
+            topic_join = ""
+            topic_params = []
+            topic_sql = self._topic_condition("m.TextContent", topic, topic_params)
+            if topic_sql:
+                topic_conditions = [
+                    valid_message_condition("m"),
+                    "m.TextContent IS NOT NULL",
+                    """(
+                        (m.FromHost = 1 AND m.ReceiverId IS NOT NULL)
+                        OR (m.FromHost = 0 AND m.SenderId IS NOT NULL)
+                    )""",
+                    topic_sql,
+                ]
+                self._append_date_and_channel_filters(
+                    topic_conditions,
+                    topic_params,
+                    "m.SentAt",
+                    "m.Source",
+                    start_date,
+                    end_date,
+                    channel,
                 )
-            """)
+                topic_cte = f"""
+                    WITH TopicMatches AS (
+                      SELECT DISTINCT
+                        CAST({self._message_customer_expr("m")} AS NVARCHAR(255)) AS customer_id,
+                        {self._normalized_source_expr('m.Source')} AS source_key
+                      FROM WebChat_MessageLogs m
+                      WHERE {" AND ".join(topic_conditions)}
+                    )
+                """
+                topic_join = f"""
+                    INNER JOIN TopicMatches topic_match
+                      ON topic_match.customer_id = CAST(c.CustomerId AS NVARCHAR(255))
+                     AND topic_match.source_key = {self._normalized_source_expr('c.Source')}
+                """
 
             query = f"""
-                SELECT TOP {int(limit)}
+                {topic_cte}
+                SELECT TOP ({limit_value})
                   c.Id AS id,
                   c.CustomerId AS customer_id,
                   customerInfo.customer_name,
@@ -797,19 +1024,38 @@ class ConversationRepository:
                   DATEDIFF(MINUTE, c.LastCustomerMessageAt, GETDATE()) AS wait_mins
                 FROM WebChat_Conversations c
                 OUTER APPLY (
+                  SELECT TOP 1
+                    status_meta.NoResponseNeeded,
+                    status_meta.MarkedAt
+                  FROM WebChat_ConversationStatus status_meta
+                  WHERE CAST(status_meta.CustomerId AS NVARCHAR(255)) = CAST(c.CustomerId AS NVARCHAR(255))
+                    AND {self._normalized_source_expr('status_meta.Source')} = {self._normalized_source_expr('c.Source')}
+                  ORDER BY CASE WHEN status_meta.MarkedAt IS NULL THEN 0 ELSE 1 END DESC, status_meta.MarkedAt DESC
+                ) s
+                {topic_join}
+                OUTER APPLY (
                   SELECT MAX(NULLIF(LTRIM(RTRIM(u.DisplayName)), N'')) AS customer_name
                   FROM WebChat_Messagelogs_User_Info u
                   WHERE CAST(u.SenderId AS NVARCHAR(255)) = CAST(c.CustomerId AS NVARCHAR(255))
                     AND {self._normalized_source_expr('u.Source')} = {self._normalized_source_expr('c.Source')}
                 ) customerInfo
-                LEFT JOIN WebChat_ConversationStatus s
-                  ON c.CustomerId = s.CustomerId AND c.Source = s.Source
+                OUTER APPLY (
+                  SELECT TOP 1 customer_msg.TextContent
+                  FROM WebChat_MessageLogs customer_msg
+                  WHERE customer_msg.FromHost = 0
+                    AND {valid_message_condition("customer_msg")}
+                    AND customer_msg.TextContent IS NOT NULL
+                    AND CAST(customer_msg.SenderId AS NVARCHAR(255)) = CAST(c.CustomerId AS NVARCHAR(255))
+                    AND {self._normalized_source_expr('customer_msg.Source')} = {self._normalized_source_expr('c.Source')}
+                  ORDER BY customer_msg.SentAt DESC
+                ) latestCustomer
                 WHERE {" AND ".join(conditions)}
+                  AND latestCustomer.TextContent IS NOT NULL
                 ORDER BY c.LastCustomerMessageAt ASC
             """
 
             with conn.cursor(as_dict=True) as cursor:
-                cursor.execute(query, tuple(params))
+                cursor.execute(self._escape_pymssql_literal_percent(query), tuple(topic_params + params))
                 return cursor.fetchall()
         finally:
             conn.close()
@@ -1034,57 +1280,105 @@ class ConversationRepository:
         conn = get_db_connection()
         try:
             topic_text = "COALESCE(NULLIF(customer_msg.TextContent, ''), m.TextContent)"
-            topic_case = """
+            select_params = []
+
+            def like_any_sql(column, needles):
+                parts = []
+                for needle in needles:
+                    parts.append(f"LOWER({column}) LIKE %s")
+                    select_params.append(f"%{needle}%")
+                return "(" + " OR ".join(parts) + ")"
+
+            topic_case = f"""
                 CASE
-                  WHEN LOWER({topic_text}) LIKE N'%toeic%' THEN 'TOEIC'
-                  WHEN LOWER({topic_text}) LIKE N'%mos%' OR LOWER({topic_text}) LIKE N'%microsoft office specialist%' THEN 'MOS'
-                  WHEN LOWER({topic_text}) LIKE N'%[s]át hạch%'
-                    OR LOWER({topic_text}) LIKE N'%[s]at hach%'
-                    OR LOWER({topic_text}) LIKE N'%cntt%'
-                    OR LOWER({topic_text}) LIKE N'%công nghệ thông tin%'
-                    OR LOWER({topic_text}) LIKE N'%cong nghe thong tin%'
-                    OR LOWER({topic_text}) LIKE N'%ic3%'
-                    OR LOWER({topic_text}) LIKE N'%thcb%'
-                    OR LOWER({topic_text}) LIKE N'%thnc%'
-                    OR LOWER({topic_text}) LIKE N'%tin cơ bản%'
-                    OR LOWER({topic_text}) LIKE N'%tin co ban%'
-                    OR LOWER({topic_text}) LIKE N'%tin nâng cao%'
-                    OR LOWER({topic_text}) LIKE N'%tin nang cao%'
-                    THEN N'Sát hạch CNTT (Sát hạch Công nghệ thông tin)'
-                  WHEN LOWER({topic_text}) LIKE N'%học tiếng anh%'
-                    OR LOWER({topic_text}) LIKE N'%hoc tieng anh%'
-                    OR LOWER({topic_text}) LIKE N'%tiếng anh%'
-                    OR LOWER({topic_text}) LIKE N'%tieng anh%'
-                    OR LOWER({topic_text}) LIKE N'%anh văn%'
-                    OR LOWER({topic_text}) LIKE N'%anh van%'
-                    OR LOWER({topic_text}) LIKE N'%ngoại ngữ%'
-                    OR LOWER({topic_text}) LIKE N'%ngoai ngu%'
-                    OR LOWER({topic_text}) LIKE N'%vstep%'
-                    OR LOWER({topic_text}) LIKE N'%b1%'
-                    OR LOWER({topic_text}) LIKE N'%b2%'
-                    OR LOWER({topic_text}) LIKE N'%chuẩn đầu ra%'
-                    OR LOWER({topic_text}) LIKE N'%chuan dau ra%'
-                    THEN N'Học Tiếng Anh'
-                  WHEN LOWER({topic_text}) LIKE N'%học tin học%'
-                    OR LOWER({topic_text}) LIKE N'%hoc tin hoc%'
-                    OR LOWER({topic_text}) LIKE N'%khóa tin học%'
-                    OR LOWER({topic_text}) LIKE N'%khoa tin hoc%'
-                    OR LOWER({topic_text}) LIKE N'%lớp tin học%'
-                    OR LOWER({topic_text}) LIKE N'%lop tin hoc%'
-                    OR LOWER({topic_text}) LIKE N'%tin học văn phòng%'
-                    OR LOWER({topic_text}) LIKE N'%tin hoc van phong%'
-                    OR LOWER({topic_text}) LIKE N'%học word%'
-                    OR LOWER({topic_text}) LIKE N'%hoc word%'
-                    OR LOWER({topic_text}) LIKE N'%học excel%'
-                    OR LOWER({topic_text}) LIKE N'%hoc excel%'
-                    OR LOWER({topic_text}) LIKE N'%học powerpoint%'
-                    OR LOWER({topic_text}) LIKE N'%hoc powerpoint%'
-                    THEN N'Học Tin học'
-                  WHEN LOWER({topic_text}) LIKE N'%điểm%' OR LOWER({topic_text}) LIKE N'%tra cứu điểm%' OR LOWER({topic_text}) LIKE N'%xem điểm%' OR LOWER({topic_text}) LIKE N'%kết quả thi%' THEN N'Tra cứu điểm'
-                  WHEN LOWER({topic_text}) LIKE N'%lịch thi%' OR LOWER({topic_text}) LIKE N'%ngày thi%' OR LOWER({topic_text}) LIKE N'%ca thi%' OR LOWER({topic_text}) LIKE N'%giờ thi%' THEN N'Lịch thi'
+                  WHEN {like_any_sql(topic_text, ["toeic"])} THEN 'TOEIC'
+                  WHEN {like_any_sql(topic_text, ["mos", "microsoft office specialist"])} THEN 'MOS'
+                  WHEN {like_any_sql(topic_text, [
+                      "[s]át hạch",
+                      "[s]at hach",
+                      "cntt",
+                      "công nghệ thông tin",
+                      "cong nghe thong tin",
+                      "ic3",
+                      "thcb",
+                      "thnc",
+                      "tin cơ bản",
+                      "tin co ban",
+                      "tin học cơ bản",
+                      "tin hoc co ban",
+                      "tin nâng cao",
+                      "tin nang cao",
+                      "tin học nâng cao",
+                      "tin hoc nang cao",
+                  ])} THEN N'Sát hạch CNTT'
+                  WHEN {like_any_sql(topic_text, [
+                      "học tiếng anh",
+                      "hoc tieng anh",
+                      "tiếng anh",
+                      "tieng anh",
+                      "anh văn",
+                      "anh van",
+                      "ngoại ngữ",
+                      "ngoai ngu",
+                      "vstep",
+                      "b1",
+                      "b2",
+                      "chuẩn đầu ra",
+                      "chuan dau ra",
+                      "khóa anh văn",
+                      "khoa anh van",
+                      "lớp anh văn",
+                      "lop anh van",
+                      "luyện tiếng anh",
+                      "luyen tieng anh",
+                      "tiếng anh giao tiếp",
+                      "tieng anh giao tiep",
+                      "giao tiếp tiếng anh",
+                      "giao tiep tieng anh",
+                      "luyện nghe",
+                      "luyen nghe",
+                      "luyện nói",
+                      "luyen noi",
+                      "luyện đọc",
+                      "luyen doc",
+                      "luyện viết",
+                      "luyen viet",
+                      "học phí tiếng anh",
+                      "hoc phi tieng anh",
+                  ])} THEN N'Học Tiếng Anh'
+                  WHEN {like_any_sql(topic_text, [
+                      "học tin học",
+                      "hoc tin hoc",
+                      "khóa tin học",
+                      "khoa tin hoc",
+                      "lớp tin học",
+                      "lop tin hoc",
+                      "tin học văn phòng",
+                      "tin hoc van phong",
+                      "học word",
+                      "hoc word",
+                      "học excel",
+                      "hoc excel",
+                      "học powerpoint",
+                      "hoc powerpoint",
+                      "microsoft office",
+                      "word",
+                      "excel",
+                      "powerpoint",
+                      "đăng ký khóa tin học",
+                      "dang ky khoa tin hoc",
+                      "đăng ký lớp tin học",
+                      "dang ky lop tin hoc",
+                      "học phí tin học",
+                      "hoc phi tin hoc",
+                      "đăng nhập khóa học",
+                      "dang nhap khoa hoc",
+                      "quên mật khẩu khóa học",
+                      "quen mat khau khoa hoc",
+                  ])} THEN N'Học Tin học'
                   ELSE N'Khác'
                 END
-            """.format(topic_text=topic_text)
+            """
             conditions = [
                 "m.TextContent IS NOT NULL",
                 "m.TextContent != ''",
@@ -1106,16 +1400,48 @@ class ConversationRepository:
                 "m",
             )
 
-            topic_sql = self._topic_condition(topic_text, topic)
-            if topic_sql:
-                conditions.append(topic_sql)
-
             where_sql = "WHERE " + " AND ".join(conditions)
-            no_data_keyword_sql = self._ai_no_data_keyword_condition("m")
-            uncertain_keyword_sql = self._ai_uncertain_keyword_condition("m")
+
+            def message_like_any_sql(alias, needles):
+                parts = []
+                for needle in needles:
+                    parts.append(f"{alias}.TextContent LIKE %s")
+                    select_params.append(f"%{needle}%")
+                return "(" + " OR ".join(parts) + ")"
+
+            no_data_keyword_sql = message_like_any_sql("m", [
+                "không tìm thấy",
+                "chưa có",
+                "chưa hỗ trợ",
+                "không thể",
+                "Trợ lý AI",
+                "Không thể tiếp nhận thông tin",
+                "Không thể xác nhận trực tiếp",
+            ])
+            uncertain_keyword_sql = message_like_any_sql("m", [
+                "chưa hiểu",
+                "chưa rõ",
+                "không chắc chắn",
+                "chưa có thông tin cụ thể",
+                "độ tin cậy",
+                "chưa xác nhận",
+                "có vẻ như",
+                "chắc là",
+                "có lẽ",
+                "hình như",
+                "tôi đoán",
+            ])
             source_case = self._source_key_case_expr("m.Source")
             analytics_source_case = self._source_key_case_expr("a.source")
             ai_filter_sql = self._ai_classified_filter_sql(ai_status_filter) or "(is_no_data = 1 OR is_uncertain = 1)"
+            filtered_conditions = [ai_filter_sql]
+            filtered_params = []
+            if topic and topic != "Tất cả":
+                topic_label = canonical_topic_label(topic, default="")
+                if topic_label:
+                    filtered_conditions.append("topic = %s")
+                    filtered_params.append(topic_label)
+            filtered_where_sql = " AND ".join(f"({condition})" for condition in filtered_conditions)
 
             query = f"""
                 WITH scoped AS (
@@ -1188,7 +1514,7 @@ class ConversationRepository:
                     source,
                     topic
                   FROM classified
-                  WHERE {ai_filter_sql}
+                  WHERE {filtered_where_sql}
                 )
                 SELECT
                   source,
@@ -1199,7 +1525,7 @@ class ConversationRepository:
             """
 
             with conn.cursor(as_dict=True) as cursor:
-                cursor.execute(query, tuple(params))
+                cursor.execute(query, tuple(select_params + params + filtered_params))
                 return cursor.fetchall()
         finally:
             conn.close()
@@ -1282,7 +1608,86 @@ class ConversationRepository:
         finally:
             conn.close()
 
+    def _get_topic_scoped_message_counts(
+        self,
+        start_date=None,
+        end_date=None,
+        channel=None,
+        conversation_status=None,
+        topic=None,
+        ai_status=None,
+    ):
+        conn = get_db_connection()
+        try:
+            topic_conditions = []
+            topic_params = []
+            self._append_message_scope_filters(
+                topic_conditions,
+                topic_params,
+                start_date,
+                end_date,
+                channel,
+                conversation_status,
+                topic,
+                ai_status,
+                "topic_msg",
+            )
+
+            message_conditions = []
+            message_params = []
+            self._append_message_scope_filters(
+                message_conditions,
+                message_params,
+                start_date,
+                end_date,
+                channel,
+                conversation_status,
+                None,
+                None,
+                "m",
+            )
+
+            topic_scope_where = "WHERE " + " AND ".join(topic_conditions)
+            message_where = "WHERE " + " AND ".join(message_conditions)
+
+            query = f"""
+                WITH topic_scope AS (
+                  SELECT DISTINCT
+                    CAST({self._message_customer_expr("topic_msg")} AS NVARCHAR(255)) AS customer_id,
+                    {self._source_key_case_expr("topic_msg.Source")} AS source_key
+                  FROM WebChat_MessageLogs topic_msg
+                  {topic_scope_where}
+                )
+                SELECT
+                  m.Source AS source,
+                  COUNT(*) AS count,
+                  MIN(m.SentAt) AS min_date,
+                  MAX(m.SentAt) AS max_date
+                FROM WebChat_MessageLogs m
+                INNER JOIN topic_scope t
+                  ON t.customer_id = CAST({self._message_customer_expr("m")} AS NVARCHAR(255))
+                 AND t.source_key = {self._source_key_case_expr("m.Source")}
+                {message_where}
+                GROUP BY m.Source
+            """
+
+            with conn.cursor(as_dict=True) as cursor:
+                cursor.execute(query, tuple(topic_params + message_params))
+                return cursor.fetchall()
+        finally:
+            conn.close()
+
     def get_message_counts_filtered(self, start_date=None, end_date=None, channel=None, conversation_status=None, topic=None, ai_status=None):
+        if topic and str(topic).strip() != "Tất cả":
+            return self._get_topic_scoped_message_counts(
+                start_date,
+                end_date,
+                channel,
+                conversation_status,
+                topic,
+                ai_status,
+            )
+
         conn = get_db_connection()
         try:
             query = """
@@ -1374,16 +1779,37 @@ class ConversationRepository:
         finally:
             conn.close()
 
-    def get_trends(self, start_date=None, end_date=None):
+    def get_trends(self, start_date=None, end_date=None, channel=None, conversation_status=None, topic=None, ai_status=None):
         conn = get_db_connection()
         try:
+            status_join = f"""
+                  LEFT JOIN WebChat_ConversationStatus s
+                    ON c.CustomerId = s.CustomerId
+                   AND {self._normalized_source_expr('c.Source')} = {self._normalized_source_expr('s.Source')}
+            """
+
             # 1. Tìm ngày lớn nhất có dữ liệu
             with conn.cursor(as_dict=True) as cursor:
+                max_conditions = []
+                max_params = []
+                self._append_conversation_scope_filters(
+                    max_conditions,
+                    max_params,
+                    None,
+                    None,
+                    channel,
+                    conversation_status,
+                    topic,
+                    ai_status,
+                    "c",
+                    "s",
+                )
                 cursor.execute(f"""
-                    SELECT MAX(LastCustomerMessageAt) AS max_date
-                    FROM WebChat_Conversations
-                    WHERE {valid_conversation_condition("WebChat_Conversations")}
-                """)
+                    SELECT MAX(c.LastCustomerMessageAt) AS max_date
+                    FROM WebChat_Conversations c
+                    {status_join}
+                    WHERE {" AND ".join(max_conditions)}
+                """, tuple(max_params))
                 row = cursor.fetchone()
                 db_max_date = row['max_date'] if row else None
             
@@ -1396,15 +1822,28 @@ class ConversationRepository:
                     ref_end_date_str = db_max_date_str
                 else:
                     # Kiểm tra xem khoảng lọc có bản ghi nào không
+                    check_conditions = []
+                    check_params = []
+                    self._append_conversation_scope_filters(
+                        check_conditions,
+                        check_params,
+                        start_date,
+                        end_date,
+                        channel,
+                        conversation_status,
+                        topic,
+                        ai_status,
+                        "c",
+                        "s",
+                    )
                     check_query = f"""
-                        SELECT COUNT(*) AS count 
-                        FROM WebChat_Conversations 
-                        WHERE {valid_conversation_condition("WebChat_Conversations")}
-                          AND LastCustomerMessageAt >= %s
-                          AND LastCustomerMessageAt <= %s
+                        SELECT COUNT(DISTINCT c.Id) AS count
+                        FROM WebChat_Conversations c
+                        {status_join}
+                        WHERE {" AND ".join(check_conditions)}
                     """
                     with conn.cursor(as_dict=True) as cursor:
-                        cursor.execute(check_query, (start_date, f"{end_date} 23:59:59.999"))
+                        cursor.execute(check_query, tuple(check_params))
                         r = cursor.fetchone()
                         if r and r['count'] == 0:
                             ref_end_date_str = db_max_date_str
@@ -1434,6 +1873,61 @@ class ConversationRepository:
             
             prev_start = prev_end - timedelta(days=days-1)
             prev_start = prev_start.replace(hour=0, minute=0, second=0, microsecond=0)
+
+            scoped_start_date = prev_start.strftime('%Y-%m-%d')
+            scoped_end_date = current_end.strftime('%Y-%m-%d')
+
+            def build_conversation_where(extra_conditions=None):
+                conditions = []
+                params = []
+                self._append_conversation_scope_filters(
+                    conditions,
+                    params,
+                    scoped_start_date,
+                    scoped_end_date,
+                    channel,
+                    conversation_status,
+                    topic,
+                    ai_status,
+                    "c",
+                    "s",
+                )
+                if extra_conditions:
+                    conditions.extend(extra_conditions)
+                return " AND ".join(conditions), params
+
+            def build_message_where(extra_conditions=None):
+                conditions = []
+                params = []
+                self._append_message_scope_filters(
+                    conditions,
+                    params,
+                    scoped_start_date,
+                    scoped_end_date,
+                    channel,
+                    conversation_status,
+                    topic,
+                    ai_status,
+                    "m",
+                )
+                if extra_conditions:
+                    conditions.extend(extra_conditions)
+                return " AND ".join(conditions), params
+
+            conv_where, conv_params = build_conversation_where()
+            msg_where, msg_params = build_message_where()
+            active_where, active_params = build_conversation_where([
+                "(s.NoResponseNeeded IS NULL OR s.NoResponseNeeded = 0 OR c.LastCustomerMessageAt > s.MarkedAt)",
+            ])
+            closed_where, closed_params = build_conversation_where([
+                "s.NoResponseNeeded = 1",
+                "(s.MarkedAt IS NULL OR c.LastCustomerMessageAt <= s.MarkedAt)",
+            ])
+            ai_fail_where, ai_fail_params = build_message_where([
+                "m.FromHost = 1",
+                "m.HostDisplayName = 'AI Assistant'",
+                self._ai_failure_condition("m"),
+            ])
             
             query = f"""
                 SELECT
@@ -1450,89 +1944,54 @@ class ConversationRepository:
                   SUM(CASE WHEN type = 'ai_fail' AND date >= %s AND date <= %s THEN 1 ELSE 0 END) AS prev_ai_fails
                 FROM (
                   SELECT 'conv' AS type, LastCustomerMessageAt AS date
-                  FROM WebChat_Conversations
-                  WHERE {valid_conversation_condition("WebChat_Conversations")}
-                    AND LastCustomerMessageAt >= %s
-                    AND LastCustomerMessageAt <= %s
+                  FROM WebChat_Conversations c
+                  {status_join}
+                  WHERE {conv_where}
                   UNION ALL
                   SELECT 'msg' AS type, SentAt AS date
-                  FROM WebChat_MessageLogs
-                  WHERE {valid_message_condition("WebChat_MessageLogs")}
-                    AND SentAt >= %s
-                    AND SentAt <= %s
+                  FROM WebChat_MessageLogs m
+                  WHERE {msg_where}
                   UNION ALL
                   SELECT 'active_conv' AS type, c.LastCustomerMessageAt AS date 
                   FROM WebChat_Conversations c
-                  LEFT JOIN WebChat_ConversationStatus s ON c.CustomerId = s.CustomerId AND c.Source = s.Source
-                  WHERE {valid_conversation_condition("c")}
-                    AND (s.NoResponseNeeded IS NULL OR s.NoResponseNeeded = 0 OR c.LastCustomerMessageAt > s.MarkedAt)
-                    AND c.LastCustomerMessageAt >= %s
-                    AND c.LastCustomerMessageAt <= %s
+                  {status_join}
+                  WHERE {active_where}
                   UNION ALL
                   SELECT 'closed_conv' AS type, c.LastCustomerMessageAt AS date 
                   FROM WebChat_Conversations c
-                  LEFT JOIN WebChat_ConversationStatus s ON c.CustomerId = s.CustomerId AND c.Source = s.Source
-                  WHERE {valid_conversation_condition("c")}
-                    AND s.NoResponseNeeded = 1
-                    AND (s.MarkedAt IS NULL OR c.LastCustomerMessageAt <= s.MarkedAt)
-                    AND c.LastCustomerMessageAt >= %s
-                    AND c.LastCustomerMessageAt <= %s
+                  {status_join}
+                  WHERE {closed_where}
                   UNION ALL
                   SELECT 'ai_fail' AS type, SentAt AS date 
-                  FROM WebChat_MessageLogs
-                  WHERE FromHost = 1 
-                    AND HostDisplayName = 'AI Assistant' 
-                    AND {valid_message_condition("WebChat_MessageLogs")}
-                    AND (
-                      TextContent LIKE N'%chưa hiểu%' 
-                      OR TextContent LIKE N'%chưa rõ%' 
-                      OR TextContent LIKE N'%không tìm thấy%' 
-                      OR TextContent LIKE N'%chưa có%'
-                      OR TextContent LIKE N'%Trợ lý AI%'
-                      OR TextContent LIKE N'%Không thể tiếp nhận thông tin%'
-                      OR TextContent LIKE N'%Không thể xác nhận trực tiếp%'
-                      OR TextContent LIKE N'%không chắc chắn%'
-                      OR TextContent LIKE N'%chưa có thông tin cụ thể%'
-                      OR TextContent LIKE N'%độ tin cậy%'
-                      OR TextContent LIKE N'%chưa xác nhận%'
-                      OR TextContent LIKE N'%có vẻ như%'
-                      OR TextContent LIKE N'%chắc là%'
-                      OR TextContent LIKE N'%có lẽ%'
-                      OR TextContent LIKE N'%hình như%'
-                      OR TextContent LIKE N'%tôi đoán%'
-                      OR EXISTS (
-                          SELECT 1 FROM WebChat_MessageAnalytics ma
-                          WHERE ma.messageId = WebChat_MessageLogs.id_webchat_messageLogs
-                            AND {valid_analytics_condition("ma")}
-                            AND ma.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin')
-                      )
-                    )
-                    AND SentAt >= %s AND SentAt <= %s
+                  FROM WebChat_MessageLogs m
+                  WHERE {ai_fail_where}
                 ) combined
             """
             
+            period_params = [
+                current_start, current_end,
+                current_start, current_end,
+                current_start, current_end,
+                current_start, current_end,
+                current_start, current_end,
+                
+                prev_start, prev_end,
+                prev_start, prev_end,
+                prev_start, prev_end,
+                prev_start, prev_end,
+                prev_start, prev_end,
+            ]
             params = (
-                current_start, current_end,
-                current_start, current_end,
-                current_start, current_end,
-                current_start, current_end,
-                current_start, current_end,
-                
-                prev_start, prev_end,
-                prev_start, prev_end,
-                prev_start, prev_end,
-                prev_start, prev_end,
-                prev_start, prev_end,
-                
-                prev_start, current_end,
-                prev_start, current_end,
-                prev_start, current_end,
-                prev_start, current_end,
-                prev_start, current_end
+                period_params
+                + conv_params
+                + msg_params
+                + active_params
+                + closed_params
+                + ai_fail_params
             )
             
             with conn.cursor(as_dict=True) as cursor:
-                cursor.execute(query, params)
+                cursor.execute(self._escape_pymssql_literal_percent(query), tuple(params))
                 tr = cursor.fetchone() or {}
                 
                 def calc_trend(today_val, prev_val):
@@ -1552,7 +2011,20 @@ class ConversationRepository:
         finally:
             conn.close()
 
-    def _execute_overtime_alerts_query(self, cursor, start_date=None, end_date=None, limit=100):
+    def _execute_overtime_alerts_query(
+        self,
+        cursor,
+        start_date=None,
+        end_date=None,
+        channel=None,
+        conversation_status=None,
+        topic=None,
+        ai_status=None,
+        limit=100,
+    ):
+        if ai_status and ai_status != "Tất cả":
+            return []
+
         try:
             limit = int(limit or 100)
         except (TypeError, ValueError):
@@ -1560,7 +2032,6 @@ class ConversationRepository:
         limit = max(1, min(limit, 200))
 
         conditions = [
-            valid_conversation_condition("c"),
             "c.LastCustomerMessageAt IS NOT NULL",
             "(s.NoResponseNeeded IS NULL OR s.NoResponseNeeded = 0 OR c.LastCustomerMessageAt > s.MarkedAt)",
             "c.LastMessageId > 0",
@@ -1568,14 +2039,18 @@ class ConversationRepository:
             "DATEDIFF(MINUTE, c.LastCustomerMessageAt, @dbNow) > 600",
         ]
         params = []
-
-        if start_date:
-            conditions.append("c.LastCustomerMessageAt >= %s")
-            params.append(start_date)
-
-        if end_date:
-            conditions.append("c.LastCustomerMessageAt <= %s")
-            params.append(f"{end_date} 23:59:59.999")
+        self._append_conversation_scope_filters(
+            conditions,
+            params,
+            start_date,
+            end_date,
+            channel,
+            conversation_status,
+            topic,
+            None,
+            "c",
+            "s",
+        )
 
         where_sql = " AND ".join(conditions)
 
@@ -1612,6 +2087,7 @@ class ConversationRepository:
               o.last_host_msg_at,
               u.DisplayName AS customer_name,
               cust.TextContent AS last_cust_text,
+              cust.TextContent AS detected_topics,
               ai.TextContent AS last_ai_text,
               'overtime' AS alert_type,
               o.wait_mins
@@ -1645,46 +2121,100 @@ class ConversationRepository:
             ORDER BY o.wait_mins DESC, o.last_customer_msg_at ASC
         """
 
-        cursor.execute(query, tuple(params))
+        cursor.execute(self._escape_pymssql_literal_percent(query), tuple(params))
         return cursor.fetchall()
 
-    def get_overtime_alerts_data(self, start_date=None, end_date=None, limit=100):
+    def get_overtime_alerts_data(
+        self,
+        start_date=None,
+        end_date=None,
+        channel=None,
+        conversation_status=None,
+        topic=None,
+        ai_status=None,
+        limit=100,
+    ):
         conn = get_db_connection()
         try:
             with conn.cursor(as_dict=True) as cursor:
-                return self._execute_overtime_alerts_query(cursor, start_date, end_date, limit)
+                return self._execute_overtime_alerts_query(
+                    cursor,
+                    start_date,
+                    end_date,
+                    channel,
+                    conversation_status,
+                    topic,
+                    ai_status,
+                    limit,
+                )
         finally:
             conn.close()
 
-    def get_urgent_alerts_data(self, start_date=None, end_date=None, include_overtime=True, include_ai=True):
+    def get_urgent_alerts_data(
+        self,
+        start_date=None,
+        end_date=None,
+        include_overtime=True,
+        include_ai=True,
+        channel=None,
+        conversation_status=None,
+        topic=None,
+        ai_status=None,
+    ):
         conn = get_db_connection()
         try:
             rows = []
             with conn.cursor(as_dict=True) as cursor:
                 if include_overtime:
-                    rows.extend(self._execute_overtime_alerts_query(cursor, start_date, end_date))
+                    rows.extend(self._execute_overtime_alerts_query(
+                        cursor,
+                        start_date,
+                        end_date,
+                        channel,
+                        conversation_status,
+                        topic,
+                        ai_status,
+                    ))
 
                 if include_ai:
                     ai_conditions = [
                         "m.FromHost = 1",
                         "m.HostDisplayName = 'AI Assistant'",
-                        valid_message_condition("m"),
                         "m.Source IS NOT NULL",
                         "m.TextContent IS NOT NULL",
                         "m.TextContent != ''",
                         "(c.Id IS NULL OR s.NoResponseNeeded IS NULL OR s.NoResponseNeeded = 0 OR c.LastCustomerMessageAt > s.MarkedAt)",
                     ]
                     ai_params = []
+                    self._append_message_scope_filters(
+                        ai_conditions,
+                        ai_params,
+                        start_date,
+                        end_date,
+                        channel,
+                        conversation_status,
+                        None,
+                        ai_status,
+                        "m",
+                    )
+                    topic_sql = self._topic_condition("COALESCE(cust.TextContent, m.TextContent)", topic, ai_params)
+                    if topic_sql:
+                        ai_conditions.append(topic_sql)
 
+                    analytics_conditions = [
+                        "a.issueFlag = 1",
+                        valid_analytics_condition("a"),
+                    ]
+                    analytics_params = []
                     if start_date:
-                        ai_conditions.append("m.SentAt >= %s")
-                        ai_params.append(start_date)
-
+                        analytics_conditions.append("a.messageAt >= %s")
+                        analytics_params.append(start_date)
                     if end_date:
-                        ai_conditions.append("m.SentAt <= %s")
-                        ai_params.append(f"{end_date} 23:59:59.999")
+                        analytics_conditions.append("a.messageAt <= %s")
+                        analytics_params.append(f"{end_date} 23:59:59.999")
 
                     where_sql = "WHERE " + " AND ".join(ai_conditions)
+                    analytics_where_sql = "WHERE " + " AND ".join(analytics_conditions)
                     no_data_keyword_sql = self._ai_no_data_keyword_condition("m")
                     uncertain_keyword_sql = self._ai_uncertain_keyword_condition("m")
                     source_case = self._source_key_case_expr("m.Source")
@@ -1708,6 +2238,7 @@ class ConversationRepository:
                             u.DisplayName AS customer_name,
                             cust.TextContent AS last_cust_text,
                             m.TextContent AS last_ai_text,
+                            COALESCE(cust.TextContent, m.TextContent) AS detected_topics,
                             DATEDIFF(MINUTE, COALESCE(c.LastCustomerMessageAt, cust.SentAt, m.SentAt), @dbNow) AS wait_mins,
                             CASE WHEN {no_data_keyword_sql} THEN 1 ELSE 0 END AS keyword_no_data,
                             CASE WHEN {uncertain_keyword_sql} THEN 1 ELSE 0 END AS keyword_uncertain
@@ -1741,8 +2272,7 @@ class ConversationRepository:
                             a.messageAt AS message_at,
                             a.issueType AS issue_type
                           FROM WebChat_MessageAnalytics a
-                          WHERE a.issueFlag = 1
-                            AND {valid_analytics_condition("a")}
+                          {analytics_where_sql}
                         ),
                         flagged AS (
                           SELECT
@@ -1758,6 +2288,7 @@ class ConversationRepository:
                             s.customer_name,
                             s.last_cust_text,
                             s.last_ai_text,
+                            s.detected_topics,
                             s.wait_mins,
                             s.keyword_no_data,
                             s.keyword_uncertain,
@@ -1784,6 +2315,7 @@ class ConversationRepository:
                             s.customer_name,
                             s.last_cust_text,
                             s.last_ai_text,
+                            s.detected_topics,
                             s.wait_mins,
                             s.keyword_no_data,
                             s.keyword_uncertain
@@ -1800,6 +2332,7 @@ class ConversationRepository:
                             customer_name,
                             last_cust_text,
                             last_ai_text,
+                            detected_topics,
                             wait_mins,
                             CASE
                               WHEN analytics_no_data = 1 OR (keyword_no_data = 1 AND analytics_uncertain = 0) THEN 'ai_no_data'
@@ -1825,6 +2358,7 @@ class ConversationRepository:
                           customer_name,
                           last_cust_text,
                           last_ai_text,
+                          detected_topics,
                           alert_type,
                           wait_mins
                         FROM ranked
@@ -1834,7 +2368,10 @@ class ConversationRepository:
                           ai_sent_at DESC
                     """
 
-                    cursor.execute(ai_query, tuple(ai_params))
+                    cursor.execute(
+                        self._escape_pymssql_literal_percent(ai_query),
+                        tuple(ai_params + analytics_params),
+                    )
                     rows.extend(cursor.fetchall())
 
                 return rows
@@ -1986,11 +2523,9 @@ class ConversationRepository:
                   CASE
                     WHEN has_toeic = 1 THEN 'TOEIC'
                     WHEN has_mos = 1 THEN 'MOS'
-                    WHEN has_sat_hach_cntt = 1 THEN N'Sát hạch CNTT (Sát hạch Công nghệ thông tin)'
+                    WHEN has_sat_hach_cntt = 1 THEN N'Sát hạch CNTT'
                     WHEN has_hoc_tieng_anh = 1 THEN N'Học Tiếng Anh'
                     WHEN has_hoc_tin_hoc = 1 THEN N'Học Tin học'
-                    WHEN has_tracuudiem = 1 THEN N'Tra cứu điểm'
-                    WHEN has_lichthi = 1 THEN N'Lịch thi'
                     ELSE N'Khác'
                   END AS topic
                 FROM (
@@ -2000,10 +2535,8 @@ class ConversationRepository:
                     MAX(CASE WHEN LOWER(TextContent) LIKE N'%toeic%' THEN 1 ELSE 0 END) AS has_toeic,
                     MAX(CASE WHEN LOWER(TextContent) LIKE N'%mos%' OR LOWER(TextContent) LIKE N'%microsoft office specialist%' THEN 1 ELSE 0 END) AS has_mos,
                     MAX(CASE WHEN LOWER(TextContent) LIKE N'%[s]át hạch%' OR LOWER(TextContent) LIKE N'%[s]at hach%' OR LOWER(TextContent) LIKE N'%cntt%' OR LOWER(TextContent) LIKE N'%công nghệ thông tin%' OR LOWER(TextContent) LIKE N'%cong nghe thong tin%' OR LOWER(TextContent) LIKE N'%ic3%' OR LOWER(TextContent) LIKE N'%thcb%' OR LOWER(TextContent) LIKE N'%thnc%' OR LOWER(TextContent) LIKE N'%tin cơ bản%' OR LOWER(TextContent) LIKE N'%tin co ban%' OR LOWER(TextContent) LIKE N'%tin nâng cao%' OR LOWER(TextContent) LIKE N'%tin nang cao%' THEN 1 ELSE 0 END) AS has_sat_hach_cntt,
-                    MAX(CASE WHEN LOWER(TextContent) LIKE N'%học tiếng anh%' OR LOWER(TextContent) LIKE N'%hoc tieng anh%' OR LOWER(TextContent) LIKE N'%tiếng anh%' OR LOWER(TextContent) LIKE N'%tieng anh%' OR LOWER(TextContent) LIKE N'%anh văn%' OR LOWER(TextContent) LIKE N'%anh van%' OR LOWER(TextContent) LIKE N'%ngoại ngữ%' OR LOWER(TextContent) LIKE N'%ngoai ngu%' OR LOWER(TextContent) LIKE N'%vstep%' OR LOWER(TextContent) LIKE N'%b1%' OR LOWER(TextContent) LIKE N'%b2%' OR LOWER(TextContent) LIKE N'%chuẩn đầu ra%' OR LOWER(TextContent) LIKE N'%chuan dau ra%' THEN 1 ELSE 0 END) AS has_hoc_tieng_anh,
-                    MAX(CASE WHEN LOWER(TextContent) LIKE N'%học tin học%' OR LOWER(TextContent) LIKE N'%hoc tin hoc%' OR LOWER(TextContent) LIKE N'%khóa tin học%' OR LOWER(TextContent) LIKE N'%khoa tin hoc%' OR LOWER(TextContent) LIKE N'%lớp tin học%' OR LOWER(TextContent) LIKE N'%lop tin hoc%' OR LOWER(TextContent) LIKE N'%tin học văn phòng%' OR LOWER(TextContent) LIKE N'%tin hoc van phong%' OR LOWER(TextContent) LIKE N'%học word%' OR LOWER(TextContent) LIKE N'%hoc word%' OR LOWER(TextContent) LIKE N'%học excel%' OR LOWER(TextContent) LIKE N'%hoc excel%' OR LOWER(TextContent) LIKE N'%học powerpoint%' OR LOWER(TextContent) LIKE N'%hoc powerpoint%' THEN 1 ELSE 0 END) AS has_hoc_tin_hoc,
-                    MAX(CASE WHEN LOWER(TextContent) LIKE N'%điểm%' OR LOWER(TextContent) LIKE N'%tra cứu điểm%' OR LOWER(TextContent) LIKE N'%xem điểm%' OR LOWER(TextContent) LIKE N'%kết quả thi%' THEN 1 ELSE 0 END) AS has_tracuudiem,
-                    MAX(CASE WHEN LOWER(TextContent) LIKE N'%lịch thi%' OR LOWER(TextContent) LIKE N'%ngày thi%' OR LOWER(TextContent) LIKE N'%ca thi%' OR LOWER(TextContent) LIKE N'%giờ thi%' THEN 1 ELSE 0 END) AS has_lichthi
+                    MAX(CASE WHEN LOWER(TextContent) LIKE N'%học tiếng anh%' OR LOWER(TextContent) LIKE N'%hoc tieng anh%' OR LOWER(TextContent) LIKE N'%tiếng anh%' OR LOWER(TextContent) LIKE N'%tieng anh%' OR LOWER(TextContent) LIKE N'%anh văn%' OR LOWER(TextContent) LIKE N'%anh van%' OR LOWER(TextContent) LIKE N'%ngoại ngữ%' OR LOWER(TextContent) LIKE N'%ngoai ngu%' OR LOWER(TextContent) LIKE N'%vstep%' OR LOWER(TextContent) LIKE N'%b1%' OR LOWER(TextContent) LIKE N'%b2%' OR LOWER(TextContent) LIKE N'%chuẩn đầu ra%' OR LOWER(TextContent) LIKE N'%chuan dau ra%' OR LOWER(TextContent) LIKE N'%khóa anh văn%' OR LOWER(TextContent) LIKE N'%khoa anh van%' OR LOWER(TextContent) LIKE N'%lớp anh văn%' OR LOWER(TextContent) LIKE N'%lop anh van%' OR LOWER(TextContent) LIKE N'%luyện tiếng anh%' OR LOWER(TextContent) LIKE N'%luyen tieng anh%' OR LOWER(TextContent) LIKE N'%tiếng anh giao tiếp%' OR LOWER(TextContent) LIKE N'%tieng anh giao tiep%' OR LOWER(TextContent) LIKE N'%luyện nghe%' OR LOWER(TextContent) LIKE N'%luyen nghe%' OR LOWER(TextContent) LIKE N'%luyện nói%' OR LOWER(TextContent) LIKE N'%luyen noi%' OR LOWER(TextContent) LIKE N'%luyện đọc%' OR LOWER(TextContent) LIKE N'%luyen doc%' OR LOWER(TextContent) LIKE N'%luyện viết%' OR LOWER(TextContent) LIKE N'%luyen viet%' OR LOWER(TextContent) LIKE N'%học phí tiếng anh%' OR LOWER(TextContent) LIKE N'%hoc phi tieng anh%' THEN 1 ELSE 0 END) AS has_hoc_tieng_anh,
+                    MAX(CASE WHEN LOWER(TextContent) LIKE N'%học tin học%' OR LOWER(TextContent) LIKE N'%hoc tin hoc%' OR LOWER(TextContent) LIKE N'%khóa tin học%' OR LOWER(TextContent) LIKE N'%khoa tin hoc%' OR LOWER(TextContent) LIKE N'%lớp tin học%' OR LOWER(TextContent) LIKE N'%lop tin hoc%' OR LOWER(TextContent) LIKE N'%tin học văn phòng%' OR LOWER(TextContent) LIKE N'%tin hoc van phong%' OR LOWER(TextContent) LIKE N'%microsoft office%' OR LOWER(TextContent) LIKE N'%word%' OR LOWER(TextContent) LIKE N'%excel%' OR LOWER(TextContent) LIKE N'%powerpoint%' OR LOWER(TextContent) LIKE N'%học word%' OR LOWER(TextContent) LIKE N'%hoc word%' OR LOWER(TextContent) LIKE N'%học excel%' OR LOWER(TextContent) LIKE N'%hoc excel%' OR LOWER(TextContent) LIKE N'%học powerpoint%' OR LOWER(TextContent) LIKE N'%hoc powerpoint%' OR LOWER(TextContent) LIKE N'%đăng ký khóa tin học%' OR LOWER(TextContent) LIKE N'%dang ky khoa tin hoc%' OR LOWER(TextContent) LIKE N'%đăng ký lớp tin học%' OR LOWER(TextContent) LIKE N'%dang ky lop tin hoc%' OR LOWER(TextContent) LIKE N'%học phí tin học%' OR LOWER(TextContent) LIKE N'%hoc phi tin hoc%' OR LOWER(TextContent) LIKE N'%đăng nhập khóa học%' OR LOWER(TextContent) LIKE N'%dang nhap khoa hoc%' OR LOWER(TextContent) LIKE N'%quên mật khẩu khóa học%' OR LOWER(TextContent) LIKE N'%quen mat khau khoa hoc%' THEN 1 ELSE 0 END) AS has_hoc_tin_hoc
                   FROM WebChat_MessageLogs
             """
             conditions = [

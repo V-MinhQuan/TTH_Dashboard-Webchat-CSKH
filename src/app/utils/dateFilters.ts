@@ -7,15 +7,11 @@ export interface DateFilterInput {
   customDateTo?: string | Date | null;
 }
 
-export type AnalyticsAiStatus = "success" | "failed";
-
 export interface AnalyticsApiFilters {
   startDate?: string;
   endDate?: string;
   channel?: string;
   topic?: string;
-  conversationStatus?: string;
-  aiStatus?: AnalyticsAiStatus;
 }
 
 function normalizedText(value: unknown) {
@@ -123,28 +119,6 @@ function isAllValue(value: unknown) {
   return matchesAny(value, ["Tat ca", "Tất cả", "Táº¥t cáº£", "all", ""]);
 }
 
-function mapAiStatusForAnalytics(value: unknown): AnalyticsAiStatus | undefined {
-  const normalized = normalizedText(value);
-  if (!normalized || isAllValue(value)) return undefined;
-  if (
-    normalized === "success" ||
-    normalized.includes("thanh cong") ||
-    normalized.includes("thanh c")
-  ) {
-    return "success";
-  }
-  if (
-    normalized === "failed" ||
-    normalized === "failure" ||
-    normalized.includes("that bai") ||
-    normalized.includes("thất bại") ||
-    normalized.includes("tháº¥t b")
-  ) {
-    return "failed";
-  }
-  return undefined;
-}
-
 export function getDateParamsFromFilters(filters: DateFilterInput): { startDate?: string; endDate?: string } {
   const today = new Date();
 
@@ -162,17 +136,6 @@ export function getDateParamsFromFilters(filters: DateFilterInput): { startDate?
   if (matchesAny(filters.dateRange, ["30 ngay qua", "30 ngày qua", "30 ngÃ y qua"])) {
     const start = new Date(today);
     start.setDate(today.getDate() - 30);
-    return { startDate: formatLocalDateForApi(start), endDate: formatLocalDateForApi(today) };
-  }
-
-  if (matchesAny(filters.dateRange, ["Thang nay", "Tháng này", "ThÃ¡ng nÃ y"])) {
-    const start = new Date(today.getFullYear(), today.getMonth(), 1);
-    return { startDate: formatLocalDateForApi(start), endDate: formatLocalDateForApi(today) };
-  }
-
-  if (matchesAny(filters.dateRange, ["Quy nay", "Quý này", "QuÃ½ nÃ y"])) {
-    const quarterStartMonth = Math.floor(today.getMonth() / 3) * 3;
-    const start = new Date(today.getFullYear(), quarterStartMonth, 1);
     return { startDate: formatLocalDateForApi(start), endDate: formatLocalDateForApi(today) };
   }
 
@@ -198,14 +161,6 @@ export function mapGlobalFiltersToAnalyticsRequest(filters: FilterValues): Analy
   }
   if (filters.topic && !isAllValue(filters.topic)) {
     request.topic = filters.topic;
-  }
-  if (filters.conversationStatus && !isAllValue(filters.conversationStatus)) {
-    request.conversationStatus = filters.conversationStatus;
-  }
-
-  const aiStatus = mapAiStatusForAnalytics(filters.aiStatus);
-  if (aiStatus) {
-    request.aiStatus = aiStatus;
   }
 
   return request;

@@ -15,6 +15,7 @@ services:
       CELERY_BROKER_URL: "redis://redis:6379/0"
       CELERY_RESULT_BACKEND: "redis://redis:6379/1"
       CELERY_BACKGROUND_QUEUE: "background"
+      CELERY_ENQUEUE_ON_STARTUP: "true"
       CORS_ORIGINS: "http://localhost:5173,http://127.0.0.1:5173"
     depends_on:
       - ml-service

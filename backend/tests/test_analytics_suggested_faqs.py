@@ -57,7 +57,7 @@ def test_suggested_faqs_skip_blank_questions_without_fake_fallback():
     assert len(data) == 1
     assert data[0]["question"] == "Khi nao co lich thi sat hach CNTT?"
     assert data[0]["suggestedAnswer"] == "Answer from DB"
-    assert data[0]["topic"] == "Sát hạch CNTT (Sát hạch Công nghệ thông tin)"
+    assert data[0]["topic"] == "Sát hạch CNTT"
     assert data[0]["detectedTopic"] == "Lich thi"
 
 
@@ -89,8 +89,8 @@ def test_negative_keywords_include_dominant_topic_from_database_context():
 
     by_keyword = {item["keyword"]: item for item in data}
     assert by_keyword["chua nhan duoc mail"]["count"] == 4
-    assert by_keyword["chua nhan duoc mail"]["topicLabel"] == "Lệ phí / Học phí"
-    assert by_keyword["rot"]["topicLabel"] == "Sát hạch CNTT (Sát hạch Công nghệ thông tin)"
+    assert by_keyword["chua nhan duoc mail"]["topicLabel"] == "Khác"
+    assert by_keyword["rot"]["topicLabel"] == "Sát hạch CNTT"
 
 
 def test_suggested_faqs_sql_uses_real_question_filters_and_status_filters():

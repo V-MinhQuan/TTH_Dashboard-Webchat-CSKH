@@ -33,9 +33,9 @@ describe("FeedbackFormDialog", () => {
         open
         mode="create"
         prefillData={{
-          question: "Khi nào có lịch thi?",
-          topic: "Lịch thi",
-          keyword: "lịch thi",
+          question: "Khi nào có lịch thi CNTT?",
+          topic: "lịch thi CNTT",
+          keyword: "lịch thi CNTT",
           source: "Không tìm thấy dữ liệu",
           conversationId: 42,
           messageId: 99,
@@ -46,17 +46,17 @@ describe("FeedbackFormDialog", () => {
     );
 
     expect(screen.getByRole("heading", { name: "Thêm phản hồi" })).toBeVisible();
-    expect(screen.getByLabelText("Câu hỏi khách hàng")).toHaveValue("Khi nào có lịch thi?");
-    expect(screen.getByLabelText("Chủ đề")).toHaveValue("Lịch thi");
+    expect(screen.getByLabelText("Câu hỏi khách hàng")).toHaveValue("Khi nào có lịch thi CNTT?");
+    expect(screen.getByLabelText("Chủ đề")).toHaveValue("Sát hạch CNTT");
 
     await user.type(screen.getByLabelText("Câu trả lời đúng"), "Lịch thi được công bố trên cổng FLIC.");
     await user.click(screen.getByRole("button", { name: "Lưu phản hồi" }));
 
     await waitFor(() => expect(api.createSheetChatbotRow).toHaveBeenCalledTimes(1));
     expect(api.createSheetChatbotRow).toHaveBeenCalledWith(expect.objectContaining({
-      question: "Khi nào có lịch thi?",
+      question: "Khi nào có lịch thi CNTT?",
       correctAnswer: "Lịch thi được công bố trên cổng FLIC.",
-      topic: "Lịch thi",
+      topic: "Sát hạch CNTT",
       source: "Không tìm thấy dữ liệu",
     }));
     expect(onSaved).toHaveBeenCalled();

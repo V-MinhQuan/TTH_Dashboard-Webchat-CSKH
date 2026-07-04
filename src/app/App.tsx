@@ -196,7 +196,7 @@ function MainApp() {
       case "personalinfo":
         return <PersonalInfo onNavigate={handleNavigate} />;
       case "chatbot_sheet":
-        return <SheetChatbot />;
+        return <SheetChatbot filters={filters} />;
       default:
         return <Overview {...baseProps} isRefreshing={isRefreshing} lastUpdated={lastUpdated} onManualRefresh={triggerRefresh} />;
     }

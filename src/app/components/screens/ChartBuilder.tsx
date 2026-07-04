@@ -56,6 +56,7 @@ import {
 } from "../../utils/chartExport";
 import {
   getDateParamsFromFilters,
+  mapGlobalFiltersToAnalyticsRequest,
   type DateFilterInput,
 } from "../../utils/dateFilters";
 
@@ -68,8 +69,6 @@ const CHART_DATE_RANGE_OPTIONS = [
   "30 ngày qua",
   "7 ngày qua",
   "Hôm nay",
-  "Tháng này",
-  "Quý này",
   "Tùy chỉnh",
 ];
 
@@ -128,9 +127,7 @@ export function ChartBuilder({
   const [draggedField, setDraggedField] = useState<ChartFieldDragData | null>(
     null,
   );
-  const [chartDateFilters, setChartDateFilters] = useState<DateFilterInput>({
-    dateRange: ALL_TIME_DATE_RANGE,
-  });
+  const [chartDateFilters, setChartDateFilters] = useState<DateFilterInput>(() => chartDateFiltersFromGlobal(globalFilters));
 
   const selectedDataset = useMemo(
     () => datasets.find((dataset) => dataset.id === state.datasetId) || null,
@@ -179,7 +176,7 @@ export function ChartBuilder({
     ],
   );
   const customRequest = useMemo(
-    () => buildCustomRequest(state, selectedDataset, chartDateParams),
+    () => buildCustomRequest(state, selectedDataset, chartDateParams, globalFilters),
     [
       state.datasetId,
       state.chartType,
@@ -195,6 +192,8 @@ export function ChartBuilder({
       selectedDataset?.defaultDateField,
       chartDateParams.startDate,
       chartDateParams.endDate,
+      globalFilters.channel,
+      globalFilters.topic,
     ],
   );
   const dateScopeLabel = useMemo(
@@ -278,7 +277,7 @@ export function ChartBuilder({
       try {
         const response = legacyConfig
           ? await fetchData(
-            buildLegacyDataRequest(legacyConfig, chartDateParams),
+            buildLegacyDataRequest(legacyConfig, chartDateParams, globalFilters),
             controller.signal,
           )
           : await fetchPreview(customRequest, controller.signal);
@@ -303,8 +302,18 @@ export function ChartBuilder({
     customValidation.valid,
     chartDateParams.startDate,
     chartDateParams.endDate,
+    globalFilters.channel,
+    globalFilters.topic,
     legacyConfig,
     refreshKey,
+  ]);
+
+  useEffect(() => {
+    setChartDateFilters(chartDateFiltersFromGlobal(globalFilters));
+  }, [
+    globalFilters.dateRange,
+    globalFilters.customDateFrom,
+    globalFilters.customDateTo,
   ]);
 
   const updateState = (changes: Partial<ChartBuilderState>) => {
@@ -902,11 +911,13 @@ function buildCustomRequest(
   state: ChartBuilderState,
   dataset: CatalogDatasetMeta | null,
   dateParams: ChartDateParams,
+  globalFilters: FilterValues,
 ): CustomChartRequest {
-  const filters = applyGlobalDateFilter(
+  const filters = applyCustomGlobalFilters(
     state.filters.filter(isCompleteFilter),
     dataset,
     dateParams,
+    globalFilters,
   );
 
   return {
@@ -928,14 +939,42 @@ function buildCustomRequest(
 function buildLegacyDataRequest(
   config: ChartConfigPayload,
   dateParams: ChartDateParams,
+  globalFilters: FilterValues,
 ) {
   return {
     ...config,
     version: 1 as const,
     mode: "predefined" as const,
     limit: 500,
-    filters: applyLegacyGlobalDateFilter(config.filters || {}, dateParams),
+    filters: applyLegacyGlobalFilters(config.filters || {}, dateParams, globalFilters),
   };
+}
+
+function chartDateFiltersFromGlobal(filters: FilterValues): DateFilterInput {
+  if (filters.dateRange === "Tùy chỉnh") {
+    return {
+      dateRange: "Tùy chỉnh",
+      customDateFrom: filters.customDateFrom,
+      customDateTo: filters.customDateTo,
+    };
+  }
+  if (CHART_DATE_RANGE_OPTIONS.includes(filters.dateRange)) {
+    return { dateRange: filters.dateRange };
+  }
+  return { dateRange: ALL_TIME_DATE_RANGE };
+}
+
+function applyCustomGlobalFilters(
+  filters: FilterSelection[],
+  dataset: CatalogDatasetMeta | null,
+  dateParams: ChartDateParams,
+  globalFilters: FilterValues,
+) {
+  const requestFilters = mapGlobalFiltersToAnalyticsRequest(globalFilters);
+  let next = applyGlobalDateFilter(filters, dataset, dateParams);
+  next = appendSemanticGlobalFilter(next, dataset, "channel", requestFilters.channel);
+  next = appendSemanticGlobalFilter(next, dataset, "topic", requestFilters.topic);
+  return next;
 }
 
 function applyGlobalDateFilter(
@@ -971,18 +1010,51 @@ function applyGlobalDateFilter(
   ];
 }
 
-function applyLegacyGlobalDateFilter(
+function applyLegacyGlobalFilters(
   filters: ChartDataFilters,
   dateParams: ChartDateParams,
+  globalFilters: FilterValues,
 ): ChartDataFilters {
-  if (!dateParams.startDate || !dateParams.endDate) {
-    return filters;
-  }
+  const requestFilters = mapGlobalFiltersToAnalyticsRequest(globalFilters);
   return {
     ...filters,
-    fromDate: dateParams.startDate,
-    toDate: dateParams.endDate,
+    fromDate: dateParams.startDate || filters.fromDate,
+    toDate: dateParams.endDate || filters.toDate,
+    channel: requestFilters.channel || filters.channel,
+    topic: requestFilters.topic || filters.topic,
   };
+}
+
+function appendSemanticGlobalFilter(
+  filters: FilterSelection[],
+  dataset: CatalogDatasetMeta | null,
+  semanticType: "channel" | "topic",
+  value?: string,
+): FilterSelection[] {
+  if (!value) return filters;
+  const field = dataset?.fields.find((item) => (
+    item.semanticType === semanticType
+    && item.available
+    && item.roles.includes("filter")
+    && (item.filterOperators.includes("eq") || item.filterOperators.includes("contains"))
+  ));
+  if (!field) return filters;
+  const operator = field.filterOperators.includes("eq") ? "eq" : "contains";
+  const hasSameFilter = filters.some((filter) => (
+    filter.fieldId === field.id
+    && filter.operator === operator
+    && String(filter.value ?? "") === value
+  ));
+  if (hasSameFilter) return filters;
+  return [
+    ...filters,
+    {
+      fieldId: field.id,
+      operator,
+      value,
+      values: [],
+    },
+  ];
 }
 
 function formatChartDateScopeLabel(dateParams: ChartDateParams) {

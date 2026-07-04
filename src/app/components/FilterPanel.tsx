@@ -21,7 +21,6 @@ const CTA = "#ED5206";
 const CTA_SOFT = "#F36C2E";
 const ORANGE_50 = "#FFF4EE";
 const ALL = "Tất cả";
-const FAILED_AI_STATUS = "AI trả lời thất bại";
 
 export interface FilterCatalogOption {
   readonly value: string;
@@ -37,10 +36,8 @@ export interface FilterPanelProps {
   topicCatalogSource?: string;
 }
 
-const dateRanges = ["30 ngày qua", "7 ngày qua", "Hôm nay", "Tháng này", "Quý này", "Tùy chỉnh"];
+const dateRanges = ["30 ngày qua", "7 ngày qua", "Hôm nay", "Tùy chỉnh"];
 const fallbackTopics: readonly FilterCatalogOption[] = Object.freeze(TOPIC_FILTER_OPTIONS.map((option) => Object.freeze(option)));
-const conversationStatuses = [ALL, "Chờ xử lý", "Đang tư vấn / Chờ phản hồi", "Hoàn thành"];
-const aiStatuses = [ALL, "AI trả lời thành công", FAILED_AI_STATUS];
 
 // Req #16 – export format types
 const EXPORT_FORMATS: { id: ExportFormat; label: string }[] = [
@@ -117,14 +114,12 @@ function normalizeFilters(filters: FilterValues): FilterValues {
   };
 }
 
-type ActiveFilterKey = "dateRange" | "channel" | "topic" | "conversationStatus" | "aiStatus";
+type ActiveFilterKey = "dateRange" | "channel" | "topic";
 
 const ACTIVE_FILTER_LABELS: Readonly<Record<ActiveFilterKey, string>> = Object.freeze({
   dateRange: "Thời gian",
   channel: "Kênh",
   topic: "Chủ đề",
-  conversationStatus: "Hội thoại",
-  aiStatus: "AI",
 });
 
 export function FilterPanel({
@@ -225,9 +220,6 @@ export function FilterPanel({
       if (key === "dateRange" && value !== "Tùy chỉnh") {
         const { customDateFrom: _from, customDateTo: _to, ...remaining } = previous;
         return { ...remaining, dateRange: value };
-      }
-      if (key === "aiStatus") {
-        return { ...previous, aiStatus: value, aiFailureType: ALL };
       }
       return { ...previous, [key]: value };
     });
@@ -431,12 +423,12 @@ export function FilterPanel({
             {localFilters.dateRange === "Tùy chỉnh" && (
               <>
                 <label className="filter-panel__date-field">
-                  <span>TỪ NGÀY VÀ GIỜ</span>
-                  <input aria-label="Từ ngày và giờ" type="datetime-local" value={localFilters.customDateFrom ?? ""} onChange={(event) => handleLocalChange("customDateFrom", event.target.value)} />
+                  <span>TỪ NGÀY</span>
+                  <input aria-label="Từ ngày" type="date" value={localFilters.customDateFrom ?? ""} onChange={(event) => handleLocalChange("customDateFrom", event.target.value)} />
                 </label>
                 <label className="filter-panel__date-field">
-                  <span>ĐẾN NGÀY VÀ GIỜ</span>
-                  <input aria-label="Đến ngày và giờ" type="datetime-local" value={localFilters.customDateTo ?? ""} onChange={(event) => handleLocalChange("customDateTo", event.target.value)} />
+                  <span>ĐẾN NGÀY</span>
+                  <input aria-label="Đến ngày" type="date" value={localFilters.customDateTo ?? ""} onChange={(event) => handleLocalChange("customDateTo", event.target.value)} />
                 </label>
               </>
             )}
@@ -453,8 +445,6 @@ export function FilterPanel({
                 </span>
               )}
             />
-            <SelectField label="Trạng thái hội thoại" value={localFilters.conversationStatus} options={textOptions(conversationStatuses)} onChange={(value) => handleLocalChange("conversationStatus", value)} />
-            <SelectField label="Trạng thái AI" value={localFilters.aiStatus} options={textOptions(aiStatuses)} onChange={(value) => handleLocalChange("aiStatus", value)} />
           </div>
           <div className="filter-panel__actions">
             <button type="button" onClick={handleReset} className="filter-panel__reset">Đặt lại</button>

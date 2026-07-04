@@ -17,6 +17,7 @@ GROUP_META = {
 
 ORDERED_GROUP_IDS = ORDERED_TOPIC_GROUP_IDS
 KEYWORD_CACHE_TTL_SECONDS = 180
+DEFAULT_GROUP_STATS_DAYS = 30
 _keyword_cache = {}
 
 
@@ -173,6 +174,18 @@ def get_previous_period(start_date: str = None, end_date: str = None):
     return d60.strftime("%Y-%m-%d"), d30.strftime("%Y-%m-%d")
 
 
+def with_default_group_stats_date_range(filters: dict) -> dict:
+    normalized = dict(filters or {})
+    if normalized.get("startDate") or normalized.get("endDate"):
+        return normalized
+
+    end_date = datetime.now().date()
+    start_date = end_date - timedelta(days=DEFAULT_GROUP_STATS_DAYS)
+    normalized["startDate"] = start_date.strftime("%Y-%m-%d")
+    normalized["endDate"] = end_date.strftime("%Y-%m-%d")
+    return normalized
+
+
 class KeywordService:
     async def get_keywords(self, filters: dict) -> dict:
         page = filters.get("page", 1)
@@ -317,6 +330,7 @@ class KeywordService:
         return True
 
     async def get_group_stats(self, filters: dict) -> list:
+        filters = with_default_group_stats_date_range(filters)
         cache_key = make_cache_key("group_stats", filters)
         cached = get_cached_value(cache_key)
         if cached is not None:
@@ -329,6 +343,7 @@ class KeywordService:
         conversation_status = filters.get("conversationStatus")
         ai_status = filters.get("aiStatus")
         top_n = filters.get("topN", 5)
+        include_change_rate = filters.get("includeChangeRate", True)
 
         all_keywords = keyword_repository.get_all()
         group_map = {}
@@ -337,22 +352,6 @@ class KeywordService:
             if gid not in group_map:
                 group_map[gid] = []
             group_map[gid].append(kw)
-
-        # Gộp tất cả từ khóa active thành 1 batch query
-        active_words = list(dict.fromkeys(
-            kw["word"]
-            for kws in group_map.values()
-            for kw in kws
-            if kw.get("status") == "active"
-        ))
-        count_map = keyword_repository.batch_count_keyword_occurrences(
-            active_words,
-            start_date=start_date,
-            end_date=end_date,
-            channel=channel,
-            conversation_status=conversation_status,
-            ai_status=ai_status,
-        ) if active_words else {}
 
         previous_start, previous_end = get_previous_period(start_date, end_date)
         period_words_map = {}
@@ -366,6 +365,16 @@ class KeywordService:
             if group_words:
                 period_words_map[group_id] = group_words
 
+        counts = keyword_repository.batch_count_keywords_and_groups(
+            period_words_map,
+            start_date=start_date,
+            end_date=end_date,
+            channel=channel,
+            conversation_status=conversation_status,
+            ai_status=ai_status,
+        ) if period_words_map else {}
+        count_map = counts.get("keyword_counts", {})
+        current_totals = counts.get("group_totals", {})
         previous_totals = keyword_repository.batch_count_groups(
             period_words_map,
             previous_start,
@@ -373,15 +382,7 @@ class KeywordService:
             channel=channel,
             conversation_status=conversation_status,
             ai_status=ai_status,
-        ) if period_words_map else {}
-        current_totals = keyword_repository.batch_count_groups(
-            period_words_map,
-            start_date,
-            end_date,
-            channel=channel,
-            conversation_status=conversation_status,
-            ai_status=ai_status,
-        ) if period_words_map else {}
+        ) if include_change_rate and period_words_map else {}
         ai_failed_totals = keyword_repository.batch_count_ai_failed_groups(
             period_words_map,
             start_date,
@@ -421,10 +422,11 @@ class KeywordService:
             previous_total = previous_totals.get(group_id, 0)
 
             change_rate = 0
-            if previous_total > 0:
-                change_rate = round(((total_questions - previous_total) / previous_total) * 100)
-            elif total_questions > 0:
-                change_rate = 100
+            if include_change_rate:
+                if previous_total > 0:
+                    change_rate = round(((total_questions - previous_total) / previous_total) * 100)
+                elif total_questions > 0:
+                    change_rate = 100
 
             results.append({
                 "id": group_id,
@@ -439,6 +441,52 @@ class KeywordService:
             })
 
         result = [g for g in results if matches_group_topic(topic, g)]
+        set_cached_value(cache_key, result)
+        return result
+
+    async def get_analysis_data(self, filters: dict) -> dict:
+        filters = with_default_group_stats_date_range(filters)
+        months = filters.get("months", 8)
+        granularity = filters.get("granularity", "month")
+        top_n = filters.get("topN", 5)
+        cache_payload = {
+            "startDate": filters.get("startDate"),
+            "endDate": filters.get("endDate"),
+            "channel": filters.get("channel"),
+            "topic": filters.get("topic"),
+            "conversationStatus": filters.get("conversationStatus"),
+            "aiStatus": filters.get("aiStatus"),
+            "months": months,
+            "granularity": granularity,
+            "topN": top_n,
+            "includeChangeRate": False,
+        }
+        cache_key = make_cache_key("analysis_data", cache_payload)
+        cached = get_cached_value(cache_key)
+        if cached is not None:
+            return cached
+
+        groups = await self.get_group_stats({
+            "startDate": filters.get("startDate"),
+            "endDate": filters.get("endDate"),
+            "channel": filters.get("channel"),
+            "topic": filters.get("topic"),
+            "conversationStatus": filters.get("conversationStatus"),
+            "aiStatus": filters.get("aiStatus"),
+            "topN": top_n,
+            "includeChangeRate": False,
+        })
+        trends = await self.get_trend_data(
+            months=months,
+            channel=filters.get("channel"),
+            start_date=filters.get("startDate"),
+            end_date=filters.get("endDate"),
+            topic=filters.get("topic"),
+            conversation_status=filters.get("conversationStatus"),
+            ai_status=filters.get("aiStatus"),
+            granularity=granularity,
+        )
+        result = {"groups": groups, "trends": trends}
         set_cached_value(cache_key, result)
         return result
 

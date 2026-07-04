@@ -43,17 +43,6 @@ interface NotificationGroup {
   items: SystemNotification[];
 }
 
-function formatApiDate(date: Date) {
-  return date.toISOString().slice(0, 10);
-}
-
-function getLast30DayRange() {
-  const end = new Date();
-  const start = new Date(end);
-  start.setDate(start.getDate() - 30);
-  return { startDate: formatApiDate(start), endDate: formatApiDate(end) };
-}
-
 interface HeaderProps {
   activeScreen: string;
   onNavigate: (screen: string) => void;
@@ -95,9 +84,8 @@ export function Header({ activeScreen, onNavigate }: HeaderProps) {
     setNotificationsError(null);
 
     try {
-      const range = getLast30DayRange();
       const [kpiData, sheetData] = await Promise.all([
-        getDashboardKpi(range).catch((error) => {
+        getDashboardKpi({ includePriorityConversations: false }).catch((error) => {
           console.warn("Không thể tải KPI cho thông báo hệ thống", error);
           return null;
         }),

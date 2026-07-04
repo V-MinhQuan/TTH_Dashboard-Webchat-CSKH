@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Brain, X } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { AlertTriangle, Brain, RefreshCw, X } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
   LineChart, Line,
@@ -16,7 +16,6 @@ import {
   buildTrendApiParams,
   failureSourceFromSuggestion,
   mapApiGroups,
-  mapTopicToGroupId,
   mapTrendRows,
   matchesKeywordFilter,
   NAVY,
@@ -29,7 +28,6 @@ import {
   topicForGroupId,
   type KeywordGroup,
   type KeywordGroupsResponse,
-  type KeywordHeatmapResponse,
   type KeywordTrendResponse,
   type MissingFaqItem,
   type SuggestedFaqResponse,
@@ -90,34 +88,38 @@ const groupToneClasses: Record<string, { activeBorder: string; activeShadow: str
     text: "text-[#0288D1]",
     strip: "bg-[#0288D1]",
   },
+  khac: {
+    activeBorder: "border-[#64748B]",
+    activeShadow: "shadow-[0_4px_16px_rgba(100,116,139,0.14)]",
+    text: "text-[#64748B]",
+    strip: "bg-[#64748B]",
+  },
 };
 
 const defaultGroupTone = groupToneClasses.sat_hach_cntt;
-const heatScaleClasses = ["bg-[#f1f5f9]", "bg-[#EBF2FF]", "bg-[#B9DCFF]", "bg-[#42A5F5]", "bg-[#1565C0]", "bg-[#003865]"];
 const loadingBarHeights = ["h-[58%]", "h-[82%]", "h-[44%]", "h-[70%]", "h-[38%]", "h-[92%]"];
 const emptyMissingFaqGroups: Record<string, MissingFaqItem[]> = Object.fromEntries(
   TOPIC_TAXONOMY.map((topic) => [topic.id, [] as MissingFaqItem[]]),
 );
 const GROUP_FAQ_LIMIT = 1;
-const GROUP_FAQ_CANDIDATE_LIMIT = 120;
+const GROUP_FAQ_CANDIDATE_LIMIT = 50;
 const GROUP_FAQ_KEYWORD_LIMIT = 24;
 const GROUP_FAQ_SCOPE_TERMS: Record<string, string[]> = Object.fromEntries(
   TOPIC_TAXONOMY.map((topic) => [topic.id, [...topic.scopeTerms]]),
 );
+const TOPIC_ALIAS_TERMS: Record<string, string[]> = Object.fromEntries(
+  TOPIC_TAXONOMY.map((topic) => [
+    topic.id,
+    [topic.label, topic.shortLabel, topic.sheetTopic, ...topic.scopeTerms].map(normalizeFilterValue),
+  ]),
+);
 const GROUP_FAQ_EXCLUDE_TERMS: Record<string, string[]> = Object.fromEntries(
   TOPIC_TAXONOMY.map((topic) => [topic.id, [...topic.excludeTerms]]),
 );
-const emptyKeywordOptionalErrors = {
-  suggestedFaqs: false,
-};
 
-type KeywordAnalysisQueryData = {
-  groups: KeywordGroup[];
-  heatmapRows: any[];
-  trendRows: any[];
-  heatmapColsDyn: { key: string; label: string }[];
-  missingFaqs: Record<string, MissingFaqItem[]>;
-  optionalErrors: typeof emptyKeywordOptionalErrors;
+type GroupFaqQueryData = {
+  groupId: string;
+  missingFaqs: MissingFaqItem[];
 };
 
 function toneForGroup(groupId: string) {
@@ -131,32 +133,6 @@ function summaryCardClass(group: KeywordGroup, activeGroup: string | null) {
     "relative cursor-pointer overflow-hidden rounded-[14px] border-[1.5px] bg-white px-[18px] py-4 pl-[22px] transition-all",
     isActive ? cn(tone.activeBorder, tone.activeShadow) : "border-[rgba(0,56,101,0.08)] shadow-[0_2px_8px_rgba(0,56,101,0.05)]",
   );
-}
-
-function heatCellClass(val: number, hasRawValue: boolean) {
-  const base = "rounded-lg px-3 py-1.5 text-center text-[13px] font-bold";
-  const color = val <= 0
-    ? "bg-[#f1f5f9] text-[#003865]"
-    : val >= 5
-      ? "bg-[#003865] text-white"
-      : val >= 4
-        ? "bg-[#1565C0] text-white"
-        : val >= 3
-          ? "bg-[#42A5F5] text-white"
-          : val >= 2
-            ? "bg-[#B9DCFF] text-[#003865]"
-            : "bg-[#EBF2FF] text-[#003865]";
-
-  return cn(base, color, hasRawValue ? "cursor-help" : "cursor-default");
-}
-
-function heatLegendClass(val: number) {
-  if (val <= 0) return "bg-[#f1f5f9]";
-  if (val >= 5) return "bg-[#003865]";
-  if (val >= 4) return "bg-[#1565C0]";
-  if (val >= 3) return "bg-[#42A5F5]";
-  if (val >= 2) return "bg-[#B9DCFF]";
-  return "bg-[#EBF2FF]";
 }
 
 function uniqueGroupKeywords(group: KeywordGroup) {
@@ -188,67 +164,67 @@ function buildGroupSuggestedFaqParams(baseParams: URLSearchParams, group: Keywor
   return { params, keywords };
 }
 
-async function loadKeywordAnalysisData(filters: FilterValues, signal?: AbortSignal): Promise<KeywordAnalysisQueryData> {
+async function loadKeywordGroupsData(filters: FilterValues, signal?: AbortSignal): Promise<KeywordGroup[]> {
   const params = buildApiParams(filters);
-  const trendParams = buildTrendApiParams(filters);
-  let suggestedFaqsLoadFailed = false;
+  params.set("includeChangeRate", "false");
 
-  const [groupsJson, hJson, tJson] = await Promise.all([
-    fetchApiJson<KeywordGroupsResponse>(buildApiUrl("/api/admin/crm-keywords/groups", params), { signal }),
-    fetchApiJson<KeywordHeatmapResponse>(buildApiUrl("/api/admin/crm-keywords/heatmap", params), { signal }),
-    fetchApiJson<KeywordTrendResponse>(buildApiUrl("/api/admin/crm-keywords/trends", trendParams), { signal }),
-  ]);
+  const groupsJson = await fetchApiJson<KeywordGroupsResponse>(
+    buildApiUrl("/api/admin/crm-keywords/groups", params),
+    { signal },
+  );
 
   if (!groupsJson.success || !Array.isArray(groupsJson.data)) {
     throw new Error(groupsJson.message || "Không thể tải thống kê nhóm Keywords.");
   }
-  if (!hJson.success || !Array.isArray(hJson.data)) {
-    throw new Error(hJson.message || "Không thể tải dữ liệu heatmap Keywords.");
-  }
-  if (!tJson.success || !Array.isArray(tJson.data)) {
-    throw new Error(tJson.message || "Không thể tải dữ liệu xu hướng Keywords.");
-  }
-  const groups = mapApiGroups(groupsJson.data);
-  const missingFaqs: Record<string, MissingFaqItem[]> = Object.fromEntries(
-    TOPIC_TAXONOMY.map((topic) => [topic.id, [] as MissingFaqItem[]]),
+
+  return mapApiGroups(groupsJson.data);
+}
+
+async function loadKeywordTrendData(filters: FilterValues, signal?: AbortSignal): Promise<any[]> {
+  const trendParams = buildTrendApiParams(filters);
+
+  const trendsJson = await fetchApiJson<KeywordTrendResponse>(
+    buildApiUrl("/api/admin/crm-keywords/trends", trendParams),
+    { signal },
   );
 
-  await Promise.all(groups.map(async (group) => {
-    const { params: faqParams, keywords } = buildGroupSuggestedFaqParams(params, group);
-    if (keywords.length === 0) return;
+  if (!trendsJson.success || !Array.isArray(trendsJson.data)) {
+    throw new Error(trendsJson.message || "Không thể tải dữ liệu xu hướng Keywords.");
+  }
 
-    try {
-      const faqsJson = await fetchApiJson<SuggestedFaqResponse>(buildApiUrl("/api/analytics/ai/suggested-faqs", faqParams), { signal });
-      if (!faqsJson.success || !Array.isArray(faqsJson.data)) {
-        suggestedFaqsLoadFailed = true;
-        return;
-      }
+  return mapTrendRows(trendsJson.data);
+}
 
-      faqsJson.data.slice(0, GROUP_FAQ_LIMIT).forEach((item) => {
-        if (!item.question?.trim()) return;
-        missingFaqs[group.id].push({
-          question: item.question.trim(),
-          source: item.source || `Tổng hợp từ ${item.freq} hội thoại chứa từ khóa chủ đề`,
-          suggestedAnswer: item.suggestedAnswer || "",
-          added: false,
-        });
-      });
-    } catch (error) {
-      if (signal?.aborted) throw error;
-      suggestedFaqsLoadFailed = true;
-      console.warn(`Optional suggested FAQ request failed for ${group.id}:`, error);
-    }
-  }));
+async function loadGroupSuggestedFaqs(filters: FilterValues, group: KeywordGroup, signal?: AbortSignal): Promise<GroupFaqQueryData> {
+  const params = buildApiParams(filters);
+  const trendParams = buildTrendApiParams(filters);
+  trendParams.forEach((value, key) => params.set(key, value));
+
+  const { params: faqParams, keywords } = buildGroupSuggestedFaqParams(params, group);
+  if (keywords.length === 0) {
+    return { groupId: group.id, missingFaqs: [] };
+  }
+
+  const faqsJson = await fetchApiJson<SuggestedFaqResponse>(
+    buildApiUrl("/api/analytics/ai/suggested-faqs", faqParams),
+    { signal, cache: false },
+  );
+
+  if (!faqsJson.success || !Array.isArray(faqsJson.data)) {
+    throw new Error(faqsJson.message || "Không thể tải FAQ đề xuất.");
+  }
 
   return {
-    groups,
-    heatmapRows: hJson.data,
-    trendRows: mapTrendRows(tJson.data),
-    heatmapColsDyn: hJson.columns && Array.isArray(hJson.columns) ? hJson.columns : [],
-    missingFaqs,
-    optionalErrors: {
-      suggestedFaqs: suggestedFaqsLoadFailed,
-    },
+    groupId: group.id,
+    missingFaqs: faqsJson.data.slice(0, GROUP_FAQ_LIMIT).flatMap((item) => {
+      if (!item.question?.trim()) return [];
+      return [{
+        question: item.question.trim(),
+        source: item.source || `Tổng hợp từ ${item.freq} hội thoại chứa từ khóa chủ đề`,
+        suggestedAnswer: item.suggestedAnswer || "",
+        added: false,
+      }];
+    }),
   };
 }
 
@@ -319,17 +295,15 @@ function KeywordErrorState({ message, onRetry }: { message: string; onRetry: () 
 }
 
 export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Props) {
+  const queryClient = useQueryClient();
   // appliedFilters chỉ cập nhật khi bấm "Áp dụng", không re-fetch khi thay đổi bộ lọc chưa áp dụng
   const [appliedFilters, setAppliedFilters] = useState<FilterValues>(filters);
   const [addedFaqKeys, setAddedFaqKeys] = useState<Record<string, Record<string, boolean>>>({});
+  const [loadedMissingFaqsByGroup, setLoadedMissingFaqsByGroup] = useState<Record<string, MissingFaqItem[]>>({});
+  const [faqLoadErrorsByGroup, setFaqLoadErrorsByGroup] = useState<Record<string, string>>({});
 
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [activeMissingFaq, setActiveMissingFaq] = useState<{ groupId: string; index: number; item: MissingFaqItem } | null>(null);
-
-  const getFaqNeededCount = (groupId: string) => {
-    const items = missingFaqs[groupId] || [];
-    return items.filter((item) => !item.added).length;
-  };
 
   const markMissingFaqAdded = (groupId: string, index: number) => {
     const item = missingFaqs[groupId]?.[index];
@@ -348,14 +322,39 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
   };
 
   const [activeGroup, setActiveGroup] = useState<string | null>(null);
-  const keywordQuery = useQuery({
-    queryKey: ["keyword-analysis", appliedFilters],
-    queryFn: ({ signal }) => loadKeywordAnalysisData(appliedFilters, signal),
-    placeholderData: (previousData) => previousData,
+  const groupsQuery = useQuery({
+    queryKey: ["keyword-groups", appliedFilters],
+    queryFn: ({ signal }) => loadKeywordGroupsData(appliedFilters, signal),
+  });
+
+  const trendQuery = useQuery({
+    queryKey: ["keyword-trends", appliedFilters],
+    queryFn: ({ signal }) => loadKeywordTrendData(appliedFilters, signal),
+  });
+
+  const groups = groupsQuery.data || [];
+  const trendRows = trendQuery.data || [];
+  const selectedGroup = selectedGroupId ? groups.find((group) => group.id === selectedGroupId) || null : null;
+  const selectedGroupFaqsLoaded = Boolean(selectedGroupId && Object.prototype.hasOwnProperty.call(loadedMissingFaqsByGroup, selectedGroupId));
+
+  const selectedFaqQuery = useQuery({
+    queryKey: [
+      "keyword-suggested-faqs",
+      appliedFilters,
+      selectedGroupId,
+      selectedGroup?.keywords.map((keyword) => `${keyword.word}:${keyword.count}`).join("|") || "",
+    ],
+    queryFn: ({ signal }) => {
+      if (!selectedGroup) return Promise.resolve({ groupId: selectedGroupId || "", missingFaqs: [] });
+      return loadGroupSuggestedFaqs(appliedFilters, selectedGroup, signal);
+    },
+    enabled: Boolean(selectedGroup && selectedGroupId && !selectedGroupFaqsLoaded),
+    retry: 1,
+    staleTime: 5 * 60 * 1000,
   });
 
   const missingFaqs = useMemo<Record<string, MissingFaqItem[]>>(() => {
-    const source = keywordQuery.data?.missingFaqs || emptyMissingFaqGroups;
+    const source = { ...emptyMissingFaqGroups, ...loadedMissingFaqsByGroup };
     return Object.fromEntries(
       Object.entries(source).map(([groupId, items]) => [
         groupId,
@@ -365,27 +364,66 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
         })),
       ]),
     ) as Record<string, MissingFaqItem[]>;
-  }, [keywordQuery.data?.missingFaqs, addedFaqKeys]);
+  }, [loadedMissingFaqsByGroup, addedFaqKeys]);
+
+  const isFaqGroupLoaded = (groupId: string) => Object.prototype.hasOwnProperty.call(loadedMissingFaqsByGroup, groupId);
+
+  const getFaqNeededCount = (group: KeywordGroup) => {
+    if (!isFaqGroupLoaded(group.id)) return Math.max(0, group.faqNeeded || 0);
+    const items = missingFaqs[group.id] || [];
+    return items.filter((item) => !item.added).length;
+  };
 
   // Hàm xử lý khi bấm "Áp dụng" - cập nhật appliedFilters để trigger fetch
   const handleApplyFilters = (newFilters: FilterValues) => {
+    queryClient.cancelQueries({ queryKey: ["keyword-groups"] });
+    queryClient.cancelQueries({ queryKey: ["keyword-trends"] });
+    queryClient.cancelQueries({ queryKey: ["keyword-suggested-faqs"] });
+    setLoadedMissingFaqsByGroup({});
+    setFaqLoadErrorsByGroup({});
+    setSelectedGroupId(null);
+    setActiveMissingFaq(null);
     onFiltersChange(newFilters);
     setAppliedFilters(newFilters);
     if (onApplyFilters) onApplyFilters(newFilters);
   };
 
   useEffect(() => {
+    setLoadedMissingFaqsByGroup({});
+    setFaqLoadErrorsByGroup({});
+    setSelectedGroupId(null);
+    setActiveMissingFaq(null);
     setAppliedFilters(filters);
   }, [filters]);
 
+  useEffect(() => {
+    if (!selectedFaqQuery.data?.groupId) return;
+    setLoadedMissingFaqsByGroup((current) => ({
+      ...current,
+      [selectedFaqQuery.data.groupId]: selectedFaqQuery.data.missingFaqs,
+    }));
+    setFaqLoadErrorsByGroup((current) => {
+      const next = { ...current };
+      delete next[selectedFaqQuery.data.groupId];
+      return next;
+    });
+  }, [selectedFaqQuery.data]);
+
+  useEffect(() => {
+    if (!selectedGroupId || !selectedFaqQuery.isError) return;
+    const message = selectedFaqQuery.error instanceof Error ? selectedFaqQuery.error.message : "Chưa tải được dữ liệu phụ FAQ đề xuất.";
+    setFaqLoadErrorsByGroup((current) => ({ ...current, [selectedGroupId]: message }));
+  }, [selectedFaqQuery.error, selectedFaqQuery.isError, selectedGroupId]);
+
   const retryLoadData = () => {
-    keywordQuery.refetch();
+    groupsQuery.refetch();
+    trendQuery.refetch();
   };
 
   const renderLoadingOrError = () => {
-    if (keywordQuery.isPending) return <KeywordLoadingState />;
-    if (keywordQuery.isError && !keywordQuery.data) {
-      const message = keywordQuery.error instanceof Error ? keywordQuery.error.message : "Không thể kết nối API Keywords.";
+    if (groupsQuery.isPending) return <KeywordLoadingState />;
+    if (groupsQuery.isError && !groupsQuery.data) {
+      const message = groupsQuery.error instanceof Error ? groupsQuery.error.message : "Không thể kết nối API Keywords.";
       return <KeywordErrorState message={message} onRetry={retryLoadData} />;
     }
     return null;
@@ -403,12 +441,6 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
   }
 
   // 1. Topic (Chủ đề) Filter
-  const groups = keywordQuery.data?.groups || [];
-  const heatmapRows = keywordQuery.data?.heatmapRows || [];
-  const trendRows = keywordQuery.data?.trendRows || [];
-  const heatmapColsDyn = keywordQuery.data?.heatmapColsDyn || [];
-  const suggestedFaqsLoadFailed = Boolean(keywordQuery.data?.optionalErrors?.suggestedFaqs);
-
   const filteredGroups = groups.filter((g) => {
     const topic = appliedFilters.topic || "";
     if (!topic || topic === "Tất cả") return true;
@@ -420,15 +452,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
       .filter(Boolean)
       .filter((token) => normalizedGroupName.includes(token)).length;
 
-    const aliases: Record<string, string[]> = {
-      toeic: ["toeic"],
-      sat_hach_cntt: ["sat hach cntt", "sat hach cong nghe thong tin", "cntt", "cong nghe thong tin", "ic3", "thcb", "thnc"],
-      mos: ["mos", "microsoft office specialist"],
-      hoc_tieng_anh: ["hoc tieng anh", "tieng anh", "anh van", "ngoai ngu", "vstep", "b1", "b2", "chuan dau ra"],
-      hoc_tin_hoc: ["hoc tin hoc", "khoa tin hoc", "lop tin hoc", "tin hoc van phong"],
-    };
-
-    if (aliases[g.id]?.some((alias) => normalizedTopic === alias || normalizedTopic.includes(alias) || alias.includes(normalizedTopic))) {
+    if (TOPIC_ALIAS_TERMS[g.id]?.some((alias) => normalizedTopic === alias || normalizedTopic.includes(alias) || alias.includes(normalizedTopic))) {
       return true;
     }
 
@@ -438,10 +462,11 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
 
   const finalGroups = filteredGroups;
   const finalTrendRows = trendRows;
-  const finalHeatmapRows = heatmapRows;
 
   const displayedGroups = activeGroup ? finalGroups.filter((g) => g.id === activeGroup) : finalGroups;
-  const displayedHeatmapRows = activeGroup ? finalHeatmapRows.filter((r) => mapTopicToGroupId(r.topic) === activeGroup) : finalHeatmapRows;
+  const displayedKeywordGroups = displayedGroups.filter((group) => group.id !== "khac");
+  const selectedGroupFaqsLoading = Boolean(selectedGroupId && selectedFaqQuery.isFetching && !isFaqGroupLoaded(selectedGroupId));
+  const selectedGroupFaqError = selectedGroupId ? faqLoadErrorsByGroup[selectedGroupId] : undefined;
 
   const hasAiFailedMetric = finalGroups.some((g) => g.aiFailed !== null);
 
@@ -457,12 +482,12 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
       <div className="mb-5 flex items-start justify-between gap-4">
         <div>
           <h1 className="mb-1 text-xl font-bold text-[#003865]">Phân tích từ khóa</h1>
-          <p className="m-0 text-[13px] text-[rgba(0,56,101,0.5)]">Phân tích theo 5 nhóm chủ đề chính</p>
+          <p className="m-0 text-[13px] text-[rgba(0,56,101,0.5)]">Phân tích theo 6 chủ đề hệ thống</p>
         </div>
       </div>
 
       {/* Summary cards */}
-      <div className="mb-6 grid grid-cols-1 gap-3.5 md:grid-cols-2 xl:grid-cols-5">
+      <div className="mb-6 grid grid-cols-1 gap-3.5 md:grid-cols-3 xl:grid-cols-[repeat(6,minmax(0,1fr))]">
         {finalGroups.map((g) => (
           <div key={g.id} onClick={() => setActiveGroup(activeGroup === g.id ? null : g.id)} className={summaryCardClass(g, activeGroup)}>
             <span aria-hidden="true" className={cn("absolute inset-y-0 left-0 w-1", toneForGroup(g.id).strip)} />
@@ -530,100 +555,49 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
       {/* Charts row 2: Line trend */}
       <div className={cn(cardShellClass, "mb-5")}>
         <div className="mb-4 text-sm font-bold text-[#003865]">Xu hướng chủ đề theo thời gian</div>
-        <ResponsiveContainer width="100%" height={200}>
-          <LineChart data={finalTrendRows} margin={{ top: 0, right: 10, bottom: 0, left: -10 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" />
-            <XAxis dataKey="date" tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
-            <YAxis tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
-            <Tooltip />
-            <Legend iconSize={10} />
-            {TOPIC_TAXONOMY.map((topic) => {
-              const style = TOPIC_LINE_STYLES[topic.id];
-              return (!activeGroup || activeGroup === topic.id) ? (
-                <Line
-                  key={topic.id}
-                  type="monotone"
-                  dataKey={topic.label}
-                  stroke={style.color}
-                  strokeDasharray={style.dash}
-                  strokeWidth={2.8}
-                  dot={{ r: 3, fill: style.color }}
-                />
-              ) : null;
-            })}
-          </LineChart>
-        </ResponsiveContainer>
+        {trendQuery.isPending ? (
+          <div className="flex h-[200px] items-center justify-center rounded-xl border border-dashed border-[rgba(0,56,101,0.14)] bg-[#f8fafc] text-xs font-semibold text-[rgba(0,56,101,0.56)]">
+            Đang tải dữ liệu xu hướng theo bộ lọc...
+          </div>
+        ) : trendQuery.isError ? (
+          <div className="flex h-[200px] items-center justify-center rounded-xl border border-dashed border-[#f4b4a2] bg-[#fff7f4] px-4 text-center text-xs font-semibold text-[#b73512]">
+            Chưa tải được dữ liệu xu hướng. Các số liệu tổng phía trên vẫn đang dùng bộ lọc đã áp dụng.
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height={200}>
+            <LineChart data={finalTrendRows} margin={{ top: 0, right: 10, bottom: 0, left: -10 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" />
+              <XAxis dataKey="date" tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
+              <YAxis tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
+              <Tooltip />
+              <Legend iconSize={10} />
+              {TOPIC_TAXONOMY.map((topic) => {
+                const style = TOPIC_LINE_STYLES[topic.id];
+                return (!activeGroup || activeGroup === topic.id) ? (
+                  <Line
+                    key={topic.id}
+                    type="monotone"
+                    dataKey={topic.label}
+                    stroke={style.color}
+                    strokeDasharray={style.dash}
+                    strokeWidth={2.8}
+                    dot={{ r: 3, fill: style.color }}
+                  />
+                ) : null;
+              })}
+            </LineChart>
+          </ResponsiveContainer>
+        )}
       </div>
-
-      {/* Heatmap: AI error level */}
-      <div className={cn(cardShellClass, "mb-5")}>
-        <div className="mb-4 flex items-center gap-2">
-          <Brain size={16} className="text-[#D73C01]" />
-          <span className="text-sm font-bold text-[#003865]">Mức độ lỗi AI theo nhóm chủ đề</span>
-          <span className="ml-auto text-[11px] text-[rgba(0,56,101,0.4)]">0 = không có lỗi · 5 = cao</span>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full border-separate [border-spacing:4px]">
-            <thead>
-              <tr>
-                <th className="w-[140px] p-2 text-left text-[11px] font-semibold text-[rgba(0,56,101,0.5)]">Nhóm chủ đề</th>
-                {heatmapColsDyn.map((col) => (
-                  <th key={col.key} className="px-3 py-2 text-center text-[11px] font-semibold text-[rgba(0,56,101,0.5)]">{col.label}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {displayedHeatmapRows.map((row: any) => (
-                <tr key={row.topic}>
-                  <td className="px-2 py-1.5 text-xs font-semibold text-[#003865]">{row.topic}</td>
-                  {heatmapColsDyn.map((col) => {
-                    const val = (row as any)[col.key];
-                    const rawVal = (row as any)[`${col.key}_raw`];
-                    return (
-                      <td key={col.key} title={rawVal !== undefined ? `${rawVal} lỗi AI từ database` : ""} className={heatCellClass(val, rawVal !== undefined)}>
-                        {val}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="mt-3 flex items-center gap-3 text-[11px] text-[rgba(0,56,101,0.5)]">
-          <span className="font-semibold">Mức độ:</span>
-          <span className="flex items-center gap-[5px]">
-            <span className={cn("inline-block h-4 w-4 rounded border border-[rgba(0,56,101,0.1)]", heatLegendClass(0))} />
-            Không có
-          </span>
-          {[
-            { label: "Thấp", val: 1 },
-            { label: "Trung bình", val: 3 },
-            { label: "Cao", val: 5 },
-          ].map(({ label, val }) => (
-            <span key={label} className="flex items-center gap-[5px]">
-              <span className={cn("inline-block h-4 w-4 rounded border border-[rgba(0,56,101,0.1)]", heatLegendClass(val))} />
-              {label}
-            </span>
-          ))}
-          <span className="ml-2 flex items-center gap-[3px]">
-            {heatScaleClasses.map((colorClass) => (
-              <span key={colorClass} className={cn("inline-block h-3 w-5 rounded-[2px]", colorClass)} />
-            ))}
-          </span>
-        </div>
-      </div>
-
-      {suggestedFaqsLoadFailed && (
-        <div className="mb-4 flex items-center gap-2 rounded-xl border border-[#FADFA8] bg-[#FFF7E6] px-4 py-3 text-xs font-semibold text-[#8A5A14]">
-          <AlertTriangle size={15} aria-hidden="true" />
-          <span>FAQ đề xuất bổ sung tạm thời chưa tải được. Các biểu đồ và từ khóa chính vẫn đang hiển thị.</span>
-        </div>
-      )}
 
       {/* Keyword detail cards */}
       <div className={cn("grid gap-5", activeGroup ? "grid-cols-[1fr]" : "grid-cols-2")}>
-        {displayedGroups.map((group) => (
+        {displayedKeywordGroups.length === 0 && (
+          <div className="rounded-2xl border border-[rgba(0,56,101,0.08)] bg-white px-5 py-6 text-center text-xs text-[rgba(0,56,101,0.48)]">
+            Không hiển thị từ khóa riêng cho chủ đề Khác.
+          </div>
+        )}
+        {displayedKeywordGroups.map((group) => (
           <div key={group.id} className="overflow-hidden rounded-2xl border border-[rgba(0,56,101,0.08)] bg-white shadow-[0_2px_8px_rgba(0,56,101,0.05)]">
             <div className="flex items-center gap-2.5 border-b border-[rgba(0,56,101,0.06)] px-[18px] py-4">
               <div className={cn("h-6 w-2 rounded", toneForGroup(group.id).strip)} />
@@ -634,10 +608,14 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
                   onClick={() => {
                     setSelectedGroupId(group.id);
                   }}
-                  title={suggestedFaqsLoadFailed ? "Dữ liệu FAQ đề xuất tạm thời chưa tải được" : undefined}
+                  title={faqLoadErrorsByGroup[group.id] || undefined}
                   className="cursor-pointer rounded-md border border-[#ED5206] bg-white px-2 py-0.5 text-[11px] font-semibold text-[#ED5206]"
                 >
-                  {suggestedFaqsLoadFailed ? "FAQ chưa tải" : `+${getFaqNeededCount(group.id)} FAQ cần thêm`}
+                  {selectedGroupId === group.id && selectedFaqQuery.isFetching && !isFaqGroupLoaded(group.id)
+                    ? "FAQ đang tải"
+                    : faqLoadErrorsByGroup[group.id]
+                      ? "FAQ lỗi tải"
+                      : `+${getFaqNeededCount(group)} FAQ cần thêm`}
                 </button>
               </div>
             </div>
@@ -697,19 +675,37 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
                   .map((item, originalIndex) => ({ ...item, originalIndex }))
                   .filter((item) => !item.added);
 
+                if (selectedGroupFaqsLoading) {
+                  return (
+                    <div className="rounded-xl border border-[rgba(0,56,101,0.08)] bg-[#F8FBFD] px-5 py-7 text-center">
+                      <RefreshCw size={22} className="mx-auto mb-2 animate-spin text-[#003BB9]" aria-hidden="true" />
+                      <div className="text-[13px] font-semibold text-[#003865]">Đang tải FAQ đề xuất cho nhóm này...</div>
+                      <div className="mt-1 text-xs text-[rgba(0,56,101,0.55)]">Dữ liệu từ khóa chính vẫn đang hiển thị bình thường.</div>
+                    </div>
+                  );
+                }
+
                 if (itemsToRender.length === 0) {
-                  if (suggestedFaqsLoadFailed) {
+                  if (selectedGroupFaqError) {
                     return (
                       <div className="rounded-xl border border-[#FADFA8] bg-[#FFF7E6] px-5 py-6 text-center">
                         <AlertTriangle size={22} className="mx-auto mb-2 text-[#B7791F]" aria-hidden="true" />
-                        <div className="text-[13px] font-semibold text-[#8A5A14]">Chưa tải được dữ liệu phụ FAQ đề xuất.</div>
+                        <div className="text-[13px] font-semibold text-[#8A5A14]">{selectedGroupFaqError}</div>
                         <div className="mt-1 text-xs text-[rgba(0,56,101,0.55)]">Dữ liệu từ khóa chính vẫn đang hiển thị bình thường.</div>
                         <button
                           type="button"
-                          onClick={() => retryLoadData()}
+                          onClick={() => {
+                            if (!selectedGroupId) return;
+                            setFaqLoadErrorsByGroup((current) => {
+                              const next = { ...current };
+                              delete next[selectedGroupId];
+                              return next;
+                            });
+                            selectedFaqQuery.refetch();
+                          }}
                           className="mt-4 cursor-pointer rounded-lg border border-[#ED5206] bg-white px-3 py-1.5 text-xs font-semibold text-[#ED5206]"
                         >
-                          Tải lại dữ liệu
+                          Tải lại FAQ
                         </button>
                       </div>
                     );

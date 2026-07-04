@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { MessageSquare, CheckCircle, AlertTriangle, Zap, Bot, Lightbulb, Search } from "lucide-react";
+import { Bot, Lightbulb, Search } from "lucide-react";
 import {
   Popover,
   PopoverContent,
@@ -20,7 +20,6 @@ import { getDateParamsFromFilters } from "../../utils/dateFilters";
 
 const NAVY = "#003865";
 const ORANGE = "#D73C01";
-const GREEN = "#228A61";
 const AVG_RESPONSE_TIME_COLOR = "#F36C2E";
 
 const CHANNEL_COLORS: Record<string, string> = {
@@ -83,59 +82,6 @@ const STATUS_COLORS: Record<string, string> = {
 };
 const PIE_COLORS = ["#003865", "#ED5206", "#1565C0", ORANGE, "#42A5F5", "#F36C2E"];
 
-function formatLocalDate(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function getDatesFromRange(range: string, customFrom?: string, customTo?: string): { startDate?: string; endDate?: string } {
-  const today = new Date();
-
-  if (range === "Hôm nay") {
-    const dateStr = formatLocalDate(today);
-    return { startDate: dateStr, endDate: dateStr };
-  }
-
-  if (range === "7 ngày qua") {
-    const start = new Date(today);
-    start.setDate(today.getDate() - 7);
-    return { startDate: formatLocalDate(start), endDate: formatLocalDate(today) };
-  }
-
-  if (range === "30 ngày qua") {
-    const start = new Date(today);
-    start.setDate(today.getDate() - 30);
-    return { startDate: formatLocalDate(start), endDate: formatLocalDate(today) };
-  }
-
-  if (range === "Tháng này") {
-    const start = new Date(today.getFullYear(), today.getMonth(), 1);
-    return { startDate: formatLocalDate(start), endDate: formatLocalDate(today) };
-  }
-
-  if (range === "Quý này") {
-    const currentMonth = today.getMonth();
-    const quarterStartMonth = Math.floor(currentMonth / 3) * 3;
-    const start = new Date(today.getFullYear(), quarterStartMonth, 1);
-    return { startDate: formatLocalDate(start), endDate: formatLocalDate(today) };
-  }
-
-  if (range === "Tùy chỉnh" && customFrom) {
-    const fromDate = new Date(customFrom);
-    const toDate = customTo ? new Date(customTo) : today;
-    if (!isNaN(fromDate.getTime())) {
-      return {
-        startDate: formatLocalDate(fromDate),
-        endDate: formatLocalDate(toDate),
-      };
-    }
-  }
-
-  return {};
-}
-
 function getHeatColor(value: number): string {
   if (value === 0) return "#EBF2FF";
   if (value <= 3) return "#B8D8FF";
@@ -146,12 +92,6 @@ function getHeatColor(value: number): string {
 
 function getHeatTextColor(value: number): string {
   return value >= 4 ? "#fff" : "#003865";
-}
-
-function getAiSuccessRate(channel: ChannelSummary) {
-  const total = channel.ai_ok + channel.ai_fail;
-  if (!total) return 0;
-  return Math.round((channel.ai_ok / total) * 100);
 }
 
 function getPercent(value: number, total: number) {
@@ -606,44 +546,46 @@ export function ChannelAnalysis({ filters, onFiltersChange, onNavigate }: Channe
             <p style={{ fontSize: "12px", color: "rgba(0,56,101,0.5)", marginLeft: "14px", marginTop: "4px" }}>Phân tích câu hỏi, chủ đề và lỗi AI theo từng kênh</p>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: "20px", marginBottom: "24px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "16px", marginBottom: "24px" }}>
             {channelData.map((ch) => (
               <div
                 key={ch.channel}
                 style={{
                   backgroundColor: "#fff",
-                  borderRadius: "20px",
-                  border: "1px solid rgba(0,56,101,0.08)",
-                  boxShadow: "0 2px 12px rgba(0,56,101,0.06)",
-                  padding: "20px",
-                  cursor: "pointer",
-                  transition: "all 0.2s",
-                }}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLDivElement).style.transform = "translateY(-2px)";
-                  (e.currentTarget as HTMLDivElement).style.boxShadow = "0 6px 24px rgba(0,56,101,0.12)";
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLDivElement).style.transform = "translateY(0)";
-                  (e.currentTarget as HTMLDivElement).style.boxShadow = "0 2px 12px rgba(0,56,101,0.06)";
+                  borderRadius: "16px",
+                  padding: "18px 20px",
+                  boxShadow: "0 2px 10px rgba(0,56,101,0.06)",
+                  border: "1px solid rgba(0,56,101,0.07)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "16px",
+                  transition: "all 0.2s ease"
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "16px" }}>
-                  <div style={{ width: "10px", height: "10px", borderRadius: "50%", backgroundColor: CHANNEL_COLORS[ch.channel] || "#94A3B8" }} />
-                  <span style={{ fontWeight: 700, fontSize: "14px", color: NAVY }}>{ch.channel}</span>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <div style={{ width: "10px", height: "10px", borderRadius: "50%", backgroundColor: CHANNEL_COLORS[ch.channel] || "#94A3B8" }} />
+                    <span style={{ fontSize: "14px", fontWeight: 600, color: "rgba(0,56,101,0.9)" }}>{ch.channel}</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span style={{ fontSize: "12px", color: "rgba(0,56,101,0.45)", fontWeight: 400 }}>Tổng hội thoại</span>
+                    <span style={{ fontSize: "14px", fontWeight: 700, color: "rgba(0,56,101,0.9)" }}>{ch.total.toLocaleString("vi-VN")}</span>
+                  </div>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-                  {[
-                    { icon: MessageSquare, label: "Tổng hội thoại", value: ch.total.toLocaleString("vi-VN"), color: NAVY },
-                    { icon: AlertTriangle, label: "Chờ xử lý", value: `${ch.unresolved.toLocaleString("vi-VN")} (${getUnresolvedRate(ch)}%)`, color: ORANGE },
-                    { icon: Zap, label: "Câu AI thất bại", value: `${ch.ai_fail.toLocaleString("vi-VN")} câu (${getAiFailRate(ch)}%)`, color: ORANGE },
-                    { icon: CheckCircle, label: "Tỷ lệ AI tốt", value: `${getAiSuccessRate(ch)}%`, color: GREEN },
-                  ].map(({ label, value, color }) => (
-                    <div key={label} style={{ textAlign: "center", padding: "10px 8px", borderRadius: "10px", backgroundColor: "#f8fafc" }}>
-                      <div style={{ fontSize: String(value).length > 9 ? "14px" : "16px", fontWeight: 700, color, whiteSpace: "nowrap" }}>{value}</div>
-                      <div style={{ fontSize: "10px", color: "rgba(0,56,101,0.45)", marginTop: "2px" }}>{label}</div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                  <div style={{ backgroundColor: "#f8fafc", borderRadius: "12px", padding: "14px 10px", textAlign: "center", border: "1px solid rgba(0,56,101,0.03)" }}>
+                    <div style={{ fontSize: "15px", fontWeight: 700, color: "#E05A1E" }}>
+                      {ch.ai_fail.toLocaleString("vi-VN")} câu ({getAiFailRate(ch)}%)
                     </div>
-                  ))}
+                    <div style={{ fontSize: "12px", color: "rgba(0,56,101,0.45)", marginTop: "4px", fontWeight: 400 }}>Câu AI thất bại</div>
+                  </div>
+                  <div style={{ backgroundColor: "#f8fafc", borderRadius: "12px", padding: "14px 10px", textAlign: "center", border: "1px solid rgba(0,56,101,0.03)" }}>
+                    <div style={{ fontSize: "15px", fontWeight: 700, color: "#E05A1E" }}>
+                      {ch.unresolved.toLocaleString("vi-VN")} ({getUnresolvedRate(ch)}%)
+                    </div>
+                    <div style={{ fontSize: "12px", color: "rgba(0,56,101,0.45)", marginTop: "4px", fontWeight: 400 }}>Chờ xử lý</div>
+                  </div>
                 </div>
               </div>
             ))}

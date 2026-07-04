@@ -74,6 +74,15 @@ export type KeywordTrendResponse = {
   data: any[];
 };
 
+export type KeywordAnalysisResponse = {
+  success: boolean;
+  message?: string;
+  data: {
+    groups: any[];
+    trends: any[];
+  };
+};
+
 export type SuggestedFaqItem = {
   question: string;
   suggestedAnswer: string;
@@ -175,16 +184,11 @@ export function buildApiParams(filters: FilterValues): URLSearchParams {
     if (filters.dateRange === "Hôm nay") startDate.setHours(0, 0, 0, 0);
     else if (filters.dateRange === "7 ngày qua") startDate.setDate(now.getDate() - 7);
     else if (filters.dateRange === "30 ngày qua") startDate.setDate(now.getDate() - 30);
-    else if (filters.dateRange === "Tháng này") startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-    else if (filters.dateRange === "Quý này") {
-      const q = Math.floor(now.getMonth() / 3);
-      startDate = new Date(now.getFullYear(), q * 3, 1);
-    }
   }
 
   if (filters.dateRange === "Tùy chỉnh") {
-    if (filters.customDateFrom) params.set("startDate", filters.customDateFrom);
-    if (filters.customDateTo) params.set("endDate", filters.customDateTo);
+    if (startDate) params.set("startDate", formatLocalDate(startDate));
+    if (endDate) params.set("endDate", formatLocalDate(endDate));
   } else {
     if (startDate) params.set("startDate", formatLocalDate(startDate));
     if (endDate) params.set("endDate", formatLocalDate(endDate));
@@ -205,14 +209,6 @@ export function buildApiParams(filters: FilterValues): URLSearchParams {
     params.set("topic", filters.topic);
   }
 
-  if (filters.conversationStatus && filters.conversationStatus !== "Tất cả") {
-    params.set("conversationStatus", filters.conversationStatus);
-  }
-
-  if (filters.aiStatus && filters.aiStatus !== "Tất cả") {
-    params.set("aiStatus", filters.aiStatus);
-  }
-
   return params;
 }
 
@@ -225,8 +221,6 @@ export function buildTrendApiParams(filters: FilterValues): URLSearchParams {
 }
 
 export function getTrendGranularity(filters: FilterValues) {
-  if (filters.dateRange === "Quý này") return "week";
-
   if (filters.dateRange === "Tùy chỉnh" && filters.customDateFrom && filters.customDateTo) {
     const start = new Date(filters.customDateFrom);
     const end = new Date(filters.customDateTo);

@@ -1,4 +1,4 @@
-import { DashboardKpiData, ChannelAnalyticsData, APIResponse } from "../types/dashboard";
+import { DashboardKpiData, ChannelAnalyticsData, APIResponse, PriorityConversation, TopQuestion, UrgentAlert } from "../types/dashboard";
 
 // Lấy Base URL từ biến môi trường (Vite sử dụng import.meta.env)
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:5000";
@@ -15,6 +15,20 @@ type CacheEntry<T> = {
 };
 
 type DashboardKpiPayload = Partial<DashboardKpiData> & Record<string, any>;
+type DashboardTopQuestionsPayload = {
+  topQuestions?: TopQuestion[];
+  topQuestionsStatus?: string;
+  topQuestionsMessage?: string;
+};
+type DashboardKpiComparisonPayload = {
+  previous?: {
+    totalConversations?: number;
+    totalMessages?: number;
+    activeConversations?: number;
+    closedConversations?: number;
+    aiFailures?: number;
+  };
+};
 
 const inFlightGetRequests = new Map<string, Promise<any>>();
 const AUTH_STORAGE_KEY = "flic_dashboard_auth";
@@ -376,6 +390,10 @@ export async function getDashboardKpi(params?: {
   conversationStatus?: string;
   aiStatus?: string;
   forceRefresh?: boolean;
+  includePriorityConversations?: boolean;
+  includeUrgentAlerts?: boolean;
+  includeTopQuestions?: boolean;
+  includeTrendComparison?: boolean;
 }): Promise<DashboardKpiData> {
   const url = buildApiUrl("/api/dashboard/kpi");
 
@@ -400,6 +418,18 @@ export async function getDashboardKpi(params?: {
   if (params?.forceRefresh) {
     url.searchParams.append("forceRefresh", "true");
   }
+  if (params?.includePriorityConversations === false) {
+    url.searchParams.append("includePriorityConversations", "false");
+  }
+  if (params?.includeUrgentAlerts === false) {
+    url.searchParams.append("includeUrgentAlerts", "false");
+  }
+  if (params?.includeTopQuestions === false) {
+    url.searchParams.append("includeTopQuestions", "false");
+  }
+  if (params?.includeTrendComparison === false) {
+    url.searchParams.append("includeTrendComparison", "false");
+  }
 
   const resJson = await fetchApiJson<APIResponse<DashboardKpiPayload>>(
     url,
@@ -411,6 +441,188 @@ export async function getDashboardKpi(params?: {
   }
 
   return normalizeDashboardKpiData(resJson.data);
+}
+
+export async function getDashboardKpiComparison(params?: {
+  startDate?: string;
+  endDate?: string;
+  channel?: string;
+  topic?: string;
+  conversationStatus?: string;
+  aiStatus?: string;
+  signal?: AbortSignal;
+}): Promise<Required<Required<DashboardKpiComparisonPayload>["previous"]>> {
+  const url = buildApiUrl("/api/dashboard/kpi-comparison");
+
+  if (params?.startDate) {
+    url.searchParams.append("startDate", params.startDate);
+  }
+  if (params?.endDate) {
+    url.searchParams.append("endDate", params.endDate);
+  }
+  if (params?.channel && params.channel !== "Tất cả") {
+    url.searchParams.append("channel", formatChannelParam(params.channel));
+  }
+  if (params?.topic && params.topic !== "Tất cả") {
+    url.searchParams.append("topic", params.topic);
+  }
+  if (params?.conversationStatus && params.conversationStatus !== "Tất cả") {
+    url.searchParams.append("conversationStatus", params.conversationStatus);
+  }
+  if (params?.aiStatus && params.aiStatus !== "Tất cả") {
+    url.searchParams.append("aiStatus", params.aiStatus);
+  }
+
+  const resJson = await fetchApiJson<APIResponse<DashboardKpiComparisonPayload>>(url, {
+    cache: false,
+    signal: params?.signal,
+  });
+
+  if (!resJson.success || !resJson.data) {
+    throw new Error(resJson.message || "Không thể tải số liệu so sánh KPI.");
+  }
+
+  return {
+    totalConversations: toNumber(resJson.data.previous?.totalConversations),
+    totalMessages: toNumber(resJson.data.previous?.totalMessages),
+    activeConversations: toNumber(resJson.data.previous?.activeConversations),
+    closedConversations: toNumber(resJson.data.previous?.closedConversations),
+    aiFailures: toNumber(resJson.data.previous?.aiFailures),
+  };
+}
+
+export async function getDashboardUrgentAlerts(params?: {
+  startDate?: string;
+  endDate?: string;
+  channel?: string;
+  topic?: string;
+  conversationStatus?: string;
+  aiStatus?: string;
+  signal?: AbortSignal;
+}): Promise<UrgentAlert[]> {
+  const url = buildApiUrl("/api/dashboard/urgent-alerts");
+
+  if (params?.startDate) {
+    url.searchParams.append("startDate", params.startDate);
+  }
+  if (params?.endDate) {
+    url.searchParams.append("endDate", params.endDate);
+  }
+  if (params?.channel && params.channel !== "Tất cả") {
+    url.searchParams.append("channel", formatChannelParam(params.channel));
+  }
+  if (params?.topic && params.topic !== "Tất cả") {
+    url.searchParams.append("topic", params.topic);
+  }
+  if (params?.conversationStatus && params.conversationStatus !== "Tất cả") {
+    url.searchParams.append("conversationStatus", params.conversationStatus);
+  }
+  if (params?.aiStatus && params.aiStatus !== "Tất cả") {
+    url.searchParams.append("aiStatus", params.aiStatus);
+  }
+
+  const resJson = await fetchApiJson<APIResponse<UrgentAlert[]>>(url, {
+    cache: false,
+    signal: params?.signal,
+  });
+
+  if (!resJson.success || !Array.isArray(resJson.data)) {
+    throw new Error(resJson.message || "Không thể tải cảnh báo chi tiết.");
+  }
+
+  return resJson.data;
+}
+
+export async function getDashboardTopQuestions(params?: {
+  startDate?: string;
+  endDate?: string;
+  channel?: string;
+  topic?: string;
+  forceRefresh?: boolean;
+  limit?: number;
+  signal?: AbortSignal;
+}): Promise<Required<DashboardTopQuestionsPayload>> {
+  const url = buildApiUrl("/api/dashboard/top-questions");
+
+  if (params?.startDate) {
+    url.searchParams.append("startDate", params.startDate);
+  }
+  if (params?.endDate) {
+    url.searchParams.append("endDate", params.endDate);
+  }
+  if (params?.channel && params.channel !== "Tất cả") {
+    url.searchParams.append("channel", formatChannelParam(params.channel));
+  }
+  if (params?.topic && params.topic !== "Tất cả") {
+    url.searchParams.append("topic", params.topic);
+  }
+  if (params?.forceRefresh) {
+    url.searchParams.append("forceRefresh", "true");
+  }
+  if (params?.limit) {
+    url.searchParams.append("limit", String(params.limit));
+  }
+
+  const resJson = await fetchApiJson<APIResponse<DashboardTopQuestionsPayload>>(url, {
+    cache: false,
+    signal: params?.signal,
+  });
+
+  if (!resJson.success || !resJson.data) {
+    throw new Error(resJson.message || "Không thể tải câu hỏi nổi bật.");
+  }
+
+  return {
+    topQuestions: Array.isArray(resJson.data.topQuestions) ? resJson.data.topQuestions : [],
+    topQuestionsStatus: typeof resJson.data.topQuestionsStatus === "string" ? resJson.data.topQuestionsStatus : "ok",
+    topQuestionsMessage: typeof resJson.data.topQuestionsMessage === "string" ? resJson.data.topQuestionsMessage : "",
+  };
+}
+
+export async function getDashboardPriorityConversations(params?: {
+  startDate?: string;
+  endDate?: string;
+  channel?: string;
+  topic?: string;
+  conversationStatus?: string;
+  aiStatus?: string;
+  limit?: number;
+  signal?: AbortSignal;
+}): Promise<PriorityConversation[]> {
+  const url = buildApiUrl("/api/dashboard/priority-conversations");
+
+  if (params?.startDate) {
+    url.searchParams.append("startDate", params.startDate);
+  }
+  if (params?.endDate) {
+    url.searchParams.append("endDate", params.endDate);
+  }
+  if (params?.channel && params.channel !== "Tất cả") {
+    url.searchParams.append("channel", formatChannelParam(params.channel));
+  }
+  if (params?.topic && params.topic !== "Tất cả") {
+    url.searchParams.append("topic", params.topic);
+  }
+  if (params?.conversationStatus && params.conversationStatus !== "Tất cả") {
+    url.searchParams.append("conversationStatus", params.conversationStatus);
+  }
+  if (params?.aiStatus && params.aiStatus !== "Tất cả") {
+    url.searchParams.append("aiStatus", params.aiStatus);
+  }
+  if (params?.limit) {
+    url.searchParams.append("limit", String(params.limit));
+  }
+
+  const resJson = await fetchApiJson<APIResponse<PriorityConversation[]>>(url, {
+    cache: false,
+    signal: params?.signal,
+  });
+
+  if (!resJson.success || !Array.isArray(resJson.data)) {
+    throw new Error(resJson.message || "Không thể tải hội thoại ưu tiên.");
+  }
+
+  return resJson.data;
 }
 
 export async function getChannelAnalytics(params?: {

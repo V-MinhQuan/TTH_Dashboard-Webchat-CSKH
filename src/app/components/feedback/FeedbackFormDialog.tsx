@@ -3,6 +3,7 @@ import { X } from "lucide-react";
 import { toast } from "sonner";
 
 import { getAiFailureDefinition } from "../../constants/aiFailureTaxonomy";
+import { TOPIC_TAXONOMY, mapTopicToGroupId, topicLabelForGroupId } from "../../constants/topicTaxonomy";
 import { useAuth } from "../../context/AuthContext";
 import {
   createSheetChatbotRow,
@@ -49,6 +50,7 @@ interface FeedbackFormState {
 }
 
 const DEFAULT_SOURCE = "Khác";
+const DEFAULT_TOPIC = "Khác";
 const RISK_LEVELS = ["Thấp", "Trung bình", "Cao"] as const;
 
 function text(value: unknown) {
@@ -59,7 +61,7 @@ function initialForm(prefill?: FeedbackPrefillData): FeedbackFormState {
   return {
     question: text(prefill?.question),
     answer: text(prefill?.answer),
-    topic: text(prefill?.topic) || "Chưa xác định",
+    topic: normalizeFormTopic(prefill?.topic),
     source: normalizeFormSource(prefill?.source),
     notes: text(prefill?.notes),
     risk: prefill?.risk ?? "Trung bình",
@@ -98,6 +100,12 @@ function normalizeFormSource(value: unknown) {
   if (normalized.includes("khong chac")) return "AI trả lời không chắc chắn";
   if (normalized.includes("loi he thong") || normalized.includes("system")) return "Lỗi hệ thống";
   return DEFAULT_SOURCE;
+}
+
+function normalizeFormTopic(value: unknown) {
+  const raw = text(value);
+  if (!raw) return DEFAULT_TOPIC;
+  return topicLabelForGroupId(mapTopicToGroupId(raw));
 }
 
 const fieldStyle: CSSProperties = {
@@ -150,7 +158,7 @@ export function FeedbackFormDialog({
   const handleSave = async () => {
     const question = form.question.trim();
     const answer = form.answer.trim();
-    const topic = form.topic.trim();
+    const topic = normalizeFormTopic(form.topic);
     if (!question || !answer || !topic) {
       setFormError("Câu hỏi, câu trả lời đúng và chủ đề là bắt buộc.");
       return;
@@ -220,7 +228,11 @@ export function FeedbackFormDialog({
           </label>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px" }}>
             <label style={labelStyle}>Chủ đề
-              <input aria-label="Chủ đề" value={form.topic} onChange={(event) => update("topic", event.target.value)} style={fieldStyle} />
+              <select aria-label="Chủ đề" value={form.topic} onChange={(event) => update("topic", event.target.value)} style={fieldStyle}>
+                {TOPIC_TAXONOMY.map((topicOption) => (
+                  <option key={topicOption.id} value={topicOption.label}>{topicOption.label}</option>
+                ))}
+              </select>
             </label>
             <label style={labelStyle}>Nguồn
               <select aria-label="Nguồn" value={form.source} onChange={(event) => update("source", event.target.value)} style={fieldStyle}>

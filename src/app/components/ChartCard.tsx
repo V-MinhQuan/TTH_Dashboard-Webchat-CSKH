@@ -167,7 +167,7 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
   const [chartTypeOpen, setChartTypeOpen] = useState(false);
   const [editPanelOpen, setEditPanelOpen] = useState(false);
 
-  const [filterValues, setFilterValues] = useState({ dateRange: "30 ngày qua", channel: "Tất cả", topic: "Tất cả", status: "Tất cả", aiStatus: "Tất cả" });
+  const [filterValues, setFilterValues] = useState({ dateRange: "30 ngày qua", channel: "Tất cả", topic: "Tất cả" });
   const [editValues, setEditValues] = useState({ title: chartTitle, axisX: "Chủ đề", values: "Số hội thoại", legend: true, sort: "Mặc định", dataLabels: false });
 
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -268,37 +268,6 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
       }
     }
 
-    if (filters.status !== "Tất cả") {
-      const target = filters.status;
-      const hasStatusField = processed.some(item => item && typeof item === "object" && "status" in item);
-      if (hasStatusField) {
-        processed = processed.filter(item => item.status === target);
-      } else {
-        processed = processed.map(item => {
-          if (!item || typeof item !== "object" || !(target in item)) return item;
-          return Object.keys(item).reduce((acc: any, key) => {
-            if (key === "channel" || key === "date" || key === "name") {
-              acc[key] = item[key];
-            } else if (["Chờ xử lý", "Đang tư vấn / Chờ phản hồi", "Đang xử lý", "Hoàn thành"].includes(key)) {
-              acc[key] = key === target ? item[key] : 0;
-            } else {
-              acc[key] = item[key];
-            }
-            return acc;
-          }, {});
-        });
-      }
-    }
-
-    if (filters.aiStatus !== "Tất cả") {
-      processed = processed.map(item => {
-        if (!item || typeof item !== "object") return item;
-        const newItem = { ...item };
-        if (filters.aiStatus === "AI trả lời thành công" && "ai_fail" in newItem) newItem.ai_fail = 0;
-        if (filters.aiStatus === "AI trả lời thất bại" && "ai_ok" in newItem) newItem.ai_ok = 0;
-        return newItem;
-      });
-    }
     return processed;
   };
 
@@ -333,7 +302,7 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
   const handleFilterReset = () => {
     setFilterActive(false);
     setChartData(data ?? []);
-    setFilterValues({ dateRange: "30 ngày qua", channel: "Tất cả", topic: "Tất cả", status: "Tất cả", aiStatus: "Tất cả" });
+    setFilterValues({ dateRange: "30 ngày qua", channel: "Tất cả", topic: "Tất cả" });
     setFilterPanelOpen(false);
     toast.info("Đã đặt lại bộ lọc biểu đồ");
   };
@@ -525,11 +494,9 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
             </div>
             <div style={{ flex: 1, padding: "24px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "16px" }}>
               {[
-                { label: "Khoảng thời gian", key: "dateRange", options: ["30 ngày qua", "7 ngày qua", "Hôm nay", "Tháng này"] },
+                { label: "Khoảng thời gian", key: "dateRange", options: ["30 ngày qua", "7 ngày qua", "Hôm nay"] },
                 { label: "Kênh", key: "channel", options: channels },
                 { label: "Chủ đề", key: "topic", options: ["Tất cả", ...topics] },
-                { label: "Trạng thái hội thoại", key: "status", options: ["Tất cả", "Chờ xử lý", "Đang tư vấn / Chờ phản hồi", "Hoàn thành"] },
-                { label: "Trạng thái AI", key: "aiStatus", options: ["Tất cả", "AI trả lời thành công", "AI trả lời thất bại"] },
               ].map(({ label, key, options }) => (
                 <div key={key}>
                   <label style={{ fontSize: "11px", fontWeight: 600, color: "rgba(0,59,185,0.5)", display: "block", marginBottom: "6px", letterSpacing: "0.05em" }}>

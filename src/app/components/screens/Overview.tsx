@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import {
-  MessageSquare, MessageCircle, Clock, CheckCircle, XCircle, AlertTriangle,
-  Eye, Flag, Plus, RefreshCw, Search, X,
+  MessageSquare, MessageCircle, CheckCircle, XCircle, AlertTriangle,
+  Eye, Plus, RefreshCw, Search, X,
 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip,
@@ -14,14 +14,23 @@ import { toast } from "sonner";
 import { useSettings } from "../../context/SettingsContext";
 
 // Import các types, services và components mới
-import { getDashboardKpi, closeConversation, type CloseConversationTarget } from "../../services/dashboardApi";
-import { DashboardKpiData, TopQuestion } from "../../types/dashboard";
+import {
+  getDashboardKpi,
+  getDashboardKpiComparison,
+  getDashboardPriorityConversations,
+  getDashboardTopQuestions,
+  getDashboardUrgentAlerts,
+  closeConversation,
+  type CloseConversationTarget,
+} from "../../services/dashboardApi";
+import { DashboardKpiData, TopQuestion, PriorityConversation, UrgentAlert } from "../../types/dashboard";
 import { LoadingState } from "../common/LoadingState";
 import { ErrorState } from "../common/ErrorState";
 import { EmptyState } from "../common/EmptyState";
 import { KpiCard } from "../dashboard/KpiCard";
 import { SourceChart } from "../dashboard/SourceChart";
 import { FeedbackFormDialog } from "../feedback/FeedbackFormDialog";
+import { getDateParamsFromFilters } from "../../utils/dateFilters";
 
 const NAVY = "#003865";
 const ORANGE = "#D73C01";
@@ -58,13 +67,25 @@ function normalizeQuestionSearchText(value: string) {
     .trim();
 }
 
+const PRIORITY_RETRY_DELAYS_MS = [0, 5000, 10000, 20000] as const;
+const PRIORITY_CONVERSATION_LIMIT = 10;
+const DETAIL_RETRY_DELAYS_MS = [0, 5000, 10000] as const;
+
+type PriorityLoadState = "loading" | "retrying" | "ready" | "error";
+type DetailLoadState = "loading" | "retrying" | "ready" | "error";
+
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+}
+
+function calcTrend(currentValue: number, previousValue: number) {
+  const current = Number(currentValue || 0);
+  const previous = Number(previousValue || 0);
+  if (previous === 0) return current > 0 ? 100 : 0;
+  return Math.round(((current - previous) / previous) * 100);
+}
 
 
-const alertTypeIcon: Record<string, typeof AlertTriangle> = {
-  overtime: Clock,
-  ai_uncertain: AlertTriangle,
-  ai_no_data: XCircle,
-};
 
 const statusColors: Record<string, { bg: string; color: string }> = {
   "Chờ quản lý xác nhận": { bg: "#FFF4EE", color: "#D73C01" },
@@ -90,185 +111,51 @@ interface OverviewProps {
   onManualRefresh?: () => void;
 }
 
-/**
- * Ánh xạ khoảng thời gian trong FilterPanel thành tham số API
- */
-function getDatesFromRange(range: string, customFrom?: string, customTo?: string): { startDate?: string; endDate?: string } {
-  const today = new Date();
-  const formatDateStr = (d: Date) => {
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
-  };
-
-  if (range === "Hôm nay") {
-    const dateStr = formatDateStr(today);
-    return { startDate: dateStr, endDate: dateStr };
-  }
-  if (range === "7 ngày qua") {
-    const start = new Date();
-    start.setDate(today.getDate() - 7);
-    return { startDate: formatDateStr(start), endDate: formatDateStr(today) };
-  }
-  if (range === "30 ngày qua") {
-    const start = new Date();
-    start.setDate(today.getDate() - 30);
-    return { startDate: formatDateStr(start), endDate: formatDateStr(today) };
-  }
-  if (range === "Tháng này") {
-    const start = new Date(today.getFullYear(), today.getMonth(), 1);
-    return { startDate: formatDateStr(start), endDate: formatDateStr(today) };
-  }
-  if (range === "Quý này") {
-    const currentMonth = today.getMonth();
-    const quarterStartMonth = Math.floor(currentMonth / 3) * 3;
-    const start = new Date(today.getFullYear(), quarterStartMonth, 1);
-    return { startDate: formatDateStr(start), endDate: formatDateStr(today) };
-  }
-  if (range === "Tùy chỉnh" && customFrom) {
-    const fromDate = new Date(customFrom);
-    const toDate = customTo ? new Date(customTo) : today;
-    if (!isNaN(fromDate.getTime())) {
-      return {
-        startDate: formatDateStr(fromDate),
-        endDate: formatDateStr(toDate),
-      };
-    }
-  }
-  return {};
-}
-
-interface AlertCardProps {
-  alert: any;
-  alertTypeIcon: Record<string, typeof AlertTriangle>;
-  onClose: (target: CloseConversationTarget) => Promise<void>;
-  isFlagged: boolean;
-  onFlag: (alertId: string) => void;
-}
-
-function AlertCard({ alert, alertTypeIcon, onClose, isFlagged, onFlag }: AlertCardProps) {
-  const isHigh = alert.priority === "Ưu tiên cao";
-  const Icon = alertTypeIcon[alert.type] || AlertTriangle;
-  const [isProcessing, setIsProcessing] = useState(false);
-
-  const handleClose = async () => {
-    try {
-      setIsProcessing(true);
-      if (alert.conversationId || (alert.customer && alert.raw_source)) {
-        await onClose({
-          conversationId: alert.conversationId,
-          customerId: alert.customer,
-          source: alert.raw_source,
-        });
-      } else {
-        toast.error("Không tìm thấy thông tin hội thoại để xử lý.");
-      }
-    } catch (err: any) {
-      toast.error(err.message || "Lỗi khi xử lý hội thoại.");
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const handleFlag = () => {
-    onFlag(String(alert.id));
-    if (!isFlagged) {
-      toast.success("Đã đánh dấu cần xử lý gấp.");
-    }
-  };
-
-  return (
-    <div
-      style={{
-        padding: "12px 14px",
-        borderRadius: "10px",
-        backgroundColor: isFlagged ? "rgba(217,119,6,0.05)" : "#fff",
-        border: isFlagged ? "1px solid rgba(217,119,6,0.30)" : "1px solid rgba(0,59,185,0.08)",
-        borderLeft: isFlagged ? `3px solid #D97706` : isHigh ? `3px solid ${ORANGE}` : `3px solid #f59e0b`,
-        transition: "box-shadow 0.15s, background-color 0.2s, border 0.2s",
-        boxShadow: isFlagged ? "0 2px 10px rgba(217,119,6,0.12)" : undefined,
-      }}
-      onMouseEnter={(e) => { if (!isFlagged) (e.currentTarget as HTMLDivElement).style.boxShadow = "0 3px 12px rgba(0,59,185,0.07)"; }}
-      onMouseLeave={(e) => { if (!isFlagged) (e.currentTarget as HTMLDivElement).style.boxShadow = "none"; }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "6px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-          <Icon size={13} style={{ color: isFlagged ? "#D97706" : isHigh ? ORANGE : "#d97706", flexShrink: 0 }} />
-          <span style={{ fontWeight: 700, fontSize: "12px", color: "#003BB9" }}>{alert.title}</span>
-          <span style={{ fontSize: "9px", padding: "1px 5px", borderRadius: "20px", backgroundColor: isHigh ? "#FFF4EE" : "#FFF7E6", color: isHigh ? ORANGE : "#B7791F", fontWeight: 700 }}>{alert.priority}</span>
-          {isFlagged && (
-            <span style={{
-              fontSize: "9px", padding: "1px 6px", borderRadius: "20px",
-              backgroundColor: "#D97706", color: "#fff",
-              fontWeight: 700, display: "flex", alignItems: "center", gap: "3px",
-              letterSpacing: "0.02em"
-            }}>
-              <Flag size={8} /> Đã đánh dấu
-            </span>
-          )}
-        </div>
-        {alert.waitTime !== "—" && (
-          <span style={{ fontSize: "10px", fontWeight: 600, color: isFlagged ? "#D97706" : isHigh ? ORANGE : "#B7791F", flexShrink: 0, marginLeft: "8px" }}>{alert.waitTime}</span>
-        )}
-      </div>
-      <div style={{ display: "flex", gap: "5px", marginBottom: "6px", flexWrap: "wrap" }}>
-        {alert.customer !== "" && <span style={{ fontSize: "10px", color: "#003BB9", fontWeight: 600 }}>ID: {alert.customer}</span>}
-        <span style={{ fontSize: "9px", padding: "1px 5px", borderRadius: "20px", backgroundColor: "#eff6ff", color: "#3b82f6" }}>{alert.channel}</span>
-        <span style={{ fontSize: "9px", padding: "1px 5px", borderRadius: "20px", backgroundColor: "#f1f5f9", color: "rgba(0,59,185,0.6)" }}>{alert.topic}</span>
-      </div>
-      <div style={{ fontSize: "11px", color: "rgba(0,59,185,0.7)", marginBottom: "8px", lineHeight: 1.35, wordBreak: "break-word" }}>{alert.desc}</div>
-      <div style={{ display: "flex", gap: "6px" }}>
-        <button
-          onClick={handleFlag}
-          style={{
-            padding: "3px 8px", borderRadius: "6px", fontSize: "10px", fontWeight: isFlagged ? 600 : 500,
-            display: "flex", alignItems: "center", gap: "2px", cursor: "pointer", transition: "all 0.15s",
-            border: isFlagged ? `1px solid #D97706` : "1px solid rgba(0,59,185,0.15)",
-            background: isFlagged ? "rgba(217,119,6,0.08)" : "#fff",
-            color: isFlagged ? "#D97706" : "rgba(0,59,185,0.65)",
-          }}
-        >
-          <Flag size={9} /> {isFlagged ? "Bỏ đánh dấu" : "Đánh dấu"}
-        </button>
-        <button
-          onClick={handleClose}
-          disabled={isProcessing}
-          style={{ padding: "3px 8px", borderRadius: "6px", border: "none", background: "#003BB9", color: "#fff", cursor: isProcessing ? "not-allowed" : "pointer", fontSize: "10px", fontWeight: 600, display: "flex", alignItems: "center", gap: "2px", opacity: isProcessing ? 0.6 : 1 }}
-        >
-          <CheckCircle size={9} /> {isProcessing ? "..." : "Xử lý"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-
 export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: parentRefreshing, lastUpdated: parentLastUpdated, onManualRefresh }: OverviewProps) {
   const [kpiData, setKpiData] = useState<DashboardKpiData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [localRefreshing, setLocalRefreshing] = useState<boolean>(false);
   const [lastUpdatedTime, setLastUpdatedTime] = useState<string>(parentLastUpdated || "08:00");
-  const [flaggedAlertIds, setFlaggedAlertIds] = useState<Set<string>>(new Set());
   const [feedbackQuestion, setFeedbackQuestion] = useState<TopQuestion | null>(null);
   const [selectedTopQuestion, setSelectedTopQuestion] = useState<TopQuestion | null>(null);
   const [detailSearch, setDetailSearch] = useState("");
   const [topQuestionSearch, setTopQuestionSearch] = useState("");
-
-  const handleFlagAlert = (alertId: string) => {
-    setFlaggedAlertIds(prev => {
-      const next = new Set(prev);
-      if (next.has(alertId)) {
-        next.delete(alertId);
-      } else {
-        next.add(alertId);
-      }
-      return next;
-    });
-  };
+  const [urgentAlertRows, setUrgentAlertRows] = useState<UrgentAlert[]>([]);
+  const [alertLoadState, setAlertLoadState] = useState<DetailLoadState>("loading");
+  const [alertLoadError, setAlertLoadError] = useState("");
+  const [topQuestionRows, setTopQuestionRows] = useState<TopQuestion[]>([]);
+  const [topQuestionsStatus, setTopQuestionsStatus] = useState<string>("ok");
+  const [topQuestionsMessage, setTopQuestionsMessage] = useState("");
+  const [topQuestionsLoadState, setTopQuestionsLoadState] = useState<DetailLoadState>("loading");
+  const [topQuestionsLoadError, setTopQuestionsLoadError] = useState("");
+  const [priorityConversationRows, setPriorityConversationRows] = useState<PriorityConversation[]>([]);
+  const [priorityLoadState, setPriorityLoadState] = useState<PriorityLoadState>("loading");
+  const [priorityLoadError, setPriorityLoadError] = useState("");
+  const [detailRefreshVersion, setDetailRefreshVersion] = useState(0);
+  const [detailReadyFilterKey, setDetailReadyFilterKey] = useState("");
+  const [trendValues, setTrendValues] = useState<DashboardKpiData["trends"] | null>(null);
+  const [trendLoadState, setTrendLoadState] = useState<DetailLoadState>("loading");
 
   const { settings } = useSettings();
+
+  const filterRequestKey = useMemo(() => JSON.stringify({
+    dateRange: filters.dateRange,
+    customDateFrom: filters.customDateFrom || "",
+    customDateTo: filters.customDateTo || "",
+    channel: filters.channel,
+    topic: filters.topic,
+    conversationStatus: filters.conversationStatus,
+    aiStatus: filters.aiStatus,
+  }), [
+    filters.dateRange,
+    filters.customDateFrom,
+    filters.customDateTo,
+    filters.channel,
+    filters.topic,
+    filters.conversationStatus,
+    filters.aiStatus,
+  ]);
 
   const isSourceEnabled = (channelName: string) => {
     if (channelName.includes("Zalo Business") && !settings.dataSourceZaloBiz) return false;
@@ -278,10 +165,10 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
     return true;
   };
 
-  const urgentAlerts = (kpiData?.urgentAlerts || []).filter(a => isSourceEnabled(a.channel || ""));
-  const topQuestions = kpiData?.topQuestions || []; // Can't easily filter by topic unless it maps to channel
-  const isTopQuestionsAiOverloaded = kpiData?.topQuestionsStatus === "ai_overloaded";
-  const priorityConversations = (kpiData?.priorityConversations || []).filter(c => isSourceEnabled(c.channel || ""));
+  const urgentAlerts = urgentAlertRows.filter(a => isSourceEnabled(a.channel || ""));
+  const topQuestions = topQuestionRows;
+  const isTopQuestionsAiOverloaded = topQuestionsStatus === "ai_overloaded";
+  const priorityConversations = priorityConversationRows.filter(c => isSourceEnabled(c.channel || ""));
 
   const overtimeAlerts = urgentAlerts.filter(a => a.type === "overtime");
   const aiAlerts = urgentAlerts.filter(a => a.type === "ai_uncertain" || a.type === "ai_no_data");
@@ -294,13 +181,12 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
         setLoading(true);
       }
       setError(null);
+      setDetailReadyFilterKey("");
+      setTrendValues(null);
+      setTrendLoadState("loading");
 
       // 1. Chuyển đổi bộ lọc ngày sang query params
-      const dateParams = getDatesFromRange(
-        filters.dateRange,
-        filters.customDateFrom,
-        filters.customDateTo
-      );
+      const dateParams = getDateParamsFromFilters(filters);
 
       // Validate khoảng ngày tùy chỉnh
       if (filters.dateRange === "Tùy chỉnh" && filters.customDateFrom && filters.customDateTo) {
@@ -320,29 +206,312 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
         conversationStatus: filters.conversationStatus,
         aiStatus: filters.aiStatus,
         forceRefresh: isRefreshCall,
+        includePriorityConversations: false,
+        includeUrgentAlerts: false,
+        includeTopQuestions: false,
+        includeTrendComparison: false,
       });
       setKpiData(data);
+      setDetailReadyFilterKey(filterRequestKey);
 
       const now = new Date();
       setLastUpdatedTime(`${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`);
     } catch (err: any) {
       console.error(err);
+      setDetailReadyFilterKey("");
       setError(err.message || "Không thể tải dữ liệu Dashboard. Vui lòng thử lại.");
     } finally {
       setLoading(false);
       setLocalRefreshing(false);
     }
-  }, [filters]);
+  }, [filters, filterRequestKey]);
 
   useEffect(() => {
     loadDashboardData();
   }, [loadDashboardData]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let activeController: AbortController | null = null;
+
+    async function loadTrendComparison() {
+      setTrendValues(null);
+
+      let dateParams: ReturnType<typeof getDateParamsFromFilters>;
+      try {
+        dateParams = getDateParamsFromFilters(filters);
+      } catch {
+        setTrendLoadState("error");
+        return;
+      }
+
+      if (!kpiData || detailReadyFilterKey !== filterRequestKey) {
+        setTrendLoadState("loading");
+        return;
+      }
+
+      for (let attempt = 0; attempt < DETAIL_RETRY_DELAYS_MS.length; attempt += 1) {
+        const delay = DETAIL_RETRY_DELAYS_MS[attempt];
+        if (delay > 0) {
+          setTrendLoadState("retrying");
+          await sleep(delay);
+          if (cancelled) return;
+        } else {
+          setTrendLoadState("loading");
+        }
+
+        activeController = new AbortController();
+        try {
+          const previous = await getDashboardKpiComparison({
+            ...dateParams,
+            channel: filters.channel,
+            topic: filters.topic,
+            conversationStatus: filters.conversationStatus,
+            aiStatus: filters.aiStatus,
+            signal: activeController.signal,
+          });
+          if (cancelled) return;
+          setTrendValues({
+            totalConversations: calcTrend(kpiData.totalConversations, previous.totalConversations),
+            totalMessages: calcTrend(kpiData.totalMessages, previous.totalMessages),
+            activeConversations: calcTrend(kpiData.statusSummary.pending || 0, previous.activeConversations),
+            closedConversations: calcTrend(kpiData.statusSummary.closed || 0, previous.closedConversations),
+            aiFailures: calcTrend(kpiData.aiFailures || 0, previous.aiFailures),
+          });
+          setTrendLoadState("ready");
+          return;
+        } catch (error: any) {
+          if (cancelled || error?.name === "AbortError") return;
+          if (attempt === DETAIL_RETRY_DELAYS_MS.length - 1) {
+            setTrendLoadState("error");
+            return;
+          }
+          setTrendLoadState("retrying");
+        }
+      }
+    }
+
+    loadTrendComparison();
+    return () => {
+      cancelled = true;
+      activeController?.abort();
+    };
+  }, [filters, detailRefreshVersion, detailReadyFilterKey, filterRequestKey, kpiData]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let activeController: AbortController | null = null;
+
+    async function loadUrgentAlerts() {
+      setUrgentAlertRows([]);
+      setAlertLoadError("");
+
+      let dateParams: ReturnType<typeof getDateParamsFromFilters>;
+      try {
+        dateParams = getDateParamsFromFilters(filters);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Bộ lọc ngày không hợp lệ.";
+        setAlertLoadState("error");
+        setAlertLoadError(message);
+        return;
+      }
+
+      if (detailReadyFilterKey !== filterRequestKey) {
+        setAlertLoadState("loading");
+        return;
+      }
+
+      for (let attempt = 0; attempt < DETAIL_RETRY_DELAYS_MS.length; attempt += 1) {
+        const delay = DETAIL_RETRY_DELAYS_MS[attempt];
+        if (delay > 0) {
+          setAlertLoadState("retrying");
+          await sleep(delay);
+          if (cancelled) return;
+        } else {
+          setAlertLoadState("loading");
+        }
+
+        activeController = new AbortController();
+        try {
+          const rows = await getDashboardUrgentAlerts({
+            ...dateParams,
+            channel: filters.channel,
+            topic: filters.topic,
+            conversationStatus: filters.conversationStatus,
+            aiStatus: filters.aiStatus,
+            signal: activeController.signal,
+          });
+          if (cancelled) return;
+          setUrgentAlertRows(rows);
+          setAlertLoadState("ready");
+          setAlertLoadError("");
+          return;
+        } catch (error: any) {
+          if (cancelled || error?.name === "AbortError") return;
+          const message = error?.message || "Không thể tải cảnh báo chi tiết theo bộ lọc này.";
+          setAlertLoadError(message);
+          if (attempt === DETAIL_RETRY_DELAYS_MS.length - 1) {
+            setAlertLoadState("error");
+            return;
+          }
+          setAlertLoadState("retrying");
+        }
+      }
+    }
+
+    loadUrgentAlerts();
+    return () => {
+      cancelled = true;
+      activeController?.abort();
+    };
+  }, [filters, detailRefreshVersion, detailReadyFilterKey, filterRequestKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let activeController: AbortController | null = null;
+
+    async function loadTopQuestions() {
+      setTopQuestionRows([]);
+      setTopQuestionsStatus("ok");
+      setTopQuestionsMessage("");
+      setTopQuestionsLoadError("");
+
+      let dateParams: ReturnType<typeof getDateParamsFromFilters>;
+      try {
+        dateParams = getDateParamsFromFilters(filters);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Bộ lọc ngày không hợp lệ.";
+        setTopQuestionsLoadState("error");
+        setTopQuestionsLoadError(message);
+        return;
+      }
+
+      if (detailReadyFilterKey !== filterRequestKey) {
+        setTopQuestionsLoadState("loading");
+        return;
+      }
+
+      for (let attempt = 0; attempt < DETAIL_RETRY_DELAYS_MS.length; attempt += 1) {
+        const delay = DETAIL_RETRY_DELAYS_MS[attempt];
+        if (delay > 0) {
+          setTopQuestionsLoadState("retrying");
+          await sleep(delay);
+          if (cancelled) return;
+        } else {
+          setTopQuestionsLoadState("loading");
+        }
+
+        activeController = new AbortController();
+        try {
+          const data = await getDashboardTopQuestions({
+            ...dateParams,
+            channel: filters.channel,
+            topic: filters.topic,
+            forceRefresh: detailRefreshVersion > 0,
+            signal: activeController.signal,
+          });
+          if (cancelled) return;
+          setTopQuestionRows(data.topQuestions);
+          setTopQuestionsStatus(data.topQuestionsStatus);
+          setTopQuestionsMessage(data.topQuestionsMessage);
+          setTopQuestionsLoadState("ready");
+          setTopQuestionsLoadError("");
+          return;
+        } catch (error: any) {
+          if (cancelled || error?.name === "AbortError") return;
+          const message = error?.message || "Không thể tải câu hỏi nổi bật theo bộ lọc này.";
+          setTopQuestionsLoadError(message);
+          if (attempt === DETAIL_RETRY_DELAYS_MS.length - 1) {
+            setTopQuestionsLoadState("error");
+            return;
+          }
+          setTopQuestionsLoadState("retrying");
+        }
+      }
+    }
+
+    loadTopQuestions();
+    return () => {
+      cancelled = true;
+      activeController?.abort();
+    };
+  }, [filters, detailRefreshVersion, detailReadyFilterKey, filterRequestKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let activeController: AbortController | null = null;
+
+    async function loadPriorityConversations() {
+      setPriorityConversationRows([]);
+      setPriorityLoadError("");
+
+      let dateParams: ReturnType<typeof getDateParamsFromFilters>;
+      try {
+        dateParams = getDateParamsFromFilters(filters);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Bộ lọc ngày không hợp lệ.";
+        setPriorityLoadState("error");
+        setPriorityLoadError(message);
+        return;
+      }
+
+      if (detailReadyFilterKey !== filterRequestKey) {
+        setPriorityLoadState("loading");
+        return;
+      }
+
+      for (let attempt = 0; attempt < PRIORITY_RETRY_DELAYS_MS.length; attempt += 1) {
+        const delay = PRIORITY_RETRY_DELAYS_MS[attempt];
+        if (delay > 0) {
+          setPriorityLoadState("retrying");
+          await sleep(delay);
+          if (cancelled) return;
+        } else {
+          setPriorityLoadState("loading");
+        }
+
+        activeController = new AbortController();
+        try {
+          const rows = await getDashboardPriorityConversations({
+            ...dateParams,
+            channel: filters.channel,
+            topic: filters.topic,
+            conversationStatus: filters.conversationStatus,
+            aiStatus: filters.aiStatus,
+            limit: PRIORITY_CONVERSATION_LIMIT,
+            signal: activeController.signal,
+          });
+          if (cancelled) return;
+          setPriorityConversationRows(rows);
+          setPriorityLoadState("ready");
+          setPriorityLoadError("");
+          return;
+        } catch (error: any) {
+          if (cancelled || error?.name === "AbortError") return;
+          const message = error?.message || "Không thể tải hội thoại ưu tiên theo bộ lọc này.";
+          setPriorityLoadError(message);
+          if (attempt === PRIORITY_RETRY_DELAYS_MS.length - 1) {
+            setPriorityLoadState("error");
+            return;
+          }
+          setPriorityLoadState("retrying");
+        }
+      }
+    }
+
+    loadPriorityConversations();
+    return () => {
+      cancelled = true;
+      activeController?.abort();
+    };
+  }, [filters, detailRefreshVersion, detailReadyFilterKey, filterRequestKey]);
 
   const handleManualRefresh = () => {
     if (onManualRefresh) {
       onManualRefresh();
     }
     loadDashboardData(true);
+    setDetailRefreshVersion((version) => version + 1);
     toast.success("Đang làm mới dữ liệu...");
   };
 
@@ -357,25 +526,36 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
       if (!current) return current;
       return {
         ...current,
-        urgentAlerts: current.urgentAlerts.filter((alert) => {
-          if (hasConversationId && Number(alert.conversationId) === targetConversationId) return false;
-          const alertSource = normalizeSourceForCompare(alert.raw_source || alert.channel);
-          return !(String(alert.customer || "").trim() === normalizedCustomer && alertSource === normalizedSource);
-        }),
-        priorityConversations: current.priorityConversations.filter((conversation) => {
-          if (hasConversationId && Number(conversation.conversationId) === targetConversationId) return false;
-          const conversationSource = normalizeSourceForCompare(conversation.source || conversation.channel);
-          return !(String(conversation.customerId || conversation.customer || "").trim() === normalizedCustomer && conversationSource === normalizedSource);
-        }),
+        urgentAlerts: [],
+        priorityConversations: [],
       };
     });
+    setUrgentAlertRows((current) => current.filter((alert) => {
+      if (hasConversationId && Number(alert.conversationId) === targetConversationId) return false;
+      const alertSource = normalizeSourceForCompare(alert.raw_source || alert.channel);
+      return !(String(alert.customer || "").trim() === normalizedCustomer && alertSource === normalizedSource);
+    }));
+    setPriorityConversationRows((current) => current.filter((conversation) => {
+      if (hasConversationId && Number(conversation.conversationId) === targetConversationId) return false;
+      const conversationSource = normalizeSourceForCompare(conversation.source || conversation.channel);
+      return !(String(conversation.customerId || conversation.customer || "").trim() === normalizedCustomer && conversationSource === normalizedSource);
+    }));
   }, []);
 
   const handleCloseConversation = useCallback(async (target: CloseConversationTarget) => {
     await closeConversation(target);
     removeClosedConversationFromState(target);
     loadDashboardData(true);
+    setDetailRefreshVersion((version) => version + 1);
   }, [loadDashboardData, removeClosedConversationFromState]);
+
+  const retryPriorityConversations = useCallback(() => {
+    setDetailRefreshVersion((version) => version + 1);
+  }, []);
+
+  const retryDetailSections = useCallback(() => {
+    setDetailRefreshVersion((version) => version + 1);
+  }, []);
 
   const openTopQuestionDetails = (question: TopQuestion) => {
     setSelectedTopQuestion(question);
@@ -433,7 +613,6 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
   }
 
   // 3. Tính toán các chỉ số phái sinh
-  const closedConversations = kpiData?.statusSummary.closed || 0;
   const activeConversations = kpiData?.statusSummary.pending || 0;
 
   let totalConversations = kpiData?.totalConversations || 0;
@@ -473,40 +652,46 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
     }
   }
 
+  const trendStatusText =
+    trendLoadState === "loading"
+      ? "Đang tính xu hướng..."
+      : trendLoadState === "retrying"
+        ? "Đang thử lại xu hướng..."
+        : trendLoadState === "error"
+          ? "Chưa tính được xu hướng"
+          : undefined;
+
   const kpiList = [
     {
       title: "Tổng hội thoại",
       value: viNum(totalConversations),
       icon: MessageSquare,
-      change: kpiData?.trends.totalConversations,
+      change: trendValues?.totalConversations,
+      changeLabel: trendStatusText,
       isWarning: false
     },
     {
-      title: "Tổng tin nhắn",
+      title: "Tổng tin nhắn khách hàng",
       value: viNum(totalMessages),
       icon: MessageCircle,
-      change: kpiData?.trends.totalMessages,
+      change: trendValues?.totalMessages,
+      changeLabel: trendStatusText,
       isWarning: false
     },
     {
       title: "Chờ xử lý",
       value: viNum(activeConversations),
       icon: AlertTriangle,
-      change: kpiData?.trends.activeConversations,
+      change: trendValues?.activeConversations,
+      changeLabel: trendStatusText,
       isWarning: true
-    },
-    {
-      title: "Hoàn thành",
-      value: viNum(closedConversations),
-      icon: CheckCircle,
-      change: kpiData?.trends.closedConversations,
-      isWarning: false
     },
     {
       title: "AI trả lời thất bại",
       value: viNum(kpiData?.aiFailures || 0),
       icon: XCircle,
-      change: kpiData?.trends.aiFailures,
+      change: trendValues?.aiFailures,
+      changeLabel: trendStatusText,
       isWarning: true
     },
   ];
@@ -586,12 +771,11 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "12px", marginBottom: "18px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "12px", marginBottom: "18px" }}>
             {[
               { label: "Tổng hội thoại", value: viNum(totalConversations), color: "#003BB9" },
-              { label: "Tổng tin nhắn", value: viNum(totalMessages), color: "#003865" },
+              { label: "Tổng tin nhắn khách hàng", value: viNum(totalMessages), color: "#003865" },
               { label: "Chờ xử lý", value: viNum(activeConversations), color: "#D73C01" },
-              { label: "Hoàn thành", value: viNum(closedConversations), color: "#1565C0" },
               { label: "AI thất bại", value: viNum(kpiData?.aiFailures || 0), color: "#B42318" },
             ].map((item) => (
               <div key={item.label} style={{ border: "1px solid rgba(0,56,101,0.1)", borderRadius: "10px", padding: "14px", background: "#FDFEFE" }}>
@@ -644,17 +828,41 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
               <h2 style={{ margin: "0 0 13px", fontSize: "15px", color: "#003BB9", fontWeight: 800 }}>Cảnh báo cần xử lý</h2>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "12px" }}>
                 <div style={{ background: "#FFF4EE", border: "1px solid #FBCBB8", borderRadius: "10px", padding: "12px" }}>
-                  <div style={{ fontSize: "22px", color: "#D73C01", fontWeight: 800 }}>{overtimeAlerts.length}</div>
+                  <div style={{ fontSize: "22px", color: "#D73C01", fontWeight: 800 }}>{alertLoadState === "ready" ? overtimeAlerts.length : "..."}</div>
                   <div style={{ fontSize: "10px", color: "#D73C01", fontWeight: 700 }}>Chờ quá 10 giờ</div>
                 </div>
                 <div style={{ background: "#FFF7E6", border: "1px solid #FADFA8", borderRadius: "10px", padding: "12px" }}>
-                  <div style={{ fontSize: "22px", color: "#B7791F", fontWeight: 800 }}>{aiAlerts.length}</div>
+                  <div style={{ fontSize: "22px", color: "#B7791F", fontWeight: 800 }}>{alertLoadState === "ready" ? aiAlerts.length : "..."}</div>
                   <div style={{ fontSize: "10px", color: "#B7791F", fontWeight: 700 }}>Cảnh báo AI</div>
                 </div>
               </div>
-              <div style={{ fontSize: "11px", color: "rgba(0,56,101,0.62)", lineHeight: 1.45 }}>
-                Tổng cộng <strong>{urgentAlerts.length}</strong> cảnh báo đang cần theo dõi trong phạm vi bộ lọc hiện tại.
-              </div>
+              {alertLoadState !== "ready" ? (
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", fontSize: "11px", color: alertLoadState === "error" ? ORANGE : "rgba(0,56,101,0.62)", lineHeight: 1.45, fontWeight: 700 }}>
+                  {alertLoadState === "error" ? (
+                    <AlertTriangle size={14} style={{ color: ORANGE }} />
+                  ) : (
+                    <RefreshCw size={14} style={{ color: "#003BB9", animation: "spin 1s linear infinite" }} />
+                  )}
+                  <span>
+                    {alertLoadState === "loading" && "Đang tải cảnh báo theo bộ lọc..."}
+                    {alertLoadState === "retrying" && "Đang thử tải lại cảnh báo theo bộ lọc..."}
+                    {alertLoadState === "error" && (alertLoadError || "Chưa tải được cảnh báo theo bộ lọc này.")}
+                  </span>
+                  {alertLoadState === "error" && (
+                    <button
+                      type="button"
+                      onClick={retryDetailSections}
+                      style={{ border: "1px solid rgba(0,59,185,0.18)", background: "#fff", color: "#003BB9", borderRadius: "7px", padding: "4px 9px", fontSize: "11px", fontWeight: 700, cursor: "pointer" }}
+                    >
+                      Thử lại
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div style={{ fontSize: "11px", color: "rgba(0,56,101,0.62)", lineHeight: 1.45 }}>
+                  Tổng cộng <strong>{urgentAlerts.length}</strong> cảnh báo đang cần theo dõi trong phạm vi bộ lọc hiện tại.
+                </div>
+              )}
             </div>
           </div>
 
@@ -677,7 +885,29 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
             <div style={{ border: "1px solid rgba(0,56,101,0.1)", borderRadius: "12px", padding: "16px", background: "#fff" }}>
               <h2 style={{ margin: "0 0 13px", fontSize: "15px", color: "#003BB9", fontWeight: 800 }}>Cảnh báo nổi bật</h2>
               <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                {reportAlerts.length === 0 ? (
+                {alertLoadState !== "ready" ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", fontSize: "12px", color: alertLoadState === "error" ? ORANGE : "rgba(0,56,101,0.62)", fontWeight: 700 }}>
+                    {alertLoadState === "error" ? (
+                      <AlertTriangle size={14} style={{ color: ORANGE }} />
+                    ) : (
+                      <RefreshCw size={14} style={{ color: "#003BB9", animation: "spin 1s linear infinite" }} />
+                    )}
+                    <span>
+                      {alertLoadState === "loading" && "Đang tải cảnh báo nổi bật..."}
+                      {alertLoadState === "retrying" && "Đang thử tải lại cảnh báo nổi bật..."}
+                      {alertLoadState === "error" && (alertLoadError || "Chưa tải được cảnh báo nổi bật.")}
+                    </span>
+                    {alertLoadState === "error" && (
+                      <button
+                        type="button"
+                        onClick={retryDetailSections}
+                        style={{ border: "1px solid rgba(0,59,185,0.18)", background: "#fff", color: "#003BB9", borderRadius: "7px", padding: "4px 9px", fontSize: "11px", fontWeight: 700, cursor: "pointer" }}
+                      >
+                        Thử lại
+                      </button>
+                    )}
+                  </div>
+                ) : reportAlerts.length === 0 ? (
                   <div style={{ fontSize: "12px", color: "rgba(0,56,101,0.55)" }}>Không có cảnh báo trong phạm vi dữ liệu này.</div>
                 ) : reportAlerts.map((alert) => (
                   <div key={alert.id} style={{ borderLeft: "3px solid #D73C01", padding: "7px 9px", background: "#FFFDFB", borderRadius: "7px" }}>
@@ -786,7 +1016,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
         </div>
 
         {/* KPI Cards Grid */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "12px", marginBottom: "20px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "12px", marginBottom: "20px" }}>
           {kpiList.map((kpi) => (
             <KpiCard
               key={kpi.title}
@@ -794,63 +1024,10 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
               value={kpi.value}
               icon={kpi.icon}
               change={kpi.change}
+              changeLabel={kpi.changeLabel}
               isWarning={kpi.isWarning}
             />
           ))}
-        </div>
-
-        {/* Cần xử lý ngay (Hội thoại khẩn cấp) */}
-        <div style={{ marginBottom: "24px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
-            <div style={{ width: "4px", height: "18px", borderRadius: "2px", background: `linear-gradient(180deg, ${ORANGE}, #ED5206)` }} />
-            <h2 style={{ color: "#003BB9", fontSize: "15px", fontWeight: 700, margin: 0 }}>Cảnh báo khẩn cấp cần xử lý ngay</h2>
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-            {/* Cột 1: Hội thoại chờ phản hồi quá 10 giờ */}
-            <div style={{ backgroundColor: "#FDFEFE", borderRadius: "16px", border: "1px solid rgba(0,59,185,0.07)", boxShadow: "0 2px 10px rgba(0,59,185,0.03)", padding: "16px" }}>
-              <h3 style={{ color: "#D73C01", fontSize: "13px", fontWeight: 700, display: "flex", alignItems: "center", gap: "6px", marginTop: 0, marginBottom: "12px", borderBottom: "1px solid rgba(215,60,1,0.1)", paddingBottom: "8px" }}>
-                <Clock size={14} />
-                Hội thoại chờ quá 10 giờ
-                <span style={{ fontSize: "10px", backgroundColor: "#FFF4EE", color: "#D73C01", border: "1px solid #FBCBB8", borderRadius: "20px", padding: "1px 6px", fontWeight: 700, marginLeft: "auto" }}>
-                  {overtimeAlerts.length}
-                </span>
-              </h3>
-              <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxHeight: "360px", overflowY: "auto", paddingRight: "4px" }}>
-                {overtimeAlerts.length === 0 ? (
-                  <div style={{ padding: "24px", textAlign: "center", color: "rgba(0,59,185,0.4)", fontSize: "11px", border: "1px dashed rgba(0,59,185,0.15)", borderRadius: "10px", background: "#fcfcfc" }}>
-                    Không có cuộc hội thoại nào chờ phản hồi quá 10 giờ
-                  </div>
-                ) : (
-                  overtimeAlerts.map((alert) => (
-                    <AlertCard key={alert.id} alert={alert} alertTypeIcon={alertTypeIcon} onClose={handleCloseConversation} isFlagged={flaggedAlertIds.has(String(alert.id))} onFlag={handleFlagAlert} />
-                  ))
-                )}
-              </div>
-            </div>
-
-            {/* Cột 2: AI trả lời thất bại */}
-            <div style={{ backgroundColor: "#FDFEFE", borderRadius: "16px", border: "1px solid rgba(0,59,185,0.07)", boxShadow: "0 2px 10px rgba(0,59,185,0.03)", padding: "16px" }}>
-              <h3 style={{ color: "#B7791F", fontSize: "13px", fontWeight: 700, display: "flex", alignItems: "center", gap: "6px", marginTop: 0, marginBottom: "12px", borderBottom: "1px solid rgba(183,121,31,0.1)", paddingBottom: "8px" }}>
-                <AlertTriangle size={14} />
-                AI trả lời thất bại
-                <span style={{ fontSize: "10px", backgroundColor: "#FFF7E6", color: "#B7791F", border: "1px solid #FADFA8", borderRadius: "20px", padding: "1px 6px", fontWeight: 700, marginLeft: "auto" }}>
-                  {aiAlerts.length}
-                </span>
-              </h3>
-              <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxHeight: "360px", overflowY: "auto", paddingRight: "4px" }}>
-                {aiAlerts.length === 0 ? (
-                  <div style={{ padding: "24px", textAlign: "center", color: "rgba(0,59,185,0.4)", fontSize: "11px", border: "1px dashed rgba(0,59,185,0.15)", borderRadius: "10px", background: "#fcfcfc" }}>
-                    Không có cảnh báo AI trả lời không chắc chắn
-                  </div>
-                ) : (
-                  aiAlerts.map((alert) => (
-                    <AlertCard key={alert.id} alert={alert} alertTypeIcon={alertTypeIcon} onClose={handleCloseConversation} isFlagged={flaggedAlertIds.has(String(alert.id))} onFlag={handleFlagAlert} />
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
         </div>
 
         {/* Row biểu đồ 1: Đường xu hướng và Phân bổ kênh nguồn */}
@@ -1242,38 +1419,6 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
             }}
           </ChartCard>
         </div>
-
-
-
-        {/* Bảng thống kê theo kênh nguồn bên dưới */}
-        <div style={{ backgroundColor: "#fff", borderRadius: "16px", border: "1px solid rgba(0,59,185,0.07)", boxShadow: "0 2px 10px rgba(0,59,185,0.05)", overflow: "hidden", marginBottom: "24px" }}>
-          <div style={{ padding: "16px 22px", borderBottom: "1px solid rgba(0,59,185,0.06)" }}>
-            <h3 style={{ color: "#003BB9", fontSize: "14px", fontWeight: 700, margin: 0 }}>
-              Thống kê theo kênh
-            </h3>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)" }}>
-            {sourceStats.map((ch, i) => (
-              <div key={ch.name} style={{ padding: "18px 22px", borderRight: i < 3 ? "1px solid rgba(0,59,185,0.06)" : "none" }}>
-                {/* Tên Kênh */}
-                <div style={{ fontSize: "11px", color: "rgba(0,59,185,0.5)", fontWeight: 500, marginBottom: "6px" }}>{ch.name}</div>
-
-                {/* Khối Hội thoại */}
-                <div style={{ marginBottom: "12px" }}>
-                  <div style={{ fontSize: "22px", fontWeight: 700, color: "#003BB9", lineHeight: 1.1 }}>{viNum(ch.hoiday)}</div>
-                  <div style={{ fontSize: "11px", color: "rgba(0,59,185,0.4)", marginTop: "2px" }}>hội thoại</div>
-                </div>
-
-                {/* Khối Tin nhắn */}
-                <div>
-                  <div style={{ fontSize: "15px", fontWeight: 700, color: "#334155", lineHeight: 1.1 }}>{viNum(ch.tinnan)}</div>
-                  <div style={{ fontSize: "11px", color: "rgba(0,59,185,0.4)", marginTop: "2px" }}>tin nhắn</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
         {/* Câu hỏi nổi bật (Top Questions) */}
         <div style={{ backgroundColor: "#fff", borderRadius: "16px", border: "1px solid rgba(0,59,185,0.07)", boxShadow: "0 2px 10px rgba(0,59,185,0.05)", overflow: "hidden", marginBottom: "24px" }}>
           <div style={{ padding: "16px 22px", borderBottom: "1px solid rgba(0,59,185,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "14px", flexWrap: "wrap" }}>
@@ -1314,10 +1459,36 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                 </tr>
               </thead>
               <tbody>
-                {isTopQuestionsAiOverloaded ? (
+                {topQuestionsLoadState !== "ready" ? (
+                  <tr>
+                    <td colSpan={4} style={{ padding: "18px 16px", color: topQuestionsLoadState === "error" ? ORANGE : "rgba(0,59,185,0.62)", fontWeight: 600 }}>
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                        {topQuestionsLoadState === "error" ? (
+                          <AlertTriangle size={14} style={{ color: ORANGE }} />
+                        ) : (
+                          <RefreshCw size={14} style={{ color: "#003BB9", animation: "spin 1s linear infinite" }} />
+                        )}
+                        <span>
+                          {topQuestionsLoadState === "loading" && "Đang tải câu hỏi nổi bật theo bộ lọc..."}
+                          {topQuestionsLoadState === "retrying" && "Đang thử tải lại câu hỏi nổi bật theo bộ lọc..."}
+                          {topQuestionsLoadState === "error" && (topQuestionsLoadError || "Chưa tải được câu hỏi nổi bật theo bộ lọc này.")}
+                        </span>
+                        {topQuestionsLoadState === "error" && (
+                          <button
+                            type="button"
+                            onClick={retryDetailSections}
+                            style={{ border: "1px solid rgba(0,59,185,0.18)", background: "#fff", color: "#003BB9", borderRadius: "7px", padding: "4px 9px", fontSize: "11px", fontWeight: 700, cursor: "pointer" }}
+                          >
+                            Thử lại
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ) : isTopQuestionsAiOverloaded ? (
                   <tr>
                     <td colSpan={4} style={{ padding: "18px 16px", color: ORANGE, fontWeight: 600 }}>
-                      {kpiData?.topQuestionsMessage || "Hệ thống AI hiện đang quá tải."}
+                      {topQuestionsMessage || "Hệ thống AI hiện đang quá tải."}
                     </td>
                   </tr>
                 ) : topQuestions.length === 0 ? (
@@ -1375,7 +1546,41 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                 </tr>
               </thead>
               <tbody>
-                {priorityConversations.map((conv) => {
+                {priorityLoadState !== "ready" && (
+                  <tr>
+                    <td colSpan={7} style={{ padding: "18px 16px", color: "rgba(0,59,185,0.62)", textAlign: "center", fontSize: "12px" }}>
+                      <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "8px", flexWrap: "wrap" }}>
+                        {priorityLoadState === "error" ? (
+                          <AlertTriangle size={14} style={{ color: ORANGE }} />
+                        ) : (
+                          <RefreshCw size={14} style={{ color: "#003BB9", animation: "spin 1s linear infinite" }} />
+                        )}
+                        <span>
+                          {priorityLoadState === "loading" && "Đang tải hội thoại ưu tiên theo bộ lọc..."}
+                          {priorityLoadState === "retrying" && "Đang thử tải lại hội thoại ưu tiên theo bộ lọc..."}
+                          {priorityLoadState === "error" && (priorityLoadError || "Chưa tải được hội thoại ưu tiên theo bộ lọc này.")}
+                        </span>
+                        {priorityLoadState === "error" && (
+                          <button
+                            type="button"
+                            onClick={retryPriorityConversations}
+                            style={{ border: "1px solid rgba(0,59,185,0.18)", background: "#fff", color: "#003BB9", borderRadius: "7px", padding: "4px 9px", fontSize: "11px", fontWeight: 700, cursor: "pointer" }}
+                          >
+                            Thử lại
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                {priorityLoadState === "ready" && priorityConversations.length === 0 && (
+                  <tr>
+                    <td colSpan={7} style={{ padding: "18px 16px", color: "rgba(0,59,185,0.52)", textAlign: "center", fontSize: "12px" }}>
+                      Không có hội thoại ưu tiên trong phạm vi bộ lọc hiện tại.
+                    </td>
+                  </tr>
+                )}
+                {priorityLoadState === "ready" && priorityConversations.map((conv) => {
                   const ss = statusColors[conv.status] || { bg: "#f1f5f9", color: "#64748b" };
                   const pc = priorityColors[conv.priority];
                   return (

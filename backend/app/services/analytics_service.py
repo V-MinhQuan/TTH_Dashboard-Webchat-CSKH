@@ -19,19 +19,14 @@ from app.utils.customer_identity import customer_display_name, identity_text
 
 
 TOPIC_LABELS = {
-    "sat_hach_cntt": "Sát hạch CNTT (Sát hạch Công nghệ thông tin)",
+    "sat_hach_cntt": "Sát hạch CNTT",
     "toeic": "TOEIC",
     "mos": "MOS",
     "hoc_tieng_anh": "Học Tiếng Anh",
     "hoc_tin_hoc": "Học Tin học",
-    "registration": "Dang ky",
-    "schedule": "Lich thi",
-    "fee": "Le phi",
-    "certificate": "Chung chi",
-    "document": "Ho so",
-    "technical": "Ky thuat",
-    "other": "Khac",
-    "Khac": "Khac",
+    "khac": "Khác",
+    "other": "Khác",
+    "Khac": "Khác",
 }
 logger = logging.getLogger(__name__)
 
@@ -287,11 +282,17 @@ class AnalyticsService:
             for topic_id in ORDERED_TOPIC_GROUP_IDS
         }
         for row in payload.get("rows", []):
-            topic_ids = {
-                topic_id
-                for topic_id in (canonical_topic_id(topic) for topic in _json_array(row.get("detectedTopics")))
-                if topic_id in TOPIC_NAME_BY_ID
-            }
+            topic_ids = set()
+            has_other_topic = False
+            raw_topics = list(_json_array(row.get("detectedTopics")))
+            for topic in raw_topics:
+                topic_id = canonical_topic_id(topic)
+                if topic_id and topic_id != "khac":
+                    topic_ids.add(topic_id)
+                else:
+                    has_other_topic = True
+            if not topic_ids and (has_other_topic or not raw_topics):
+                topic_ids.add("khac")
             for topic_id in topic_ids:
                 topic_label = TOPIC_NAME_BY_ID[topic_id]
                 result_map[topic_label]["saiCauTra"] += int(row.get("saiCauTra") or 0)
@@ -544,7 +545,7 @@ def _normalize_topic_text(value: str) -> str:
 
 def _infer_keyword_topic(topics: Iterable[Any], question: str, suggested_answer: str) -> str:
     raw_text = " ".join([*(str(topic) for topic in topics), question, suggested_answer])
-    topic_id = canonical_topic_id(raw_text)
+    topic_id = canonical_topic_id(raw_text, default_to_other=True)
     if topic_id:
         return canonical_topic_label(topic_id)
     topics_list = list(topics)
@@ -558,7 +559,7 @@ def _topic_label(topic: Any) -> str:
     if value.lower() in {"khac", "khác", "other", "unknown", "none"}:
         return "Khác"
     canonical = canonical_topic_label(value, default="")
-    return canonical or TOPIC_LABELS.get(value, value)
+    return canonical or TOPIC_LABELS.get(value, "Khác")
 
 
 def _dominant_topic(topic_counts: Dict[str, int]) -> str:

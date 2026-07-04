@@ -8,23 +8,36 @@ from typing import Any
 TOPIC_GROUPS = [
     {
         "id": "sat_hach_cntt",
-        "name": "Sát hạch CNTT (Sát hạch Công nghệ thông tin)",
+        "name": "Sát hạch CNTT",
         "short_name": "Sát hạch CNTT",
         "color": "#003865",
         "scope_terms": [
             "Sát hạch CNTT",
             "Sát hạch Công nghệ thông tin",
-            "CNTT",
-            "Công nghệ thông tin",
-            "CNTT Cơ bản",
-            "CNTT Nâng cao",
+            "thi CNTT",
+            "thi Công nghệ thông tin",
+            "đăng ký thi CNTT",
+            "đăng ký sát hạch CNTT",
+            "lịch thi CNTT",
+            "ngày thi CNTT",
+            "ca thi CNTT",
+            "lệ phí thi CNTT",
+            "phí thi CNTT",
+            "điểm thi CNTT",
+            "kết quả thi CNTT",
+            "xem điểm CNTT",
+            "chứng chỉ CNTT",
+            "nhận chứng chỉ CNTT",
+            "cấp chứng chỉ CNTT",
+            "CNTT cơ bản",
+            "CNTT nâng cao",
+            "Tin học cơ bản",
+            "Tin học nâng cao",
             "Tin cơ bản",
             "Tin nâng cao",
             "THCB",
             "THNC",
             "IC3",
-            "thi CNTT",
-            "chứng chỉ CNTT",
         ],
     },
     {
@@ -32,28 +45,114 @@ TOPIC_GROUPS = [
         "name": "TOEIC",
         "short_name": "TOEIC",
         "color": "#ED5206",
-        "scope_terms": ["TOEIC", "thi TOEIC", "lịch thi TOEIC", "đăng ký TOEIC", "lệ phí TOEIC", "điểm thi TOEIC", "chứng chỉ TOEIC"],
+        "scope_terms": [
+            "TOEIC",
+            "thi TOEIC",
+            "đăng ký TOEIC",
+            "đăng ký thi TOEIC",
+            "lịch thi TOEIC",
+            "ngày thi TOEIC",
+            "ca thi TOEIC",
+            "lệ phí TOEIC",
+            "phí thi TOEIC",
+            "điểm TOEIC",
+            "điểm thi TOEIC",
+            "kết quả TOEIC",
+            "xem điểm TOEIC",
+            "chứng chỉ TOEIC",
+            "nhận chứng chỉ TOEIC",
+            "cấp chứng chỉ TOEIC",
+        ],
     },
     {
         "id": "mos",
         "name": "MOS",
         "short_name": "MOS",
         "color": "#1565C0",
-        "scope_terms": ["MOS", "Microsoft Office Specialist", "thi MOS", "lịch thi MOS", "chứng chỉ MOS", "điểm thi MOS"],
+        "scope_terms": [
+            "MOS",
+            "Microsoft Office Specialist",
+            "thi MOS",
+            "đăng ký MOS",
+            "đăng ký thi MOS",
+            "lịch thi MOS",
+            "ngày thi MOS",
+            "ca thi MOS",
+            "lệ phí MOS",
+            "phí thi MOS",
+            "điểm MOS",
+            "điểm thi MOS",
+            "kết quả MOS",
+            "xem điểm MOS",
+            "chứng chỉ MOS",
+            "nhận chứng chỉ MOS",
+            "cấp chứng chỉ MOS",
+        ],
     },
     {
         "id": "hoc_tieng_anh",
         "name": "Học Tiếng Anh",
         "short_name": "Học Tiếng Anh",
         "color": "#F36C2E",
-        "scope_terms": ["Học Tiếng Anh", "Tiếng Anh", "Anh văn", "Ngoại ngữ", "khóa tiếng Anh", "lớp tiếng Anh", "VSTEP", "B1", "B2", "ôn tiếng Anh", "chuẩn đầu ra ngoại ngữ"],
+        "scope_terms": [
+            "Học Tiếng Anh",
+            "Tiếng Anh",
+            "Anh văn",
+            "Ngoại ngữ",
+            "khóa tiếng Anh",
+            "lớp tiếng Anh",
+            "khóa Anh văn",
+            "lớp Anh văn",
+            "học tiếng Anh",
+            "đăng ký khóa tiếng Anh",
+            "đăng ký lớp tiếng Anh",
+            "ôn tiếng Anh",
+            "luyện tiếng Anh",
+            "tiếng Anh giao tiếp",
+            "học giao tiếp tiếng Anh",
+            "luyện nghe",
+            "luyện nói",
+            "luyện đọc",
+            "luyện viết",
+            "VSTEP",
+            "B1",
+            "B2",
+            "chuẩn đầu ra ngoại ngữ",
+            "học phí tiếng Anh",
+        ],
     },
     {
         "id": "hoc_tin_hoc",
         "name": "Học Tin học",
         "short_name": "Học Tin học",
         "color": "#0288D1",
-        "scope_terms": ["Học Tin học", "khóa tin học", "lớp tin học", "tin học văn phòng", "học Word", "học Excel", "học PowerPoint", "ôn tin học", "quên mật khẩu khóa học"],
+        "scope_terms": [
+            "Học Tin học",
+            "khóa tin học",
+            "lớp tin học",
+            "học tin học",
+            "đăng ký khóa tin học",
+            "đăng ký lớp tin học",
+            "tin học văn phòng",
+            "Microsoft Office",
+            "Word",
+            "Excel",
+            "PowerPoint",
+            "học Word",
+            "học Excel",
+            "học PowerPoint",
+            "ôn tin học",
+            "học phí tin học",
+            "đăng nhập khóa học",
+            "quên mật khẩu khóa học",
+        ],
+    },
+    {
+        "id": "khac",
+        "name": "Khác",
+        "short_name": "Khác",
+        "color": "#64748B",
+        "scope_terms": ["Khác"],
     },
 ]
 
@@ -67,6 +166,7 @@ TOPIC_LEGACY_ALIASES = {
     "mos": ["MOS", "Tin học / MOS / IC3"],
     "hoc_tieng_anh": ["VSTEP", "Chuẩn đầu ra", "Chuẩn đầu ra / Chứng chỉ", "Chuẩn đầu ra ngoại ngữ", "Ngoại ngữ"],
     "hoc_tin_hoc": ["Tin học", "Học Tin học", "Tin học văn phòng"],
+    "khac": ["Khác"],
 }
 
 
@@ -77,7 +177,7 @@ def normalize_topic_text(value: Any = "") -> str:
     return " ".join(without_diacritics.lower().split())
 
 
-def canonical_topic_id(*values: Any) -> str | None:
+def canonical_topic_id(*values: Any, default_to_other: bool = False) -> str | None:
     raw_text = " ".join(str(value or "") for value in values).strip()
     if raw_text in TOPIC_GROUP_BY_ID:
         return raw_text
@@ -94,48 +194,25 @@ def canonical_topic_id(*values: Any) -> str | None:
         "chuan dau ra": "hoc_tieng_anh",
         "chuan dau ra / chung chi": "hoc_tieng_anh",
         "chuan dau ra ngoai ngu": "hoc_tieng_anh",
+        "other": "khac",
+        "unknown": "khac",
+        "none": "khac",
     }
     if text in legacy_exact:
         return legacy_exact[text]
 
-    if _has_code_token(text, "vstep") or _has_code_token(text, "b1") or _has_code_token(text, "b2"):
-        return "hoc_tieng_anh"
-    if _has_code_token(text, "toeic"):
+    if _matches_scope_terms(text, "toeic"):
         return "toeic"
-    if _has_code_token(text, "mos") or "microsoft office specialist" in text:
+    if _matches_scope_terms(text, "mos"):
         return "mos"
-    if any(token in text for token in (
-        "sat hach",
-        "cntt",
-        "cong nghe thong tin",
-        "ic3",
-        "thcb",
-        "thnc",
-        "tin co ban",
-        "tin nang cao",
-    )):
+    if _matches_scope_terms(text, "sat_hach_cntt"):
         return "sat_hach_cntt"
-    if any(token in text for token in (
-        "hoc tieng anh",
-        "tieng anh",
-        "anh van",
-        "ngoai ngu",
-        "chuan dau ra",
-        "dau ra",
-        "xet tot nghiep",
-    )):
+    if _matches_scope_terms(text, "hoc_tieng_anh"):
         return "hoc_tieng_anh"
-    if any(token in text for token in (
-        "hoc tin hoc",
-        "khoa tin hoc",
-        "lop tin hoc",
-        "tin hoc van phong",
-        "hoc word",
-        "hoc excel",
-        "hoc powerpoint",
-        "on tin hoc",
-    )):
+    if _matches_scope_terms(text, "hoc_tin_hoc"):
         return "hoc_tin_hoc"
+    if default_to_other:
+        return "khac"
     return None
 
 
@@ -156,56 +233,34 @@ def canonical_topic_ids(*values: Any) -> list[str]:
         if topic_id not in result:
             result.append(topic_id)
 
-    if _has_code_token(text, "toeic"):
-        add("toeic")
-    if _has_code_token(text, "mos") or "microsoft office specialist" in text:
-        add("mos")
-    if _has_code_token(text, "vstep") or _has_code_token(text, "b1") or _has_code_token(text, "b2"):
-        add("hoc_tieng_anh")
-
-    if any(token in text for token in (
-        "sat hach",
-        "cntt",
-        "cong nghe thong tin",
-        "tin co ban",
-        "tin nang cao",
-    )) or any(_has_code_token(text, code) for code in ("ic3", "thcb", "thnc")):
-        add("sat_hach_cntt")
-
-    if any(token in text for token in (
-        "hoc tieng anh",
-        "tieng anh",
-        "anh van",
-        "ngoai ngu",
-        "chuan dau ra",
-        "dau ra",
-        "xet tot nghiep",
-    )):
-        add("hoc_tieng_anh")
-
-    if any(token in text for token in (
-        "hoc tin hoc",
-        "khoa tin hoc",
-        "lop tin hoc",
-        "tin hoc van phong",
-        "hoc word",
-        "hoc excel",
-        "hoc powerpoint",
-        "on tin hoc",
-        "quen mat khau khoa hoc",
-    )):
-        add("hoc_tin_hoc")
+    for topic_id in ("toeic", "mos", "sat_hach_cntt", "hoc_tieng_anh", "hoc_tin_hoc"):
+        if _matches_scope_terms(text, topic_id):
+            add(topic_id)
 
     if not result:
-        topic_id = canonical_topic_id(raw_text)
-        if topic_id:
-            add(topic_id)
+        add(canonical_topic_id(raw_text, default_to_other=True) or "khac")
 
     return [topic_id for topic_id in ORDERED_TOPIC_GROUP_IDS if topic_id in result]
 
 
 def _has_code_token(text: str, code: str) -> bool:
     return re.search(rf"(?<![a-z0-9_]){re.escape(code)}(?![a-z0-9_])", text) is not None
+
+
+def _matches_scope_terms(text: str, topic_id: str) -> bool:
+    group = TOPIC_GROUP_BY_ID.get(topic_id)
+    if not group:
+        return False
+    for term in group.get("scope_terms", []):
+        normalized = normalize_topic_text(term)
+        if not normalized or normalized == "khac":
+            continue
+        if normalized.isalnum() and len(normalized) <= 10:
+            if _has_code_token(text, normalized):
+                return True
+        elif normalized in text:
+            return True
+    return False
 
 
 def canonical_topic_label(*values: Any, default: str = "Khác") -> str:

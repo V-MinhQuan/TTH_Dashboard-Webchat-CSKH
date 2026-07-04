@@ -1,8 +1,9 @@
 import re
 import unicodedata
+from datetime import date, datetime
 from difflib import SequenceMatcher
 
-from app.core.topic_taxonomy import canonical_topic_label
+from app.core.topic_taxonomy import canonical_topic_id, canonical_topic_label
 from app.sheet_chatbot.repository import sheet_chatbot_repository
 
 
@@ -71,6 +72,46 @@ def normalize_risk(value):
     return "Thấp"
 
 
+def is_all_filter_value(value):
+    return normalize_text(value) in {"", "tat ca", "all"}
+
+
+def parse_filter_date(value):
+    if not value:
+        return None
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    if isinstance(value, datetime):
+        return value.date()
+    raw = str(value).strip()
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00")).date()
+    except Exception:
+        try:
+            return datetime.strptime(raw[:10], "%Y-%m-%d").date()
+        except Exception:
+            return None
+
+
+def normalize_channel_key(value):
+    normalized = normalize_text(value).replace(" ", "")
+    aliases = {
+        "zalo": "zalooa",
+        "zalooa": "zalooa",
+        "zalobusiness": "zalobusiness",
+        "zalobiz": "zalobusiness",
+        "facebook": "facebook",
+        "fb": "facebook",
+        "messenger": "facebook",
+        "chatwidget": "chatwidget",
+        "website": "chatwidget",
+        "web": "chatwidget",
+    }
+    return aliases.get(normalized, normalized)
+
+
 def status_from_risk(risk):
     return "Chờ xử lý"
 
@@ -96,8 +137,13 @@ class SheetChatbotService:
         risk = filters.get("risk")
         added_by = filters.get("addedBy")
         role = filters.get("role")
+        start_date = parse_filter_date(filters.get("startDate"))
+        end_date = parse_filter_date(filters.get("endDate"))
+        channel = filters.get("channel")
+        topic = filters.get("topic")
 
         rows = self.repository.get_all()
+        rows = self._apply_global_filters(rows, start_date, end_date, channel, topic)
 
         if role and role != "manager" and added_by:
             rows = [row for row in rows if row.get("addedBy") == added_by]
@@ -299,6 +345,35 @@ class SheetChatbotService:
 
     def _map_faq_topic(self, topic):
         return canonical_topic_label(topic, default=topic or "Khác")
+
+    def _apply_global_filters(self, rows, start_date=None, end_date=None, channel=None, topic=None):
+        topic_id = canonical_topic_id(topic) if topic and not is_all_filter_value(topic) else None
+        channel_key = normalize_channel_key(channel) if channel and not is_all_filter_value(channel) else None
+
+        filtered = []
+        for row in rows:
+            row_date = parse_filter_date(row.get("addedAt") or row.get("createdAt"))
+            if start_date and (not row_date or row_date < start_date):
+                continue
+            if end_date and (not row_date or row_date > end_date):
+                continue
+
+            if topic_id and canonical_topic_id(row.get("topic")) != topic_id:
+                continue
+
+            if channel_key:
+                row_channel = (
+                    row.get("channel")
+                    or row.get("sourceChannel")
+                    or row.get("originChannel")
+                    or row.get("conversationChannel")
+                )
+                if not row_channel or normalize_channel_key(row_channel) != channel_key:
+                    continue
+
+            filtered.append(row)
+
+        return filtered
 
 
 sheet_chatbot_service = SheetChatbotService()

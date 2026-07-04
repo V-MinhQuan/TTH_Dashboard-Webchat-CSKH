@@ -15,7 +15,7 @@ import { exportFailedConversationsCsv, getAllFailedConversations, getFailedConve
 import { getAiFailureDefinition } from "../../constants/aiFailureTaxonomy";
 import { TOPIC_TAXONOMY, mapTopicToGroupId, topicLabelForGroupId } from "../../constants/topicTaxonomy";
 import { StatusBadge } from "../common/StatusBadge";
-import { analyticsFiltersToSearchParams } from "../../utils/dateFilters";
+import { analyticsFiltersToSearchParams, mapGlobalFiltersToAnalyticsRequest } from "../../utils/dateFilters";
 
 const NAVY = "#003865";
 const ORANGE = "#D73C01";
@@ -26,7 +26,6 @@ const ORANGE_200 = "#FBCBB8";
 const AMBER_50 = "#FFF7E6";
 const AMBER_100 = "#FADFA8";
 const AMBER_TEXT = "#B7791F";
-const RED_50 = "#FFF1F1";
 const RED_100 = "#F8CACA";
 const RED_TEXT = "#B42318";
 const BLUE_50 = "#EBF2FF";
@@ -166,53 +165,11 @@ function TableFilterHeader({
   );
 }
 
-const impactColor: Record<string, { bg: string; color: string }> = {
-  "Ưu tiên cao": { bg: RED_50, color: RED_TEXT },
-  "Ưu tiên trung bình": { bg: AMBER_50, color: AMBER_TEXT },
-  "Ưu tiên thấp": { bg: "#f1f5f9", color: "#64748b" },
-};
-
 interface AIInsightsProps {
   filters: FilterValues;
   onFiltersChange: (f: FilterValues) => void;
   onNavigate: (s: string) => void;
   refreshVersion?: number;
-}
-function getDatesFromRange(range: string, customFrom?: string, customTo?: string): { startDate?: string; endDate?: string } {
-  const today = new Date();
-  const formatDateStr = (d: Date) => {
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
-  };
-
-  if (range === "Hôm nay") {
-    return { startDate: formatDateStr(today), endDate: formatDateStr(today) };
-  }
-  if (range === "7 ngày qua") {
-    const start = new Date();
-    start.setDate(today.getDate() - 7);
-    return { startDate: formatDateStr(start), endDate: formatDateStr(today) };
-  }
-  if (range === "30 ngày qua") {
-    const start = new Date();
-    start.setDate(today.getDate() - 30);
-    return { startDate: formatDateStr(start), endDate: formatDateStr(today) };
-  }
-  if (range === "Tháng này") {
-    const start = new Date(today.getFullYear(), today.getMonth(), 1);
-    return { startDate: formatDateStr(start), endDate: formatDateStr(today) };
-  }
-  if (range === "Tháng trước") {
-    const start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-    const end = new Date(today.getFullYear(), today.getMonth(), 0);
-    return { startDate: formatDateStr(start), endDate: formatDateStr(end) };
-  }
-  if (range === "Tùy chỉnh" && customFrom && customTo) {
-    return { startDate: customFrom, endDate: customTo };
-  }
-  return {};
 }
 
 function SkeletonBlock({ w = "100%", h = "40px", radius = "10px" }: { w?: string; h?: string; radius?: string }) {
@@ -529,6 +486,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
   useEffect(() => {
     let cancelled = false;
     const queryParams = analyticsFiltersToSearchParams(filters);
+    const sheetChatbotFilters = mapGlobalFiltersToAnalyticsRequest(filters);
     const qs = queryParams.toString();
 
     const fetchData = async () => {
@@ -571,7 +529,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
           safeRequired(getFailedConversations(queryParams)),
           safeOptional("staffReportedErrors", fetchApiJson<any>(buildApiUrl(`/api/analytics/ai/staff-reported-errors?${qs}`), { cache: false })),
           safeOptional("suggestedFAQs", fetchApiJson<any>(buildApiUrl(`/api/analytics/ai/suggested-faqs?${qs}`), { cache: false })),
-          safeOptional("recentChatbotRows", getSheetChatbotRows({ pageSize: 5 })),
+          safeOptional("recentChatbotRows", getSheetChatbotRows({ pageSize: 5, ...sheetChatbotFilters })),
         ]);
 
         if (cancelled) return;
@@ -633,11 +591,18 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
       .slice(0, topN),
     [canonicalFailureByTopic, topN],
   );
+  const supplementalFailureTopics = useMemo(
+    () => [...canonicalFailureByTopic]
+      .filter((row) => mapTopicToGroupId(row.topic) !== "khac")
+      .sort((left, right) => visibleTopicFailureTotal(right) - visibleTopicFailureTotal(left))
+      .slice(0, topN),
+    [canonicalFailureByTopic, topN],
+  );
   const selectedTopicFailure = useMemo(
     () => selectedTopicDetail
-      ? canonicalFailureByTopic.find((row) => row.topic === selectedTopicDetail) || null
+      ? supplementalFailureTopics.find((row) => row.topic === selectedTopicDetail) || null
       : null,
-    [canonicalFailureByTopic, selectedTopicDetail],
+    [selectedTopicDetail, supplementalFailureTopics],
   );
   const selectedTopicRelatedConversations = useMemo(
     () => selectedTopicDetail
@@ -1179,15 +1144,13 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
                         </label>
                       </div>
                     </th>
-                    <th className="flic-th">Mức độ tin cậy</th>
-                    <th className="flic-th">Mức ảnh hưởng</th>
                     <th className="flic-th">Hành động</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredFailedConversations.length === 0 && (
                     <tr>
-                      <td colSpan={9} style={{ padding: "28px 14px", color: "rgba(0,56,101,0.55)", fontSize: "12px", textAlign: "center" }}>
+                      <td colSpan={7} style={{ padding: "28px 14px", color: "rgba(0,56,101,0.55)", fontSize: "12px", textAlign: "center" }}>
                         {failedConversations.length === 0
                           ? "Không có câu hỏi AI chưa xử lý trong phạm vi lọc hiện tại."
                           : "Không có câu hỏi phù hợp với bộ lọc Chủ đề/Lý do lỗi AI."}
@@ -1197,7 +1160,6 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
                   {paginatedFailedConversations.map((conv) => {
                     const isExpanded = expandedRow === conv.id;
                     const fc = failReasonColor[conv.failReason] || "#64748b";
-                    const ic = impactColor[conv.impact] || { bg: "#f1f5f9", color: "#64748b" };
                     return (
                       <React.Fragment key={conv.id}>
                         <tr
@@ -1242,17 +1204,6 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
                             <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: `${fc}18`, color: fc, fontWeight: 600, whiteSpace: "nowrap" }}>{conv.failReason}</span>
                           </td>
                           <td style={{ padding: "12px 14px" }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                              <div style={{ width: "40px", height: "5px", backgroundColor: "#f1f5f9", borderRadius: "3px", overflow: "hidden" }}>
-                                <div style={{ height: "100%", width: `${conv.confidence * 100}%`, backgroundColor: conv.confidence < 0.4 ? RED_TEXT : AMBER_TEXT, borderRadius: "3px" }} />
-                              </div>
-                              <span style={{ fontSize: "11px", color: conv.confidence < 0.4 ? RED_TEXT : AMBER_TEXT, fontWeight: 600 }}>{(conv.confidence * 100).toFixed(0)}%</span>
-                            </div>
-                          </td>
-                          <td style={{ padding: "12px 14px" }}>
-                            <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: ic.bg, color: ic.color, fontWeight: 600 }}>{conv.impact}</span>
-                          </td>
-                          <td style={{ padding: "12px 14px" }}>
                             <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
                               <button
                                 onClick={() => { void handleMarkAsProcessed(conv.id); }}
@@ -1271,7 +1222,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
                         </tr>
                         {isExpanded && (
                           <tr key={`${conv.id}-expanded`} style={{ backgroundColor: "#fff8f6" }}>
-                            <td colSpan={9} style={{ padding: "12px 14px 14px 28px" }}>
+                            <td colSpan={7} style={{ padding: "12px 14px 14px 28px" }}>
                               <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                                 <div style={{ display: "flex", gap: "8px", alignItems: "flex-start" }}>
                                   <span style={{ fontSize: "10px", color: ORANGE, fontWeight: 700, whiteSpace: "nowrap", paddingTop: "2px" }}>CÂU HỎI KHÁCH HÀNG:</span>
@@ -1326,7 +1277,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
             <h3 style={{ color: NAVY, fontSize: "14px", fontWeight: 700, margin: "0 0 16px 0" }}>Những chủ đề cần bổ sung dữ liệu</h3>
             <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
               {(() => {
-                const computedTopics = topFailureTopics.map(item => ({
+                const computedTopics = supplementalFailureTopics.map(item => ({
                   topic: item.topic,
                   count: visibleTopicFailureTotal(item),
                 }));

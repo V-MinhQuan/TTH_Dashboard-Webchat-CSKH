@@ -25,8 +25,8 @@ class IssueClassification:
 
 ISSUE_RULES: tuple[IssueRule, ...] = (
     IssueRule(
-        issue_type="AI có nguy cơ tự tạo thông tin",
-        confidence=0.65,
+        issue_type="AI không chắc chắn",
+        confidence=0.75,
         keywords=(
             "suy đoán",
             "phỏng đoán",
@@ -88,12 +88,6 @@ ISSUE_RULES: tuple[IssueRule, ...] = (
             "hiện chưa có",
             "không nằm trong dữ liệu",
             "không đủ dữ liệu",
-        ),
-    ),
-    IssueRule(
-        issue_type="Câu hỏi ngoài phạm vi",
-        confidence=0.70,
-        keywords=(
             "ngoài phạm vi",
             "không thuộc phạm vi",
             "không hỗ trợ nội dung này",

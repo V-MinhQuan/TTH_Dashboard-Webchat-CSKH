@@ -146,18 +146,19 @@ class AiFailureTopicRepository:
         }
 
 
-def test_ai_failure_by_topic_returns_only_five_canonical_topic_groups():
+def test_ai_failure_by_topic_returns_only_six_canonical_topic_groups():
     repository = AiFailureTopicRepository()
     service = AnalyticsService(repository=repository)
 
     result = service.get_ai_failure_by_topic({"aiStatus": "failed"})
 
     assert [row["topic"] for row in result] == [
-        "Sát hạch CNTT (Sát hạch Công nghệ thông tin)",
+        "Sát hạch CNTT",
         "TOEIC",
         "MOS",
         "Học Tiếng Anh",
         "Học Tin học",
+        "Khác",
     ]
     assert "Lịch thi" not in [row["topic"] for row in result]
     assert "Đăng ký thi" not in [row["topic"] for row in result]
@@ -166,6 +167,7 @@ def test_ai_failure_by_topic_returns_only_five_canonical_topic_groups():
     assert result[2]["thieuDL"] == 3
     assert result[3]["thieuDL"] == 4
     assert result[0]["thieuDL"] == 0
+    assert result[5]["thieuDL"] == 99
 
 
 class FailedConversationExportService:
