@@ -41,3 +41,27 @@ def test_keyword_occurrence_count_splits_large_batches(monkeypatch):
     assert all(value == 1 for value in result.values())
     assert calls[0][0].count(" AS col_") == KEYWORD_COUNT_BATCH_SIZE
     assert calls[1][0].count(" AS col_") == 1
+
+
+def test_keyword_message_filters_match_channel_aliases(monkeypatch):
+    calls = []
+
+    def fake_execute_query(query, params):
+        calls.append((query, params))
+        return [{"col_0": 2}]
+
+    monkeypatch.setattr(keyword_repository_module, "execute_query", fake_execute_query)
+
+    result = KeywordRepository().batch_count_keyword_occurrences(
+        ["TOEIC"],
+        start_date="2026-01-01",
+        end_date="2026-07-06",
+        channel="ZaloBusiness",
+    )
+
+    query, params = calls[0]
+    assert result["TOEIC"] == 2
+    assert "LOWER(LTRIM(RTRIM(m.Source))) IN" in query
+    assert "m.Source = ?" not in query
+    assert "zalobusiness" in params
+    assert "zalobiz" in params

@@ -49,6 +49,8 @@ interface FailedConversationPage {
   pagination: { page: number; pageSize: number; total: number };
 }
 
+const AI_ANALYTICS_TIMEOUT_MS = 30000;
+
 function filenameFromDisposition(value: string | null) {
   if (!value) return null;
   const utf8Match = value.match(/filename\*=UTF-8''([^;]+)/i);
@@ -60,7 +62,7 @@ function filenameFromDisposition(value: string | null) {
 export async function getTopicFailures(params: URLSearchParams) {
   const response = await fetchApiJson<ApiResponse<unknown>>(
     buildApiUrl("/api/analytics/ai/failure-by-topic", new URLSearchParams(params)),
-    { cache: false },
+    { cache: false, timeoutMs: AI_ANALYTICS_TIMEOUT_MS },
   );
   if (!response.success) {
     throw new Error(response.message || "Không thể tải lỗi AI theo chủ đề.");
@@ -77,7 +79,7 @@ export async function getFailedConversations(params: URLSearchParams) {
 
   const response = await fetchApiJson<ApiResponse<FailedConversationPage>>(
     buildApiUrl("/api/analytics/ai/failed-conversations", query),
-    { cache: false },
+    { cache: false, timeoutMs: AI_ANALYTICS_TIMEOUT_MS },
   );
   if (!response.success) {
     throw new Error(response.message || "Không thể tải hội thoại có lỗi AI.");

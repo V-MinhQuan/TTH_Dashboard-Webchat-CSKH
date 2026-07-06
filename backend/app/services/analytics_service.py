@@ -74,6 +74,7 @@ class AnalyticsService:
             "metadata": {
                 "issueMetadataAvailable": issue_metadata_available(optional_columns),
                 "optionalColumns": optional_columns,
+                "analyzerVersionDistributionSkipped": bool(payload.get("analyzerVersionDistributionSkipped")),
             },
         }
 

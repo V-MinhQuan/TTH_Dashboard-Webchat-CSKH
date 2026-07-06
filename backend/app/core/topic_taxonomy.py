@@ -7,40 +7,6 @@ from typing import Any
 
 TOPIC_GROUPS = [
     {
-        "id": "sat_hach_cntt",
-        "name": "Sát hạch CNTT",
-        "short_name": "Sát hạch CNTT",
-        "color": "#003865",
-        "scope_terms": [
-            "Sát hạch CNTT",
-            "Sát hạch Công nghệ thông tin",
-            "thi CNTT",
-            "thi Công nghệ thông tin",
-            "đăng ký thi CNTT",
-            "đăng ký sát hạch CNTT",
-            "lịch thi CNTT",
-            "ngày thi CNTT",
-            "ca thi CNTT",
-            "lệ phí thi CNTT",
-            "phí thi CNTT",
-            "điểm thi CNTT",
-            "kết quả thi CNTT",
-            "xem điểm CNTT",
-            "chứng chỉ CNTT",
-            "nhận chứng chỉ CNTT",
-            "cấp chứng chỉ CNTT",
-            "CNTT cơ bản",
-            "CNTT nâng cao",
-            "Tin học cơ bản",
-            "Tin học nâng cao",
-            "Tin cơ bản",
-            "Tin nâng cao",
-            "THCB",
-            "THNC",
-            "IC3",
-        ],
-    },
-    {
         "id": "toeic",
         "name": "TOEIC",
         "short_name": "TOEIC",
@@ -88,7 +54,8 @@ TOPIC_GROUPS = [
             "nhận chứng chỉ MOS",
             "cấp chứng chỉ MOS",
         ],
-    },
+    }, 
+     { "id": "sat_hach_cntt", "name": "Sát hạch CNTT", "short_name": "Sát hạch CNTT", "color": "#003865", "scope_terms": [ "Sát hạch CNTT", "Sát hạch Công nghệ thông tin", "thi CNTT", "thi Công nghệ thông tin", "đăng ký thi CNTT", "đăng ký sát hạch CNTT", "lịch thi CNTT", "ngày thi CNTT", "ca thi CNTT", "lệ phí thi CNTT", "phí thi CNTT", "điểm thi CNTT", "kết quả thi CNTT", "xem điểm CNTT", "chứng chỉ CNTT", "nhận chứng chỉ CNTT", "cấp chứng chỉ CNTT", "CNTT cơ bản", "CNTT nâng cao", "Tin học cơ bản", "Tin học nâng cao", "Tin cơ bản", "Tin nâng cao", "THCB", "THNC", "IC3" ] },
     {
         "id": "hoc_tieng_anh",
         "name": "Học Tiếng Anh",
@@ -161,7 +128,14 @@ TOPIC_GROUP_BY_ID = {group["id"]: group for group in TOPIC_GROUPS}
 TOPIC_NAME_BY_ID = {group["id"]: group["name"] for group in TOPIC_GROUPS}
 
 TOPIC_LEGACY_ALIASES = {
-    "sat_hach_cntt": ["Sát hạch CNTT", "CNTT", "IC3", "THCB", "THNC"],
+    "sat_hach_cntt": [
+        "Sát hạch CNTT",
+        "Sát hạch CNTT (Sát hạch Công nghệ thông tin)",
+        "CNTT",
+        "IC3",
+        "THCB",
+        "THNC",
+    ],
     "toeic": ["TOEIC"],
     "mos": ["MOS", "Tin học / MOS / IC3"],
     "hoc_tieng_anh": ["VSTEP", "Chuẩn đầu ra", "Chuẩn đầu ra / Chứng chỉ", "Chuẩn đầu ra ngoại ngữ", "Ngoại ngữ"],
@@ -294,3 +268,4 @@ def topic_filter_aliases(value: Any) -> list[str]:
         seen.add(normalized)
         result.append(alias)
     return result
+

@@ -2221,13 +2221,45 @@ class DashboardService:
         if include_priority_conversations:
             query_tasks['priority_conversations'] = lambda: self.repository.get_priority_conversations_data(start_date, end_date, channel, conversation_status, topic, ai_status)
 
+        query_defaults = {
+            'summary': {},
+            'message_counts': [],
+            'daily_conversations': [],
+            'ai_daily_stats': [],
+            'urgent_alerts': [],
+            'overtime_alerts': [],
+            'top_questions': ([], "fallback", "Chưa tải được câu hỏi nổi bật theo bộ lọc này."),
+            'previous_summary': {},
+            'previous_message_counts': [],
+            'previous_ai_daily_stats': [],
+            'priority_conversations': [],
+        }
+        partial_errors = []
+
+        def execute_task(name, fn):
+            try:
+                return fn()
+            except Exception as exc:
+                logger.exception(
+                    "Dashboard KPI branch failed",
+                    extra={
+                        "branch": name,
+                        "start_date": start_date,
+                        "end_date": end_date,
+                        "channel": channel,
+                        "topic": topic,
+                    },
+                )
+                partial_errors.append({"branch": name, "message": str(exc)})
+                return query_defaults.get(name)
+
         topic_filter_active = bool(topic and topic != 'Tất cả')
         if topic_filter_active and len(query_tasks) > 4:
-            query_results = {name: fn() for name, fn in query_tasks.items()}
+            query_results = {name: execute_task(name, fn) for name, fn in query_tasks.items()}
         else:
             with ThreadPoolExecutor(max_workers=DASHBOARD_QUERY_WORKERS) as executor:
                 futures = {name: executor.submit(fn) for name, fn in query_tasks.items()}
-            query_results = {name: future.result() for name, future in futures.items()}
+            query_results = {name: execute_task(name, future.result) for name, future in futures.items()}
 
         summary = query_results.get('summary') or {}
         raw_message_counts = query_results.get('message_counts') or []
@@ -2526,6 +2558,7 @@ class DashboardService:
             "topQuestionsMessage": top_questions_message,
             "priorityConversations": priority_conversations_mapped[:10],
             "dailyTrends": daily_trends,
+            "partialErrors": partial_errors,
         }
 
     def get_kpis(self, start_date=None, end_date=None, filters=None):
@@ -2572,6 +2605,25 @@ class DashboardService:
         ai_status = filters.get('aiStatus')
         selected_source = channel_to_source_key(channel)
 
+        partial_errors = []
+
+        def future_result(name, future, default):
+            try:
+                return future.result() or default
+            except Exception as exc:
+                logger.exception(
+                    "Channel analytics branch failed",
+                    extra={
+                        "branch": name,
+                        "start_date": start_date,
+                        "end_date": end_date,
+                        "channel": channel,
+                        "topic": topic,
+                    },
+                )
+                partial_errors.append({"branch": name, "message": str(exc)})
+                return default
+
         with ThreadPoolExecutor(max_workers=4 if not selected_source else 3) as executor:
             source_totals_future = None
             if not selected_source:
@@ -2611,10 +2663,14 @@ class DashboardService:
                 topic,
                 ai_status,
             )
-            conversation_stats = conversation_stats_future.result() or []
-            ai_summary = ai_summary_future.result() or []
-            topic_stats = topic_stats_future.result() or []
-            source_totals = source_totals_future.result() if source_totals_future else {}
+            conversation_stats = future_result("conversation_stats", conversation_stats_future, [])
+            ai_summary = future_result("ai_summary", ai_summary_future, [])
+            topic_stats = future_result("topic_stats", topic_stats_future, [])
+            source_totals = (
+                future_result("source_totals", source_totals_future, {})
+                if source_totals_future
+                else {}
+            )
 
         all_channel_defs = [
             ('Zalo Business', 'ZaloBusiness'),
@@ -2724,6 +2780,7 @@ class DashboardService:
             "heatmap": heatmap_list,
             "topics": all_topics,
             "channelsList": all_channels,
+            "partialErrors": partial_errors,
             "dateRange": {
                 "startDate": start_date or '',
                 "endDate": end_date or '',

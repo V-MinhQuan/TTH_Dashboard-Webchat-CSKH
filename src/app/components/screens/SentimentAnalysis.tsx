@@ -31,6 +31,7 @@ const SENTIMENT_POSITIVE = "#1a6460";
 const SENTIMENT_NEUTRAL = "#E5A850";
 const SENTIMENT_NEGATIVE = ORANGE;
 const SENTIMENT_TOPIC_COLORS = [NAVY, "#ED5206", SENTIMENT_POSITIVE, SENTIMENT_NEGATIVE, "#42A5F5", SENTIMENT_NEUTRAL];
+const SENTIMENT_ANALYTICS_TIMEOUT_MS = 30000;
 
 type NegLevel = "Rất tiêu cực" | "Tiêu cực" | "Hơi tiêu cực";
 
@@ -191,14 +192,27 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
       setLoading(true);
       try {
         const queryParams = buildSentimentQueryParams(filters);
+        const failedSections: string[] = [];
+        const safeRequest = async <T,>(label: string, request: Promise<T>): Promise<T | null> => {
+          try {
+            return await request;
+          } catch (error) {
+            if ((error as any)?.name === "AbortError") throw error;
+            failedSections.push(label);
+            console.warn(`Sentiment request failed (${label}):`, error);
+            return null;
+          }
+        };
 
         const [sumRes, trendRes, topicRes, kwRes, convRes] = await Promise.all([
-          fetchApiJson<any>(buildApiUrl("/api/analytics/sentiment-summary", queryParams), { cache: false, signal: controller.signal }),
-          fetchApiJson<any>(buildApiUrl("/api/analytics/sentiment-trend", queryParams), { cache: false, signal: controller.signal }),
-          fetchApiJson<any>(buildApiUrl("/api/analytics/topics", queryParams), { cache: false, signal: controller.signal }),
-          fetchApiJson<any>(buildApiUrl("/api/analytics/negative-keywords", queryParams), { cache: false, signal: controller.signal }),
-          fetchApiJson<any>(buildApiUrl("/api/analytics/negative-conversations", queryParams), { cache: false, signal: controller.signal }),
+          safeRequest("tổng quan cảm xúc", fetchApiJson<any>(buildApiUrl("/api/analytics/sentiment-summary", queryParams), { cache: false, signal: controller.signal, timeoutMs: SENTIMENT_ANALYTICS_TIMEOUT_MS })),
+          safeRequest("xu hướng cảm xúc", fetchApiJson<any>(buildApiUrl("/api/analytics/sentiment-trend", queryParams), { cache: false, signal: controller.signal, timeoutMs: SENTIMENT_ANALYTICS_TIMEOUT_MS })),
+          safeRequest("chủ đề cảm xúc", fetchApiJson<any>(buildApiUrl("/api/analytics/topics", queryParams), { cache: false, signal: controller.signal, timeoutMs: SENTIMENT_ANALYTICS_TIMEOUT_MS })),
+          safeRequest("từ khóa tiêu cực", fetchApiJson<any>(buildApiUrl("/api/analytics/negative-keywords", queryParams), { cache: false, signal: controller.signal, timeoutMs: SENTIMENT_ANALYTICS_TIMEOUT_MS })),
+          safeRequest("hội thoại tiêu cực", fetchApiJson<any>(buildApiUrl("/api/analytics/negative-conversations", queryParams), { cache: false, signal: controller.signal, timeoutMs: SENTIMENT_ANALYTICS_TIMEOUT_MS })),
         ]);
+
+        if (controller.signal.aborted) return;
 
         if (sumRes?.success) {
           setSummaryData(sumRes.data);
@@ -211,6 +225,13 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
             { name: "Tích cực", value: Math.round((pos / total) * 100) || 0, color: SENTIMENT_POSITIVE },
             { name: "Trung lập", value: Math.round((neu / total) * 100) || 0, color: SENTIMENT_NEUTRAL },
             { name: "Tiêu cực", value: Math.round((neg / total) * 100) || 0, color: SENTIMENT_NEGATIVE },
+          ]);
+        } else {
+          setSummaryData(null);
+          setDonutData([
+            { name: "Tích cực", value: 0, color: SENTIMENT_POSITIVE },
+            { name: "Trung lập", value: 0, color: SENTIMENT_NEUTRAL },
+            { name: "Tiêu cực", value: 0, color: SENTIMENT_NEGATIVE },
           ]);
         }
         
@@ -226,6 +247,9 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
               negative: Math.round((d.negative / total) * 100) || 0
             };
           }));
+        } else {
+          setSentimentTrend([]);
+          setSentimentKpiTrend({ pos: "", neu: "", neg: "" });
         }
 
         if (topicRes?.success) {
@@ -245,6 +269,8 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
             if (!filters.topic || filters.topic === "Tất cả") return true;
             return mapTopicToGroupId(d.topic) === mapTopicToGroupId(filters.topic);
           }));
+        } else {
+          setTopicSentiment([]);
         }
 
         if (kwRes?.success) {
@@ -254,6 +280,8 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
             count: d.count,
             topic: d.topicLabel || d.topic || "Khác"
           })));
+        } else {
+          setNegKeywords([]);
         }
 
         if (convRes?.success) {
@@ -290,6 +318,9 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
             if (!filters.topic || filters.topic === "Tất cả") return true;
             return mapTopicToGroupId(conv.topic) === mapTopicToGroupId(filters.topic);
           }));
+        } else {
+          setSelectedConvIds(new Set());
+          setNegativeConversations([]);
         }
 
         // Tính toán xu hướng tích cực/trung lập/tiêu cực từ trend data thực
@@ -307,6 +338,9 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
             neu: neuChange > 0 ? `+${neuChange.toFixed(1)}%` : neuChange < 0 ? `${neuChange.toFixed(1)}%` : "Ổn định",
             neg: negChange > 0 ? `+${negChange.toFixed(1)}%` : negChange < 0 ? `${negChange.toFixed(1)}%` : "Ổn định",
           });
+        }
+        if (failedSections.length > 0) {
+          toast.warning(`Một số dữ liệu cảm xúc chưa tải được: ${failedSections.join(", ")}.`);
         }
       } catch (err) {
         if ((err as any)?.name === "AbortError") return;
@@ -332,7 +366,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
         queryParams.set("pageSize", "5");
         const response = await fetchApiJson<any>(
           buildApiUrl("/api/analytics/positive-conversations", queryParams),
-          { cache: false, signal: controller.signal },
+          { cache: false, signal: controller.signal, timeoutMs: SENTIMENT_ANALYTICS_TIMEOUT_MS },
         );
         if (cancelled) return;
         if (!response?.success) throw new Error("API hội thoại tích cực trả về dữ liệu không hợp lệ.");

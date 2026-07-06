@@ -121,6 +121,27 @@ def _dedupe_terms(values: List[str]) -> List[str]:
     return result
 
 
+def _normalized_source_expr(source_column: str) -> str:
+    return f"LOWER(LTRIM(RTRIM({source_column})))"
+
+
+def _source_match_values(source: Any) -> Tuple[str, ...]:
+    normalized = str(source or "").strip().lower().replace(" ", "")
+    values = {
+        "zalooa": ("zalooa", "zalo"),
+        "zalo": ("zalooa", "zalo"),
+        "zalobusiness": ("zalobusiness", "zalobiz"),
+        "zalobiz": ("zalobusiness", "zalobiz"),
+        "facebook": ("facebook", "fb", "messenger"),
+        "fb": ("facebook", "fb", "messenger"),
+        "messenger": ("facebook", "fb", "messenger"),
+        "chatwidget": ("chatwidget", "website", "web"),
+        "website": ("chatwidget", "website", "web"),
+        "web": ("chatwidget", "website", "web"),
+    }.get(normalized, (normalized,))
+    return tuple(dict.fromkeys(value for value in values if value))
+
+
 def _topic_message_terms(value: Any) -> List[str]:
     topic_id = canonical_topic_id(value)
     if topic_id == "toeic":
@@ -189,7 +210,6 @@ def _build_topic_filter_condition(filters: Dict[str, Any]) -> Tuple[str, List[An
     terms = _topic_filter_terms(filters.get("topic"))
     if not terms:
         return "", []
-    message_terms = _topic_message_terms(filters.get("topic")) or terms
 
     params: List[Any] = []
     analytics_conditions: List[str] = []
@@ -205,57 +225,12 @@ def _build_topic_filter_condition(filters: Dict[str, Any]) -> Tuple[str, List[An
         )
         params.extend([pattern, pattern])
 
-    message_date_filter = build_date_filter(
-        column="topic_msg.SentAt",
-        date_range=filters.get("dateRange"),
-        from_date=filters.get("fromDate"),
-        to_date=filters.get("toDate"),
-        start_date=filters.get("startDate"),
-        end_date=filters.get("endDate"),
-    )
-    message_conditions = [
-        non_placeholder_text_condition("topic_msg.Source"),
-        "topic_msg.TextContent IS NOT NULL",
-        "LTRIM(RTRIM(topic_msg.TextContent)) <> N''",
-        "topic_msg.Source = a.source",
-        f"""(
-          (
-            topic_msg.FromHost = 0
-            AND {non_placeholder_text_condition("topic_msg.SenderId")}
-            AND topic_msg.SenderId = a.customerId
-          )
-          OR (
-            topic_msg.FromHost = 1
-            AND {non_placeholder_text_condition("topic_msg.ReceiverId")}
-            AND topic_msg.ReceiverId = a.customerId
-          )
-        )""",
-    ]
-    message_params: List[Any] = []
-    if message_date_filter.condition:
-        message_conditions.append(message_date_filter.condition)
-        message_params.extend(message_date_filter.params)
-
-    message_text_conditions: List[str] = []
-    message_text_params: List[Any] = []
-    for term in message_terms:
-        message_text_conditions.append(
-            "LOWER(ISNULL(topic_msg.TextContent, N'')) LIKE ? ESCAPE '~'"
-        )
-        message_text_params.append(_topic_like_pattern(term))
-
     condition = f"""
         (
-          ({" OR ".join(analytics_conditions)})
-          OR EXISTS (
-            SELECT 1
-            FROM dbo.WebChat_MessageLogs topic_msg
-            WHERE {" AND ".join(message_conditions)}
-              AND ({" OR ".join(message_text_conditions)})
-          )
+          {" OR ".join(analytics_conditions)}
         )
     """
-    return condition, [*params, *message_params, *message_text_params]
+    return condition, params
 
 
 class AnalyticsRepository:
@@ -290,24 +265,28 @@ class AnalyticsRepository:
                 """,
                 params,
             )
-            version_rows = execute_all(
-                conn,
-                f"""
-                SELECT
-                  {source_expr} AS sentimentSource,
-                  {version_expr} AS analyzerVersion,
-                  a.sentimentLabel,
-                  COUNT(*) AS total
-                FROM dbo.WebChat_MessageAnalytics a
-                {where}
-                GROUP BY {source_expr}, {version_expr}, a.sentimentLabel
-                ORDER BY analyzerVersion, a.sentimentLabel
-                """,
-                params,
-            )
+            include_version_distribution = bool(filters.get("includeAnalyzerVersionDistribution"))
+            version_rows = []
+            if include_version_distribution:
+                version_rows = execute_all(
+                    conn,
+                    f"""
+                    SELECT
+                      {source_expr} AS sentimentSource,
+                      {version_expr} AS analyzerVersion,
+                      a.sentimentLabel,
+                      COUNT(*) AS total
+                    FROM dbo.WebChat_MessageAnalytics a
+                    {where}
+                    GROUP BY {source_expr}, {version_expr}, a.sentimentLabel
+                    ORDER BY analyzerVersion, a.sentimentLabel
+                    """,
+                    params,
+                )
         return {
             "row": row,
             "analyzerVersionDistribution": version_rows,
+            "analyzerVersionDistributionSkipped": not include_version_distribution,
             "optionalColumns": columns,
         }
 
@@ -1260,8 +1239,10 @@ class AnalyticsRepository:
             params.extend(date_filter.params)
         source = filters.get("channel") or filters.get("source")
         if source:
-            conditions.append("a.source = ?")
-            params.append(source)
+            source_values = _source_match_values(source)
+            placeholders = ", ".join(["?"] * len(source_values))
+            conditions.append(f"{_normalized_source_expr('a.source')} IN ({placeholders})")
+            params.extend(source_values)
         sentiment = filters.get("sentimentLabel") or filters.get("sentiment")
         if sentiment:
             conditions.append("a.sentimentLabel = ?")

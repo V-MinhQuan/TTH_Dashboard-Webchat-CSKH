@@ -1020,6 +1020,7 @@ def test_conversation_summary_with_topic_uses_fast_topic_scope(mock_get_db):
     assert "INNER JOIN topic_scope" in query
     assert "FROM WebChat_Conversations c" in query
     assert "OUTER APPLY" in query
+    assert "topic_scope_msg" not in query
     assert "topic_a.detectedTopics LIKE %s" in query
     assert '%"Học Tiếng Anh"%' in params
     assert "Học Tiếng Anh" not in query
@@ -1054,6 +1055,7 @@ def test_message_counts_with_topic_counts_messages_from_topic_scope(mock_get_db)
     assert "FROM WebChat_MessageAnalytics topic_a" in query
     assert "INNER JOIN topic_scope" in query
     assert "FROM WebChat_MessageLogs m" in query
+    assert "topic_scope_msg" not in query
     assert "topic_a.detectedTopics LIKE %s" in query
     assert "LOWER(m.TextContent) LIKE %s" not in query
     assert '%"Học Tiếng Anh"%' in params
@@ -1061,6 +1063,45 @@ def test_message_counts_with_topic_counts_messages_from_topic_scope(mock_get_db)
     assert query.count("%s") == len(params)
     assert params[0] == "2026-01-01"
     assert params[1] == "2026-06-01 23:59:59.999"
+    conn.close.assert_called_once()
+
+
+@patch('app.repositories.legacy_conversation_repository.get_db_connection')
+def test_topic_scope_matches_sat_hach_analytics_label_from_database(mock_get_db):
+    conn = MagicMock()
+    cursor = MagicMock()
+    conn.cursor.return_value.__enter__.return_value = cursor
+    cursor.fetchone.return_value = {
+        "total_conversations": 0,
+        "new_customers": 0,
+        "open_count": 0,
+        "pending_count": 0,
+        "closed_count": 0,
+        "unknown_count": 0,
+        "zalooa_count": 0,
+        "zalobusiness_count": 0,
+        "facebook_count": 0,
+        "chatwidget_count": 0,
+        "other_count": 0,
+        "zalooa_unresolved": 0,
+        "zalobusiness_unresolved": 0,
+        "facebook_unresolved": 0,
+        "chatwidget_unresolved": 0,
+        "avg_response_minutes": 0,
+    }
+    mock_get_db.return_value = conn
+
+    ConversationRepository().get_conversation_summary(
+        "2026-01-01",
+        "2026-06-01",
+        topic="Sát hạch CNTT",
+    )
+
+    query, params = cursor.execute.call_args.args
+    assert "FROM WebChat_MessageAnalytics topic_a" in query
+    assert "topic_scope_msg" not in query
+    assert '%"Sát hạch CNTT (Sát hạch Công nghệ thông tin)"%' in params
+    assert query.count("%s") == len(params)
     conn.close.assert_called_once()
 
 
@@ -1304,6 +1345,33 @@ def test_dashboard_service_channel_analytics_uses_filters_and_ai_stats(
     all_channels_result = service.get_channel_analytics("2026-06-01", "2026-06-02")
     assert all_channels_result["channelsList"] == ["Zalo Business", "Facebook", "Zalo OA", "Chat Widget"]
     assert "Khác" not in [row["channel"] for row in all_channels_result["channels"]]
+
+
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_channel_conversation_stats')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_channel_ai_summary')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_channel_topic_stats')
+def test_channel_analytics_returns_partial_data_when_heatmap_branch_fails(
+    mock_topic_stats, mock_ai_summary, mock_channel_stats
+):
+    clear_dashboard_cache()
+    mock_channel_stats.return_value = [
+        {"source": "facebook", "date_str": "2026-06-01", "status": "pending", "total": 3, "avg_response_minutes": 5},
+    ]
+    mock_ai_summary.return_value = [{"source": "facebook", "ai_ok": 2, "ai_fail": 1}]
+    mock_topic_stats.side_effect = RuntimeError("topic stats timeout")
+
+    result = DashboardService().get_channel_analytics(
+        "2026-01-01",
+        "2026-07-06",
+        {"channel": "Facebook", "topic": "TOEIC"},
+    )
+
+    assert result["channels"][0]["channel"] == "Facebook"
+    assert result["channels"][0]["total"] == 3
+    assert result["channels"][0]["ai_fail"] == 1
+    assert result["heatmap"] == []
+    assert result["partialErrors"][0]["branch"] == "topic_stats"
+
 
 @patch('app.repositories.legacy_conversation_repository.get_db_connection')
 def test_channel_topic_stats_counts_only_failed_ai_messages(mock_get_db):

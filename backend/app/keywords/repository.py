@@ -30,6 +30,23 @@ def _normalized_source_expr(source_column):
     return f"LOWER(LTRIM(RTRIM({source_column})))"
 
 
+def _source_match_values(source):
+    normalized = str(source or "").strip().lower().replace(" ", "")
+    values = {
+        "zalooa": ("zalooa", "zalo"),
+        "zalo": ("zalooa", "zalo"),
+        "zalobusiness": ("zalobusiness", "zalobiz"),
+        "zalobiz": ("zalobusiness", "zalobiz"),
+        "facebook": ("facebook", "fb", "messenger"),
+        "fb": ("facebook", "fb", "messenger"),
+        "messenger": ("facebook", "fb", "messenger"),
+        "chatwidget": ("chatwidget", "website", "web"),
+        "website": ("chatwidget", "website", "web"),
+        "web": ("chatwidget", "website", "web"),
+    }.get(normalized, (normalized,))
+    return tuple(dict.fromkeys(value for value in values if value))
+
+
 def _message_customer_expr(alias="m"):
     return f"CASE WHEN {alias}.FromHost = 1 THEN {alias}.ReceiverId ELSE {alias}.SenderId END"
 
@@ -121,8 +138,10 @@ def _build_message_filters(
         params.append(_parse_filter_datetime(end_date, is_end=True))
 
     if channel:
-        clauses.append("m.Source = ?")
-        params.append(channel)
+        source_values = _source_match_values(channel)
+        placeholders = ", ".join(["?"] * len(source_values))
+        clauses.append(f"{_normalized_source_expr('m.Source')} IN ({placeholders})")
+        params.extend(source_values)
 
     needs_conversation = conversation_status and conversation_status != "Tất cả"
     needs_ai_status = ai_status and ai_status != "Tất cả"
@@ -594,8 +613,10 @@ class KeywordRepository:
             filter_params.append(_parse_filter_datetime(end_date, is_end=True))
 
         if channel:
-            clauses.append("a.source = ?")
-            filter_params.append(channel)
+            source_values = _source_match_values(channel)
+            placeholders = ", ".join(["?"] * len(source_values))
+            clauses.append(f"{_normalized_source_expr('a.source')} IN ({placeholders})")
+            filter_params.extend(source_values)
 
         if conversation_status and conversation_status != "Tất cả":
             closed_sql = "(s.NoResponseNeeded = 1 AND (s.MarkedAt IS NULL OR c.LastCustomerMessageAt <= s.MarkedAt))"
@@ -944,8 +965,10 @@ class KeywordRepository:
             filter_params.append(_parse_filter_datetime(end_date, is_end=True))
 
         if channel:
-            clauses.append("a.source = ?")
-            filter_params.append(channel)
+            source_values = _source_match_values(channel)
+            placeholders = ", ".join(["?"] * len(source_values))
+            clauses.append(f"{_normalized_source_expr('a.source')} IN ({placeholders})")
+            filter_params.extend(source_values)
 
         if conversation_status and conversation_status != "Tất cả":
             closed_sql = "(s.NoResponseNeeded = 1 AND (s.MarkedAt IS NULL OR c.LastCustomerMessageAt <= s.MarkedAt))"

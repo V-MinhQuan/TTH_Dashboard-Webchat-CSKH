@@ -383,47 +383,12 @@ class ConversationRepository:
         if ai_sql:
             analytics_conditions.append(ai_sql)
 
-        message_alias = f"{cte_name}_msg"
-        message_conditions = [
-            valid_message_condition(message_alias),
-            f"{message_alias}.TextContent IS NOT NULL",
-            f"LTRIM(RTRIM({message_alias}.TextContent)) <> N''",
-            f"{message_alias}.Source IS NOT NULL",
-            f"""(
-              ({message_alias}.FromHost = 1 AND {message_alias}.ReceiverId IS NOT NULL)
-              OR ({message_alias}.FromHost = 0 AND {message_alias}.SenderId IS NOT NULL)
-            )""",
-        ]
-        self._append_date_and_channel_filters(
-            message_conditions,
-            params,
-            f"{message_alias}.SentAt",
-            f"{message_alias}.Source",
-            start_date,
-            end_date,
-            channel,
-        )
-
-        message_topic_sql = self._topic_condition(f"{message_alias}.TextContent", topic, params)
-        if message_topic_sql:
-            message_conditions.append(message_topic_sql)
-
-        message_ai_sql = self._ai_status_condition(ai_status, message_alias)
-        if message_ai_sql:
-            message_conditions.append(message_ai_sql)
-
         return f"""{cte_name} AS (
                   SELECT DISTINCT
                     CAST({analytics_alias}.customerId AS NVARCHAR(255)) AS customer_id,
                     {self._source_key_case_expr(f'{analytics_alias}.source')} AS source_key
                   FROM WebChat_MessageAnalytics {analytics_alias}
                   WHERE {" AND ".join(analytics_conditions)}
-                  UNION
-                  SELECT DISTINCT
-                    CAST({self._message_customer_expr(message_alias)} AS NVARCHAR(255)) AS customer_id,
-                    {self._source_key_case_expr(f'{message_alias}.Source')} AS source_key
-                  FROM WebChat_MessageLogs {message_alias}
-                  WHERE {" AND ".join(message_conditions)}
                 )
             """, params
 
@@ -456,29 +421,27 @@ class ConversationRepository:
             conditions.append(f"{self._conversation_status_case(conversation_alias, status_alias)} = %s")
             params.append(status_filter)
 
-        topic_sql = self._topic_condition("topic_msg.TextContent", topic, params)
+        topic_sql = self._topic_condition("ma.detectedTopics", topic, params)
         if topic_sql:
             exists_conditions = [
-                f"{self._normalized_source_expr('topic_msg.Source')} = {self._normalized_source_expr(f'{conversation_alias}.Source')}",
-                f"""(
-                    (topic_msg.FromHost = 1 AND topic_msg.ReceiverId = {conversation_alias}.CustomerId)
-                    OR (topic_msg.FromHost = 0 AND topic_msg.SenderId = {conversation_alias}.CustomerId)
-                )""",
-                "topic_msg.TextContent IS NOT NULL",
-                valid_message_condition("topic_msg"),
+                f"{self._normalized_source_expr('ma.source')} = {self._normalized_source_expr(f'{conversation_alias}.Source')}",
+                f"CAST(ma.customerId AS NVARCHAR(255)) = CAST({conversation_alias}.CustomerId AS NVARCHAR(255))",
+                "1=1",
                 topic_sql,
             ]
             if start_date:
-                exists_conditions.append("topic_msg.SentAt >= %s")
+                exists_conditions.append("ma.messageAt >= %s")
                 params.append(start_date)
             if end_date:
-                exists_conditions.append("topic_msg.SentAt <= %s")
+                exists_conditions.append("ma.messageAt <= %s")
                 params.append(f"{end_date} 23:59:59.999")
+            # Using IN subquery to optimize
             conditions.append(f"""
-                EXISTS (
-                  SELECT 1
-                  FROM WebChat_MessageLogs topic_msg
-                  WHERE {" AND ".join(exists_conditions)}
+                CAST({conversation_alias}.CustomerId AS NVARCHAR(255)) IN (
+                  SELECT CAST(ma.customerId AS NVARCHAR(255))
+                  FROM WebChat_MessageAnalytics ma
+                  WHERE {self._normalized_source_expr('ma.source')} = {self._normalized_source_expr(f'{conversation_alias}.Source')}
+                    AND {" AND ".join(exists_conditions)}
                 )
             """)
 
@@ -527,9 +490,15 @@ class ConversationRepository:
             channel,
         )
 
-        topic_sql = self._topic_condition(f"{message_alias}.TextContent", topic, params)
+        topic_sql = self._topic_condition("ma.detectedTopics", topic, params)
         if topic_sql:
-            conditions.append(topic_sql)
+            conditions.append(f"""
+                {message_alias}.id_webchat_messageLogs IN (
+                    SELECT ma.messageId FROM WebChat_MessageAnalytics ma 
+                    WHERE 1=1 
+                      AND {topic_sql}
+                )
+            """)
 
         ai_sql = self._ai_status_condition(ai_status, message_alias)
         if ai_sql:

@@ -104,6 +104,7 @@ const emptyMissingFaqGroups: Record<string, MissingFaqItem[]> = Object.fromEntri
 const GROUP_FAQ_LIMIT = 1;
 const GROUP_FAQ_CANDIDATE_LIMIT = 50;
 const GROUP_FAQ_KEYWORD_LIMIT = 24;
+const KEYWORD_ANALYTICS_TIMEOUT_MS = 30000;
 const GROUP_FAQ_SCOPE_TERMS: Record<string, string[]> = Object.fromEntries(
   TOPIC_TAXONOMY.map((topic) => [topic.id, [...topic.scopeTerms]]),
 );
@@ -170,7 +171,7 @@ async function loadKeywordGroupsData(filters: FilterValues, signal?: AbortSignal
 
   const groupsJson = await fetchApiJson<KeywordGroupsResponse>(
     buildApiUrl("/api/admin/crm-keywords/groups", params),
-    { signal },
+    { signal, cache: false, timeoutMs: KEYWORD_ANALYTICS_TIMEOUT_MS },
   );
 
   if (!groupsJson.success || !Array.isArray(groupsJson.data)) {
@@ -185,7 +186,7 @@ async function loadKeywordTrendData(filters: FilterValues, signal?: AbortSignal)
 
   const trendsJson = await fetchApiJson<KeywordTrendResponse>(
     buildApiUrl("/api/admin/crm-keywords/trends", trendParams),
-    { signal },
+    { signal, cache: false, timeoutMs: KEYWORD_ANALYTICS_TIMEOUT_MS },
   );
 
   if (!trendsJson.success || !Array.isArray(trendsJson.data)) {
@@ -207,7 +208,7 @@ async function loadGroupSuggestedFaqs(filters: FilterValues, group: KeywordGroup
 
   const faqsJson = await fetchApiJson<SuggestedFaqResponse>(
     buildApiUrl("/api/analytics/ai/suggested-faqs", faqParams),
-    { signal, cache: false },
+    { signal, cache: false, timeoutMs: KEYWORD_ANALYTICS_TIMEOUT_MS },
   );
 
   if (!faqsJson.success || !Array.isArray(faqsJson.data)) {

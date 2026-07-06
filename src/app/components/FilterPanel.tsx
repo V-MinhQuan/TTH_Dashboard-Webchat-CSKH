@@ -32,8 +32,6 @@ export interface FilterCatalogOption {
 export interface FilterPanelProps {
   filters: FilterValues;
   onFiltersChange: (filters: FilterValues) => void;
-  topicCatalog?: readonly FilterCatalogOption[];
-  topicCatalogSource?: string;
 }
 
 const dateRanges = ["30 ngày qua", "7 ngày qua", "Hôm nay", "Tùy chỉnh"];
@@ -125,8 +123,6 @@ const ACTIVE_FILTER_LABELS: Readonly<Record<ActiveFilterKey, string>> = Object.f
 export function FilterPanel({
   filters,
   onFiltersChange,
-  topicCatalog,
-  topicCatalogSource = "Care Hub",
 }: FilterPanelProps) {
   const globalFilters = useOptionalGlobalFilters();
   const [isExpanded, setIsExpanded] = useState(true);
@@ -156,10 +152,9 @@ export function FilterPanel({
   }, [settings.dataSourceFb, settings.dataSourceWidget, settings.dataSourceZalo, settings.dataSourceZaloBiz]);
 
   const resolvedTopics = useMemo(
-    () => withAll(topicCatalog ?? fallbackTopics),
-    [topicCatalog],
+    () => withAll(fallbackTopics),
+    [],
   );
-  const catalogPending = !topicCatalog || topicCatalog.some((option) => option.available === false);
 
   useEffect(() => {
     if (!globalFilters) setFallbackDraft(normalizeFilters(filters));

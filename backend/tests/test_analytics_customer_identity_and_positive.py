@@ -35,6 +35,23 @@ def test_review_record_exposes_consistent_customer_identity_fields():
     assert unknown["customerDisplayName"] == "Không xác định"
 
 
+def test_analytics_source_filter_matches_channel_aliases():
+    where, params = AnalyticsRepository()._build_read_where(
+        {
+            "startDate": "2026-01-01",
+            "endDate": "2026-07-06",
+            "channel": "ZaloBusiness",
+            "topic": "TOEIC",
+        },
+        {"issueFlag": True, "issueType": True},
+    )
+
+    assert "LOWER(LTRIM(RTRIM(a.source))) IN" in where
+    assert "a.source = ?" not in where
+    assert "zalobusiness" in params
+    assert "zalobiz" in params
+
+
 class PositiveConversationRepository:
     def __init__(self):
         self.filters = None

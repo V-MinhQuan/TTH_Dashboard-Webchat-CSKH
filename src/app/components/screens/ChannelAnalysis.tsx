@@ -509,14 +509,11 @@ export function ChannelAnalysis({ filters, onFiltersChange, onNavigate }: Channe
     return topics.filter((item, index, arr) => arr.indexOf(item) === index);
   }, [data]);
 
+  // Reset heatmap filters to "Tất cả" when data (and thus available options) changes
   useEffect(() => {
-    if (heatmapChannelFilter !== "Tất cả" && !availableChannels.includes(heatmapChannelFilter)) {
-      setHeatmapChannelFilter("Tất cả");
-    }
-    if (heatmapTopicFilter !== "Tất cả" && !availableTopics.includes(heatmapTopicFilter)) {
-      setHeatmapTopicFilter("Tất cả");
-    }
-  }, [availableChannels, availableTopics, heatmapChannelFilter, heatmapTopicFilter]);
+    setHeatmapChannelFilter("Tất cả");
+    setHeatmapTopicFilter("Tất cả");
+  }, [data]);
 
   const visibleChannels = heatmapChannelFilter === "Tất cả" ? availableChannels : [heatmapChannelFilter];
   const visibleTopics = heatmapTopicFilter === "Tất cả" ? availableTopics : [heatmapTopicFilter];

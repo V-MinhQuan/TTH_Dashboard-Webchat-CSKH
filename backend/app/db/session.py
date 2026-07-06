@@ -11,6 +11,7 @@ from app.core.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
 _prefer_pymssql = False
+MIN_QUERY_TIMEOUT_SECONDS = 30
 
 
 class _PymssqlCursor:
@@ -72,17 +73,22 @@ def _connect_with_pymssql(settings: Settings) -> _PymssqlConnection:
         database=settings.db_name,
         port=settings.db_port,
         tds_version="7.0",
-        timeout=max(settings.db_timeout_seconds, 5),
+        timeout=max(settings.db_timeout_seconds, MIN_QUERY_TIMEOUT_SECONDS),
         login_timeout=max(settings.db_timeout_seconds, 5),
     )
     return _PymssqlConnection(conn)
 
 
 def _connect_with_pyodbc(settings: Settings) -> Any:
-    return pyodbc.connect(
+    conn = pyodbc.connect(
         build_connection_string(settings),
         timeout=settings.db_timeout_seconds,
     )
+    try:
+        conn.timeout = max(settings.db_timeout_seconds, MIN_QUERY_TIMEOUT_SECONDS)
+    except Exception:
+        logger.debug("pyodbc connection does not support query timeout assignment", exc_info=True)
+    return conn
 
 
 @contextmanager
@@ -109,14 +115,24 @@ def rows_to_dicts(cursor: pyodbc.Cursor) -> List[Dict[str, Any]]:
     return [dict(zip(columns, row)) for row in cursor.fetchall()]
 
 
+def _set_query_timeout(cursor: Any) -> None:
+    timeout_seconds = max(get_settings().db_timeout_seconds, MIN_QUERY_TIMEOUT_SECONDS)
+    try:
+        cursor.timeout = timeout_seconds
+    except Exception:
+        logger.debug("DB cursor does not support query timeout assignment", exc_info=True)
+
+
 def execute_all(conn: pyodbc.Connection, query: str, params: Iterable[Any] = ()) -> List[Dict[str, Any]]:
     cursor = conn.cursor()
+    _set_query_timeout(cursor)
     cursor.execute(query, tuple(params))
     return rows_to_dicts(cursor)
 
 
 def execute_one(conn: pyodbc.Connection, query: str, params: Iterable[Any] = ()) -> Dict[str, Any]:
     cursor = conn.cursor()
+    _set_query_timeout(cursor)
     cursor.execute(query, tuple(params))
     row = cursor.fetchone()
     if row is None:

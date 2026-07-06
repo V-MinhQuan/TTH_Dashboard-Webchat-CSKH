@@ -35,6 +35,7 @@ const OCEAN_SECONDARY = "#ED5206";
 const FAILED_QUESTIONS_PAGE_SIZE = 10;
 const TOPIC_DETAIL_CONVERSATIONS_PAGE_SIZE = 3;
 const TABLE_FILTER_ALL = "Tất cả";
+const AI_ANALYTICS_TIMEOUT_MS = 30000;
 const AI_TOPIC_FAILURE_TYPES = [
   { id: "no_data", label: "Không tìm thấy dữ liệu", key: "thieuDL" },
   { id: "uncertain", label: "AI không chắc chắn", key: "khongChac" },
@@ -528,12 +529,12 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
         };
 
         const [qm, ft, fbt, fc, sre, sf, scRows] = await Promise.all([
-          safeRequired("qualityMetrics", fetchApiJson<any>(buildApiUrl(`/api/analytics/ai/quality-metrics?${qs}`), { cache: false })),
-          safeRequired("failureTrend", fetchApiJson<any>(buildApiUrl(`/api/analytics/ai/failure-trend?${qs}`), { cache: false })),
+          safeRequired("qualityMetrics", fetchApiJson<any>(buildApiUrl(`/api/analytics/ai/quality-metrics?${qs}`), { cache: false, timeoutMs: AI_ANALYTICS_TIMEOUT_MS })),
+          safeRequired("failureTrend", fetchApiJson<any>(buildApiUrl(`/api/analytics/ai/failure-trend?${qs}`), { cache: false, timeoutMs: AI_ANALYTICS_TIMEOUT_MS })),
           safeRequired("failureByTopic", getTopicFailures(queryParams)),
           safeRequired("failedConversations", getFailedConversations(queryParams)),
-          safeOptional("staffReportedErrors", fetchApiJson<any>(buildApiUrl(`/api/analytics/ai/staff-reported-errors?${qs}`), { cache: false })),
-          safeOptional("suggestedFAQs", fetchApiJson<any>(buildApiUrl(`/api/analytics/ai/suggested-faqs?${qs}`), { cache: false })),
+          safeOptional("staffReportedErrors", fetchApiJson<any>(buildApiUrl(`/api/analytics/ai/staff-reported-errors?${qs}`), { cache: false, timeoutMs: AI_ANALYTICS_TIMEOUT_MS })),
+          safeOptional("suggestedFAQs", fetchApiJson<any>(buildApiUrl(`/api/analytics/ai/suggested-faqs?${qs}`), { cache: false, timeoutMs: AI_ANALYTICS_TIMEOUT_MS })),
           safeOptional("recentChatbotRows", getSheetChatbotRows({ pageSize: 5 })),
         ]);
 
