@@ -74,6 +74,7 @@ const getInsightData = (ch: any) => {
 };
 const STATUS_COLORS: Record<string, string> = {
   "Chờ xử lý": ORANGE,
+  "Đang tư vấn": "#42A5F5",
   "Đang tư vấn / Chờ phản hồi": "#42A5F5",
   "Đang xử lý": "#42A5F5", // legacy alias
   "Hoàn thành": "#1565C0",
@@ -595,6 +596,10 @@ export function ChannelAnalysis({ filters, onFiltersChange, onNavigate }: Channe
               onOpenBuilder={() => onNavigate("chartbuilder")}
               data={channelTrend}
               defaultChartType="line"
+              defaultAxisX="Ngày"
+              baseFilters={appliedFilters}
+              axisOptions={["Ngày"]}
+              valueOptions={["Số hội thoại"]}
             >
               {({ chartType, chartData, editValues }: any) => renderTrendChart(chartType, chartData, availableChannels, editValues)}
             </ChartCard>
@@ -604,6 +609,10 @@ export function ChannelAnalysis({ filters, onFiltersChange, onNavigate }: Channe
               onOpenBuilder={() => onNavigate("chartbuilder")}
               data={channelData}
               defaultChartType="hbar"
+              defaultAxisX="Kênh"
+              baseFilters={appliedFilters}
+              axisOptions={["Kênh"]}
+              valueOptions={["Số hội thoại"]}
             >
               {({ chartType, chartData, editValues }: any) => renderMetricChart({
                 chartType,
@@ -624,8 +633,12 @@ export function ChannelAnalysis({ filters, onFiltersChange, onNavigate }: Channe
               onOpenBuilder={() => onNavigate("chartbuilder")}
               data={channelStatusData}
               defaultChartType="bar"
+              defaultAxisX="Kênh"
+              baseFilters={appliedFilters}
+              axisOptions={["Kênh"]}
+              valueOptions={["Số hội thoại"]}
             >
-              {({ chartType, chartData, editValues }: any) => renderStackedChart(chartType, chartData, ["Chờ xử lý", "Đang xử lý", "Hoàn thành"], editValues)}
+              {({ chartType, chartData, editValues }: any) => renderStackedChart(chartType, chartData, ["Chờ xử lý", "Đang tư vấn", "Hoàn thành"], editValues)}
             </ChartCard>
 
             <ChartCard
@@ -633,6 +646,10 @@ export function ChannelAnalysis({ filters, onFiltersChange, onNavigate }: Channe
               onOpenBuilder={() => onNavigate("chartbuilder")}
               data={channelData}
               defaultChartType="bar"
+              defaultAxisX="Kênh"
+              baseFilters={appliedFilters}
+              axisOptions={["Kênh"]}
+              valueOptions={["AI trả lời thành công", "AI trả lời thất bại"]}
             >
               {({ chartType, chartData, editValues }: any) => renderStackedChart(chartType, chartData.map((row: any) => ({
                 channel: row.channel,

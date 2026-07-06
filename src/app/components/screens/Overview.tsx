@@ -91,6 +91,7 @@ function calcTrend(currentValue: number, previousValue: number) {
 const statusColors: Record<string, { bg: string; color: string }> = {
   "Chờ quản lý xác nhận": { bg: "#FFF4EE", color: "#D73C01" },
   "Chờ xử lý": { bg: "#FFF7E6", color: "#B7791F" },
+  "Đang tư vấn": { bg: "#dbeafe", color: "#3b82f6" },
   "Đang tư vấn / Chờ phản hồi": { bg: "#dbeafe", color: "#3b82f6" },
   // Legacy alias
   "Đang xử lý": { bg: "#dbeafe", color: "#3b82f6" },
@@ -724,7 +725,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
     : filters.dateRange;
   const reportStatusRows = [
     { label: "Chờ xử lý", value: kpiData?.statusSummary.pending || 0, color: "#D73C01" },
-    { label: "Đang tư vấn / Chờ phản hồi", value: kpiData?.statusSummary.open || 0, color: "#003BB9" },
+    { label: "Đang tư vấn", value: kpiData?.statusSummary.open || 0, color: "#003BB9" },
     { label: "Hoàn thành", value: kpiData?.statusSummary.closed || 0, color: "#1565C0" },
   ];
   const maxStatusValue = Math.max(...reportStatusRows.map((row) => row.value), 1);
@@ -1046,6 +1047,10 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
             onOpenBuilder={() => onNavigate("chartbuilder")}
             data={dailyTrends}
             defaultChartType="line"
+            defaultAxisX="Ngày"
+            baseFilters={filters}
+            axisOptions={["Ngày"]}
+            valueOptions={["Số hội thoại", "AI trả lời thành công", "AI trả lời thất bại"]}
           >
             {({ chartType, chartData, editValues }: any) => {
               const valueKey =
@@ -1214,6 +1219,10 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
             onOpenBuilder={() => onNavigate("chartbuilder")}
             data={kpiData?.sourceSummary || {}}
             defaultChartType="donut"
+            defaultAxisX="Kênh"
+            baseFilters={filters}
+            axisOptions={["Kênh"]}
+            valueOptions={["Số hội thoại"]}
           >
             {({ chartType, chartData, editValues }: any) => {
               const normalizedData: Record<string, number> = {

@@ -102,6 +102,7 @@ class SheetChatbotRepository:
                             Question NVARCHAR(MAX) NOT NULL,
                             CorrectAnswer NVARCHAR(MAX) NOT NULL,
                             Topic NVARCHAR(255) NULL,
+                            Channel NVARCHAR(80) NULL,
                             Source NVARCHAR(255) NULL,
                             Risk NVARCHAR(50) NULL,
                             Status NVARCHAR(100) NULL,
@@ -111,6 +112,13 @@ class SheetChatbotRepository:
                             ReviewedAt DATETIME2 NULL,
                             ReviewedBy NVARCHAR(255) NULL
                         )
+                    END
+                """)
+                cursor.execute(f"""
+                    IF COL_LENGTH(N'{self.table_object_name}', N'Channel') IS NULL
+                    BEGIN
+                        ALTER TABLE {self.table_sql_name}
+                        ADD Channel NVARCHAR(80) NULL
                     END
                 """)
             conn.commit()
@@ -133,6 +141,7 @@ class SheetChatbotRepository:
                         Question AS question,
                         CorrectAnswer AS correctAnswer,
                         Topic AS topic,
+                        Channel AS channel,
                         Source AS source,
                         Risk AS risk,
                         Status AS status,
@@ -166,9 +175,9 @@ class SheetChatbotRepository:
         cursor.execute(
             f"""
             INSERT INTO {self.table_sql_name}
-                (Id, AddedAt, AddedBy, Question, CorrectAnswer, Topic, Source, Risk, Status, Notes, CreatedAt, UpdatedAt, ReviewedAt, ReviewedBy)
+                (Id, AddedAt, AddedBy, Question, CorrectAnswer, Topic, Channel, Source, Risk, Status, Notes, CreatedAt, UpdatedAt, ReviewedAt, ReviewedBy)
             VALUES
-                (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 row.get("id"),
@@ -177,6 +186,7 @@ class SheetChatbotRepository:
                 row.get("question") or "",
                 row.get("correctAnswer") or "",
                 row.get("topic") or "Khác",
+                row.get("channel") or None,
                 row.get("source") or "Nhân viên đề xuất",
                 row.get("risk") or "Thấp",
                 row.get("status") or "Chờ xử lý",
@@ -193,6 +203,7 @@ class SheetChatbotRepository:
         for key in ("addedAt", "createdAt", "updatedAt", "reviewedAt"):
             if parsed.get(key):
                 parsed[key] = self._datetime_to_iso(parsed[key])
+        parsed["channel"] = parsed.get("channel") or ""
         parsed["notes"] = parsed.get("notes") or ""
         return parsed
 

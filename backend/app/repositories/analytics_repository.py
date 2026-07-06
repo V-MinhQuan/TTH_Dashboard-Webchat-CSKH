@@ -142,6 +142,16 @@ def _source_match_values(source: Any) -> Tuple[str, ...]:
     return tuple(dict.fromkeys(value for value in values if value))
 
 
+def _conversation_status_filter_value(value: Any) -> str | None:
+    return {
+        "Chờ xử lý": "pending",
+        "Đang tư vấn": "open",
+        "Đang tư vấn / Chờ phản hồi": "open",
+        "Đang xử lý": "open",
+        "Hoàn thành": "closed",
+    }.get(str(value or "").strip())
+
+
 def _topic_message_terms(value: Any) -> List[str]:
     topic_id = canonical_topic_id(value)
     if topic_id == "toeic":
@@ -457,10 +467,11 @@ class AnalyticsRepository:
             base_filters.pop("conversationStatus", None)
             base_filters.pop("aiStatus", None)
             where, params = self._build_read_where(base_filters, columns)
-            conditions = ["ranked.rn = 1", "ranked.sentimentLabel = 'positive'"]
-            if filters.get("conversationStatus"):
+            conditions = ["ranked.rn = 1"]
+            status_filter = _conversation_status_filter_value(filters.get("conversationStatus"))
+            if status_filter:
                 conditions.append("ranked.conversationStatus = ?")
-                params.append(filters["conversationStatus"])
+                params.append(status_filter)
             search = str(filters.get("search") or "").strip()
             if search:
                 conditions.append("(ranked.textContent LIKE ? OR ranked.customerId LIKE ? OR ranked.customerName LIKE ?)")
@@ -510,6 +521,7 @@ class AnalyticsRepository:
                   ) cmsg
                   {where}
                     {"AND" if where else "WHERE"} a.conversationId IS NOT NULL
+                    AND a.sentimentLabel = 'positive'
                 )
             """
             total_row = execute_one(
@@ -1018,14 +1030,13 @@ class AnalyticsRepository:
                       ON c.CustomerId = s.CustomerId
                      AND c.Source = s.Source
                 """
-                closed_sql = "(s.NoResponseNeeded = 1 AND (s.MarkedAt IS NULL OR c.LastCustomerMessageAt <= s.MarkedAt))"
-                active_sql = "(s.NoResponseNeeded IS NULL OR s.NoResponseNeeded = 0 OR c.LastCustomerMessageAt > s.MarkedAt)"
+                status_expr = conversation_status_case('c', 's')
                 if conversation_status == "Chờ xử lý":
-                    extra_conditions.append(f"c.CustomerId IS NOT NULL AND {active_sql} AND (c.LastHostMessageAt IS NULL OR c.LastCustomerMessageAt > c.LastHostMessageAt)")
-                elif conversation_status == "Đang xử lý":
-                    extra_conditions.append(f"c.CustomerId IS NOT NULL AND {active_sql} AND c.LastHostMessageAt IS NOT NULL AND c.LastCustomerMessageAt <= c.LastHostMessageAt")
+                    extra_conditions.append(f"c.CustomerId IS NOT NULL AND {status_expr} = 'pending'")
+                elif conversation_status in ("Đang xử lý", "Đang tư vấn", "Đang tư vấn / Chờ phản hồi"):
+                    extra_conditions.append(f"c.CustomerId IS NOT NULL AND {status_expr} = 'open'")
                 elif conversation_status == "Hoàn thành":
-                    extra_conditions.append(f"c.CustomerId IS NOT NULL AND {closed_sql}")
+                    extra_conditions.append(f"c.CustomerId IS NOT NULL AND {status_expr} = 'closed'")
 
             ai_status = filters.get("aiStatus")
             if ai_status and ai_status != "Tất cả":

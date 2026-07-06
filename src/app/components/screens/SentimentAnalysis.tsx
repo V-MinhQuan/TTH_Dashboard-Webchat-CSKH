@@ -31,7 +31,7 @@ const SENTIMENT_POSITIVE = "#1a6460";
 const SENTIMENT_NEUTRAL = "#E5A850";
 const SENTIMENT_NEGATIVE = ORANGE;
 const SENTIMENT_TOPIC_COLORS = [NAVY, "#ED5206", SENTIMENT_POSITIVE, SENTIMENT_NEGATIVE, "#42A5F5", SENTIMENT_NEUTRAL];
-const SENTIMENT_ANALYTICS_TIMEOUT_MS = 30000;
+const SENTIMENT_ANALYTICS_TIMEOUT_MS = 120000;
 
 type NegLevel = "Rất tiêu cực" | "Tiêu cực" | "Hơi tiêu cực";
 
@@ -44,6 +44,7 @@ const negLevelConfig: Record<NegLevel, { bg: string; color: string; stars: numbe
 const statusConfig: Record<string, { bg: string; color: string }> = {
   "Chờ quản lý xác nhận": { bg: "#FFF4EE", color: ORANGE },
   "Chờ xử lý":          { bg: "#FFF7E6", color: "#B7791F" },
+  "Đang tư vấn":          { bg: "#dbeafe", color: "#3b82f6" },
   "Đang xử lý":          { bg: "#dbeafe", color: "#3b82f6" },
   "Hoàn thành":           { bg: "#EAF8F1", color: "#228A61" },
 };

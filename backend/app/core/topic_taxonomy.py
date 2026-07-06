@@ -246,6 +246,37 @@ def canonical_topic_labels(*values: Any) -> list[str]:
     return [TOPIC_NAME_BY_ID[topic_id] for topic_id in canonical_topic_ids(*values)]
 
 
+def get_matched_topic_keywords(text: str, topic_id: str) -> list[str]:
+    group = TOPIC_GROUP_BY_ID.get(topic_id)
+    if not group:
+        return []
+    
+    matched = []
+    text_norm = normalize_topic_text(text)
+    
+    for term in group.get("scope_terms", []):
+        normalized = normalize_topic_text(term)
+        if not normalized or normalized == "khac":
+            continue
+        if normalized.isalnum() and len(normalized) <= 10:
+            if _has_code_token(text_norm, normalized):
+                matched.append(term)
+        elif normalized in text_norm:
+            matched.append(term)
+    return matched
+
+def extract_all_keywords(customer_text: str, bot_text: str) -> list[str]:
+    topic_ids = canonical_topic_ids(customer_text, bot_text)
+    matched_keywords = []
+    for t in topic_ids:
+        kws = get_matched_topic_keywords(customer_text or "", t)
+        kws.extend(get_matched_topic_keywords(bot_text or "", t))
+        matched_keywords.extend(kws)
+    
+    # Remove duplicates
+    return list(dict.fromkeys(matched_keywords))
+
+
 def topic_filter_aliases(value: Any) -> list[str]:
     topic_id = canonical_topic_id(value)
     if not topic_id:

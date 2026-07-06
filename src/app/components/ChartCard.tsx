@@ -141,14 +141,36 @@ interface ChartCardProps {
   children?: React.ReactNode | ((props: any) => React.ReactNode);
   useDefaultChart?: boolean;
   defaultChartType?: string;
+  defaultAxisX?: string;
   supportedChartTypes?: string[];
   onOpenBuilder?: () => void;
   data?: any;
   showToolbarActions?: boolean;
   headerExtra?: React.ReactNode;
+  baseFilters?: {
+    dateRange?: string;
+    channel?: string;
+    topic?: string;
+  };
+  axisOptions?: string[];
+  valueOptions?: string[];
 }
 
-export function ChartCard({ title, children, useDefaultChart, defaultChartType = "bar", supportedChartTypes, onOpenBuilder, data, showToolbarActions = true, headerExtra }: ChartCardProps) {
+export function ChartCard({
+  title,
+  children,
+  useDefaultChart,
+  defaultChartType = "bar",
+  defaultAxisX = "Chủ đề",
+  supportedChartTypes,
+  onOpenBuilder,
+  data,
+  showToolbarActions = true,
+  headerExtra,
+  baseFilters,
+  axisOptions = ["Chủ đề", "Kênh", "Ngày", "Tuần", "Tháng"],
+  valueOptions = ["Số hội thoại", "AI trả lời thành công", "AI trả lời thất bại", "Điểm cảm xúc"],
+}: ChartCardProps) {
   const [chartType, setChartType] = useState(defaultChartType);
   const [chartTitle, setChartTitle] = useState(title);
   const [isEdited, setIsEdited] = useState(false);
@@ -167,15 +189,30 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
   const [chartTypeOpen, setChartTypeOpen] = useState(false);
   const [editPanelOpen, setEditPanelOpen] = useState(false);
 
-  const [filterValues, setFilterValues] = useState({ dateRange: "30 ngày qua", channel: "Tất cả", topic: "Tất cả" });
-  const [editValues, setEditValues] = useState({ title: chartTitle, axisX: "Chủ đề", values: "Số hội thoại", legend: true, sort: "Mặc định", dataLabels: false });
+  const baseFilterValues = {
+    dateRange: baseFilters?.dateRange || "30 ngày qua",
+    channel: baseFilters?.channel || "Tất cả",
+    topic: baseFilters?.topic || "Tất cả",
+  };
+  const hasBaseFilter =
+    baseFilterValues.channel !== "Tất cả" ||
+    baseFilterValues.topic !== "Tất cả" ||
+    !["", "30 ngày qua"].includes(baseFilterValues.dateRange);
+
+  const [filterValues, setFilterValues] = useState(baseFilterValues);
+  const [editValues, setEditValues] = useState({ title: chartTitle, axisX: defaultAxisX, values: "Số hội thoại", legend: true, sort: "Mặc định", dataLabels: false });
 
   const popoverRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setChartData(data ?? []);
-    setFilterActive(false);
-  }, [data]);
+    setFilterValues(baseFilterValues);
+    setFilterActive(hasBaseFilter);
+  }, [data, baseFilterValues.dateRange, baseFilterValues.channel, baseFilterValues.topic, hasBaseFilter]);
+
+  useEffect(() => {
+    setEditValues((current) => ({ ...current, axisX: defaultAxisX }));
+  }, [defaultAxisX]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -300,9 +337,9 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
   };
 
   const handleFilterReset = () => {
-    setFilterActive(false);
+    setFilterActive(hasBaseFilter);
     setChartData(data ?? []);
-    setFilterValues({ dateRange: "30 ngày qua", channel: "Tất cả", topic: "Tất cả" });
+    setFilterValues(baseFilterValues);
     setFilterPanelOpen(false);
     toast.info("Đã đặt lại bộ lọc biểu đồ");
   };
@@ -321,6 +358,16 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
       .map((row: any) => typeof row?.topic === "string" ? row.topic.trim() : "")
       .filter(Boolean),
   ));
+  const supportsChannelFilter = tableRows.some((row: any) => {
+    if (!row || typeof row !== "object") return false;
+    if ("channel" in row) return true;
+    return Object.keys(row).some(isChannelKey);
+  });
+  const topicOptions = Array.from(new Set(["Tất cả", baseFilterValues.topic, ...topics].filter(Boolean)));
+  const channelOptions = supportsChannelFilter
+    ? channels
+    : Array.from(new Set(["Tất cả", baseFilterValues.channel].filter(Boolean)));
+  const dateOptions = Array.from(new Set(["30 ngày qua", "7 ngày qua", "Hôm nay", baseFilterValues.dateRange].filter(Boolean)));
   const tableColumns = Array.from(
     new Set(tableRows.flatMap((row: any) => row && typeof row === "object" ? Object.keys(row) : []))
   );
@@ -494,9 +541,9 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
             </div>
             <div style={{ flex: 1, padding: "24px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "16px" }}>
               {[
-                { label: "Khoảng thời gian", key: "dateRange", options: ["30 ngày qua", "7 ngày qua", "Hôm nay"] },
-                { label: "Kênh", key: "channel", options: channels },
-                { label: "Chủ đề", key: "topic", options: ["Tất cả", ...topics] },
+                { label: "Khoảng thời gian", key: "dateRange", options: dateOptions },
+                { label: "Kênh", key: "channel", options: channelOptions },
+                { label: "Chủ đề", key: "topic", options: topicOptions },
               ].map(({ label, key, options }) => (
                 <div key={key}>
                   <label style={{ fontSize: "11px", fontWeight: 600, color: "rgba(0,59,185,0.5)", display: "block", marginBottom: "6px", letterSpacing: "0.05em" }}>
@@ -629,8 +676,8 @@ export function ChartCard({ title, children, useDefaultChart, defaultChartType =
             <div style={{ flex: 1, padding: "24px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "20px" }}>
               {[
                 { label: "Tên biểu đồ", key: "title", type: "text" },
-                { label: "Trục X", key: "axisX", type: "select", options: ["Chủ đề", "Kênh", "Ngày", "Tuần", "Tháng"] },
-                { label: "Giá trị", key: "values", type: "select", options: ["Số hội thoại", "AI trả lời thành công", "AI trả lời thất bại", "Điểm cảm xúc"] },
+                { label: "Trục X", key: "axisX", type: "select", options: axisOptions },
+                { label: "Giá trị", key: "values", type: "select", options: valueOptions },
                 { label: "Sắp xếp", key: "sort", type: "select", options: ["Mặc định", "Tăng dần", "Giảm dần", "A-Z"] },
               ].map(({ label, key, type, options }) => (
                 <div key={key}>

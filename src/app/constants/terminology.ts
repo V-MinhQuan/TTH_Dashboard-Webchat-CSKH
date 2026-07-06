@@ -38,7 +38,7 @@ export const TERMINOLOGY = {
   },
   STATUS: {
     pending: "Chờ xử lý",
-    processing: "Đang tư vấn / Chờ phản hồi",
+    processing: "Đang tư vấn",
     completed: "Hoàn thành",
     waiting_manager: "Chờ quản lý xác nhận",
     waiting_approval: "Chờ duyệt",
@@ -143,15 +143,16 @@ export function getStatusDefinition(value: string): StatusDefinition | null {
 
 /**
  * Chuyển đổi giá trị trạng thái raw (từ DB/API) sang label hiển thị chuẩn.
- * Backward compatible: "Đang xử lý" → "Đang tư vấn / Chờ phản hồi"
+ * Backward compatible: "Đang xử lý" → "Đang tư vấn"
  * "Đã xử lý" → "Hoàn thành"
  */
 export function getDisplayStatus(raw: string): string {
   const legacyMap: Record<string, string> = {
-    "Đang xử lý": "Đang tư vấn / Chờ phản hồi",
+    "Đang xử lý": "Đang tư vấn",
+    "Đang tư vấn / Chờ phản hồi": "Đang tư vấn",
     "Đã xử lý": "Hoàn thành",
-    open: "Đang tư vấn / Chờ phản hồi",
-    processing: "Đang tư vấn / Chờ phản hồi",
+    open: "Đang tư vấn",
+    processing: "Đang tư vấn",
     completed: "Hoàn thành",
     pending: "Chờ xử lý",
     done: "Hoàn thành",

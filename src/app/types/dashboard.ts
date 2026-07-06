@@ -129,7 +129,8 @@ export interface ChannelTrendRow {
 export interface ChannelStatusRow {
   channel: string;
   "Chờ xử lý": number;
-  "Đang xử lý": number;
+  "Đang tư vấn": number;
+  "Đang xử lý"?: number;
   "Hoàn thành": number;
 }
 

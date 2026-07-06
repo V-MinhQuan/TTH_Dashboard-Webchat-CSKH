@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
-from app.core.topic_taxonomy import canonical_topic_labels
+from app.core.topic_taxonomy import canonical_topic_labels, extract_all_keywords
 from app.db.session import get_connection, rows_to_dicts
 from app.repositories.display_filters import valid_message_condition
 from app.services.ai_issue_classifier import IssueClassification, classify_ai_issue
@@ -29,7 +29,7 @@ def _serialize_topics(topics: list[str]) -> str:
     return json.dumps(topics, ensure_ascii=False)
 
 
-def _is_same_issue_state(row: dict, classification: IssueClassification, detected_topics: str) -> bool:
+def _is_same_issue_state(row: dict, classification: IssueClassification, detected_topics: str, detected_keywords: str) -> bool:
     issue_flag = bool(row.get("issueFlag"))
     target_flag = bool(classification.issue_flag)
     issue_type = row.get("issueType") or None
@@ -48,6 +48,7 @@ def _is_same_issue_state(row: dict, classification: IssueClassification, detecte
         and issue_reason == target_reason
         and current_conf == target_conf
         and (row.get("detectedTopics") or "[]") == detected_topics
+        and (row.get("detectedKeywords") or "[]") == detected_keywords
     )
 
 
@@ -73,7 +74,8 @@ def _fetch_ai_messages(cursor, since: Optional[str]) -> list[dict]:
             a.issueType,
             a.issueReason,
             a.issueConfidence,
-            a.detectedTopics
+            a.detectedTopics,
+            a.detectedKeywords
         FROM dbo.WebChat_MessageLogs m
         LEFT JOIN dbo.WebChat_MessageAnalytics a
             ON a.messageId = m.id_webchat_messageLogs
@@ -117,9 +119,13 @@ def sync_ai_issue_flags(*, apply: bool = False, since: Optional[str] = None) -> 
 
         analyzed_at = datetime.now()
         for row in rows:
-            classification = classify_ai_issue(row.get("TextContent"))
-            detected_topic_labels = canonical_topic_labels(row.get("CustomerText"), row.get("TextContent"))
+            bot_text = row.get("TextContent") or ""
+            customer_text = row.get("CustomerText") or ""
+            classification = classify_ai_issue(bot_text)
+            detected_topic_labels = canonical_topic_labels(customer_text, bot_text)
             detected_topics = _serialize_topics(detected_topic_labels)
+            detected_keywords = _serialize_topics(extract_all_keywords(customer_text, bot_text))
+            
             if classification.issue_flag and classification.issue_type:
                 issue_counts[classification.issue_type] += 1
                 topic_counts.update(detected_topic_labels)
@@ -131,7 +137,7 @@ def sync_ai_issue_flags(*, apply: bool = False, since: Optional[str] = None) -> 
             need_staff_review = issue_flag
 
             if row.get("hasAnalytics"):
-                if not _is_same_issue_state(row, classification, detected_topics):
+                if not _is_same_issue_state(row, classification, detected_topics, detected_keywords):
                     updates.append((
                         issue_flag,
                         issue_type,
@@ -139,6 +145,7 @@ def sync_ai_issue_flags(*, apply: bool = False, since: Optional[str] = None) -> 
                         issue_confidence,
                         need_staff_review,
                         detected_topics,
+                        detected_keywords,
                         row["messageId"],
                     ))
             else:
@@ -157,6 +164,7 @@ def sync_ai_issue_flags(*, apply: bool = False, since: Optional[str] = None) -> 
                     issue_reason,
                     issue_confidence,
                     detected_topics,
+                    detected_keywords,
                 ))
 
         result = AiIssueSyncResult(
@@ -181,7 +189,8 @@ def sync_ai_issue_flags(*, apply: bool = False, since: Optional[str] = None) -> 
                     issueReason = ?,
                     issueConfidence = ?,
                     needStaffReview = ?,
-                    detectedTopics = ?
+                    detectedTopics = ?,
+                    detectedKeywords = ?
                 WHERE messageId = ?
                 """,
                 updates[i:i + 100],
@@ -192,8 +201,8 @@ def sync_ai_issue_flags(*, apply: bool = False, since: Optional[str] = None) -> 
                 """
                 INSERT INTO dbo.WebChat_MessageAnalytics
                 (messageId, conversationId, customerId, source, sentimentLabel, sentimentScore,
-                 needStaffReview, messageAt, analyzedAt, issueFlag, issueType, issueReason, issueConfidence, detectedTopics)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 needStaffReview, messageAt, analyzedAt, issueFlag, issueType, issueReason, issueConfidence, detectedTopics, detectedKeywords)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 inserts[i:i + 100],
             )

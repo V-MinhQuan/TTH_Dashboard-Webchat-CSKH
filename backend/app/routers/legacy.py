@@ -266,6 +266,7 @@ class SheetChatbotCreateBody(BaseModel):
     question: str
     correctAnswer: str
     topic: str = None
+    channel: str = None
     source: str = None
     risk: str = None
     status: str = None
@@ -276,6 +277,7 @@ class SheetChatbotUpdateBody(BaseModel):
     question: str = None
     correctAnswer: str = None
     topic: str = None
+    channel: str = None
     source: str = None
     risk: str = None
     status: str = None

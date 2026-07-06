@@ -9,6 +9,13 @@ export const SHEET_CHATBOT_SOURCE_OPTIONS = [
   "Khác",
 ] as const;
 
+export const SHEET_CHATBOT_CHANNEL_OPTIONS = [
+  "Zalo OA",
+  "Zalo Business",
+  "Facebook",
+  "Chat Widget",
+] as const;
+
 export type SheetChatbotStatus =
   | "Chờ xử lý"
   | "Đã duyệt"
@@ -16,6 +23,10 @@ export type SheetChatbotStatus =
   | "Từ chối";
 
 export type SheetChatbotRiskLevel = "Thấp" | "Trung bình" | "Cao";
+
+export type SheetChatbotChannel =
+  | (typeof SHEET_CHATBOT_CHANNEL_OPTIONS)[number]
+  | "";
 
 export type SheetChatbotSource =
   | "Không tìm thấy dữ liệu"
@@ -31,6 +42,7 @@ export interface SheetChatbotRow {
   question: string;
   correctAnswer: string;
   topic: string;
+  channel?: SheetChatbotChannel | (string & {});
   source: SheetChatbotSource;
   risk: SheetChatbotRiskLevel;
   status: SheetChatbotStatus;
@@ -54,7 +66,7 @@ export interface SheetChatbotStats {
 export type SheetChatbotCreatePayload = Omit<SheetChatbotRow, "id" | "addedAt" | "addedBy">;
 
 export type SheetChatbotUpdatePayload = Partial<
-  Pick<SheetChatbotRow, "question" | "correctAnswer" | "topic" | "source" | "risk" | "status" | "notes">
+  Pick<SheetChatbotRow, "question" | "correctAnswer" | "topic" | "channel" | "source" | "risk" | "status" | "notes">
 >;
 
 interface SheetChatbotListResponse {
@@ -206,6 +218,7 @@ function normalizeCreatePayload(payload: SheetChatbotCreatePayload): SheetChatbo
     question,
     correctAnswer,
     topic,
+    channel: normalizeSheetChatbotChannel(payload.channel),
     source: normalizeSheetChatbotSource(payload.source),
     notes: payload.notes.trim(),
   };
@@ -217,6 +230,7 @@ function normalizeUpdatePayload(payload: SheetChatbotUpdatePayload): SheetChatbo
     question: payload.question === undefined ? undefined : requiredText(payload.question, "Câu hỏi khách hàng"),
     correctAnswer: payload.correctAnswer === undefined ? undefined : requiredText(payload.correctAnswer, "Câu trả lời đúng"),
     topic: payload.topic === undefined ? undefined : normalizeSheetChatbotTopic(requiredText(payload.topic, "Chủ đề")),
+    channel: payload.channel === undefined ? undefined : normalizeSheetChatbotChannel(payload.channel),
     source: payload.source === undefined ? undefined : normalizeSheetChatbotSource(payload.source),
     notes: payload.notes?.trim(),
   };
@@ -224,11 +238,27 @@ function normalizeUpdatePayload(payload: SheetChatbotUpdatePayload): SheetChatbo
 
 function normalizeSheetChatbotRow(row: SheetChatbotRow): SheetChatbotRow {
   const source = getAiFailureDefinition(row.source)?.apiValue ?? row.source;
-  return { ...row, source, topic: normalizeSheetChatbotTopic(row.topic) };
+  return { ...row, source, topic: normalizeSheetChatbotTopic(row.topic), channel: normalizeSheetChatbotChannel(row.channel) };
 }
 
 function normalizeSheetChatbotTopic(value: string) {
   return topicLabelForGroupId(mapTopicToGroupId(value));
+}
+
+function normalizeSheetChatbotChannel(value: unknown): SheetChatbotChannel | (string & {}) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const normalized = raw
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("vi-VN")
+    .replace(/\s+/g, "");
+
+  if (normalized === "zalo" || normalized === "zalooa") return "Zalo OA";
+  if (normalized === "zalobusiness" || normalized === "zalobiz") return "Zalo Business";
+  if (normalized === "facebook" || normalized === "fb" || normalized === "messenger") return "Facebook";
+  if (normalized === "chatwidget" || normalized === "website" || normalized === "web") return "Chat Widget";
+  return raw;
 }
 
 function requiredText(value: string, label: string) {

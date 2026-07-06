@@ -7,8 +7,10 @@ import { TOPIC_TAXONOMY, mapTopicToGroupId, topicLabelForGroupId } from "../../c
 import {
   createSheetChatbotRow,
   getSheetChatbotDuplicates,
+  SHEET_CHATBOT_CHANNEL_OPTIONS,
   SHEET_CHATBOT_SOURCE_OPTIONS,
   updateSheetChatbotRow,
+  type SheetChatbotChannel,
   type SheetChatbotRiskLevel,
   type SheetChatbotRow,
   type SheetChatbotStatus,
@@ -22,6 +24,7 @@ export interface FeedbackPrefillData {
   topic?: string;
   keyword?: string;
   source?: string;
+  channel?: string;
   conversationId?: string | number;
   messageId?: string | number;
   notes?: string;
@@ -42,6 +45,7 @@ interface FeedbackFormState {
   question: string;
   answer: string;
   topic: string;
+  channel: SheetChatbotChannel | (string & {});
   source: string;
   notes: string;
   risk: SheetChatbotRiskLevel;
@@ -61,6 +65,7 @@ function initialForm(prefill?: FeedbackPrefillData): FeedbackFormState {
     question: text(prefill?.question),
     answer: text(prefill?.answer),
     topic: normalizeFormTopic(prefill?.topic),
+    channel: normalizeFormChannel(prefill?.channel),
     source: normalizeFormSource(prefill?.source),
     notes: text(prefill?.notes),
     risk: prefill?.risk ?? "Trung bình",
@@ -105,6 +110,17 @@ function normalizeFormTopic(value: unknown) {
   const raw = text(value);
   if (!raw) return DEFAULT_TOPIC;
   return topicLabelForGroupId(mapTopicToGroupId(raw));
+}
+
+function normalizeFormChannel(value: unknown): SheetChatbotChannel | (string & {}) {
+  const raw = text(value);
+  if (!raw) return "";
+  const normalized = normalizeLookupValue(raw).replace(/\s+/g, "");
+  if (normalized === "zalo" || normalized === "zalooa") return "Zalo OA";
+  if (normalized === "zalobusiness" || normalized === "zalobiz") return "Zalo Business";
+  if (normalized === "facebook" || normalized === "fb" || normalized === "messenger") return "Facebook";
+  if (normalized === "chatwidget" || normalized === "website" || normalized === "web") return "Chat Widget";
+  return raw;
 }
 
 const fieldStyle: CSSProperties = {
@@ -184,6 +200,7 @@ export function FeedbackFormDialog({
         question,
         correctAnswer: answer,
         topic,
+        channel: form.channel,
         source: form.source,
         risk: form.risk,
         status: form.status,
@@ -229,6 +246,12 @@ export function FeedbackFormDialog({
                 {TOPIC_TAXONOMY.map((topicOption) => (
                   <option key={topicOption.id} value={topicOption.label}>{topicOption.label}</option>
                 ))}
+              </select>
+            </label>
+            <label style={labelStyle}>Kênh
+              <select aria-label="Kênh" value={form.channel} onChange={(event) => update("channel", event.target.value)} style={fieldStyle}>
+                <option value="">Chưa xác định</option>
+                {SHEET_CHATBOT_CHANNEL_OPTIONS.map((value) => <option key={value} value={value}>{value}</option>)}
               </select>
             </label>
             <label style={labelStyle}>Nguồn

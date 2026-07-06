@@ -15,9 +15,10 @@ GROUP_META = {
     for group in TOPIC_GROUPS
 }
 
-ORDERED_GROUP_IDS = ORDERED_TOPIC_GROUP_IDS
+ORDERED_GROUP_IDS = [gid for gid in ORDERED_TOPIC_GROUP_IDS if gid != "khac"]
 KEYWORD_CACHE_TTL_SECONDS = 180
 DEFAULT_GROUP_STATS_DAYS = 30
+TREND_KEYWORD_LIMIT_PER_GROUP = 32
 _keyword_cache = {}
 
 
@@ -89,6 +90,24 @@ def matches_group_topic(topic: str, group: dict) -> bool:
         return True
 
     return any(matches_topic_filter(topic, kw.get("word", "")) for kw in group.get("keywords", []))
+
+
+def unique_limited_words(*word_groups: list[str], limit: int = TREND_KEYWORD_LIMIT_PER_GROUP) -> list[str]:
+    result = []
+    seen = set()
+    for words in word_groups:
+        for word in words or []:
+            normalized_word = " ".join(str(word or "").strip().split())
+            if not normalized_word:
+                continue
+            key = normalize_keyword_filter(normalized_word)
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            result.append(normalized_word)
+            if len(result) >= limit:
+                return result
+    return result
 
 
 def parse_trend_date(value: str = None):
@@ -531,14 +550,19 @@ class KeywordService:
         trend_by_key = seed_trend_buckets(start_date, end_date, granularity)
         trend_words_map = {}
         for group_id in ORDERED_GROUP_IDS:
-            words = group_map.get(group_id, [])
+            scope_words = list(TOPIC_GROUP_BY_ID.get(group_id, {}).get("scope_terms", []))
+            custom_words = group_map.get(group_id, [])
+            words = unique_limited_words(scope_words, custom_words)
             if not words:
                 continue
 
             if topic:
                 group_only_match = matches_group_topic(topic, {"id": group_id, "keywords": []})
                 if not group_only_match:
-                    words = [word for word in words if matches_topic_filter(topic, word)]
+                    words = unique_limited_words(
+                        [word for word in custom_words if matches_topic_filter(topic, word)],
+                        [word for word in scope_words if matches_topic_filter(topic, word)],
+                    )
                 if not words:
                     continue
 

@@ -3,7 +3,7 @@ import json
 import logging
 from datetime import datetime
 
-from app.core.topic_taxonomy import canonical_topic_labels
+from app.core.topic_taxonomy import canonical_topic_labels, extract_all_keywords
 from app.db.session import get_connection, rows_to_dicts
 from app.repositories.display_filters import valid_message_condition
 from app.services.ai_issue_classifier import classify_ai_issue
@@ -62,8 +62,14 @@ def process_new_messages():
         for msg in messages:
             msg_id = msg["messageId"]
             classification = classify_ai_issue(msg["TextContent"])
+            customer_text = msg.get("CustomerText") or ""
+            bot_text = msg.get("TextContent") or ""
             detected_topics = json.dumps(
-                canonical_topic_labels(msg.get("CustomerText"), msg.get("TextContent")),
+                canonical_topic_labels(customer_text, bot_text),
+                ensure_ascii=False,
+            )
+            detected_keywords = json.dumps(
+                extract_all_keywords(customer_text, bot_text),
                 ensure_ascii=False,
             )
             sent_at = msg["SentAt"]
@@ -75,7 +81,8 @@ def process_new_messages():
             inserts.append((
                 msg_id, conv_id, receiver_id, source, 'neutral', 0.0, issue_flag,
                 sent_at, datetime.now(), issue_flag, classification.issue_type,
-                classification.issue_reason, classification.issue_confidence, detected_topics
+                classification.issue_reason, classification.issue_confidence, detected_topics,
+                detected_keywords
             ))
             
         # Apply inserts
@@ -83,8 +90,8 @@ def process_new_messages():
             batch = inserts[i:i+100]
             c.executemany("""
                 INSERT INTO dbo.WebChat_MessageAnalytics 
-                (messageId, conversationId, customerId, source, sentimentLabel, sentimentScore, needStaffReview, messageAt, analyzedAt, issueFlag, issueType, issueReason, issueConfidence, detectedTopics)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (messageId, conversationId, customerId, source, sentimentLabel, sentimentScore, needStaffReview, messageAt, analyzedAt, issueFlag, issueType, issueReason, issueConfidence, detectedTopics, detectedKeywords)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, batch)
             
         conn.commit()

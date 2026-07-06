@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+from app.repositories.base_repository import BaseRepository
 
 PLACEHOLDER_VALUES_SQL = (
     "(N'', N'unknown', N'Unknown', N'UNKNOWN', "
@@ -66,14 +66,4 @@ def valid_analytics_condition(alias: str = "a") -> str:
 
 
 def conversation_status_case(conversation_alias: str = "c", status_alias: str = "s") -> str:
-    return f"""
-        CASE
-          WHEN {status_alias}.NoResponseNeeded = 1
-           AND ({status_alias}.MarkedAt IS NULL OR {conversation_alias}.LastCustomerMessageAt <= {status_alias}.MarkedAt)
-            THEN 'closed'
-          WHEN {conversation_alias}.LastHostMessageAt IS NULL
-            OR {conversation_alias}.LastCustomerMessageAt > {conversation_alias}.LastHostMessageAt
-            THEN 'pending'
-          ELSE 'open'
-        END
-    """
+    return BaseRepository()._conversation_status_case(conversation_alias, status_alias)

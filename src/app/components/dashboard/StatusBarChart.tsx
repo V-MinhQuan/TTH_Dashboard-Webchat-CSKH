@@ -4,18 +4,20 @@ const NAVY = "#003865";
 
 const STATUS_COLORS: Record<string, string> = {
   "Mới": "#42A5F5",
+  "Đang tư vấn": NAVY,
   "Đang tư vấn / Chờ phản hồi": NAVY,
   "Đang xử lý": NAVY, // legacy alias
   "Chờ xử lý": "#D73C01",
+  "Hoàn thành": "#1565C0",
   "Đã đóng": "#1565C0",
   "Khác": "#F36C2E"
 };
 
 const STATUS_LABELS: Record<string, string> = {
   new: "Mới",
-  open: "Đang tư vấn / Chờ phản hồi",
+  open: "Đang tư vấn",
   pending: "Chờ xử lý",
-  closed: "Đã đóng",
+  closed: "Hoàn thành",
   unknown: "Khác"
 };
 

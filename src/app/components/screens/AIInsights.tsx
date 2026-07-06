@@ -15,7 +15,7 @@ import { exportFailedConversationsCsv, getAllFailedConversations, getFailedConve
 import { getAiFailureDefinition } from "../../constants/aiFailureTaxonomy";
 import { TOPIC_TAXONOMY, mapTopicToGroupId, topicLabelForGroupId } from "../../constants/topicTaxonomy";
 import { StatusBadge } from "../common/StatusBadge";
-import { analyticsFiltersToSearchParams } from "../../utils/dateFilters";
+import { analyticsFiltersToSearchParams, mapGlobalFiltersToAnalyticsRequest } from "../../utils/dateFilters";
 
 const NAVY = "#003865";
 const ORANGE = "#D73C01";
@@ -35,7 +35,7 @@ const OCEAN_SECONDARY = "#ED5206";
 const FAILED_QUESTIONS_PAGE_SIZE = 10;
 const TOPIC_DETAIL_CONVERSATIONS_PAGE_SIZE = 3;
 const TABLE_FILTER_ALL = "Tất cả";
-const AI_ANALYTICS_TIMEOUT_MS = 30000;
+const AI_ANALYTICS_TIMEOUT_MS = 120000;
 const AI_TOPIC_FAILURE_TYPES = [
   { id: "no_data", label: "Không tìm thấy dữ liệu", key: "thieuDL" },
   { id: "uncertain", label: "AI không chắc chắn", key: "khongChac" },
@@ -475,6 +475,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
   const [failedTopicFilter, setFailedTopicFilter] = useState(TABLE_FILTER_ALL);
   const [failedReasonFilter, setFailedReasonFilter] = useState(TABLE_FILTER_ALL);
   const [chatbotTopicFilter, setChatbotTopicFilter] = useState(TABLE_FILTER_ALL);
+  const [chatbotChannelFilter, setChatbotChannelFilter] = useState(TABLE_FILTER_ALL);
   const [chatbotStatusFilter, setChatbotStatusFilter] = useState(TABLE_FILTER_ALL);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [exportingFailed, setExportingFailed] = useState(false);
@@ -484,6 +485,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
   const [failureTrend, setFailureTrend] = useState<any[]>([]);
   const [failureByTopic, setFailureByTopic] = useState<TopicFailureRecord[]>([]);
   const [failedConversations, setFailedConversations] = useState<any[]>([]);
+  const [failedConversationTotal, setFailedConversationTotal] = useState(0);
   const [staffReportedErrors, setStaffReportedErrors] = useState<any[]>([]);
   const [suggestedFAQs, setSuggestedFAQs] = useState<any[]>([]);
   const [recentChatbotRows, setRecentChatbotRows] = useState<any[]>([]);
@@ -493,6 +495,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
   useEffect(() => {
     let cancelled = false;
     const queryParams = analyticsFiltersToSearchParams(filters);
+    const feedbackFilters = mapGlobalFiltersToAnalyticsRequest(filters);
     const qs = queryParams.toString();
 
     const fetchData = async () => {
@@ -535,14 +538,17 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
           safeRequired("failedConversations", getFailedConversations(queryParams)),
           safeOptional("staffReportedErrors", fetchApiJson<any>(buildApiUrl(`/api/analytics/ai/staff-reported-errors?${qs}`), { cache: false, timeoutMs: AI_ANALYTICS_TIMEOUT_MS })),
           safeOptional("suggestedFAQs", fetchApiJson<any>(buildApiUrl(`/api/analytics/ai/suggested-faqs?${qs}`), { cache: false, timeoutMs: AI_ANALYTICS_TIMEOUT_MS })),
-          safeOptional("recentChatbotRows", getSheetChatbotRows({ pageSize: 5 })),
+          safeOptional("recentChatbotRows", getSheetChatbotRows({ pageSize: 5, ...feedbackFilters })),
         ]);
 
         if (cancelled) return;
         if (qm?.success) setQualityMetrics(qm.data);
         if (ft?.success) setFailureTrend(ft.data);
         if (Array.isArray(fbt)) setFailureByTopic(fbt);
-        if (fc?.records) setFailedConversations(fc.records.map(mapFailedConversation));
+        if (fc?.records) {
+          setFailedConversations(fc.records.map(mapFailedConversation));
+          setFailedConversationTotal(Number(fc.pagination?.total ?? fc.records.length) || 0);
+        }
         setFailedPage(1);
         setSelectedFailureIds(new Set());
         setShowConfirmAllModal(false);
@@ -679,21 +685,30 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
     () => uniqueSortedText(recentChatbotRows.map((item) => item.topic)),
     [recentChatbotRows],
   );
+  const chatbotChannelOptions = useMemo(
+    () => uniqueSortedText(recentChatbotRows.map((item) => item.channel || "Chưa xác định")),
+    [recentChatbotRows],
+  );
   const chatbotStatusOptions = useMemo(
     () => uniqueSortedText(recentChatbotRows.map((item) => item.status)),
     [recentChatbotRows],
   );
   const filteredRecentChatbotRows = useMemo(
     () => recentChatbotRows.filter((item) => {
+      const channelLabel = item.channel || "Chưa xác định";
       const matchesTopic = chatbotTopicFilter === TABLE_FILTER_ALL || item.topic === chatbotTopicFilter;
+      const matchesChannel = chatbotChannelFilter === TABLE_FILTER_ALL || channelLabel === chatbotChannelFilter;
       const matchesStatus = chatbotStatusFilter === TABLE_FILTER_ALL || item.status === chatbotStatusFilter;
-      return matchesTopic && matchesStatus;
+      return matchesTopic && matchesChannel && matchesStatus;
     }),
-    [chatbotStatusFilter, chatbotTopicFilter, recentChatbotRows],
+    [chatbotChannelFilter, chatbotStatusFilter, chatbotTopicFilter, recentChatbotRows],
   );
   const hasChatbotTableFilters =
     chatbotTopicFilter !== TABLE_FILTER_ALL ||
+    chatbotChannelFilter !== TABLE_FILTER_ALL ||
     chatbotStatusFilter !== TABLE_FILTER_ALL;
+
+  const failedConversationTotalSafe = Math.max(failedConversationTotal, failedConversations.length);
 
   const failedTotalPages = Math.max(1, Math.ceil(filteredFailedConversations.length / FAILED_QUESTIONS_PAGE_SIZE));
   const failedPageSafe = Math.min(failedPage, failedTotalPages);
@@ -759,8 +774,14 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
   }, [chatbotStatusFilter, chatbotStatusOptions]);
 
   useEffect(() => {
+    if (chatbotChannelFilter !== TABLE_FILTER_ALL && !chatbotChannelOptions.includes(chatbotChannelFilter)) {
+      setChatbotChannelFilter(TABLE_FILTER_ALL);
+    }
+  }, [chatbotChannelFilter, chatbotChannelOptions]);
+
+  useEffect(() => {
     setExpandedChatbotRow(null);
-  }, [chatbotStatusFilter, chatbotTopicFilter]);
+  }, [chatbotChannelFilter, chatbotStatusFilter, chatbotTopicFilter]);
 
   useEffect(() => {
     setFailedPage((page) => Math.min(Math.max(page, 1), failedTotalPages));
@@ -1055,7 +1076,9 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
                 <XCircle size={16} style={{ color: ORANGE }} />
                 <h3 style={{ color: NAVY, fontSize: "14px", fontWeight: 700, margin: 0 }}>Số lượng câu AI phản hồi thất bại</h3>
                 <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "20px", backgroundColor: ORANGE_50, color: ORANGE, border: `1px solid ${ORANGE_200}`, fontWeight: 600 }}>
-                  {filteredFailedConversations.length} câu hỏi{hasFailedTableFilters ? ` / ${failedConversations.length}` : ""}
+                  {hasFailedTableFilters
+                    ? `${filteredFailedConversations.length} câu hỏi / ${failedConversationTotalSafe} tổng`
+                    : `${failedConversationTotalSafe} câu hỏi`}
                 </span>
               </div>
               <div style={{ display: "flex", gap: "8px" }}>
@@ -1258,7 +1281,10 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
             {filteredFailedConversations.length > 0 && (
               <div style={{ padding: "12px 24px", borderTop: "1px solid rgba(0,56,101,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
                 <span style={{ color: "rgba(0,56,101,0.62)", fontSize: "12px", fontWeight: 600 }}>
-                  Hiển thị {failedStartNumber}-{failedEndNumber} / {filteredFailedConversations.length} câu hỏi{hasFailedTableFilters ? ` (trong ${failedConversations.length})` : ""}
+                  Hiển thị {failedStartNumber}-{failedEndNumber} / {hasFailedTableFilters ? filteredFailedConversations.length : failedConversationTotalSafe} câu hỏi
+                  {hasFailedTableFilters
+                    ? ` (lọc trong ${failedConversations.length} dòng đã tải)`
+                    : failedConversationTotalSafe > failedConversations.length ? ` (đã tải ${failedConversations.length} dòng đầu)` : ""}
                 </span>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                   <button
@@ -1429,6 +1455,9 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
                       <TableFilterHeader label="Chủ đề" value={chatbotTopicFilter} options={chatbotTopicOptions} onChange={setChatbotTopicFilter} />
                     </th>
                     <th className="flic-th" style={{ textAlign: "left" }}>
+                      <TableFilterHeader label="Kênh" value={chatbotChannelFilter} options={chatbotChannelOptions} onChange={setChatbotChannelFilter} />
+                    </th>
+                    <th className="flic-th" style={{ textAlign: "left" }}>
                       <TableFilterHeader label="Trạng thái" value={chatbotStatusFilter} options={chatbotStatusOptions} onChange={setChatbotStatusFilter} />
                     </th>
                     <th className="flic-th" style={{ textAlign: "left" }}>Ghi chú nội bộ</th>
@@ -1439,10 +1468,10 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
                 <tbody>
                   {filteredRecentChatbotRows.length === 0 && (
                     <tr>
-                      <td colSpan={8} style={{ padding: "40px", textAlign: "center", color: "rgba(0,56,101,0.4)" }}>
+                      <td colSpan={9} style={{ padding: "40px", textAlign: "center", color: "rgba(0,56,101,0.4)" }}>
                         {optionalDataErrors.recentChatbotRows
                           ? "Chưa tải được dữ liệu phụ của bảng này. Dữ liệu chính của trang vẫn đang hiển thị."
-                          : recentChatbotRows.length === 0 ? "Chưa có dữ liệu nào được bổ sung." : "Không có dữ liệu phù hợp với bộ lọc Chủ đề/Trạng thái."}
+                          : recentChatbotRows.length === 0 ? "Chưa có dữ liệu nào được bổ sung." : "Không có dữ liệu phù hợp với bộ lọc Chủ đề/Kênh/Trạng thái."}
                       </td>
                     </tr>
                   )}
@@ -1461,6 +1490,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
                           <td className="flic-td-left" style={{ padding: "12px 14px", color: "#16a34a", maxWidth: "180px", fontSize: "11px" }}>{item.correctAnswer}</td>
                           <td style={{ padding: "12px 14px", color: NAVY, fontWeight: 600 }}>{item.addedBy}</td>
                           <td style={{ padding: "12px 14px" }}><span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: "#eff6ff", color: "#3b82f6" }}>{item.topic}</span></td>
+                          <td style={{ padding: "12px 14px", color: "rgba(0,56,101,0.62)", whiteSpace: "nowrap" }}>{item.channel || "Chưa xác định"}</td>
                           <td style={{ padding: "12px 14px" }}><StatusBadge status={item.status} showDot={false} style={{ fontWeight: 600 }} /></td>
                           <td style={{ padding: "12px 14px", color: ORANGE, fontStyle: "italic", maxWidth: "160px", fontSize: "11px" }}>
                             <div style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -1482,7 +1512,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
                         </tr>
                         {isExpanded && (
                           <tr style={{ backgroundColor: "#fff8f6" }}>
-                            <td colSpan={8} style={{ padding: "12px 14px 14px 28px" }}>
+                            <td colSpan={9} style={{ padding: "12px 14px 14px 28px" }}>
                               <div style={{ display: "flex", gap: "8px", alignItems: "flex-start" }}>
                                 <span style={{ fontSize: "10px", color: ORANGE, fontWeight: 700, whiteSpace: "nowrap", paddingTop: "2px" }}>GHI CHÚ CHI TIẾT:</span>
                                 <span style={{ fontSize: "12px", color: "rgba(0,56,101,0.8)", lineHeight: 1.5, fontStyle: "italic" }}>{item.notes}</span>
@@ -1509,11 +1539,13 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
             source: "AI trả lời sai",
             notes: faqModalConv.aiAnswer ? `[Câu AI sai]: ${faqModalConv.aiAnswer}` : "",
             topic: faqModalConv.topic,
+            channel: faqModalConv.channel,
             conversationId: faqModalConv.conversationId,
             messageId: faqModalConv.messageId,
           }}
           onClose={() => setFaqModalConv(null)}
-          onSaved={async () => {
+          onSaved={async (saved) => {
+            setRecentChatbotRows((current) => [saved, ...current].slice(0, 5));
             await handleMarkAsProcessed(faqModalConv.id, false);
           }}
         />

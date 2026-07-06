@@ -61,6 +61,7 @@ ALL_FILTER_OPERATORS = (
     "is_not_null",
 )
 CATALOG_CACHE_TTL_SECONDS = 60
+HIDDEN_CATALOG_DATASETS = {"message_analytics", "agent_performance"}
 _catalog_cache: Dict[
     int,
     tuple[float, datetime, Dict[str, set[str]]],
@@ -89,6 +90,7 @@ class ChartBuilderService:
         datasets = [
             self._catalog_dataset(dataset, capabilities)
             for dataset in self.catalog.values()
+            if dataset.id not in HIDDEN_CATALOG_DATASETS
         ]
         payload = ChartCatalogResponse(
             datasets=datasets,

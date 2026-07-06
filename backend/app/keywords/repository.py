@@ -157,12 +157,12 @@ def _build_message_filters(
         """)
 
         closed_sql = "(s.NoResponseNeeded = 1 AND (s.MarkedAt IS NULL OR c.LastCustomerMessageAt <= s.MarkedAt))"
-        active_sql = "(s.NoResponseNeeded IS NULL OR s.NoResponseNeeded = 0 OR c.LastCustomerMessageAt > s.MarkedAt)"
+        reopened_sql = "(s.NoResponseNeeded = 1 AND s.MarkedAt IS NOT NULL AND c.LastCustomerMessageAt > s.MarkedAt)"
 
         if conversation_status == "Chờ xử lý":
-            clauses.append(f"c.CustomerId IS NOT NULL AND {valid_conversation_condition('c')} AND {active_sql} AND (c.LastHostMessageAt IS NULL OR c.LastCustomerMessageAt > c.LastHostMessageAt)")
-        elif conversation_status == "Đang xử lý":
-            clauses.append(f"c.CustomerId IS NOT NULL AND {valid_conversation_condition('c')} AND {active_sql} AND c.LastHostMessageAt IS NOT NULL AND c.LastCustomerMessageAt <= c.LastHostMessageAt")
+            clauses.append(f"c.CustomerId IS NOT NULL AND {valid_conversation_condition('c')} AND ({reopened_sql} OR c.LastHostMessageAt IS NULL)")
+        elif conversation_status in ("Đang xử lý", "Đang tư vấn", "Đang tư vấn / Chờ phản hồi"):
+            clauses.append(f"c.CustomerId IS NOT NULL AND {valid_conversation_condition('c')} AND NOT ({closed_sql}) AND NOT ({reopened_sql}) AND c.LastHostMessageAt IS NOT NULL")
         elif conversation_status == "Hoàn thành":
             clauses.append(f"c.CustomerId IS NOT NULL AND {valid_conversation_condition('c')} AND {closed_sql}")
 
@@ -620,12 +620,12 @@ class KeywordRepository:
 
         if conversation_status and conversation_status != "Tất cả":
             closed_sql = "(s.NoResponseNeeded = 1 AND (s.MarkedAt IS NULL OR c.LastCustomerMessageAt <= s.MarkedAt))"
-            active_sql = "(s.NoResponseNeeded IS NULL OR s.NoResponseNeeded = 0 OR c.LastCustomerMessageAt > s.MarkedAt)"
+            reopened_sql = "(s.NoResponseNeeded = 1 AND s.MarkedAt IS NOT NULL AND c.LastCustomerMessageAt > s.MarkedAt)"
 
             if conversation_status == "Chờ xử lý":
-                clauses.append(f"c.CustomerId IS NOT NULL AND {active_sql} AND (c.LastHostMessageAt IS NULL OR c.LastCustomerMessageAt > c.LastHostMessageAt)")
-            elif conversation_status == "Đang xử lý":
-                clauses.append(f"c.CustomerId IS NOT NULL AND {active_sql} AND c.LastHostMessageAt IS NOT NULL AND c.LastCustomerMessageAt <= c.LastHostMessageAt")
+                clauses.append(f"c.CustomerId IS NOT NULL AND ({reopened_sql} OR c.LastHostMessageAt IS NULL)")
+            elif conversation_status in ("Đang xử lý", "Đang tư vấn", "Đang tư vấn / Chờ phản hồi"):
+                clauses.append(f"c.CustomerId IS NOT NULL AND NOT ({closed_sql}) AND NOT ({reopened_sql}) AND c.LastHostMessageAt IS NOT NULL")
             elif conversation_status == "Hoàn thành":
                 clauses.append(f"c.CustomerId IS NOT NULL AND {closed_sql}")
 
@@ -972,12 +972,12 @@ class KeywordRepository:
 
         if conversation_status and conversation_status != "Tất cả":
             closed_sql = "(s.NoResponseNeeded = 1 AND (s.MarkedAt IS NULL OR c.LastCustomerMessageAt <= s.MarkedAt))"
-            active_sql = "(s.NoResponseNeeded IS NULL OR s.NoResponseNeeded = 0 OR c.LastCustomerMessageAt > s.MarkedAt)"
+            reopened_sql = "(s.NoResponseNeeded = 1 AND s.MarkedAt IS NOT NULL AND c.LastCustomerMessageAt > s.MarkedAt)"
 
             if conversation_status == "Chờ xử lý":
-                clauses.append(f"c.CustomerId IS NOT NULL AND {active_sql} AND (c.LastHostMessageAt IS NULL OR c.LastCustomerMessageAt > c.LastHostMessageAt)")
-            elif conversation_status == "Đang xử lý":
-                clauses.append(f"c.CustomerId IS NOT NULL AND {active_sql} AND c.LastHostMessageAt IS NOT NULL AND c.LastCustomerMessageAt <= c.LastHostMessageAt")
+                clauses.append(f"c.CustomerId IS NOT NULL AND ({reopened_sql} OR c.LastHostMessageAt IS NULL)")
+            elif conversation_status in ("Đang xử lý", "Đang tư vấn", "Đang tư vấn / Chờ phản hồi"):
+                clauses.append(f"c.CustomerId IS NOT NULL AND NOT ({closed_sql}) AND NOT ({reopened_sql}) AND c.LastHostMessageAt IS NOT NULL")
             elif conversation_status == "Hoàn thành":
                 clauses.append(f"c.CustomerId IS NOT NULL AND {closed_sql}")
 

@@ -104,7 +104,7 @@ const emptyMissingFaqGroups: Record<string, MissingFaqItem[]> = Object.fromEntri
 const GROUP_FAQ_LIMIT = 1;
 const GROUP_FAQ_CANDIDATE_LIMIT = 50;
 const GROUP_FAQ_KEYWORD_LIMIT = 24;
-const KEYWORD_ANALYTICS_TIMEOUT_MS = 30000;
+const KEYWORD_ANALYTICS_TIMEOUT_MS = 120000;
 const GROUP_FAQ_SCOPE_TERMS: Record<string, string[]> = Object.fromEntries(
   TOPIC_TAXONOMY.map((topic) => [topic.id, [...topic.scopeTerms]]),
 );
@@ -474,6 +474,13 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
 
   const barData = kpiGroups.map((g) => ({ name: g.name.split(" / ")[0], "Số câu hỏi": g.totalQuestions, "Số câu AI phản hồi không chính xác": g.aiFailed }));
   const donutData = kpiGroups.map((g) => ({ id: g.id, name: g.name.split(" / ")[0], value: g.totalQuestions }));
+  const trendGroupsWithData = kpiGroups.filter((group) => (
+    activeGroup === group.id ||
+    Number(group.totalQuestions || 0) > 0 ||
+    Number(group.aiFailed || 0) > 0
+  ));
+  const visibleTrendGroups = (trendGroupsWithData.length > 0 ? trendGroupsWithData : kpiGroups)
+    .filter((group) => !activeGroup || activeGroup === group.id);
 
   return (
     <div className="p-6" data-export-target="true">
@@ -573,20 +580,20 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
               <YAxis tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
               <Tooltip />
               <Legend iconSize={10} />
-              {TOPIC_TAXONOMY.filter(t => t.id !== "khac").map((topic, index) => {
+              {visibleTrendGroups.map((topic, index) => {
                 const LINE_COLORS = ["#00A3E0", "#00D2FF", "#002E8D", "#308D16", "#FFA100", "#64748B"];
                 const color = LINE_COLORS[index % LINE_COLORS.length];
-                return (!activeGroup || activeGroup === topic.id) ? (
+                return (
                   <Line
                     key={topic.id}
                     type="monotone"
-                    dataKey={topic.label}
+                    dataKey={topic.name}
                     stroke={color}
                     strokeDasharray=""
                     strokeWidth={2.8}
                     dot={{ r: 3, fill: color }}
                   />
-                ) : null;
+                );
               })}
             </LineChart>
           </ResponsiveContainer>

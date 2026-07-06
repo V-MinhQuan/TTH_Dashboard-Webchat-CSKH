@@ -1838,7 +1838,7 @@ class DashboardService:
             elif wait_mins > 120:
                 priority = 'Ưu tiên trung bình'
 
-            status_text = 'Đang xử lý' if row.get('status') == 'open' else 'Chờ xử lý'
+            status_text = 'Đang tư vấn' if row.get('status') == 'open' else 'Chờ xử lý'
             customer = customer_display_name(
                 row.get('customer_name'),
                 row.get('customer_id'),
@@ -1990,6 +1990,8 @@ class DashboardService:
             status_filter = {
                 'Chờ xử lý': 'pending',
                 'Đang xử lý': 'open',
+                'Đang tư vấn': 'open',
+                'Đang tư vấn / Chờ phản hồi': 'open',
                 'Hoàn thành': 'closed',
             }.get(conversation_status)
             if status_filter:
@@ -2466,6 +2468,8 @@ class DashboardService:
             status_filter = {
                 'Chờ xử lý': 'pending',
                 'Đang xử lý': 'open',
+                'Đang tư vấn': 'open',
+                'Đang tư vấn / Chờ phản hồi': 'open',
                 'Hoàn thành': 'closed',
             }.get(conversation_status)
             if status_filter:
@@ -2691,7 +2695,7 @@ class DashboardService:
         from collections import defaultdict
         trend_map = defaultdict(lambda: {'date': ''})
         status_map = {
-            channel_name: {'channel': channel_name, 'Chờ xử lý': 0, 'Đang xử lý': 0, 'Hoàn thành': 0}
+            channel_name: {'channel': channel_name, 'Chờ xử lý': 0, 'Đang tư vấn': 0, 'Hoàn thành': 0}
             for channel_name, _source in visible_channel_defs
         }
         heatmap_map = defaultdict(lambda: 0)
@@ -2724,7 +2728,7 @@ class DashboardService:
             if status == 'pending':
                 status_map[c_name]['Chờ xử lý'] += total
             elif status == 'open':
-                status_map[c_name]['Đang xử lý'] += total
+                status_map[c_name]['Đang tư vấn'] += total
             else:
                 status_map[c_name]['Hoàn thành'] += total
 

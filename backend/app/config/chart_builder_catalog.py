@@ -123,6 +123,24 @@ OUTER APPLY (
     ),
 )
 
+MESSAGE_ANALYTICS = RelationDefinition(
+    id="message_analytics",
+    label="Phân tích AI của tin nhắn",
+    cardinality="many_to_zero_or_one",
+    sql="""
+LEFT JOIN dbo.WebChat_MessageAnalytics msg_ai
+  ON msg_ai.messageId = m.id_webchat_messagelogs
+""".strip(),
+    required_objects=_mapping(
+        {
+            "dbo.WebChat_MessageAnalytics": (
+                "messageId",
+                "issueFlag",
+            )
+        }
+    ),
+)
+
 
 CONVERSATION_FIELDS = _mapping(
     {
@@ -260,6 +278,28 @@ MESSAGE_FIELDS = _mapping(
             semantic_type="agent",
             roles=("dimension", "filter", "series"),
             filter_operators=STRING_FILTERS,
+        ),
+        "ai_success": FieldDefinition(
+            id="ai_success",
+            label="AI trả lời thành công",
+            expression="CASE WHEN msg_ai.messageId IS NOT NULL AND ISNULL(msg_ai.issueFlag, 0) = 0 THEN 1 ELSE 0 END",
+            data_type="number",
+            semantic_type="ai_success",
+            roles=("metric",),
+            aggregations=("sum",),
+            default_aggregation="sum",
+            relation_id="message_analytics",
+        ),
+        "ai_failure": FieldDefinition(
+            id="ai_failure",
+            label="AI trả lời thất bại",
+            expression="CASE WHEN msg_ai.messageId IS NOT NULL AND msg_ai.issueFlag = 1 THEN 1 ELSE 0 END",
+            data_type="number",
+            semantic_type="ai_failure",
+            roles=("metric",),
+            aggregations=("sum",),
+            default_aggregation="sum",
+            relation_id="message_analytics",
         ),
     }
 )
@@ -529,7 +569,7 @@ DATASETS = _mapping(
             root_sql="dbo.WebChat_MessageLogs m",
             root_alias="m",
             fields=MESSAGE_FIELDS,
-            relations=_mapping({}),
+            relations=_mapping({"message_analytics": MESSAGE_ANALYTICS}),
             required_objects=_mapping(
                 {
                     "dbo.WebChat_MessageLogs": (

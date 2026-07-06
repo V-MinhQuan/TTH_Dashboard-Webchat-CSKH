@@ -35,6 +35,7 @@ interface SheetRow {
   question: string;
   correctAnswer: string;
   topic: string;
+  channel?: string;
   source: SourceType;
   risk: RiskLevel;
   status: SheetStatus;
@@ -235,6 +236,7 @@ export function SheetChatbot() {
 
   const [search, setSearch] = useState("");
   const [filterTopic, setFilterTopic] = useState(ALL_FILTER_VALUE);
+  const [filterChannel, setFilterChannel] = useState(ALL_FILTER_VALUE);
   const [filterSource, setFilterSource] = useState(ALL_FILTER_VALUE);
   const [filterStatus, setFilterStatus] = useState(ALL_FILTER_VALUE);
   const [filterRisk, setFilterRisk] = useState(ALL_FILTER_VALUE);
@@ -293,6 +295,10 @@ export function SheetChatbot() {
     () => uniqueSortedText(visibleRows.map((row) => displayFailureSource(row.source))),
     [visibleRows],
   );
+  const channelOptions = useMemo(
+    () => uniqueSortedText(visibleRows.map((row) => row.channel || "Chưa xác định")),
+    [visibleRows],
+  );
 
   useEffect(() => {
     if (filterTopic !== ALL_FILTER_VALUE && !topicOptions.includes(filterTopic)) {
@@ -306,16 +312,25 @@ export function SheetChatbot() {
     }
   }, [filterSource, sourceOptions]);
 
+  useEffect(() => {
+    if (filterChannel !== ALL_FILTER_VALUE && !channelOptions.includes(filterChannel)) {
+      setFilterChannel(ALL_FILTER_VALUE);
+    }
+  }, [channelOptions, filterChannel]);
+
   const filtered = visibleRows.filter(r => {
     const sourceLabel = displayFailureSource(r.source);
+    const channelLabel = r.channel || "Chưa xác định";
     const matchSearch = r.question.toLowerCase().includes(search.toLowerCase()) ||
       r.topic.toLowerCase().includes(search.toLowerCase()) ||
+      channelLabel.toLowerCase().includes(search.toLowerCase()) ||
       r.addedBy.toLowerCase().includes(search.toLowerCase());
     const matchTopic = filterTopic === ALL_FILTER_VALUE || r.topic === filterTopic;
+    const matchChannel = filterChannel === ALL_FILTER_VALUE || channelLabel === filterChannel;
     const matchSource = filterSource === ALL_FILTER_VALUE || sourceLabel === filterSource;
     const matchStatus = filterStatus === ALL_FILTER_VALUE || r.status === filterStatus;
     const matchRisk = filterRisk === ALL_FILTER_VALUE || r.risk === filterRisk;
-    return matchSearch && matchTopic && matchSource && matchStatus && matchRisk;
+    return matchSearch && matchTopic && matchChannel && matchSource && matchStatus && matchRisk;
   });
 
   const updateStatus = async (id: string, status: SheetStatus) => {
@@ -446,6 +461,9 @@ export function SheetChatbot() {
                       <FilterableHeader label="Chủ đề" value={filterTopic} options={topicOptions} onChange={setFilterTopic} />
                     </th>
                     <th style={tableHeaderCellStyle}>
+                      <FilterableHeader label="Kênh" value={filterChannel} options={channelOptions} onChange={setFilterChannel} />
+                    </th>
+                    <th style={tableHeaderCellStyle}>
                       <FilterableHeader label="Nguồn" value={filterSource} options={sourceOptions} onChange={setFilterSource} />
                     </th>
                     <th style={tableHeaderCellStyle}>
@@ -460,7 +478,7 @@ export function SheetChatbot() {
                 <tbody>
                   {(loadError || filtered.length === 0) && (
                     <tr>
-                      <td colSpan={9} style={{ padding: "40px", textAlign: "center", color: "rgba(0,62,154,0.4)", fontSize: "13px" }}>
+                      <td colSpan={10} style={{ padding: "40px", textAlign: "center", color: "rgba(0,62,154,0.4)", fontSize: "13px" }}>
                         {loadError || "Không có dữ liệu phù hợp"}
                       </td>
                     </tr>
@@ -485,6 +503,7 @@ export function SheetChatbot() {
                         <td style={{ padding: "12px 14px" }}>
                           <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: "#eff6ff", color: "#3b82f6", whiteSpace: "nowrap" }}>{row.topic}</span>
                         </td>
+                        <td style={{ padding: "12px 14px", color: "rgba(0,62,154,0.62)", whiteSpace: "nowrap" }}>{row.channel || "Chưa xác định"}</td>
                         <td style={{ padding: "12px 14px" }}>
                           <span style={{ fontSize: "10px", color: "rgba(0,62,154,0.6)", whiteSpace: "nowrap" }}>{displayFailureSource(row.source)}</span>
                         </td>
@@ -558,6 +577,7 @@ export function SheetChatbot() {
             answer: editingRow.correctAnswer,
             topic: editingRow.topic,
             source: editingRow.source,
+            channel: editingRow.channel,
             risk: editingRow.risk,
             status: editingRow.status,
             notes: editingRow.notes,

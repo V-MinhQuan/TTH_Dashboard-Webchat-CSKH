@@ -71,9 +71,9 @@ export const STATUS_COLORS: Record<string, { bg: string; color: string; border: 
   "Thành công":                          { bg: GREEN_SOFT,color: GREEN,      border: GREEN_BORDER},
   "AI thành công":                       { bg: GREEN_SOFT,color: GREEN,      border: GREEN_BORDER},
   "Hoàn thành":                          { bg: GREEN_SOFT,color: GREEN,      border: GREEN_BORDER},
-  // Canonical label – Req #1
+  "Đang tư vấn":                        { bg: BLUE_SOFT, color: BLUE_TEXT,  border: "#BFDBFE" },
+  // Legacy aliases kept for backward compatibility (historical records / API values)
   "Đang tư vấn / Chờ phản hồi":         { bg: BLUE_SOFT, color: BLUE_TEXT,  border: "#BFDBFE" },
-  // Legacy alias kept for backward compatibility (historical records / API values)
   "Đang xử lý":                         { bg: BLUE_SOFT, color: BLUE_TEXT,  border: "#BFDBFE" },
   "AI không chắc chắn":                 { bg: AMBER_50,  color: AMBER_TEXT, border: AMBER_100  },
   "Không tìm thấy dữ liệu":             { bg: ORANGE_50, color: ORANGE,     border: ORANGE_200 },

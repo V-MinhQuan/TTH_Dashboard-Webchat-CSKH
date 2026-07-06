@@ -157,6 +157,7 @@ class SheetChatbotService:
                     row.get("question", ""),
                     row.get("correctAnswer", ""),
                     row.get("topic", ""),
+                    row.get("channel", ""),
                     row.get("addedBy", ""),
                 ]))
             ]
@@ -210,6 +211,7 @@ class SheetChatbotService:
             "question": question,
             "correctAnswer": answer,
             "topic": (data.get("topic") or "Chưa xác định").strip(),
+            "channel": (data.get("channel") or data.get("sourceChannel") or "").strip(),
             "source": (data.get("source") or "Nhân viên đề xuất").strip(),
             "risk": risk,
             "status": status,
@@ -228,7 +230,7 @@ class SheetChatbotService:
             raise SheetChatbotNotFoundError(f"Không tìm thấy phản hồi có ID {row_id}.")
 
         current = rows[index]
-        allowed_fields = ["question", "correctAnswer", "topic", "source", "risk", "status", "notes", "addedBy"]
+        allowed_fields = ["question", "correctAnswer", "topic", "channel", "source", "risk", "status", "notes", "addedBy"]
         updated = {**current}
         for field in allowed_fields:
             if field in data and data[field] is not None:
