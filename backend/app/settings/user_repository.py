@@ -13,7 +13,7 @@ class UserRepository:
             conn = get_db_connection()
             cursor = conn.cursor(as_dict=True)
             cursor.execute(
-                "SELECT UserName, DangHoatDong, HoTen, ShortName, Email, DienThoai, Password FROM [User] WHERE UserName = %s",
+                "SELECT UserName, DangHoatDong, HoTen, ShortName, Email, DienThoai, Password FROM [WebChat_User] WHERE UserName = %s",
                 (username,)
             )
             row = cursor.fetchone()
@@ -41,7 +41,7 @@ class UserRepository:
             conn = get_db_connection()
             cursor = conn.cursor(as_dict=True)
             cursor.execute(
-                "SELECT UserName, DangHoatDong, HoTen, ShortName, Email, DienThoai FROM [User]"
+                "SELECT UserName, DangHoatDong, HoTen, ShortName, Email, DienThoai FROM [WebChat_User]"
             )
             rows = cursor.fetchall()
             users = []
@@ -83,14 +83,14 @@ class UserRepository:
         try:
             conn = get_db_connection()
             cursor = conn.cursor(as_dict=True)
-            cursor.execute("SELECT UserName FROM [User] WHERE UserName = %s", (username,))
+            cursor.execute("SELECT UserName FROM [WebChat_User] WHERE UserName = %s", (username,))
             if cursor.fetchone():
                 raise Exception(f"Tên đăng nhập {username} đã tồn tại.")
 
             cursor = conn.cursor()
             cursor.execute(
                 """
-                INSERT INTO [User] (UserName, Password, DangHoatDong, HoTen, ShortName, Email, DienThoai)
+                INSERT INTO [WebChat_User] (UserName, Password, DangHoatDong, HoTen, ShortName, Email, DienThoai)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """,
                 (username, password, 1 if active else 0, name or username, name or username, email or None, phone or None)
@@ -118,7 +118,7 @@ class UserRepository:
             conn = get_db_connection()
             cursor = conn.cursor()
             cursor.execute(
-                "UPDATE [User] SET HoTen = %s, Email = %s, DienThoai = %s WHERE UserName = %s",
+                "UPDATE [WebChat_User] SET HoTen = %s, Email = %s, DienThoai = %s WHERE UserName = %s",
                 (name, email, phone, username)
             )
             conn.commit()
@@ -138,7 +138,7 @@ class UserRepository:
             conn = get_db_connection()
             cursor = conn.cursor()
             cursor.execute(
-                "UPDATE [User] SET Password = %s WHERE UserName = %s",
+                "UPDATE [WebChat_User] SET Password = %s WHERE UserName = %s",
                 (new_password, username)
             )
             conn.commit()
@@ -158,7 +158,7 @@ class UserRepository:
             conn = get_db_connection()
             cursor = conn.cursor()
             cursor.execute(
-                "UPDATE [User] SET DangHoatDong = %s WHERE UserName = %s",
+                "UPDATE [WebChat_User] SET DangHoatDong = %s WHERE UserName = %s",
                 (1 if active else 0, username)
             )
             conn.commit()

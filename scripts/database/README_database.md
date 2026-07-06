@@ -31,7 +31,7 @@ DB_DRIVER=ODBC Driver 17 for SQL Server
 | `dbo.WebChat_MessageLogs` | Nhật ký tin nhắn | `FromHost = 1` = bot, `0` = khách |
 | `dbo.WebChat_MessageAnalytics` | Kết quả phân tích sentiment | Từ ML service |
 | `dbo.WebChat_Messagelogs_User_Info` | Thông tin display name khách hàng | `SenderId` + `Source` |
-| `dbo.[User]` | Tài khoản nhân viên CSKH | Dùng cho login |
+| `dbo.WebChat_User` | Tài khoản nhân viên CSKH | Dùng cho login |
 
 ## Mapping trạng thái
 
@@ -86,5 +86,5 @@ Phần mềm ODBC cần cài đặt trên máy chủ chạy Python:
 
 ```sql
 -- Luôn backup bảng User trước khi thêm cột
-SELECT * INTO [User_backup_YYYYMMDD] FROM [User];
+SELECT * INTO [WebChat_User_backup_YYYYMMDD] FROM [WebChat_User];
 ```

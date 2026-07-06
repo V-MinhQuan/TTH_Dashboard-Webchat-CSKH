@@ -7,6 +7,8 @@ from app.db.session import execute_one, get_connection
 
 logger = logging.getLogger(__name__)
 
+AI_QUESTION_GROUP_CACHE_TABLE = "dbo.WebChat_AiQuestionGroupCache"
+
 
 class AiQuestionGroupCacheRepository:
     def __init__(self, connection_factory: Callable = get_connection):
@@ -34,7 +36,7 @@ class AiQuestionGroupCacheRepository:
                         ValidationJson AS validation_json,
                         ErrorMessage AS error_message,
                         UpdatedAt AS updated_at
-                    FROM dbo.AiQuestionGroupCache
+                    FROM dbo.WebChat_AiQuestionGroupCache
                     WHERE CacheKey = ? AND IsActive = 1
                     ORDER BY UpdatedAt DESC
                     """,
@@ -115,14 +117,14 @@ class AiQuestionGroupCacheRepository:
             with self._connection_factory() as conn:
                 existing = execute_one(
                     conn,
-                    "SELECT Id AS id FROM dbo.AiQuestionGroupCache WHERE CacheKey = ?",
+                    f"SELECT Id AS id FROM {AI_QUESTION_GROUP_CACHE_TABLE} WHERE CacheKey = ?",
                     (cache_key,),
                 )
                 cursor = conn.cursor()
                 if existing:
                     cursor.execute(
                         """
-                        UPDATE dbo.AiQuestionGroupCache
+                        UPDATE dbo.WebChat_AiQuestionGroupCache
                         SET Status = ?,
                             SourceFromDate = ?,
                             SourceToDate = ?,
@@ -160,7 +162,7 @@ class AiQuestionGroupCacheRepository:
                 else:
                     cursor.execute(
                         """
-                        INSERT INTO dbo.AiQuestionGroupCache
+                        INSERT INTO dbo.WebChat_AiQuestionGroupCache
                             (CacheKey, Status, SourceFromDate, SourceToDate,
                              SourceFiltersJson, SourceRowCount, GeneratedAt, ExpiresAt,
                              Provider, Model, PromptVersion, ResultJson,
@@ -209,7 +211,10 @@ def _as_utc(value: Any) -> datetime | None:
 
 def _is_missing_cache_table(exc: Exception) -> bool:
     details = " ".join(str(item) for item in getattr(exc, "args", ())) or str(exc)
-    return "AiQuestionGroupCache" in details and (
+    return (
+        "AiQuestionGroupCache" in details
+        or "WebChat_AiQuestionGroupCache" in details
+    ) and (
         "Invalid object name" in details
         or "208" in details
     )

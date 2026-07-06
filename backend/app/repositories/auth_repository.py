@@ -30,7 +30,7 @@ class AuthRepository:
                     ShortName,
                     Email,
                     DienThoai
-                FROM [User]
+                FROM [WebChat_User]
                 WHERE UserName = ? AND Password = ?
                 """,
                 [username, password],

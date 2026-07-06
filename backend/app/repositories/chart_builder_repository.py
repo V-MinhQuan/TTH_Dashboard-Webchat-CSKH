@@ -233,7 +233,7 @@ class ChartBuilderRepository:
             row = execute_one(
                 conn,
                 """
-                INSERT INTO dbo.ChartConfigs (Name, Description, ConfigJson)
+                INSERT INTO dbo.WebChat_ChartConfigs (Name, Description, ConfigJson)
                 OUTPUT
                   INSERTED.Id AS id,
                   INSERTED.Name AS name,
@@ -262,7 +262,7 @@ class ChartBuilderRepository:
                   CreatedAt AS createdAt,
                   UpdatedAt AS updatedAt,
                   IsActive AS isActive
-                FROM dbo.ChartConfigs
+                FROM dbo.WebChat_ChartConfigs
                 WHERE IsActive = 1
                 ORDER BY UpdatedAt DESC, CreatedAt DESC
                 """,
@@ -273,7 +273,7 @@ class ChartBuilderRepository:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                UPDATE dbo.ChartConfigs
+                UPDATE dbo.WebChat_ChartConfigs
                 SET IsActive = 0, UpdatedAt = SYSUTCDATETIME()
                 WHERE Id = ? AND IsActive = 1
                 """,

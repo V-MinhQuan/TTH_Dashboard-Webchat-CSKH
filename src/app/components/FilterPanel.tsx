@@ -438,12 +438,6 @@ export function FilterPanel({
               value={localFilters.topic}
               options={resolvedTopics}
               onChange={(value) => handleLocalChange("topic", value)}
-              helper={(
-                <span className="filter-panel__catalog" title={catalogPending ? "Chưa có catalog động đầy đủ" : "Catalog đã sẵn sàng"}>
-                  <span>Danh mục {topicCatalogSource}</span>
-                  <strong data-state={catalogPending ? "pending" : "ready"}>{catalogPending ? "Đang chờ dữ liệu" : "Đã kết nối"}</strong>
-                </span>
-              )}
             />
           </div>
           <div className="filter-panel__actions">

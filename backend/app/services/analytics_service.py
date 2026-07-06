@@ -198,7 +198,7 @@ class AnalyticsService:
         payload = self.repository.get_need_review_conversations(filters)
         optional_columns = payload.get("optionalColumns") or {}
         return {
-            "records": [_normalize_review_record(row) for row in payload.get("records", [])],
+            "records": [_normalize_review_record(row, filters.get("topic")) for row in payload.get("records", [])],
             "pagination": payload.get("pagination") or {"page": 1, "pageSize": 20, "total": 0},
             "metadata": {
                 "issueMetadataAvailable": issue_metadata_available(optional_columns),
@@ -209,7 +209,7 @@ class AnalyticsService:
         payload = self.repository.get_negative_review_conversations(filters)
         optional_columns = payload.get("optionalColumns") or {}
         return {
-            "records": [_normalize_review_record(row) for row in payload.get("records", [])],
+            "records": [_normalize_review_record(row, filters.get("topic")) for row in payload.get("records", [])],
             "pagination": payload.get("pagination") or {"page": 1, "pageSize": 20, "total": 0},
             "metadata": {
                 "criteria": "sentimentLabel=negative AND needStaffReview=1",
@@ -220,7 +220,7 @@ class AnalyticsService:
     def get_positive_conversations(self, filters: Dict[str, Any]) -> Dict[str, Any]:
         payload = self.repository.get_positive_conversations(filters)
         return {
-            "records": [_normalize_review_record(row) for row in payload.get("records", [])],
+            "records": [_normalize_review_record(row, filters.get("topic")) for row in payload.get("records", [])],
             "pagination": payload.get("pagination") or {"page": 1, "pageSize": 20, "total": 0},
             "metadata": {
                 "criteria": "latest analyzed message per conversation has sentimentLabel=positive",
@@ -311,14 +311,14 @@ class AnalyticsService:
     def get_failed_conversations(self, filters: Dict[str, Any]) -> Dict[str, Any]:
         payload = self.repository.get_failed_conversations(filters)
         return {
-            "records": [_normalize_review_record(row) for row in payload.get("records", [])],
+            "records": [_normalize_review_record(row, filters.get("topic")) for row in payload.get("records", [])],
             "pagination": payload.get("pagination") or {"page": 1, "pageSize": 20, "total": 0},
         }
 
     def get_staff_reported_errors(self, filters: Dict[str, Any]) -> Dict[str, Any]:
         payload = self.repository.get_staff_reported_errors(filters)
         return {
-            "records": [_normalize_review_record(row) for row in payload.get("records", [])],
+            "records": [_normalize_review_record(row, filters.get("topic")) for row in payload.get("records", [])],
             "pagination": payload.get("pagination") or {"page": 1, "pageSize": 20, "total": 0},
         }
 
@@ -586,7 +586,7 @@ def _json_array(value: Any) -> Iterable[Any]:
         return []
 
 
-def _normalize_review_record(row: Dict[str, Any]) -> Dict[str, Any]:
+def _normalize_review_record(row: Dict[str, Any], topic_filter: Any = None) -> Dict[str, Any]:
     item = dict(row)
     item["customerName"] = identity_text(item.get("customerName") or item.get("customer_name")) or None
     item["customerId"] = identity_text(item.get("customerId") or item.get("customer_id")) or None
@@ -608,6 +608,10 @@ def _normalize_review_record(row: Dict[str, Any]) -> Dict[str, Any]:
         if label and label not in seen_topics:
             canonical_topics.append(label)
             seen_topics.add(label)
+    filter_topic = _topic_label(topic_filter) if topic_filter and normalize_topic_text(topic_filter) != "tat ca" else ""
+    if filter_topic and filter_topic not in seen_topics:
+        canonical_topics.insert(0, filter_topic)
+        seen_topics.add(filter_topic)
     item["detectedTopics"] = canonical_topics
     item["matchedNegativeKeywords"] = list(_json_array(item.get("matchedNegativeKeywords")))
     item["messageAt"] = None if item.get("messageAt") is None else str(item.get("messageAt"))

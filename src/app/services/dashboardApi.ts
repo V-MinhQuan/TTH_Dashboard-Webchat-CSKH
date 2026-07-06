@@ -40,6 +40,30 @@ export class ApiRequestError extends Error {
   }
 }
 
+function apiErrorMessage(payload: any, status: number) {
+  const detail = payload?.message ?? payload?.detail;
+  if (typeof detail === "string" && detail.trim()) return detail;
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map((item) => {
+        if (typeof item === "string") return item;
+        const location = Array.isArray(item?.loc) ? item.loc.filter((part: unknown) => part !== "body").join(".") : "";
+        const message = typeof item?.msg === "string" ? item.msg : "";
+        return [location, message].filter(Boolean).join(": ");
+      })
+      .filter(Boolean);
+    if (messages.length > 0) return messages.join("; ");
+  }
+  if (detail && typeof detail === "object") {
+    try {
+      return JSON.stringify(detail);
+    } catch {
+      return "API trả về lỗi không hợp lệ.";
+    }
+  }
+  return `API trả về lỗi ${status}.`;
+}
+
 const DEFAULT_STATUS_SUMMARY = {
   new: 0,
   open: 0,
@@ -283,7 +307,7 @@ export async function fetchApiJson<T>(
       const payload = await response.json().catch(() => null);
       if (!response.ok || payload?.success === false) {
         const error = new ApiRequestError(
-          payload?.message || payload?.detail || `API trả về lỗi ${response.status}.`,
+          apiErrorMessage(payload, response.status),
           response.status,
         );
         if (response.status === 401 && typeof window !== "undefined") {

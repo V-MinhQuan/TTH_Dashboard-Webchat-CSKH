@@ -259,7 +259,7 @@ export function UserManagement() {
             </div>
 
             <div style={{ marginBottom: "24px", padding: "12px 14px", borderRadius: "10px", background: "#fff7ed", border: "1px solid rgba(215,60,1,0.16)", color: ORANGE, fontSize: "12px", lineHeight: 1.5 }}>
-              Bảng [User] hiện chỉ có thông tin tài khoản, trạng thái, họ tên, email, điện thoại và mật khẩu. Vì chưa có cột role/channel/permission, phần phân quyền chi tiết đang được hiển thị theo quy ước hệ thống và không ghi giả xuống database.
+              Bảng WebChat_User hiện chỉ có thông tin tài khoản, trạng thái, họ tên, email, điện thoại và mật khẩu. Vì chưa có cột role/channel/permission, phần phân quyền chi tiết đang được hiển thị theo quy ước hệ thống và không ghi giả xuống database.
             </div>
 
             <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px" }}>
@@ -349,7 +349,7 @@ export function UserManagement() {
             </div>
 
             <div style={{ marginBottom: "24px", padding: "12px 14px", borderRadius: "10px", background: "#f8fafc", border: "1px solid rgba(0,56,101,0.08)", color: "rgba(0,56,101,0.62)", fontSize: "12px", lineHeight: 1.5 }}>
-              Tài khoản mới được ghi vào bảng [User]. Vai trò, kênh quản lý và quyền chi tiết chưa được nhập tại đây vì database hiện chưa có các cột lưu những trường này.
+              Tài khoản mới được ghi vào bảng WebChat_User. Vai trò, kênh quản lý và quyền chi tiết chưa được nhập tại đây vì database hiện chưa có các cột lưu những trường này.
             </div>
 
             <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px", marginTop: "24px", paddingTop: "16px", borderTop: "1px solid rgba(0,56,101,0.08)" }}>

@@ -51,12 +51,10 @@ export interface SheetChatbotStats {
   rejected: number;
 }
 
-export type SheetChatbotCreatePayload = Omit<SheetChatbotRow, "id" | "addedAt" | "addedBy"> & {
-  addedBy?: string;
-};
+export type SheetChatbotCreatePayload = Omit<SheetChatbotRow, "id" | "addedAt" | "addedBy">;
 
 export type SheetChatbotUpdatePayload = Partial<
-  Pick<SheetChatbotRow, "question" | "correctAnswer" | "topic" | "source" | "risk" | "status" | "notes" | "addedBy">
+  Pick<SheetChatbotRow, "question" | "correctAnswer" | "topic" | "source" | "risk" | "status" | "notes">
 >;
 
 interface SheetChatbotListResponse {
@@ -153,11 +151,11 @@ export async function updateSheetChatbotRow(id: string, payload: SheetChatbotUpd
   return normalizeSheetChatbotRow(response.data);
 }
 
-export async function updateSheetChatbotStatus(id: string, status: SheetChatbotStatus, reviewer?: string) {
+export async function updateSheetChatbotStatus(id: string, status: SheetChatbotStatus) {
   const response = await fetchApiJson<SheetChatbotRowResponse>(buildApiUrl(`/api/admin/sheet-chatbot/${id}/status`), {
     method: "PATCH",
     cache: false,
-    body: JSON.stringify({ status, reviewer }),
+    body: JSON.stringify({ status }),
   });
   return normalizeSheetChatbotRow(response.data);
 }
@@ -169,6 +167,13 @@ export async function mergeSheetChatbotToFaq(id: string, reviewer?: string) {
     body: JSON.stringify({ reviewer }),
   });
   return response.data;
+}
+
+export async function deleteSheetChatbotRow(id: string) {
+  await fetchApiJson<{ success: boolean; message?: string; data?: null }>(buildApiUrl(`/api/admin/sheet-chatbot/${id}`), {
+    method: "DELETE",
+    cache: false,
+  });
 }
 
 export async function getSheetChatbotDuplicates(question: string, minSimilarity = 0.75, limit = 5) {
@@ -203,7 +208,6 @@ function normalizeCreatePayload(payload: SheetChatbotCreatePayload): SheetChatbo
     topic,
     source: normalizeSheetChatbotSource(payload.source),
     notes: payload.notes.trim(),
-    addedBy: payload.addedBy?.trim() || undefined,
   };
 }
 
@@ -215,7 +219,6 @@ function normalizeUpdatePayload(payload: SheetChatbotUpdatePayload): SheetChatbo
     topic: payload.topic === undefined ? undefined : normalizeSheetChatbotTopic(requiredText(payload.topic, "Chủ đề")),
     source: payload.source === undefined ? undefined : normalizeSheetChatbotSource(payload.source),
     notes: payload.notes?.trim(),
-    addedBy: payload.addedBy?.trim(),
   };
 }
 

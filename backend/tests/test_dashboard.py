@@ -1016,12 +1016,12 @@ def test_conversation_summary_with_topic_uses_fast_topic_scope(mock_get_db):
 
     query, params = cursor.execute.call_args.args
     assert "WITH topic_scope AS" in query
-    assert "FROM WebChat_MessageLogs m" in query
+    assert "FROM WebChat_MessageAnalytics topic_a" in query
     assert "INNER JOIN topic_scope" in query
     assert "FROM WebChat_Conversations c" in query
     assert "OUTER APPLY" in query
-    assert "LOWER(m.TextContent) LIKE %s" in query
-    assert "%tiếng anh%" in params
+    assert "topic_a.detectedTopics LIKE %s" in query
+    assert '%"Học Tiếng Anh"%' in params
     assert "Học Tiếng Anh" not in query
     assert query.count("%s") == len(params)
     assert params[0] == "2026-01-01"
@@ -1051,12 +1051,12 @@ def test_message_counts_with_topic_counts_messages_from_topic_scope(mock_get_db)
     query, params = cursor.execute.call_args.args
     assert result == [{"source": "Facebook", "count": 12}]
     assert "WITH topic_scope AS" in query
-    assert "FROM WebChat_MessageLogs topic_msg" in query
+    assert "FROM WebChat_MessageAnalytics topic_a" in query
     assert "INNER JOIN topic_scope" in query
     assert "FROM WebChat_MessageLogs m" in query
-    assert "LOWER(topic_msg.TextContent) LIKE %s" in query
+    assert "topic_a.detectedTopics LIKE %s" in query
     assert "LOWER(m.TextContent) LIKE %s" not in query
-    assert "%tiếng anh%" in params
+    assert '%"Học Tiếng Anh"%' in params
     assert "Học Tiếng Anh" not in query
     assert query.count("%s") == len(params)
     assert params[0] == "2026-01-01"

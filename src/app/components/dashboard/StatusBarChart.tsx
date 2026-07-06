@@ -52,7 +52,7 @@ export function StatusBarChart({ statusSummary }: StatusBarChartProps) {
             bottom: 5
           }}
         >
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" />
+          <CartesianGrid stroke="rgba(0,56,101,0.06)" />
           <XAxis 
             dataKey="status" 
             tick={{ fontSize: 10, fill: "rgba(0,56,101,0.6)" }} 

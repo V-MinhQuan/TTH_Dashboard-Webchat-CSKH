@@ -49,7 +49,7 @@ def _creator_from_principal(principal: Any) -> str:
 
 def _raise_schema_unavailable(error: AiErrorKeywordSchemaUnavailableError) -> None:
     raise AppError(
-        "Chức năng từ khóa lỗi AI chưa sẵn sàng vì thiếu bảng dbo.AiErrorKeywords. "
+        "Chức năng từ khóa lỗi AI chưa sẵn sàng vì thiếu bảng dbo.WebChat_AiErrorKeywords. "
         "Hãy chạy migration backend/database/migrations/create_ai_error_keywords.sql trước khi sử dụng.",
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
     ) from error

@@ -87,7 +87,7 @@ def test_negative_conversation_endpoint_returns_a_response_envelope():
     assert response["meta"]["canonicalEndpoint"] == "/api/analytics/negative-conversations"
 
 
-def test_topic_filter_uses_parameterized_exact_json_member_without_new_sql_json_functions():
+def test_topic_filter_uses_parameterized_metadata_and_message_log_scope():
     repository = AnalyticsRepository()
 
     where, params = repository._build_read_where({"topic": "TOEIC_100%[A]"}, {})
@@ -95,7 +95,9 @@ def test_topic_filter_uses_parameterized_exact_json_member_without_new_sql_json_
     assert "ISJSON" not in where
     assert "OPENJSON" not in where
     assert "LIKE ?" in where
-    assert params == ["TOEIC_100%[A]", '%"TOEIC~_100~%~[A]"%']
+    assert "dbo.WebChat_MessageLogs topic_msg" in where
+    assert "topic_msg.Source = a.source" in where
+    assert params == ["%toeic~_100~%~[a]%", "%toeic~_100~%~[a]%", "%toeic~_100~%~[a]%"]
 
 
 def test_analytics_filters_return_iso_dates_and_reject_inverted_range():

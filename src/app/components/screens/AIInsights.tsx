@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { AlertTriangle, CheckCircle, XCircle, ShieldAlert, ChevronDown, ChevronUp, FilePlus2, Clock, Table2, Activity, Download, BoldIcon, Filter } from "lucide-react";
+import { AlertTriangle, CheckCircle, XCircle, ChevronDown, ChevronUp, FilePlus2, Clock, Table2, Activity, Download, BoldIcon, Filter } from "lucide-react";
 import {
   LineChart, Line, BarChart, Bar, AreaChart, Area, XAxis, YAxis,
   CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine,
@@ -15,7 +15,7 @@ import { exportFailedConversationsCsv, getAllFailedConversations, getFailedConve
 import { getAiFailureDefinition } from "../../constants/aiFailureTaxonomy";
 import { TOPIC_TAXONOMY, mapTopicToGroupId, topicLabelForGroupId } from "../../constants/topicTaxonomy";
 import { StatusBadge } from "../common/StatusBadge";
-import { analyticsFiltersToSearchParams, mapGlobalFiltersToAnalyticsRequest } from "../../utils/dateFilters";
+import { analyticsFiltersToSearchParams } from "../../utils/dateFilters";
 
 const NAVY = "#003865";
 const ORANGE = "#D73C01";
@@ -57,6 +57,13 @@ const emptyOptionalAIInsightsErrors: Record<OptionalAIInsightsDataKey, boolean> 
   staffReportedErrors: false,
   suggestedFAQs: false,
   recentChatbotRows: false,
+};
+type CriticalAIInsightsDataKey = "qualityMetrics" | "failureTrend" | "failureByTopic" | "failedConversations";
+const criticalAIInsightsLabels: Record<CriticalAIInsightsDataKey, string> = {
+  qualityMetrics: "chỉ số chất lượng AI",
+  failureTrend: "xu hướng lỗi AI",
+  failureByTopic: "lỗi theo chủ đề",
+  failedConversations: "danh sách câu hỏi lỗi AI",
 };
 
 const failedTableHeaderFilterLabelStyle: React.CSSProperties = {
@@ -190,8 +197,8 @@ const AIInsightsSkeleton = () => (
     <SkeletonBlock w="200px" h="24px" radius="4px" />
     <div style={{ height: "20px" }} />
 
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "14px", marginBottom: "16px" }}>
-      {Array(4).fill(0).map((_, i) => (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "14px", marginBottom: "16px" }}>
+      {Array(3).fill(0).map((_, i) => (
         <div key={i} style={{ backgroundColor: "#fff", borderRadius: "16px", padding: "20px 22px", border: "1px solid rgba(0,62,154,0.07)", display: "flex", flexDirection: "column", gap: "14px", height: "116px", justifyContent: "space-between" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <SkeletonBlock h="38px" w="38px" radius="50%" />
@@ -205,8 +212,8 @@ const AIInsightsSkeleton = () => (
       ))}
     </div>
 
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "14px", marginBottom: "24px" }}>
-      {Array(4).fill(0).map((_, i) => (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "14px", marginBottom: "24px" }}>
+      {Array(3).fill(0).map((_, i) => (
         <div key={i} style={{ backgroundColor: "#fff", borderRadius: "16px", padding: "20px 22px", border: "1px solid rgba(0,62,154,0.07)", display: "flex", flexDirection: "column", gap: "14px", height: "116px", justifyContent: "space-between" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <SkeletonBlock h="38px" w="38px" radius="50%" />
@@ -473,7 +480,6 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
   const bulkSubmitGuard = useRef(false);
 
   const [qualityMetrics, setQualityMetrics] = useState<any>({ total_messages: 0, success_rate: 0, failure_count: 0, hallucination_count: 0, avg_confidence: 0 });
-  const [staffActivity, setStaffActivity] = useState<any>({ reported_errors: 0, pending_review: 0 });
   const [failureTrend, setFailureTrend] = useState<any[]>([]);
   const [failureByTopic, setFailureByTopic] = useState<TopicFailureRecord[]>([]);
   const [failedConversations, setFailedConversations] = useState<any[]>([]);
@@ -486,14 +492,13 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
   useEffect(() => {
     let cancelled = false;
     const queryParams = analyticsFiltersToSearchParams(filters);
-    const sheetChatbotFilters = mapGlobalFiltersToAnalyticsRequest(filters);
     const qs = queryParams.toString();
 
     const fetchData = async () => {
       setLoading(true);
       setOptionalDataErrors({ ...emptyOptionalAIInsightsErrors });
       try {
-        const criticalErrors: unknown[] = [];
+        const criticalErrors: CriticalAIInsightsDataKey[] = [];
         const nextOptionalErrors: Record<OptionalAIInsightsDataKey, boolean> = { ...emptyOptionalAIInsightsErrors };
         const markOptionalFailure = (key: OptionalAIInsightsDataKey) => {
           nextOptionalErrors[key] = true;
@@ -503,11 +508,12 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
             ));
           }
         };
-        const safeRequired = async <T,>(request: Promise<T>): Promise<T | null> => {
+        const safeRequired = async <T,>(key: CriticalAIInsightsDataKey, request: Promise<T>): Promise<T | null> => {
           try {
             return await request;
           } catch (error) {
-            criticalErrors.push(error);
+            criticalErrors.push(key);
+            console.warn(`Critical AI insights request failed (${key}):`, error);
             return null;
           }
         };
@@ -521,20 +527,18 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
           }
         };
 
-        const [qm, sa, ft, fbt, fc, sre, sf, scRows] = await Promise.all([
-          safeRequired(fetchApiJson<any>(buildApiUrl(`/api/analytics/ai/quality-metrics?${qs}`), { cache: false })),
-          safeRequired(fetchApiJson<any>(buildApiUrl(`/api/analytics/ai/staff-activity?${qs}`), { cache: false })),
-          safeRequired(fetchApiJson<any>(buildApiUrl(`/api/analytics/ai/failure-trend?${qs}`), { cache: false })),
-          safeRequired(getTopicFailures(queryParams)),
-          safeRequired(getFailedConversations(queryParams)),
+        const [qm, ft, fbt, fc, sre, sf, scRows] = await Promise.all([
+          safeRequired("qualityMetrics", fetchApiJson<any>(buildApiUrl(`/api/analytics/ai/quality-metrics?${qs}`), { cache: false })),
+          safeRequired("failureTrend", fetchApiJson<any>(buildApiUrl(`/api/analytics/ai/failure-trend?${qs}`), { cache: false })),
+          safeRequired("failureByTopic", getTopicFailures(queryParams)),
+          safeRequired("failedConversations", getFailedConversations(queryParams)),
           safeOptional("staffReportedErrors", fetchApiJson<any>(buildApiUrl(`/api/analytics/ai/staff-reported-errors?${qs}`), { cache: false })),
           safeOptional("suggestedFAQs", fetchApiJson<any>(buildApiUrl(`/api/analytics/ai/suggested-faqs?${qs}`), { cache: false })),
-          safeOptional("recentChatbotRows", getSheetChatbotRows({ pageSize: 5, ...sheetChatbotFilters })),
+          safeOptional("recentChatbotRows", getSheetChatbotRows({ pageSize: 5 })),
         ]);
 
         if (cancelled) return;
         if (qm?.success) setQualityMetrics(qm.data);
-        if (sa?.success) setStaffActivity(sa.data);
         if (ft?.success) setFailureTrend(ft.data);
         if (Array.isArray(fbt)) setFailureByTopic(fbt);
         if (fc?.records) setFailedConversations(fc.records.map(mapFailedConversation));
@@ -565,7 +569,8 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
         }
         setOptionalDataErrors(nextOptionalErrors);
         if (criticalErrors.length > 0) {
-          toast.warning("Một số dữ liệu Phân tích AI chưa tải được.");
+          const failedLabels = criticalErrors.map((key) => criticalAIInsightsLabels[key]);
+          toast.warning(`Chưa tải được ${failedLabels.join(", ")}. Các phần đã tải vẫn được hiển thị.`);
         }
       } catch (err) {
         if (cancelled) return;
@@ -582,8 +587,15 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
   }, [filters, refreshVersion]);
 
   const canonicalFailureByTopic = useMemo(
-    () => canonicalizeTopicFailures(failureByTopic),
-    [failureByTopic],
+    () => {
+      let data = canonicalizeTopicFailures(failureByTopic);
+      if (filters.topic && filters.topic !== "Tất cả") {
+        const expectedGroupId = mapTopicToGroupId(filters.topic);
+        data = data.filter(row => mapTopicToGroupId(row.topic) === expectedGroupId);
+      }
+      return data;
+    },
+    [failureByTopic, filters.topic],
   );
   const topFailureTopics = useMemo(
     () => [...canonicalFailureByTopic]
@@ -647,11 +659,16 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
   );
   const filteredFailedConversations = useMemo(
     () => failedConversations.filter((conversation) => {
+      if (filters.topic && filters.topic !== "Tất cả") {
+        const expectedGroupId = mapTopicToGroupId(filters.topic);
+        const convTopicId = mapTopicToGroupId(conversation.topic || "");
+        if (convTopicId !== expectedGroupId) return false;
+      }
       const matchesTopic = failedTopicFilter === TABLE_FILTER_ALL || conversation.topic === failedTopicFilter;
       const matchesReason = failedReasonFilter === TABLE_FILTER_ALL || conversation.failReason === failedReasonFilter;
       return matchesTopic && matchesReason;
     }),
-    [failedConversations, failedReasonFilter, failedTopicFilter],
+    [failedConversations, failedReasonFilter, failedTopicFilter, filters.topic],
   );
   const hasFailedTableFilters =
     failedTopicFilter !== TABLE_FILTER_ALL ||
@@ -847,7 +864,6 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
   const kpiStats = {
     ai_success: (qualityMetrics?.total_messages || 0) - (qualityMetrics?.failure_count || 0),
     ai_failure: qualityMetrics?.failure_count || 0,
-    kb_updates_needed: staffActivity?.pending_review || 0,
     ai_accuracy: qualityMetrics?.success_rate || 0,
   };
   const optionalNoticeItems = useMemo(() => {
@@ -871,11 +887,10 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
           )}
 
           {/* KPI Row - AI insights */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "14px", marginBottom: "24px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "14px", marginBottom: "24px" }}>
             {[
               { icon: CheckCircle, label: "AI trả lời thành công", value: kpiStats.ai_success.toString(), change: "Theo bộ lọc" },
               { icon: XCircle, label: "AI trả lời thất bại", value: kpiStats.ai_failure.toString(), change: "Theo bộ lọc" },
-              { icon: ShieldAlert, label: "Cần cập nhật tri thức", value: kpiStats.kb_updates_needed.toString(), change: "Theo bộ lọc" },
               { icon: Activity, label: "Tỷ lệ chính xác", value: `${Math.round(kpiStats.ai_accuracy)}%`, change: "Theo bộ lọc" },
             ].map(({ icon: Icon, label, value, change }) => {
               const badgeBg = "#f8fafc";
@@ -888,9 +903,6 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
               } else if (Icon === XCircle) {
                 iconBg = "#FFF1F1";
                 iconColor = "#B42318";
-              } else if (Icon === ShieldAlert) {
-                iconBg = "#FFF4EE";
-                iconColor = ORANGE;
               } else if (Icon === Activity) {
                 iconBg = "#EBF2FF";
                 iconColor = NAVY;
@@ -947,12 +959,12 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
                 return (
                   <ResponsiveContainer width="100%" height={210}>
                     <ChartComp data={chartData} layout={layout}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" horizontal={layout === "horizontal"} vertical={layout === "vertical"} />
+                      <CartesianGrid stroke="rgba(0,56,101,0.06)" horizontal={layout === "horizontal"} vertical={layout === "vertical"} />
                       <XAxis dataKey={layout === "vertical" ? undefined : "date"} type={layout === "vertical" ? "number" : "category"} tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
                       <YAxis dataKey={layout === "vertical" ? "date" : undefined} type={layout === "vertical" ? "category" : "number"} tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} width={layout === "vertical" ? 70 : undefined} />
                       <Tooltip />
                       {editValues?.legend !== false && <Legend iconSize={10} />}
-                      {layout === "horizontal" && <ReferenceLine x="28/4" stroke="rgba(0,56,101,0.2)" strokeDasharray="6 3" label={{ value: "Dự báo →", position: "insideTopRight", fontSize: 10, fill: "rgba(0,56,101,0.4)" }} />}
+                      {layout === "horizontal" && <ReferenceLine x="28/4" stroke="rgba(0,56,101,0.2)" label={{ value: "Dự báo →", position: "insideTopRight", fontSize: 10, fill: "rgba(0,56,101,0.4)" }} />}
 
                       {isBar ? (
                         <>
@@ -966,8 +978,8 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
                         </>
                       ) : (
                         <>
-                          <Line type="monotone" dataKey="failure" name="AI phản hồi không chính xác" stroke={OCEAN_PRIMARY} strokeWidth={2.5} dot={{ r: 3 }} />
-                          <Line type="monotone" dataKey="uncertain" name="AI phản hồi không chắc chắn" stroke={OCEAN_SECONDARY} strokeWidth={2} dot={{ r: 2 }} />
+                          <Line type="monotone" dataKey="failure" name="AI phản hồi không chính xác" stroke="#00A3E0" strokeWidth={2.5} dot={{ r: 3 }} />
+                          <Line type="monotone" dataKey="uncertain" name="AI phản hồi không chắc chắn" stroke="#00D2FF" strokeWidth={2} dot={{ r: 2 }} />
                         </>
                       )}
                     </ChartComp>
@@ -1005,7 +1017,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
                         layout={layout}
                         barSize={layout === "vertical" ? 8 : 20}
                       >
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" horizontal={layout === "horizontal"} vertical={layout === "vertical"} />
+                        <CartesianGrid stroke="rgba(0,56,101,0.06)" horizontal={layout === "horizontal"} vertical={layout === "vertical"} />
                         <XAxis dataKey={layout === "vertical" ? undefined : "topic"} type={layout === "vertical" ? "number" : "category"} tick={{ fontSize: 10, fill: "rgba(0,56,101,0.5)" }} />
                         <YAxis dataKey={layout === "vertical" ? "topic" : undefined} type={layout === "vertical" ? "category" : "number"} tick={{ fontSize: 10, fill: "rgba(0,56,101,0.6)" }} width={layout === "vertical" ? 90 : undefined} />
                         <Tooltip />
@@ -1023,8 +1035,8 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
                           </>
                         ) : (
                           <>
-                            <Line type="monotone" dataKey="thieuDL" name="Không tìm thấy dữ liệu" stroke={OCEAN_PRIMARY} dot={{ r: 2 }} />
-                            <Line type="monotone" dataKey="khongChac" name="AI không chắc chắn" stroke={OCEAN_SECONDARY} dot={{ r: 2 }} />
+                            <Line type="monotone" dataKey="thieuDL" name="Không tìm thấy dữ liệu" stroke="#00A3E0" dot={{ r: 2 }} />
+                            <Line type="monotone" dataKey="khongChac" name="AI không chắc chắn" stroke="#00D2FF" dot={{ r: 2 }} />
                           </>
                         )}
                       </ChartComp>
@@ -1040,7 +1052,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
             <div style={{ padding: "18px 24px", borderBottom: "1px solid rgba(0,56,101,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                 <XCircle size={16} style={{ color: ORANGE }} />
-                <h3 style={{ color: NAVY, fontSize: "14px", fontWeight: 700, margin: 0 }}>Câu hỏi AI chưa xử lý được</h3>
+                <h3 style={{ color: NAVY, fontSize: "14px", fontWeight: 700, margin: 0 }}>Số lượng câu AI phản hồi thất bại</h3>
                 <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "20px", backgroundColor: ORANGE_50, color: ORANGE, border: `1px solid ${ORANGE_200}`, fontWeight: 600 }}>
                   {filteredFailedConversations.length} câu hỏi{hasFailedTableFilters ? ` / ${failedConversations.length}` : ""}
                 </span>

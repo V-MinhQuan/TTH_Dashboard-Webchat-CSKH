@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Calendar, Download, FileText, RefreshCw } from "lucide-react";
+import { Calendar, Download, FileText, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 
 import { FilterValues } from "../FilterPanel";
@@ -127,7 +127,7 @@ export function ChartBuilder({
   const [draggedField, setDraggedField] = useState<ChartFieldDragData | null>(
     null,
   );
-  const [chartDateFilters, setChartDateFilters] = useState<DateFilterInput>(() => chartDateFiltersFromGlobal(globalFilters));
+  const [chartDateFilters, setChartDateFilters] = useState<DateFilterInput>({ dateRange: ALL_TIME_DATE_RANGE });
 
   const selectedDataset = useMemo(
     () => datasets.find((dataset) => dataset.id === state.datasetId) || null,
@@ -176,7 +176,7 @@ export function ChartBuilder({
     ],
   );
   const customRequest = useMemo(
-    () => buildCustomRequest(state, selectedDataset, chartDateParams, globalFilters),
+    () => buildCustomRequest(state, selectedDataset, chartDateParams),
     [
       state.datasetId,
       state.chartType,
@@ -192,8 +192,6 @@ export function ChartBuilder({
       selectedDataset?.defaultDateField,
       chartDateParams.startDate,
       chartDateParams.endDate,
-      globalFilters.channel,
-      globalFilters.topic,
     ],
   );
   const dateScopeLabel = useMemo(
@@ -277,7 +275,7 @@ export function ChartBuilder({
       try {
         const response = legacyConfig
           ? await fetchData(
-            buildLegacyDataRequest(legacyConfig, chartDateParams, globalFilters),
+            buildLegacyDataRequest(legacyConfig, chartDateParams),
             controller.signal,
           )
           : await fetchPreview(customRequest, controller.signal);
@@ -302,19 +300,11 @@ export function ChartBuilder({
     customValidation.valid,
     chartDateParams.startDate,
     chartDateParams.endDate,
-    globalFilters.channel,
-    globalFilters.topic,
     legacyConfig,
     refreshKey,
   ]);
 
-  useEffect(() => {
-    setChartDateFilters(chartDateFiltersFromGlobal(globalFilters));
-  }, [
-    globalFilters.dateRange,
-    globalFilters.customDateFrom,
-    globalFilters.customDateTo,
-  ]);
+  // Removed global filter date sync
 
   const updateState = (changes: Partial<ChartBuilderState>) => {
     setLegacyConfig(null);
@@ -611,7 +601,7 @@ export function ChartBuilder({
       <div
         className={`chart-builder-layout${
           dataPanelOpen ? "" : " is-data-collapsed"
-        }`}
+        }${settingsOpen ? "" : " is-settings-collapsed"}`}
       >
         <DataFieldsPanel
           datasets={datasets}
@@ -635,7 +625,57 @@ export function ChartBuilder({
           onClose={() => setDataPanelOpen(false)}
         />
 
-        <main className="chart-builder-workspace">
+        <main className="chart-builder-workspace" style={{ position: "relative", zIndex: 9999 }}>
+          <button
+            type="button"
+            onClick={() => setDataPanelOpen((open) => !open)}
+            style={{
+              position: "absolute",
+              left: "-12px",
+              top: "20px",
+              width: "24px",
+              height: "24px",
+              borderRadius: "50%",
+              backgroundColor: "#fff",
+              border: "1px solid rgba(0,56,101,0.1)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              color: "#003865",
+              zIndex: 9999,
+              boxShadow: "0 2px 4px rgba(0,0,0,0.05)",
+            }}
+            aria-label={dataPanelOpen ? "Ẩn trường dữ liệu" : "Hiện trường dữ liệu"}
+          >
+            {dataPanelOpen ? <ChevronLeft size={14} /> : <ChevronRight size={14} />}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSettingsOpen((open) => !open)}
+            style={{
+              position: "absolute",
+              right: "-12px",
+              top: "20px",
+              width: "24px",
+              height: "24px",
+              borderRadius: "50%",
+              backgroundColor: "#fff",
+              border: "1px solid rgba(0,56,101,0.1)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              color: "#003865",
+              zIndex: 9999,
+              boxShadow: "0 2px 4px rgba(0,0,0,0.05)",
+            }}
+            aria-label={settingsOpen ? "Ẩn cài đặt" : "Hiện cài đặt"}
+          >
+            {settingsOpen ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+          </button>
+
           <ChartToolbar
             title={state.title}
             saveDisabled={!canSave}
@@ -911,13 +951,11 @@ function buildCustomRequest(
   state: ChartBuilderState,
   dataset: CatalogDatasetMeta | null,
   dateParams: ChartDateParams,
-  globalFilters: FilterValues,
 ): CustomChartRequest {
   const filters = applyCustomGlobalFilters(
     state.filters.filter(isCompleteFilter),
     dataset,
     dateParams,
-    globalFilters,
   );
 
   return {
@@ -939,14 +977,13 @@ function buildCustomRequest(
 function buildLegacyDataRequest(
   config: ChartConfigPayload,
   dateParams: ChartDateParams,
-  globalFilters: FilterValues,
 ) {
   return {
     ...config,
     version: 1 as const,
     mode: "predefined" as const,
     limit: 500,
-    filters: applyLegacyGlobalFilters(config.filters || {}, dateParams, globalFilters),
+    filters: applyLegacyGlobalFilters(config.filters || {}, dateParams),
   };
 }
 
@@ -968,13 +1005,8 @@ function applyCustomGlobalFilters(
   filters: FilterSelection[],
   dataset: CatalogDatasetMeta | null,
   dateParams: ChartDateParams,
-  globalFilters: FilterValues,
 ) {
-  const requestFilters = mapGlobalFiltersToAnalyticsRequest(globalFilters);
-  let next = applyGlobalDateFilter(filters, dataset, dateParams);
-  next = appendSemanticGlobalFilter(next, dataset, "channel", requestFilters.channel);
-  next = appendSemanticGlobalFilter(next, dataset, "topic", requestFilters.topic);
-  return next;
+  return applyGlobalDateFilter(filters, dataset, dateParams);
 }
 
 function applyGlobalDateFilter(
@@ -1013,15 +1045,11 @@ function applyGlobalDateFilter(
 function applyLegacyGlobalFilters(
   filters: ChartDataFilters,
   dateParams: ChartDateParams,
-  globalFilters: FilterValues,
 ): ChartDataFilters {
-  const requestFilters = mapGlobalFiltersToAnalyticsRequest(globalFilters);
   return {
     ...filters,
     fromDate: dateParams.startDate || filters.fromDate,
     toDate: dateParams.endDate || filters.toDate,
-    channel: requestFilters.channel || filters.channel,
-    topic: requestFilters.topic || filters.topic,
   };
 }
 

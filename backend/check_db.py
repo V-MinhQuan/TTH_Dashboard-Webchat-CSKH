@@ -7,7 +7,7 @@ try:
     with get_connection() as conn:
         print("Connection successful!")
         cursor = conn.cursor()
-        cursor.execute("SELECT TOP 1 UserName FROM [User]")
+        cursor.execute("SELECT TOP 1 UserName FROM [WebChat_User]")
         row = cursor.fetchone()
         print(f"Sample user: {row}")
 except Exception as e:

@@ -1,7 +1,7 @@
 import os
 from datetime import datetime, timedelta
 import pymssql
-from app.core.topic_taxonomy import TOPIC_NAME_BY_ID, canonical_topic_id, canonical_topic_label
+from app.core.topic_taxonomy import TOPIC_LEGACY_ALIASES, TOPIC_NAME_BY_ID, canonical_topic_id, canonical_topic_label
 from app.core.legacy_db import get_db_connection
 from app.repositories.display_filters import (
     valid_analytics_condition,
@@ -301,6 +301,132 @@ class ConversationRepository:
             return " AND ".join(f"NOT ({condition})" for condition in known_conditions if condition)
         return None
 
+    def _topic_detected_aliases(self, topic=None):
+        topic_id = canonical_topic_id(topic)
+        if not topic_id:
+            text = str(topic or "").strip()
+            return [text] if text else []
+
+        aliases = [
+            TOPIC_NAME_BY_ID[topic_id],
+            *TOPIC_LEGACY_ALIASES.get(topic_id, []),
+        ]
+        seen = set()
+        result = []
+        for alias in aliases:
+            normalized = str(alias or "").strip().lower()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            result.append(alias)
+        return result
+
+    def _detected_topics_condition(self, analytics_alias, topic=None, params=None):
+        aliases = self._topic_detected_aliases(topic)
+        if not aliases:
+            return None
+
+        column = f"{analytics_alias}.detectedTopics"
+        parts = []
+        for alias in aliases:
+            if params is not None:
+                parts.append(f"(LTRIM(RTRIM({column})) = %s OR {column} LIKE %s)")
+                params.extend([alias, f'%"{alias}"%'])
+            else:
+                escaped = str(alias).replace("'", "''")
+                escaped_json = escaped.replace('"', '""')
+                parts.append(f"(LTRIM(RTRIM({column})) = N'{escaped}' OR {column} LIKE N'%\"{escaped_json}\"%')")
+        return "(" + " OR ".join(parts) + ")"
+
+    def _analytics_ai_status_condition(self, ai_status=None, alias="a"):
+        if ai_status == "AI trả lời thành công":
+            return f"({alias}.issueFlag IS NULL OR {alias}.issueFlag = 0)"
+        if ai_status == "AI trả lời thất bại":
+            return f"{alias}.issueFlag = 1"
+        if ai_status == "Không tìm thấy dữ liệu":
+            return f"{alias}.issueFlag = 1 AND {alias}.issueType = N'Không tìm thấy dữ liệu'"
+        if ai_status in ("AI không chắc chắn", "AI trả lời không chắc chắn"):
+            return f"{alias}.issueFlag = 1 AND {alias}.issueType IN (N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin')"
+        return None
+
+    def _analytics_topic_scope_cte(
+        self,
+        cte_name,
+        analytics_alias,
+        start_date=None,
+        end_date=None,
+        channel=None,
+        topic=None,
+        ai_status=None,
+    ):
+        analytics_conditions = [
+            valid_analytics_condition(analytics_alias),
+            f"{analytics_alias}.detectedTopics IS NOT NULL",
+            f"LTRIM(RTRIM({analytics_alias}.detectedTopics)) NOT IN (N'', N'[]')",
+        ]
+        params = []
+        self._append_date_and_channel_filters(
+            analytics_conditions,
+            params,
+            f"{analytics_alias}.messageAt",
+            f"{analytics_alias}.source",
+            start_date,
+            end_date,
+            channel,
+        )
+
+        topic_sql = self._detected_topics_condition(analytics_alias, topic, params)
+        if topic_sql:
+            analytics_conditions.append(topic_sql)
+
+        ai_sql = self._analytics_ai_status_condition(ai_status, analytics_alias)
+        if ai_sql:
+            analytics_conditions.append(ai_sql)
+
+        message_alias = f"{cte_name}_msg"
+        message_conditions = [
+            valid_message_condition(message_alias),
+            f"{message_alias}.TextContent IS NOT NULL",
+            f"LTRIM(RTRIM({message_alias}.TextContent)) <> N''",
+            f"{message_alias}.Source IS NOT NULL",
+            f"""(
+              ({message_alias}.FromHost = 1 AND {message_alias}.ReceiverId IS NOT NULL)
+              OR ({message_alias}.FromHost = 0 AND {message_alias}.SenderId IS NOT NULL)
+            )""",
+        ]
+        self._append_date_and_channel_filters(
+            message_conditions,
+            params,
+            f"{message_alias}.SentAt",
+            f"{message_alias}.Source",
+            start_date,
+            end_date,
+            channel,
+        )
+
+        message_topic_sql = self._topic_condition(f"{message_alias}.TextContent", topic, params)
+        if message_topic_sql:
+            message_conditions.append(message_topic_sql)
+
+        message_ai_sql = self._ai_status_condition(ai_status, message_alias)
+        if message_ai_sql:
+            message_conditions.append(message_ai_sql)
+
+        return f"""{cte_name} AS (
+                  SELECT DISTINCT
+                    CAST({analytics_alias}.customerId AS NVARCHAR(255)) AS customer_id,
+                    {self._source_key_case_expr(f'{analytics_alias}.source')} AS source_key
+                  FROM WebChat_MessageAnalytics {analytics_alias}
+                  WHERE {" AND ".join(analytics_conditions)}
+                  UNION
+                  SELECT DISTINCT
+                    CAST({self._message_customer_expr(message_alias)} AS NVARCHAR(255)) AS customer_id,
+                    {self._source_key_case_expr(f'{message_alias}.Source')} AS source_key
+                  FROM WebChat_MessageLogs {message_alias}
+                  WHERE {" AND ".join(message_conditions)}
+                )
+            """, params
+
     def _append_conversation_scope_filters(
         self,
         conditions,
@@ -441,44 +567,24 @@ class ConversationRepository:
     ):
         conn = get_db_connection()
         try:
-            scope_conditions = []
-            params = []
-            self._append_message_scope_filters(
-                scope_conditions,
-                params,
+            topic_scope_cte, params = self._analytics_topic_scope_cte(
+                "topic_scope",
+                "topic_a",
                 start_date,
                 end_date,
                 channel,
-                None,
                 topic,
                 ai_status,
-                "m",
             )
-            scope_conditions.extend([
-                "m.Source IS NOT NULL",
-                """(
-                    (m.FromHost = 1 AND m.ReceiverId IS NOT NULL)
-                    OR (m.FromHost = 0 AND m.SenderId IS NOT NULL)
-                )""",
-            ])
-
-            topic_scope_where = "WHERE " + " AND ".join(scope_conditions)
             status_filter = self._status_filter_value(conversation_status)
             classified_where = "WHERE status = %s" if status_filter else ""
             if status_filter:
                 params.append(status_filter)
 
-            message_source_case = self._source_key_case_expr("m.Source")
             conversation_source_case = self._source_key_case_expr("c.Source")
 
             query = f"""
-                WITH topic_scope AS (
-                  SELECT DISTINCT
-                    CAST({self._message_customer_expr("m")} AS NVARCHAR(255)) AS customer_id,
-                    {message_source_case} AS source_key
-                  FROM WebChat_MessageLogs m
-                  {topic_scope_where}
-                ),
+                WITH {topic_scope_cte},
                 classified AS (
                   SELECT
                     {conversation_source_case} AS source_key,
@@ -718,6 +824,16 @@ class ConversationRepository:
             conn.close()
 
     def get_ai_daily_stats(self, start_date=None, end_date=None, channel=None, conversation_status=None, topic=None, ai_status=None):
+        if topic and str(topic).strip() != "Tất cả":
+            return self._get_topic_scoped_ai_daily_stats(
+                start_date,
+                end_date,
+                channel,
+                conversation_status,
+                topic,
+                ai_status,
+            )
+
         conn = get_db_connection()
         try:
             conditions = [
@@ -823,6 +939,16 @@ class ConversationRepository:
             conn.close()
 
     def get_daily_conversation_summary(self, start_date=None, end_date=None, channel=None, conversation_status=None, topic=None, ai_status=None):
+        if topic and str(topic).strip() != "Tất cả":
+            return self._get_topic_scoped_daily_conversation_summary(
+                start_date,
+                end_date,
+                channel,
+                conversation_status,
+                topic,
+                ai_status,
+            )
+
         conn = get_db_connection()
         try:
             conditions = []
@@ -919,6 +1045,251 @@ class ConversationRepository:
         finally:
             conn.close()
 
+    def _get_topic_scoped_ai_daily_stats(
+        self,
+        start_date=None,
+        end_date=None,
+        channel=None,
+        conversation_status=None,
+        topic=None,
+        ai_status=None,
+    ):
+        conn = get_db_connection()
+        try:
+            topic_scope_cte, topic_params = self._analytics_topic_scope_cte(
+                "topic_scope",
+                "topic_a",
+                start_date,
+                end_date,
+                channel,
+                topic,
+                None,
+            )
+            conditions = [
+                "m.FromHost = 1",
+                "m.HostDisplayName = 'AI Assistant'",
+            ]
+            message_params = []
+            self._append_message_scope_filters(
+                conditions,
+                message_params,
+                start_date,
+                end_date,
+                channel,
+                conversation_status,
+                None,
+                None,
+                "m",
+            )
+
+            where_sql = "WHERE " + " AND ".join(conditions) if conditions else ""
+            no_data_keyword_sql = self._ai_no_data_keyword_condition("m")
+            uncertain_keyword_sql = self._ai_uncertain_keyword_condition("m")
+            source_case = self._source_key_case_expr("m.Source")
+            analytics_source_case = self._source_key_case_expr("a.source")
+            ai_filter_sql = self._ai_classified_filter_sql(ai_status)
+            classified_where = f"WHERE {ai_filter_sql}" if ai_filter_sql else ""
+
+            query = f"""
+                WITH {topic_scope_cte},
+                scoped AS (
+                  SELECT
+                    m.id_webchat_messageLogs AS message_id,
+                    CAST({self._message_customer_expr("m")} AS NVARCHAR(255)) AS customer_id,
+                    {source_case} AS source_key,
+                    m.SentAt AS sent_at,
+                    CONVERT(VARCHAR(10), m.SentAt, 120) AS date_str,
+                    CASE WHEN {no_data_keyword_sql} THEN 1 ELSE 0 END AS keyword_no_data,
+                    CASE WHEN {uncertain_keyword_sql} THEN 1 ELSE 0 END AS keyword_uncertain
+                  FROM WebChat_MessageLogs m
+                  INNER JOIN topic_scope t
+                    ON t.customer_id = CAST({self._message_customer_expr("m")} AS NVARCHAR(255))
+                   AND t.source_key = {source_case}
+                  {where_sql}
+                ),
+                analytics_issues AS (
+                  SELECT
+                    CAST(a.messageId AS BIGINT) AS message_id,
+                    CAST(a.customerId AS NVARCHAR(255)) AS customer_id,
+                    {analytics_source_case} AS source_key,
+                    a.messageAt AS message_at,
+                    a.issueType AS issue_type
+                  FROM WebChat_MessageAnalytics a
+                  WHERE a.issueFlag = 1
+                ),
+                flagged AS (
+                  SELECT
+                    s.message_id,
+                    s.date_str,
+                    s.keyword_no_data,
+                    s.keyword_uncertain,
+                    MAX(CASE WHEN direct_issue.issue_type = N'Không tìm thấy dữ liệu' OR context_issue.issue_type = N'Không tìm thấy dữ liệu' THEN 1 ELSE 0 END) AS analytics_no_data,
+                    MAX(CASE WHEN direct_issue.issue_type IN (N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin') OR context_issue.issue_type IN (N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin') THEN 1 ELSE 0 END) AS analytics_uncertain
+                  FROM scoped s
+                  LEFT JOIN analytics_issues direct_issue
+                    ON direct_issue.message_id = s.message_id
+                  LEFT JOIN analytics_issues context_issue
+                    ON context_issue.customer_id = s.customer_id
+                   AND context_issue.source_key = s.source_key
+                   AND context_issue.message_at >= DATEADD(SECOND, -2, s.sent_at)
+                   AND context_issue.message_at <= DATEADD(SECOND, 2, s.sent_at)
+                  GROUP BY s.message_id, s.date_str, s.keyword_no_data, s.keyword_uncertain
+                ),
+                classified AS (
+                  SELECT
+                    date_str,
+                    CASE
+                      WHEN analytics_no_data = 1 OR (keyword_no_data = 1 AND analytics_uncertain = 0) THEN 1
+                      ELSE 0
+                    END AS is_no_data,
+                    CASE
+                      WHEN analytics_uncertain = 1 OR (keyword_uncertain = 1 AND analytics_no_data = 0) THEN 1
+                      ELSE 0
+                    END AS is_uncertain
+                  FROM flagged
+                ),
+                filtered AS (
+                  SELECT
+                    date_str,
+                    is_no_data,
+                    is_uncertain,
+                    CASE WHEN is_no_data = 1 OR is_uncertain = 1 THEN 1 ELSE 0 END AS is_fail
+                  FROM classified
+                  {classified_where}
+                )
+                SELECT
+                  date_str,
+                  SUM(CASE WHEN is_fail = 1 THEN 1 ELSE 0 END) AS ai_fail,
+                  SUM(CASE WHEN is_fail = 0 THEN 1 ELSE 0 END) AS ai_ok
+                FROM filtered
+                GROUP BY date_str
+            """
+
+            with conn.cursor(as_dict=True) as cursor:
+                cursor.execute(self._escape_pymssql_literal_percent(query), tuple(topic_params + message_params))
+                return cursor.fetchall()
+        finally:
+            conn.close()
+
+    def _get_topic_scoped_daily_conversation_summary(
+        self,
+        start_date=None,
+        end_date=None,
+        channel=None,
+        conversation_status=None,
+        topic=None,
+        ai_status=None,
+    ):
+        conn = get_db_connection()
+        try:
+            topic_scope_cte, topic_params = self._analytics_topic_scope_cte(
+                "topic_scope",
+                "topic_a",
+                start_date,
+                end_date,
+                channel,
+                topic,
+                ai_status,
+            )
+
+            message_conditions = []
+            message_params = []
+            self._append_message_scope_filters(
+                message_conditions,
+                message_params,
+                start_date,
+                end_date,
+                channel,
+                None,
+                None,
+                None,
+                "m",
+            )
+            message_conditions.extend([
+                "m.Source IS NOT NULL",
+                """(
+                    (m.FromHost = 1 AND m.ReceiverId IS NOT NULL)
+                    OR (m.FromHost = 0 AND m.SenderId IS NOT NULL)
+                )""",
+            ])
+
+            where_sql = "WHERE " + " AND ".join(message_conditions) if message_conditions else ""
+            status_filter = self._status_filter_value(conversation_status)
+            filtered_where = "WHERE status = %s" if status_filter else ""
+            if status_filter:
+                message_params.append(status_filter)
+
+            source_case = self._source_key_case_expr("m.Source")
+            status_source_case = self._source_key_case_expr("status_meta.Source")
+
+            query = f"""
+                WITH {topic_scope_cte},
+                scoped_messages AS (
+                  SELECT
+                    CONVERT(VARCHAR(10), m.SentAt, 120) AS date_str,
+                    CAST(CASE WHEN m.FromHost = 1 THEN m.ReceiverId ELSE m.SenderId END AS NVARCHAR(255)) AS customer_id,
+                    {source_case} AS source_key,
+                    m.FromHost,
+                    m.SentAt
+                  FROM WebChat_MessageLogs m
+                  INNER JOIN topic_scope t
+                    ON t.customer_id = CAST({self._message_customer_expr("m")} AS NVARCHAR(255))
+                   AND t.source_key = {source_case}
+                  {where_sql}
+                ),
+                latest AS (
+                  SELECT
+                    date_str,
+                    customer_id,
+                    source_key,
+                    MAX(CASE WHEN FromHost = 0 THEN SentAt END) AS last_customer_at,
+                    MAX(CASE WHEN FromHost = 1 THEN SentAt END) AS last_host_at
+                  FROM scoped_messages
+                  GROUP BY date_str, customer_id, source_key
+                ),
+                latest_status AS (
+                  SELECT
+                    CAST(status_meta.CustomerId AS NVARCHAR(255)) AS customer_id,
+                    {status_source_case} AS source_key,
+                    status_meta.NoResponseNeeded AS no_response,
+                    status_meta.MarkedAt AS marked_at,
+                    ROW_NUMBER() OVER (
+                      PARTITION BY CAST(status_meta.CustomerId AS NVARCHAR(255)), {status_source_case}
+                      ORDER BY CASE WHEN status_meta.MarkedAt IS NULL THEN 0 ELSE 1 END DESC, status_meta.MarkedAt DESC
+                    ) AS rn
+                  FROM WebChat_ConversationStatus status_meta
+                ),
+                filtered AS (
+                  SELECT
+                    l.date_str,
+                    CASE
+                      WHEN s.no_response = 1 AND (s.marked_at IS NULL OR l.last_customer_at <= s.marked_at) THEN 'closed'
+                      WHEN l.last_host_at IS NULL OR l.last_customer_at > l.last_host_at THEN 'pending'
+                      ELSE 'open'
+                    END AS status
+                  FROM latest l
+                  LEFT JOIN latest_status s
+                    ON s.customer_id = l.customer_id
+                   AND s.source_key = l.source_key
+                   AND s.rn = 1
+                )
+                SELECT
+                  date_str,
+                  COUNT(*) AS total,
+                  SUM(CASE WHEN status = 'closed' THEN 1 ELSE 0 END) AS processed,
+                  SUM(CASE WHEN status <> 'closed' THEN 1 ELSE 0 END) AS unprocessed
+                FROM filtered
+                {filtered_where}
+                GROUP BY date_str
+                ORDER BY date_str
+            """
+
+            with conn.cursor(as_dict=True) as cursor:
+                cursor.execute(query, tuple(topic_params + message_params))
+                return cursor.fetchall()
+        finally:
+            conn.close()
+
     def get_priority_conversations_data(self, start_date=None, end_date=None, channel=None, conversation_status=None, topic=None, ai_status=None, limit=10):
         conn = get_db_connection()
         try:
@@ -931,6 +1302,7 @@ class ConversationRepository:
             conditions = [
                 valid_conversation_condition("c"),
                 "c.LastCustomerMessageAt IS NOT NULL",
+                "(c.LastHostMessageAt IS NULL OR c.LastCustomerMessageAt > c.LastHostMessageAt)",
                 "(s.NoResponseNeeded IS NULL OR s.NoResponseNeeded = 0 OR c.LastCustomerMessageAt > s.MarkedAt)",
             ]
             params = []
@@ -974,39 +1346,21 @@ class ConversationRepository:
             topic_cte = ""
             topic_join = ""
             topic_params = []
-            topic_sql = self._topic_condition("m.TextContent", topic, topic_params)
-            if topic_sql:
-                topic_conditions = [
-                    valid_message_condition("m"),
-                    "m.TextContent IS NOT NULL",
-                    """(
-                        (m.FromHost = 1 AND m.ReceiverId IS NOT NULL)
-                        OR (m.FromHost = 0 AND m.SenderId IS NOT NULL)
-                    )""",
-                    topic_sql,
-                ]
-                self._append_date_and_channel_filters(
-                    topic_conditions,
-                    topic_params,
-                    "m.SentAt",
-                    "m.Source",
+            if topic and str(topic).strip() != "Tất cả":
+                topic_cte_body, topic_params = self._analytics_topic_scope_cte(
+                    "TopicMatches",
+                    "topic_a",
                     start_date,
                     end_date,
                     channel,
+                    topic,
+                    None,
                 )
-                topic_cte = f"""
-                    WITH TopicMatches AS (
-                      SELECT DISTINCT
-                        CAST({self._message_customer_expr("m")} AS NVARCHAR(255)) AS customer_id,
-                        {self._normalized_source_expr('m.Source')} AS source_key
-                      FROM WebChat_MessageLogs m
-                      WHERE {" AND ".join(topic_conditions)}
-                    )
-                """
+                topic_cte = f"WITH {topic_cte_body}"
                 topic_join = f"""
                     INNER JOIN TopicMatches topic_match
                       ON topic_match.customer_id = CAST(c.CustomerId AS NVARCHAR(255))
-                     AND topic_match.source_key = {self._normalized_source_expr('c.Source')}
+                     AND topic_match.source_key = {self._source_key_case_expr('c.Source')}
                 """
 
             query = f"""
@@ -1619,18 +1973,14 @@ class ConversationRepository:
     ):
         conn = get_db_connection()
         try:
-            topic_conditions = []
-            topic_params = []
-            self._append_message_scope_filters(
-                topic_conditions,
-                topic_params,
+            topic_scope_cte, topic_params = self._analytics_topic_scope_cte(
+                "topic_scope",
+                "topic_a",
                 start_date,
                 end_date,
                 channel,
-                conversation_status,
                 topic,
                 ai_status,
-                "topic_msg",
             )
 
             message_conditions = []
@@ -1647,17 +1997,10 @@ class ConversationRepository:
                 "m",
             )
 
-            topic_scope_where = "WHERE " + " AND ".join(topic_conditions)
             message_where = "WHERE " + " AND ".join(message_conditions)
 
             query = f"""
-                WITH topic_scope AS (
-                  SELECT DISTINCT
-                    CAST({self._message_customer_expr("topic_msg")} AS NVARCHAR(255)) AS customer_id,
-                    {self._source_key_case_expr("topic_msg.Source")} AS source_key
-                  FROM WebChat_MessageLogs topic_msg
-                  {topic_scope_where}
-                )
+                WITH {topic_scope_cte}
                 SELECT
                   m.Source AS source,
                   COUNT(*) AS count,

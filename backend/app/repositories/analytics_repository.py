@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import json
 import unicodedata
 from typing import Any, Callable, Dict, List, Tuple
 
 from app.db.session import execute_all, execute_one, get_connection
-from app.core.topic_taxonomy import topic_filter_aliases
-from app.repositories.display_filters import conversation_status_case, valid_analytics_condition
+from app.core.topic_taxonomy import canonical_topic_id, canonical_topic_label, normalize_topic_text, topic_filter_aliases
+from app.repositories.display_filters import (
+    conversation_status_case,
+    non_placeholder_text_condition,
+    valid_analytics_condition,
+)
 from app.repositories.schema_inspector import inspect_message_analytics_columns
 from app.utils.date_filters import build_date_filter
 from app.utils.pagination import normalize_pagination
@@ -84,6 +89,173 @@ def _build_text_match_condition(
         if include_detected_topics:
             params.append(pattern)
     return " OR ".join(f"({condition})" for condition in conditions), params
+
+
+def _topic_filter_terms(value: Any) -> List[str]:
+    terms: List[str] = []
+    seen = set()
+    for alias in topic_filter_aliases(value):
+        for candidate in (str(alias or "").strip(), normalize_topic_text(alias)):
+            if not candidate:
+                continue
+            key = unicodedata.normalize("NFC", candidate).casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            terms.append(candidate)
+    return terms
+
+
+def _dedupe_terms(values: List[str]) -> List[str]:
+    result: List[str] = []
+    seen = set()
+    for value in values:
+        text = str(value or "").strip()
+        if not text:
+            continue
+        key = unicodedata.normalize("NFC", text).casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(text)
+    return result
+
+
+def _topic_message_terms(value: Any) -> List[str]:
+    topic_id = canonical_topic_id(value)
+    if topic_id == "toeic":
+        return ["toeic"]
+    if topic_id == "mos":
+        return ["mos", "microsoft office specialist"]
+    if topic_id == "sat_hach_cntt":
+        return _dedupe_terms([
+            "sát hạch",
+            "sat hach",
+            "cntt",
+            "công nghệ thông tin",
+            "cong nghe thong tin",
+            "ic3",
+            "thcb",
+            "thnc",
+            "tin cơ bản",
+            "tin co ban",
+            "tin nâng cao",
+            "tin nang cao",
+        ])
+    if topic_id == "hoc_tieng_anh":
+        return _dedupe_terms([
+            "tiếng anh",
+            "tieng anh",
+            "anh văn",
+            "anh van",
+            "ngoại ngữ",
+            "ngoai ngu",
+            "vstep",
+            "b1",
+            "b2",
+            "chuẩn đầu ra",
+            "chuan dau ra",
+        ])
+    if topic_id == "hoc_tin_hoc":
+        return _dedupe_terms([
+            "học tin học",
+            "hoc tin hoc",
+            "khóa tin học",
+            "khoa tin hoc",
+            "lớp tin học",
+            "lop tin hoc",
+            "tin học văn phòng",
+            "tin hoc van phong",
+            "word",
+            "excel",
+            "powerpoint",
+            "microsoft office",
+        ])
+    return _topic_filter_terms(value)
+
+
+def _topic_like_pattern(value: Any) -> str:
+    return f"%{_escape_like(str(value or '').strip().lower())}%"
+
+
+def _selected_topic_json(value: Any) -> str | None:
+    text = str(value or "").strip()
+    if not text or normalize_topic_text(text) == "tat ca":
+        return None
+    return json.dumps([canonical_topic_label(text, default=text)], ensure_ascii=False)
+
+
+def _build_topic_filter_condition(filters: Dict[str, Any]) -> Tuple[str, List[Any]]:
+    terms = _topic_filter_terms(filters.get("topic"))
+    if not terms:
+        return "", []
+    message_terms = _topic_message_terms(filters.get("topic")) or terms
+
+    params: List[Any] = []
+    analytics_conditions: List[str] = []
+    for term in terms:
+        pattern = _topic_like_pattern(term)
+        analytics_conditions.append(
+            """
+            (
+              LOWER(ISNULL(a.detectedTopics, N'')) LIKE ? ESCAPE '~'
+              OR LOWER(ISNULL(a.matchedNegativeKeywords, N'')) LIKE ? ESCAPE '~'
+            )
+            """
+        )
+        params.extend([pattern, pattern])
+
+    message_date_filter = build_date_filter(
+        column="topic_msg.SentAt",
+        date_range=filters.get("dateRange"),
+        from_date=filters.get("fromDate"),
+        to_date=filters.get("toDate"),
+        start_date=filters.get("startDate"),
+        end_date=filters.get("endDate"),
+    )
+    message_conditions = [
+        non_placeholder_text_condition("topic_msg.Source"),
+        "topic_msg.TextContent IS NOT NULL",
+        "LTRIM(RTRIM(topic_msg.TextContent)) <> N''",
+        "topic_msg.Source = a.source",
+        f"""(
+          (
+            topic_msg.FromHost = 0
+            AND {non_placeholder_text_condition("topic_msg.SenderId")}
+            AND topic_msg.SenderId = a.customerId
+          )
+          OR (
+            topic_msg.FromHost = 1
+            AND {non_placeholder_text_condition("topic_msg.ReceiverId")}
+            AND topic_msg.ReceiverId = a.customerId
+          )
+        )""",
+    ]
+    message_params: List[Any] = []
+    if message_date_filter.condition:
+        message_conditions.append(message_date_filter.condition)
+        message_params.extend(message_date_filter.params)
+
+    message_text_conditions: List[str] = []
+    message_text_params: List[Any] = []
+    for term in message_terms:
+        message_text_conditions.append(
+            "LOWER(ISNULL(topic_msg.TextContent, N'')) LIKE ? ESCAPE '~'"
+        )
+        message_text_params.append(_topic_like_pattern(term))
+
+    condition = f"""
+        (
+          ({" OR ".join(analytics_conditions)})
+          OR EXISTS (
+            SELECT 1
+            FROM dbo.WebChat_MessageLogs topic_msg
+            WHERE {" AND ".join(message_conditions)}
+              AND ({" OR ".join(message_text_conditions)})
+          )
+        )
+    """
+    return condition, [*params, *message_params, *message_text_params]
 
 
 class AnalyticsRepository:
@@ -558,11 +730,15 @@ class AnalyticsRepository:
             if not columns.get("issueFlag"):
                 return {"rows": [], "optionalColumns": columns}
 
+            selected_topic = _selected_topic_json(filters.get("topic"))
+            detected_topics_expr = "? AS detectedTopics" if selected_topic else "a.detectedTopics"
+            group_by_clause = "" if selected_topic else "GROUP BY a.detectedTopics"
+            query_params = [selected_topic, *params] if selected_topic else params
             rows = execute_all(
                 conn,
                 f"""
                 SELECT
-                  a.detectedTopics,
+                  {detected_topics_expr},
                   SUM(CASE WHEN a.issueType = N'Câu trả lời sai' THEN 1 ELSE 0 END) AS saiCauTra,
                   SUM(CASE WHEN a.issueType = N'Không hiểu ý khách hàng' THEN 1 ELSE 0 END) AS khongHieu,
                   SUM(CASE WHEN a.issueType = N'Câu trả lời thiếu thông tin' THEN 1 ELSE 0 END) AS thieuThongTin,
@@ -578,9 +754,9 @@ class AnalyticsRepository:
                 FROM dbo.WebChat_MessageAnalytics a
                 LEFT JOIN dbo.WebChat_Conversations c ON c.Id = a.conversationId
                 {where + " AND" if where else "WHERE"} a.issueFlag = 1
-                GROUP BY a.detectedTopics
+                {group_by_clause}
                 """,
-                params,
+                query_params,
             )
         return {"rows": rows, "optionalColumns": columns}
 
@@ -1092,18 +1268,10 @@ class AnalyticsRepository:
             params.append(sentiment)
         topic = filters.get("topic")
         if topic:
-            topic_conditions = []
-            for alias in topic_filter_aliases(topic):
-                escaped_topic = _escape_like(alias)
-                topic_conditions.append("""
-                    (
-                      LTRIM(RTRIM(a.detectedTopics)) = ?
-                      OR a.detectedTopics LIKE ? ESCAPE '~'
-                    )
-                """)
-                params.extend([alias, f'%"{escaped_topic}"%'])
-            if topic_conditions:
-                conditions.append("(" + " OR ".join(topic_conditions) + ")")
+            topic_condition, topic_params = _build_topic_filter_condition(filters)
+            if topic_condition:
+                conditions.append(topic_condition)
+                params.extend(topic_params)
         issue_type = filters.get("issueType")
         if issue_type:
             conditions.append("a.issueType = ?" if columns.get("issueType") else "1 = 0")

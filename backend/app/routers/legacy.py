@@ -82,7 +82,7 @@ def login_legacy(request: LoginRequest):
         
     conn = get_db_connection()
     try:
-        query = "SELECT UserName, DangHoatDong, HoTen, ShortName FROM [User] WHERE UserName = %s AND Password = %s"
+        query = "SELECT UserName, DangHoatDong, HoTen, ShortName FROM [WebChat_User] WHERE UserName = %s AND Password = %s"
         with conn.cursor(as_dict=True) as cursor:
             cursor.execute(query, (username_val, password_val))
             row = cursor.fetchone()

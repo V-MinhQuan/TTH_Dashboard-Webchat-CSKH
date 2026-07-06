@@ -1,4 +1,4 @@
-IF OBJECT_ID(N'dbo.AiErrorKeywords', N'U') IS NOT NULL
+IF OBJECT_ID(N'dbo.WebChat_AiErrorKeywords', N'U') IS NOT NULL
 BEGIN
-    DROP TABLE dbo.AiErrorKeywords;
+    DROP TABLE dbo.WebChat_AiErrorKeywords;
 END;

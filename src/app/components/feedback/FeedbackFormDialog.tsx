@@ -4,7 +4,6 @@ import { toast } from "sonner";
 
 import { getAiFailureDefinition } from "../../constants/aiFailureTaxonomy";
 import { TOPIC_TAXONOMY, mapTopicToGroupId, topicLabelForGroupId } from "../../constants/topicTaxonomy";
-import { useAuth } from "../../context/AuthContext";
 import {
   createSheetChatbotRow,
   getSheetChatbotDuplicates,
@@ -135,7 +134,6 @@ export function FeedbackFormDialog({
   onClose,
   onSaved,
 }: FeedbackFormDialogProps) {
-  const { user } = useAuth();
   const [form, setForm] = useState<FeedbackFormState>(() => initialForm(prefillData));
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
@@ -190,7 +188,6 @@ export function FeedbackFormDialog({
         risk: form.risk,
         status: form.status,
         notes: buildNotes(form),
-        addedBy: user?.name || user?.username || "Không xác định",
       } as const;
       const saved = mode === "edit"
         ? await updateSheetChatbotRow(editingId!, payload)

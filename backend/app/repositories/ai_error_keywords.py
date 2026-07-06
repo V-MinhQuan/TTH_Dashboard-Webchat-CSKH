@@ -39,6 +39,8 @@ _OUTPUT_COLUMNS = """
     INSERTED.UpdatedAt AS updated_at
 """
 
+AI_ERROR_KEYWORDS_TABLE = "dbo.WebChat_AiErrorKeywords"
+
 
 class DuplicateAiErrorKeywordRecordError(RuntimeError):
     pass
@@ -50,7 +52,10 @@ class AiErrorKeywordSchemaUnavailableError(RuntimeError):
 
 def _is_missing_ai_keyword_table(exc: Exception) -> bool:
     details = " ".join(str(item) for item in getattr(exc, "args", ())) or str(exc)
-    return "AiErrorKeywords" in details and (
+    return (
+        "AiErrorKeywords" in details
+        or "WebChat_AiErrorKeywords" in details
+    ) and (
         "Invalid object name" in details
         or "208" in details
     )
@@ -59,7 +64,7 @@ def _is_missing_ai_keyword_table(exc: Exception) -> bool:
 def _raise_if_schema_unavailable(exc: Exception) -> None:
     if _is_missing_ai_keyword_table(exc):
         raise AiErrorKeywordSchemaUnavailableError(
-            "Bảng dbo.AiErrorKeywords chưa được khởi tạo."
+            "Bảng dbo.WebChat_AiErrorKeywords chưa được khởi tạo."
         ) from exc
 
 
@@ -79,6 +84,7 @@ def _is_unique_keyword_violation(exc: pyodbc.IntegrityError) -> bool:
             "2601",
             "2627",
             "UX_AiErrorKeywords_KeywordNormalized",
+            "UX_WebChat_AiErrorKeywords_KeywordNormalized",
         )
     )
 
@@ -131,7 +137,7 @@ class AiErrorKeywordRepository:
         params = (*filter_params, offset, limit)
         query = f"""
             SELECT {_SELECT_COLUMNS}
-            FROM dbo.AiErrorKeywords
+            FROM dbo.WebChat_AiErrorKeywords
             {where_clause}
             ORDER BY UpdatedAt DESC, Id
             OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
@@ -157,7 +163,7 @@ class AiErrorKeywordRepository:
             row = _with_schema_guard(
                 lambda: execute_one(
                     conn,
-                    f"SELECT COUNT_BIG(*) AS total FROM dbo.AiErrorKeywords {where_clause}",
+                    f"SELECT COUNT_BIG(*) AS total FROM {AI_ERROR_KEYWORDS_TABLE} {where_clause}",
                     params,
                 )
             )
@@ -168,7 +174,7 @@ class AiErrorKeywordRepository:
             return _with_schema_guard(
                 lambda: execute_one(
                     conn,
-                    f"SELECT {_SELECT_COLUMNS} FROM dbo.AiErrorKeywords WHERE Id = ?",
+                    f"SELECT {_SELECT_COLUMNS} FROM {AI_ERROR_KEYWORDS_TABLE} WHERE Id = ?",
                     (keyword_id,),
                 )
             )
@@ -191,7 +197,7 @@ class AiErrorKeywordRepository:
                     conn,
                     f"""
                         SELECT {_SELECT_COLUMNS}
-                        FROM dbo.AiErrorKeywords
+                        FROM dbo.WebChat_AiErrorKeywords
                         WHERE KeywordNormalized = ?{exclusion}
                     """,
                     params,
@@ -211,7 +217,7 @@ class AiErrorKeywordRepository:
                     lambda: execute_one(
                         conn,
                         f"""
-                            INSERT INTO dbo.AiErrorKeywords
+                            INSERT INTO dbo.WebChat_AiErrorKeywords
                                 (Keyword, KeywordNormalized, ErrorGroup, Topic, CareHub,
                                  Description, Status, CreatedBy)
                             OUTPUT {_OUTPUT_COLUMNS}
@@ -249,7 +255,7 @@ class AiErrorKeywordRepository:
                     lambda: execute_one(
                         conn,
                         f"""
-                            UPDATE dbo.AiErrorKeywords
+                            UPDATE dbo.WebChat_AiErrorKeywords
                             SET Keyword = ?,
                                 KeywordNormalized = ?,
                                 ErrorGroup = ?,

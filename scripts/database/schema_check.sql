@@ -21,16 +21,16 @@ SELECT
     CASE WHEN EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'WebChat_MessageAnalytics') THEN 'OK' ELSE 'MISSING' END AS WebChat_MessageAnalytics,
     CASE WHEN EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'WebChat_MessageReadStatus') THEN 'OK' ELSE 'MISSING' END AS WebChat_MessageReadStatus,
     CASE WHEN EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'WebChat_Messagelogs_User_Info') THEN 'OK' ELSE 'MISSING' END AS WebChat_Messagelogs_User_Info,
-    CASE WHEN EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'User') THEN 'OK' ELSE 'MISSING' END AS [User];
+    CASE WHEN EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'WebChat_User') THEN 'OK' ELSE 'MISSING' END AS WebChat_User;
 
--- 3. Kiểm tra cột trong bảng [User]
+-- 3. Kiểm tra cột trong bảng WebChat_User
 SELECT
     COLUMN_NAME,
     DATA_TYPE,
     IS_NULLABLE,
     CHARACTER_MAXIMUM_LENGTH
 FROM INFORMATION_SCHEMA.COLUMNS
-WHERE TABLE_NAME = 'User'
+WHERE TABLE_NAME = 'WebChat_User'
 ORDER BY ORDINAL_POSITION;
 
 -- 4. Kiểm tra cột trong bảng WebChat_Conversations
@@ -73,10 +73,10 @@ FROM INFORMATION_SCHEMA.COLUMNS
 WHERE TABLE_NAME = 'WebChat_ConversationStatus'
 ORDER BY ORDINAL_POSITION;
 
--- 8. Xem mẫu dữ liệu User (để kiểm tra có tồn tại cột Role chưa)
+-- 8. Xem mẫu dữ liệu WebChat_User (để kiểm tra có tồn tại cột Role chưa)
 SELECT TOP 5
     UserName,
     DangHoatDong,
     HoTen,
     ShortName
-FROM [User];
+FROM [WebChat_User];

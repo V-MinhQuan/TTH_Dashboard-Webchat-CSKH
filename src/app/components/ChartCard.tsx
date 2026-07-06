@@ -80,13 +80,13 @@ function ChartRenderer({ type, data }: { type: string; data: any[] }) {
     return (
       <ResponsiveContainer width="100%" height={200}>
         <ReLineChart id="line-chart" data={data}>
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,59,185,0.06)" />
+          <CartesianGrid stroke="rgba(0,59,185,0.06)" />
           <XAxis dataKey="name" tick={{ fontSize: 11, fill: "rgba(0,59,185,0.5)" }} />
           <YAxis tick={{ fontSize: 11, fill: "rgba(0,59,185,0.5)" }} />
           <Tooltip />
           <Legend />
-          <Line type="monotone" dataKey="hoidthoai" name="Hội thoại" stroke={NAVY} strokeWidth={2} dot={{ r: 3 }} />
-          <Line type="monotone" dataKey="ai_ok" name="AI trả lời thành công" stroke={ORANGE} strokeWidth={2} dot={{ r: 3 }} />
+          <Line type="monotone" dataKey="hoidthoai" name="Hội thoại" stroke="#00A3E0" strokeWidth={2} dot={{ r: 3 }} />
+          <Line type="monotone" dataKey="ai_ok" name="AI trả lời thành công" stroke="#00D2FF" strokeWidth={2} dot={{ r: 3 }} />
         </ReLineChart>
       </ResponsiveContainer>
     );
@@ -95,7 +95,7 @@ function ChartRenderer({ type, data }: { type: string; data: any[] }) {
     return (
       <ResponsiveContainer width="100%" height={200}>
         <ReAreaChart id="area-chart" data={data}>
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,59,185,0.06)" />
+          <CartesianGrid stroke="rgba(0,59,185,0.06)" />
           <XAxis dataKey="name" tick={{ fontSize: 11, fill: "rgba(0,59,185,0.5)" }} />
           <YAxis tick={{ fontSize: 11, fill: "rgba(0,59,185,0.5)" }} />
           <Tooltip />
@@ -110,7 +110,7 @@ function ChartRenderer({ type, data }: { type: string; data: any[] }) {
     return (
       <ResponsiveContainer width="100%" height={200}>
         <ReBarChart id="hbar-chart" data={data} layout="vertical">
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,59,185,0.06)" />
+          <CartesianGrid stroke="rgba(0,59,185,0.06)" />
           <XAxis type="number" tick={{ fontSize: 11, fill: "rgba(0,59,185,0.5)" }} />
           <YAxis dataKey="name" type="category" tick={{ fontSize: 11, fill: "rgba(0,59,185,0.5)" }} width={80} />
           <Tooltip />
@@ -124,7 +124,7 @@ function ChartRenderer({ type, data }: { type: string; data: any[] }) {
   return (
     <ResponsiveContainer width="100%" height={200}>
       <ReBarChart id="bar-chart" data={data}>
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,59,185,0.06)" />
+        <CartesianGrid stroke="rgba(0,59,185,0.06)" />
         <XAxis dataKey="name" tick={{ fontSize: 11, fill: "rgba(0,59,185,0.5)" }} />
         <YAxis tick={{ fontSize: 11, fill: "rgba(0,59,185,0.5)" }} />
         <Tooltip />

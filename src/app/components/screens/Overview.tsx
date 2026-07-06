@@ -31,6 +31,7 @@ import { KpiCard } from "../dashboard/KpiCard";
 import { SourceChart } from "../dashboard/SourceChart";
 import { FeedbackFormDialog } from "../feedback/FeedbackFormDialog";
 import { getDateParamsFromFilters } from "../../utils/dateFilters";
+import { mapTopicToGroupId } from "../../constants/topicTaxonomy";
 
 const NAVY = "#003865";
 const ORANGE = "#D73C01";
@@ -68,7 +69,7 @@ function normalizeQuestionSearchText(value: string) {
 }
 
 const PRIORITY_RETRY_DELAYS_MS = [0, 5000, 10000, 20000] as const;
-const PRIORITY_CONVERSATION_LIMIT = 10;
+const PRIORITY_CONVERSATION_LIMIT = 5;
 const DETAIL_RETRY_DELAYS_MS = [0, 5000, 10000] as const;
 
 type PriorityLoadState = "loading" | "retrying" | "ready" | "error";
@@ -165,10 +166,18 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
     return true;
   };
 
-  const urgentAlerts = urgentAlertRows.filter(a => isSourceEnabled(a.channel || ""));
-  const topQuestions = topQuestionRows;
+  const isTopicMatched = (rowTopic: string | undefined) => {
+    if (!filters.topic || filters.topic === "Tất cả") return true;
+    const expectedGroupId = mapTopicToGroupId(filters.topic);
+    const rowTopicId = mapTopicToGroupId(rowTopic || "");
+    return rowTopicId === expectedGroupId;
+  };
+
+  const urgentAlerts = urgentAlertRows.filter(a => isSourceEnabled(a.channel || "") && isTopicMatched(a.topic));
+  const topQuestions = topQuestionRows.filter(q => isTopicMatched(q.topic));
   const isTopQuestionsAiOverloaded = topQuestionsStatus === "ai_overloaded";
-  const priorityConversations = priorityConversationRows.filter(c => isSourceEnabled(c.channel || ""));
+  const priorityConversations = priorityConversationRows.filter(c => isSourceEnabled(c.channel || "") && isTopicMatched(c.topic));
+  const visiblePriorityConversations = priorityConversations.slice(0, PRIORITY_CONVERSATION_LIMIT);
 
   const overtimeAlerts = urgentAlerts.filter(a => a.type === "overtime");
   const aiAlerts = urgentAlerts.filter(a => a.type === "ai_uncertain" || a.type === "ai_no_data");
@@ -1086,7 +1095,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                 if (chartType === "bar") {
                   return (
                     <BarChart id="bar-chart-trend" data={sortedData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,59,185,0.06)" />
+                      <CartesianGrid stroke="rgba(0,59,185,0.06)" />
                       <XAxis dataKey={nameKey} tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
                       <YAxis tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
                       <ChartTooltip />
@@ -1112,7 +1121,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                 if (chartType === "hbar") {
                   return (
                     <BarChart id="hbar-chart-trend" data={sortedData} layout="vertical">
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,59,185,0.06)" />
+                      <CartesianGrid stroke="rgba(0,59,185,0.06)" />
                       <XAxis type="number" tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
                       <YAxis dataKey={nameKey} type="category" tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} width={40} />
                       <ChartTooltip />
@@ -1138,7 +1147,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                 if (chartType === "area") {
                   return (
                     <AreaChart id="area-chart-trend" data={sortedData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,59,185,0.06)" />
+                      <CartesianGrid stroke="rgba(0,59,185,0.06)" />
                       <XAxis dataKey={nameKey} tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
                       <YAxis tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
                       <ChartTooltip />
@@ -1166,7 +1175,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                 // Default: line chart
                 return (
                   <LineChart data={sortedData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,59,185,0.06)" />
+                    <CartesianGrid stroke="rgba(0,59,185,0.06)" />
                     <XAxis dataKey={nameKey} tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
                     <YAxis tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
                     <ChartTooltip />
@@ -1321,7 +1330,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                 if (chartType === "bar") {
                   return (
                     <BarChart data={listData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,59,185,0.06)" />
+                      <CartesianGrid stroke="rgba(0,59,185,0.06)" />
                       <XAxis dataKey="name" tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
                       <YAxis tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
                       <ChartTooltip />
@@ -1347,7 +1356,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                 if (chartType === "hbar") {
                   return (
                     <BarChart data={listData} layout="vertical">
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,59,185,0.06)" />
+                      <CartesianGrid stroke="rgba(0,59,185,0.06)" />
                       <XAxis type="number" tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
                       <YAxis dataKey="name" type="category" tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} width={80} />
                       <ChartTooltip />
@@ -1373,7 +1382,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                 if (chartType === "area") {
                   return (
                     <AreaChart data={listData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,59,185,0.06)" />
+                      <CartesianGrid stroke="rgba(0,59,185,0.06)" />
                       <XAxis dataKey="name" tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
                       <YAxis tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
                       <ChartTooltip />
@@ -1393,7 +1402,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
 
                 return (
                   <LineChart data={listData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,59,185,0.06)" />
+                    <CartesianGrid stroke="rgba(0,59,185,0.06)" />
                     <XAxis dataKey="name" tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
                     <YAxis tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
                     <ChartTooltip />
@@ -1573,14 +1582,14 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                     </td>
                   </tr>
                 )}
-                {priorityLoadState === "ready" && priorityConversations.length === 0 && (
+                {priorityLoadState === "ready" && visiblePriorityConversations.length === 0 && (
                   <tr>
                     <td colSpan={7} style={{ padding: "18px 16px", color: "rgba(0,59,185,0.52)", textAlign: "center", fontSize: "12px" }}>
                       Không có hội thoại ưu tiên trong phạm vi bộ lọc hiện tại.
                     </td>
                   </tr>
                 )}
-                {priorityLoadState === "ready" && priorityConversations.map((conv) => {
+                {priorityLoadState === "ready" && visiblePriorityConversations.map((conv) => {
                   const ss = statusColors[conv.status] || { bg: "#f1f5f9", color: "#64748b" };
                   const pc = priorityColors[conv.priority];
                   return (

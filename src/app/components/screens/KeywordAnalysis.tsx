@@ -465,13 +465,14 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
 
   const displayedGroups = activeGroup ? finalGroups.filter((g) => g.id === activeGroup) : finalGroups;
   const displayedKeywordGroups = displayedGroups.filter((group) => group.id !== "khac");
+  const kpiGroups = finalGroups.filter((g) => g.id !== "khac");
   const selectedGroupFaqsLoading = Boolean(selectedGroupId && selectedFaqQuery.isFetching && !isFaqGroupLoaded(selectedGroupId));
   const selectedGroupFaqError = selectedGroupId ? faqLoadErrorsByGroup[selectedGroupId] : undefined;
 
   const hasAiFailedMetric = finalGroups.some((g) => g.aiFailed !== null);
 
-  const barData = finalGroups.map((g) => ({ name: g.name.split(" / ")[0], "Số câu hỏi": g.totalQuestions, "Số câu AI phản hồi không chính xác": g.aiFailed }));
-  const donutData = finalGroups.map((g) => ({ id: g.id, name: g.name.split(" / ")[0], value: g.totalQuestions }));
+  const barData = kpiGroups.map((g) => ({ name: g.name.split(" / ")[0], "Số câu hỏi": g.totalQuestions, "Số câu AI phản hồi không chính xác": g.aiFailed }));
+  const donutData = kpiGroups.map((g) => ({ id: g.id, name: g.name.split(" / ")[0], value: g.totalQuestions }));
 
   return (
     <div className="p-6" data-export-target="true">
@@ -487,8 +488,8 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
       </div>
 
       {/* Summary cards */}
-      <div className="mb-6 grid grid-cols-1 gap-3.5 md:grid-cols-3 xl:grid-cols-[repeat(6,minmax(0,1fr))]">
-        {finalGroups.map((g) => (
+      <div className="mb-6 grid grid-cols-1 gap-3.5 md:grid-cols-3 xl:grid-cols-5">
+        {kpiGroups.map((g) => (
           <div key={g.id} onClick={() => setActiveGroup(activeGroup === g.id ? null : g.id)} className={summaryCardClass(g, activeGroup)}>
             <span aria-hidden="true" className={cn("absolute inset-y-0 left-0 w-1", toneForGroup(g.id).strip)} />
             <div className="mb-2.5 text-[13px] font-bold text-[#003865]">{g.name}</div>
@@ -505,7 +506,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
           <div className="mb-4 text-sm font-bold text-[#003865]">Số câu hỏi theo nhóm chủ đề</div>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={barData} margin={{ top: 0, right: 10, bottom: 0, left: -10 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" />
+              <CartesianGrid stroke="rgba(0,56,101,0.06)" />
               <XAxis dataKey="name" tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
               <YAxis tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
               <Tooltip />
@@ -566,22 +567,23 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
         ) : (
           <ResponsiveContainer width="100%" height={200}>
             <LineChart data={finalTrendRows} margin={{ top: 0, right: 10, bottom: 0, left: -10 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" />
+              <CartesianGrid stroke="rgba(0,56,101,0.06)" />
               <XAxis dataKey="date" tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
               <YAxis tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
               <Tooltip />
               <Legend iconSize={10} />
-              {TOPIC_TAXONOMY.map((topic) => {
-                const style = TOPIC_LINE_STYLES[topic.id];
+              {TOPIC_TAXONOMY.filter(t => t.id !== "khac").map((topic, index) => {
+                const LINE_COLORS = ["#00A3E0", "#00D2FF", "#002E8D", "#308D16", "#FFA100", "#64748B"];
+                const color = LINE_COLORS[index % LINE_COLORS.length];
                 return (!activeGroup || activeGroup === topic.id) ? (
                   <Line
                     key={topic.id}
                     type="monotone"
                     dataKey={topic.label}
-                    stroke={style.color}
-                    strokeDasharray={style.dash}
+                    stroke={color}
+                    strokeDasharray=""
                     strokeWidth={2.8}
-                    dot={{ r: 3, fill: style.color }}
+                    dot={{ r: 3, fill: color }}
                   />
                 ) : null;
               })}
@@ -592,11 +594,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
 
       {/* Keyword detail cards */}
       <div className={cn("grid gap-5", activeGroup ? "grid-cols-[1fr]" : "grid-cols-2")}>
-        {displayedKeywordGroups.length === 0 && (
-          <div className="rounded-2xl border border-[rgba(0,56,101,0.08)] bg-white px-5 py-6 text-center text-xs text-[rgba(0,56,101,0.48)]">
-            Không hiển thị từ khóa riêng cho chủ đề Khác.
-          </div>
-        )}
+
         {displayedKeywordGroups.map((group) => (
           <div key={group.id} className="overflow-hidden rounded-2xl border border-[rgba(0,56,101,0.08)] bg-white shadow-[0_2px_8px_rgba(0,56,101,0.05)]">
             <div className="flex items-center gap-2.5 border-b border-[rgba(0,56,101,0.06)] px-[18px] py-4">

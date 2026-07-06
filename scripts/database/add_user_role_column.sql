@@ -1,6 +1,6 @@
 -- ==============================================================
 -- add_user_role_column.sql
--- Thêm cột Role vào bảng [User] để hỗ trợ phân quyền
+-- Thêm cột Role vào bảng [WebChat_User] để hỗ trợ phân quyền
 -- TTH Dashboard — WebChat CSKH (FLIC)
 --
 -- HƯỚNG DẪN:
@@ -13,22 +13,22 @@
 -- BƯỚC 1: Kiểm tra và thêm cột Role nếu chưa tồn tại
 IF NOT EXISTS (
     SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
-    WHERE TABLE_NAME = 'User' AND COLUMN_NAME = 'Role'
+    WHERE TABLE_NAME = 'WebChat_User' AND COLUMN_NAME = 'Role'
 )
 BEGIN
-    ALTER TABLE [User]
+    ALTER TABLE [WebChat_User]
     ADD [Role] NVARCHAR(50) NOT NULL DEFAULT 'staff';
 
-    PRINT 'Đã thêm cột Role vào bảng [User] với giá trị mặc định là ''staff''.';
+    PRINT 'Đã thêm cột Role vào bảng [WebChat_User] với giá trị mặc định là ''staff''.';
 END
 ELSE
 BEGIN
-    PRINT 'Cột Role đã tồn tại trong bảng [User]. Bỏ qua bước này.';
+    PRINT 'Cột Role đã tồn tại trong bảng [WebChat_User]. Bỏ qua bước này.';
 END;
 
 -- BƯỚC 2: Gán role mặc định 'staff' cho tất cả user hiện tại
 -- (chỉ chạy nếu cột Role vừa được thêm và tất cả đang là NULL)
-UPDATE [User]
+UPDATE [WebChat_User]
 SET [Role] = 'staff'
 WHERE [Role] IS NULL OR [Role] = '';
 
@@ -37,7 +37,7 @@ PRINT 'Đã gán role ''staff'' cho tất cả user chưa có role.';
 -- BƯỚC 3: Cập nhật role 'manager' cho các user quản lý
 -- QUAN TRỌNG: Sửa danh sách username bên dưới cho phù hợp thực tế
 -- Hiện tại hardcode trong code là: ('test', 'thuynt')
-UPDATE [User]
+UPDATE [WebChat_User]
 SET [Role] = 'manager'
 WHERE UserName IN (
     'test',       -- Account test (manager)
@@ -54,7 +54,7 @@ SELECT
     HoTen,
     DangHoatDong,
     [Role]
-FROM [User]
+FROM [WebChat_User]
 ORDER BY [Role], UserName;
 
 -- ==============================================================

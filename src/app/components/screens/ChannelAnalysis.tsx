@@ -165,7 +165,7 @@ function renderMetricChart({
     return (
       <ResponsiveContainer width="100%" height={220}>
         <LineChart data={rows}>
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" />
+          <CartesianGrid stroke="rgba(0,56,101,0.06)" />
           <XAxis dataKey={nameKey} tick={{ fontSize: 10, fill: "rgba(0,56,101,0.5)" }} />
           <YAxis tick={{ fontSize: 10, fill: "rgba(0,56,101,0.5)" }} />
           <Tooltip formatter={(value: number) => [`${value}${tooltipSuffix}`, valueName]} />
@@ -180,7 +180,7 @@ function renderMetricChart({
     return (
       <ResponsiveContainer width="100%" height={220}>
         <AreaChart data={rows}>
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" />
+          <CartesianGrid stroke="rgba(0,56,101,0.06)" />
           <XAxis dataKey={nameKey} tick={{ fontSize: 10, fill: "rgba(0,56,101,0.5)" }} />
           <YAxis tick={{ fontSize: 10, fill: "rgba(0,56,101,0.5)" }} />
           <Tooltip formatter={(value: number) => [`${value}${tooltipSuffix}`, valueName]} />
@@ -195,7 +195,7 @@ function renderMetricChart({
     return (
       <ResponsiveContainer width="100%" height={220}>
         <BarChart data={rows} layout="vertical" margin={{ top: 8, right: 18, left: 12, bottom: 4 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" />
+          <CartesianGrid stroke="rgba(0,56,101,0.06)" />
           <XAxis type="number" tick={{ fontSize: 10, fill: "rgba(0,56,101,0.5)" }} />
           <YAxis dataKey={nameKey} type="category" width={96} tick={{ fontSize: 10, fill: "rgba(0,56,101,0.65)" }} />
           <Tooltip formatter={(value: number) => [`${value}${tooltipSuffix}`, valueName]} />
@@ -209,7 +209,7 @@ function renderMetricChart({
   return (
     <ResponsiveContainer width="100%" height={220}>
       <BarChart data={rows}>
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" />
+        <CartesianGrid stroke="rgba(0,56,101,0.06)" />
         <XAxis dataKey={nameKey} tick={{ fontSize: 10, fill: "rgba(0,56,101,0.5)" }} />
         <YAxis tick={{ fontSize: 10, fill: "rgba(0,56,101,0.5)" }} />
         <Tooltip formatter={(value: number) => [`${value}${tooltipSuffix}`, valueName]} />
@@ -247,19 +247,20 @@ function renderTrendChart(chartType: string, chartRows: any[], channels: string[
   return (
     <ResponsiveContainer width="100%" height={220}>
       <ChartComponent data={rows}>
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" />
+        <CartesianGrid stroke="rgba(0,56,101,0.06)" />
         <XAxis dataKey="date" tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
         <YAxis tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
         <Tooltip />
         {editValues.legend && <Legend iconSize={10} />}
-        {activeChannels.map((channel) => {
+        {activeChannels.map((channel, index) => {
           if (chartType === "area") {
             return <Area key={channel} type="monotone" dataKey={channel} stroke={CHANNEL_COLORS[channel] || NAVY} fill={`${CHANNEL_COLORS[channel] || NAVY}22`} strokeWidth={2} />;
           }
           if (chartType === "bar") {
             return <Bar key={channel} dataKey={channel} fill={CHANNEL_COLORS[channel] || NAVY} radius={[4, 4, 0, 0]} label={editValues.dataLabels ? { position: "top", fontSize: 10 } : undefined} />;
           }
-          return <Line key={channel} type="monotone" dataKey={channel} stroke={CHANNEL_COLORS[channel] || NAVY} strokeWidth={2} dot={{ r: 2 }} label={editValues.dataLabels ? { fontSize: 10 } : undefined} />;
+          const LINE_COLORS = ["#00A3E0", "#00D2FF", "#002E8D", "#308D16", "#FFA100", "#64748B"];
+          return <Line key={channel} type="monotone" dataKey={channel} stroke={LINE_COLORS[index % LINE_COLORS.length]} strokeWidth={2} dot={{ r: 2 }} label={editValues.dataLabels ? { fontSize: 10 } : undefined} />;
         })}
       </ChartComponent>
     </ResponsiveContainer>
@@ -292,14 +293,14 @@ function renderStackedChart(chartType: string, rows: any[], keys: string[], edit
     return (
       <ResponsiveContainer width="100%" height={220}>
         <ChartComponent data={sortedRows}>
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" />
+          <CartesianGrid stroke="rgba(0,56,101,0.06)" />
           <XAxis dataKey="channel" tick={{ fontSize: 10, fill: "rgba(0,56,101,0.5)" }} />
           <YAxis tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
           <Tooltip />
           {editValues.legend && <Legend iconSize={10} />}
-          {keys.map((key) => chartType === "area"
+          {keys.map((key, index) => chartType === "area"
             ? <Area key={key} type="monotone" dataKey={key} stroke={STATUS_COLORS[key] || NAVY} fill={`${STATUS_COLORS[key] || NAVY}22`} strokeWidth={2} />
-            : <Line key={key} type="monotone" dataKey={key} stroke={STATUS_COLORS[key] || NAVY} strokeWidth={2} dot={{ r: 2 }} />
+            : <Line key={key} type="monotone" dataKey={key} stroke={["#00A3E0", "#00D2FF", "#002E8D", "#308D16", "#FFA100", "#64748B"][index % 6]} strokeWidth={2} dot={{ r: 2 }} />
           )}
         </ChartComponent>
       </ResponsiveContainer>
@@ -309,7 +310,7 @@ function renderStackedChart(chartType: string, rows: any[], keys: string[], edit
   return (
     <ResponsiveContainer width="100%" height={220}>
       <BarChart data={sortedRows} layout={chartType === "hbar" ? "vertical" : "horizontal"}>
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" />
+        <CartesianGrid stroke="rgba(0,56,101,0.06)" />
         {chartType === "hbar" ? (
           <>
             <XAxis type="number" tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
@@ -764,8 +765,8 @@ export function ChannelAnalysis({ filters, onFiltersChange, onNavigate }: Channe
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
                 <thead>
                   <tr style={{ backgroundColor: "#f8fafc" }}>
-                    {["Kênh", "Hội thoại chờ", "Câu AI thất bại", "Cảm xúc tiêu cực", "Hành động"].map((h) => (
-                      <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontWeight: 600, color: "rgba(0,56,101,0.5)", fontSize: "10px", letterSpacing: "0.04em", borderBottom: "1px solid rgba(0,56,101,0.06)", whiteSpace: "nowrap" }}>
+                    {["Kênh", "Hội thoại chờ", "Câu AI thất bại", "Hành động"].map((h, idx) => (
+                      <th key={h} style={{ padding: "10px 14px", textAlign: idx === 0 ? "left" : "center", fontWeight: 600, color: "rgba(0,56,101,0.5)", fontSize: "10px", letterSpacing: "0.04em", borderBottom: "1px solid rgba(0,56,101,0.06)", whiteSpace: "nowrap" }}>
                         {h}
                       </th>
                     ))}
@@ -778,25 +779,22 @@ export function ChannelAnalysis({ filters, onFiltersChange, onNavigate }: Channe
                       onMouseEnter={(e) => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "#f8fafc"}
                       onMouseLeave={(e) => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "transparent"}
                     >
-                      <td style={{ padding: "12px 14px" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <td style={{ padding: "12px 14px", textAlign: "left" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-start", gap: "8px" }}>
                           <div style={{ width: "10px", height: "10px", borderRadius: "50%", backgroundColor: CHANNEL_COLORS[ch.channel] || "#94A3B8" }} />
                           <span style={{ fontWeight: 600, color: NAVY }}>{ch.channel}</span>
                         </div>
                       </td>
-                      <td style={{ padding: "12px 14px" }}>
+                      <td style={{ padding: "12px 14px", textAlign: "center" }}>
                         <span style={{ color: ORANGE, fontWeight: 700 }}>{ch.unresolved.toLocaleString("vi-VN")}</span>
                         <span style={{ color: "rgba(0,56,101,0.4)", fontSize: "10px", marginLeft: "4px" }}>({getUnresolvedRate(ch)}%)</span>
                       </td>
-                      <td style={{ padding: "12px 14px" }}>
+                      <td style={{ padding: "12px 14px", textAlign: "center" }}>
                         <span style={{ color: ORANGE, fontWeight: 700 }}>{ch.ai_fail.toLocaleString("vi-VN")}</span>
                         <span style={{ color: "rgba(0,56,101,0.4)", fontSize: "10px", marginLeft: "4px" }}>({getAiFailRate(ch)}%)</span>
                       </td>
-                      <td style={{ padding: "12px 14px" }}>
-                        <span style={{ color: ch.negative > 30 ? ORANGE : "#d97706", fontWeight: 600 }}>{ch.negative.toLocaleString("vi-VN")}</span>
-                      </td>
-                      <td style={{ padding: "12px 14px" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <td style={{ padding: "12px 14px", textAlign: "center" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
                           <Popover>
                             <PopoverTrigger asChild>
                               <button

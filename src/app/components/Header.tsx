@@ -121,7 +121,7 @@ export function Header({ activeScreen, onNavigate }: HeaderProps) {
         const id = `dashboard:ai-failures:${aiFailures}`;
         items.push({
           id,
-          text: `${aiFailures} phản hồi AI cần kiểm tra trong 30 ngày qua`,
+          text: `${aiFailures} AI phản hồi thất bại trong 30 ngày qua`,
           type: "warning",
           time: "Cập nhật theo dữ liệu Dashboard",
           status: "pending",

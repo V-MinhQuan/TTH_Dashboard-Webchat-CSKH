@@ -171,6 +171,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
   const [positiveTotal, setPositiveTotal] = useState(0);
   const [positiveError, setPositiveError] = useState<string | null>(null);
   const [positiveLoading, setPositiveLoading] = useState(false);
+  const [negativePage, setNegativePage] = useState(1);
   const [sentimentKpiTrend, setSentimentKpiTrend] = useState<{ pos: string; neu: string; neg: string }>({ pos: "", neu: "", neg: "" });
   const [selectedConvIds, setSelectedConvIds] = useState<Set<number>>(new Set());
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
@@ -180,6 +181,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
 
   useEffect(() => {
     setPositivePage(1);
+    setNegativePage(1);
   }, [filters]);
 
   useEffect(() => {
@@ -239,6 +241,9 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
               neutral: neu,
               negative: neg
             };
+          }).filter(d => {
+            if (!filters.topic || filters.topic === "Tất cả") return true;
+            return mapTopicToGroupId(d.topic) === mapTopicToGroupId(filters.topic);
           }));
         }
 
@@ -281,6 +286,9 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
               customerId: conv.customerId,
               source: conv.source,
             };
+          }).filter(conv => {
+            if (!filters.topic || filters.topic === "Tất cả") return true;
+            return mapTopicToGroupId(conv.topic) === mapTopicToGroupId(filters.topic);
           }));
         }
 
@@ -321,7 +329,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
       try {
         const queryParams = buildSentimentQueryParams(filters);
         queryParams.set("page", String(positivePage));
-        queryParams.set("pageSize", "10");
+        queryParams.set("pageSize", "5");
         const response = await fetchApiJson<any>(
           buildApiUrl("/api/analytics/positive-conversations", queryParams),
           { cache: false, signal: controller.signal },
@@ -330,7 +338,11 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
         if (!response?.success) throw new Error("API hội thoại tích cực trả về dữ liệu không hợp lệ.");
 
         const records = Array.isArray(response.data?.records) ? response.data.records : [];
-        setPositiveConversations(records.map(mapPositiveConversation));
+        const filteredRecords = records.map(mapPositiveConversation).filter(conv => {
+          if (!filters.topic || filters.topic === "Tất cả") return true;
+          return mapTopicToGroupId(conv.topic) === mapTopicToGroupId(filters.topic);
+        });
+        setPositiveConversations(filteredRecords);
         setPositiveTotal(Number(response.data?.pagination?.total) || 0);
       } catch (error) {
         if ((error as any)?.name === "AbortError") return;
@@ -376,16 +388,18 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
     }
   };
 
-  const selectableIds = negativeConversations
+  const paginatedNegativeConversations = negativeConversations.slice((negativePage - 1) * 5, negativePage * 5);
+
+  const currentSelectableIds = paginatedNegativeConversations
     .filter((conv) => Number.isInteger(conv.conversationId) && conv.conversationId > 0 && conv.status !== "Đã xử lý")
     .map((conv) => conv.conversationId as number);
-  const allPageSelected = selectableIds.length > 0 && selectableIds.every((id) => selectedConvIds.has(id));
+  const allPageSelected = currentSelectableIds.length > 0 && currentSelectableIds.every((id) => selectedConvIds.has(id));
 
   const toggleAllPage = () => {
     setSelectedConvIds((prev) => {
       const next = new Set(prev);
-      if (allPageSelected) selectableIds.forEach((id) => next.delete(id));
-      else selectableIds.forEach((id) => next.add(id));
+      if (allPageSelected) currentSelectableIds.forEach((id) => next.delete(id));
+      else currentSelectableIds.forEach((id) => next.add(id));
       return next;
     });
   };
@@ -520,7 +534,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
               return (
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={safeData} layout={chartType === "hbar" ? "vertical" : "horizontal"}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" />
+                    <CartesianGrid stroke="rgba(0,56,101,0.06)" />
                     {chartType === "hbar" ? <XAxis type="number" tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} /> : <XAxis dataKey="date" tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />}
                     {chartType === "hbar" ? <YAxis dataKey="date" type="category" tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} width={80} /> : <YAxis tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} unit="%" />}
                     <Tooltip formatter={(v: any) => `${v}%`} />
@@ -539,14 +553,14 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
             return (
               <ResponsiveContainer width="100%" height={220}>
                 <ChartComponent data={safeData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" />
+                  <CartesianGrid stroke="rgba(0,56,101,0.06)" />
                   <XAxis dataKey="date" tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
                   <YAxis tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} unit="%" />
                   <Tooltip formatter={(v: any) => `${v}%`} />
                   {showLegend && <Legend iconSize={10} />}
-                  <SeriesComponent type="monotone" dataKey="positive" name="Tích cực" stroke={SENTIMENT_POSITIVE} fill={SENTIMENT_POSITIVE} strokeWidth={2} dot={{ r: 2 }} />
-                  <SeriesComponent type="monotone" dataKey="neutral" name="Trung lập" stroke={SENTIMENT_NEUTRAL} fill={SENTIMENT_NEUTRAL} strokeWidth={2} dot={{ r: 2 }} />
-                  <SeriesComponent type="monotone" dataKey="negative" name="Tiêu cực" stroke={SENTIMENT_NEGATIVE} fill={SENTIMENT_NEGATIVE} strokeWidth={2} dot={{ r: 2 }} />
+                  <SeriesComponent type="monotone" dataKey="positive" name="Tích cực" stroke={chartType === "line" ? "#00A3E0" : SENTIMENT_POSITIVE} fill={SENTIMENT_POSITIVE} strokeWidth={2} dot={{ r: 2 }} />
+                  <SeriesComponent type="monotone" dataKey="neutral" name="Trung lập" stroke={chartType === "line" ? "#00D2FF" : SENTIMENT_NEUTRAL} fill={SENTIMENT_NEUTRAL} strokeWidth={2} dot={{ r: 2 }} />
+                  <SeriesComponent type="monotone" dataKey="negative" name="Tiêu cực" stroke={chartType === "line" ? "#002E8D" : SENTIMENT_NEGATIVE} fill={SENTIMENT_NEGATIVE} strokeWidth={2} dot={{ r: 2 }} />
                 </ChartComponent>
               </ResponsiveContainer>
             );
@@ -588,7 +602,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
               return (
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={safeData} layout={chartType === "hbar" ? "vertical" : "horizontal"} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" />
+                    <CartesianGrid stroke="rgba(0,56,101,0.06)" />
                     {chartType === "hbar" ? <XAxis type="number" /> : <XAxis dataKey="name" tick={{ fontSize: 11 }} />}
                     {chartType === "hbar" ? <YAxis dataKey="name" type="category" width={80} tick={{ fontSize: 11 }} /> : <YAxis />}
                     <Tooltip formatter={(v: any) => `${v}%`} />
@@ -607,7 +621,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
             return (
               <ResponsiveContainer width="100%" height={220}>
                 <ChartComponent data={safeData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" />
+                  <CartesianGrid stroke="rgba(0,56,101,0.06)" />
                   <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                   <YAxis />
                   <Tooltip formatter={(v: any) => `${v}%`} />
@@ -660,7 +674,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
               return (
                 <ResponsiveContainer width="100%" height={260}>
                   <BarChart data={safeData} margin={{ top: 20, right: 20, left: -20, bottom: 20 }} layout={chartType === "hbar" ? "vertical" : "horizontal"}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" vertical={chartType !== "hbar"} horizontal={chartType === "hbar"} />
+                    <CartesianGrid stroke="rgba(0,56,101,0.06)" vertical={chartType !== "hbar"} horizontal={chartType === "hbar"} />
                     {chartType === "hbar" ? <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "rgba(0,56,101,0.4)" }} tickFormatter={(v) => `${v}%`} /> : <XAxis dataKey="topic" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "rgba(0,56,101,0.4)" }} dy={10} />}
                     {chartType === "hbar" ? <YAxis dataKey="topic" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "rgba(0,56,101,0.4)" }} width={100} /> : <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "rgba(0,56,101,0.4)" }} tickFormatter={(v) => `${v}%`} />}
                     <Tooltip cursor={{ fill: "rgba(0,56,101,0.02)" }} formatter={(v: any) => `${v}%`} />
@@ -679,14 +693,14 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
             return (
               <ResponsiveContainer width="100%" height={260}>
                 <ChartComponent data={safeData} margin={{ top: 20, right: 20, left: -20, bottom: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,56,101,0.06)" vertical={false} />
+                  <CartesianGrid stroke="rgba(0,56,101,0.06)" vertical={false} />
                   <XAxis dataKey="topic" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "rgba(0,56,101,0.4)" }} dy={10} />
                   <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "rgba(0,56,101,0.4)" }} tickFormatter={(v) => `${v}%`} />
                   <Tooltip cursor={{ fill: "rgba(0,56,101,0.02)" }} formatter={(v: any) => `${v}%`} />
                   {showLegend && <Legend iconSize={8} iconType="square" wrapperStyle={{ bottom: 0 }} />}
-                  <SeriesComponent type="monotone" dataKey="positive" name="Tích cực" stroke={SENTIMENT_POSITIVE} fill={SENTIMENT_POSITIVE} strokeWidth={2} />
-                  <SeriesComponent type="monotone" dataKey="neutral" name="Trung lập" stroke={SENTIMENT_NEUTRAL} fill={SENTIMENT_NEUTRAL} strokeWidth={2} />
-                  <SeriesComponent type="monotone" dataKey="negative" name="Tiêu cực" stroke={SENTIMENT_NEGATIVE} fill={SENTIMENT_NEGATIVE} strokeWidth={2} />
+                  <SeriesComponent type="monotone" dataKey="positive" name="Tích cực" stroke={chartType === "line" ? "#00A3E0" : SENTIMENT_POSITIVE} fill={SENTIMENT_POSITIVE} strokeWidth={2} />
+                  <SeriesComponent type="monotone" dataKey="neutral" name="Trung lập" stroke={chartType === "line" ? "#00D2FF" : SENTIMENT_NEUTRAL} fill={SENTIMENT_NEUTRAL} strokeWidth={2} />
+                  <SeriesComponent type="monotone" dataKey="negative" name="Tiêu cực" stroke={chartType === "line" ? "#002E8D" : SENTIMENT_NEGATIVE} fill={SENTIMENT_NEGATIVE} strokeWidth={2} />
                 </ChartComponent>
               </ResponsiveContainer>
             );
@@ -755,14 +769,14 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
           >
             <ChevronLeft size={17} aria-hidden="true" />
           </button>
-          <span style={{ fontSize: "12px", color: NAVY }}>Trang {positivePage}/{Math.max(1, Math.ceil(positiveTotal / 10))}</span>
+          <span style={{ fontSize: "12px", color: NAVY }}>Trang {positivePage}/{Math.max(1, Math.ceil(positiveTotal / 5))}</span>
           <button
             type="button"
             aria-label="Trang sau"
             title="Trang sau"
-            disabled={positiveLoading || positivePage * 10 >= positiveTotal}
+            disabled={positiveLoading || positivePage * 5 >= positiveTotal}
             onClick={() => setPositivePage((page) => page + 1)}
-            style={{ width: "32px", height: "32px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.14)", background: "#fff", color: NAVY, display: "grid", placeItems: "center", cursor: positiveLoading || positivePage * 10 >= positiveTotal ? "not-allowed" : "pointer", opacity: positiveLoading || positivePage * 10 >= positiveTotal ? 0.45 : 1 }}
+            style={{ width: "32px", height: "32px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.14)", background: "#fff", color: NAVY, display: "grid", placeItems: "center", cursor: positiveLoading || positivePage * 5 >= positiveTotal ? "not-allowed" : "pointer", opacity: positiveLoading || positivePage * 5 >= positiveTotal ? 0.45 : 1 }}
           >
             <ChevronRight size={17} aria-hidden="true" />
           </button>
@@ -808,10 +822,10 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
                     aria-label="Chọn tất cả hội thoại trên trang"
                     checked={allPageSelected}
                     onChange={toggleAllPage}
-                    disabled={selectableIds.length === 0}
+                    disabled={currentSelectableIds.length === 0}
                   />
                 </th>
-                {["Khách hàng", "Nội dung phàn nàn", "Chủ đề", "Kênh", "Mức độ tiêu cực", "Thời gian chờ", "Trạng thái", "Hành động"].map((h) => (
+                {["Khách hàng", "Nội dung phàn nàn", "Chủ đề", "Kênh", "Thời gian chờ", "Hành động"].map((h) => (
                   <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontWeight: 600, color: "rgba(0,56,101,0.5)", fontSize: "10px", letterSpacing: "0.04em", borderBottom: "1px solid rgba(0,56,101,0.06)", whiteSpace: "nowrap" }}>
                     {h}
                   </th>
@@ -821,12 +835,12 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
             <tbody>
               {negativeConversations.length === 0 && (
                 <tr>
-                  <td colSpan={9} style={{ padding: "22px 14px", textAlign: "center", color: "rgba(0,56,101,0.55)", fontSize: "12px" }}>
+                  <td colSpan={7} style={{ padding: "22px 14px", textAlign: "center", color: "rgba(0,56,101,0.55)", fontSize: "12px" }}>
                     Không có hội thoại có cảm xúc tiêu cực cần xử lý trong khoảng lọc.
                   </td>
                 </tr>
               )}
-              {negativeConversations.map((conv) => {
+              {paginatedNegativeConversations.map((conv) => {
                 const lc = negLevelConfig[conv.level];
                 const sc = statusConfig[conv.status] || { bg: "#f1f5f9", color: "#64748b" };
                 return (
@@ -860,23 +874,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
                       <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: "#eff6ff", color: "#3b82f6", display: "inline-block", wordBreak: "break-word" }}>{conv.topic}</span>
                     </td>
                     <td style={{ padding: "12px 14px", color: "rgba(0,56,101,0.65)", whiteSpace: "nowrap" }}>{conv.channel}</td>
-                    <td style={{ padding: "12px 14px" }}>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
-                        <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: lc.bg, color: lc.color, fontWeight: 600, whiteSpace: "nowrap", display: "inline-block" }}>{conv.level}</span>
-                        <div style={{ display: "flex", gap: "2px" }}>
-                          {Array.from({ length: lc.stars }).map((_, i) => (
-                            <span key={i} style={{ color: lc.color, fontSize: "11px" }}>●</span>
-                          ))}
-                          {Array.from({ length: 3 - lc.stars }).map((_, i) => (
-                            <span key={i} style={{ color: "#e2e8f0", fontSize: "11px" }}>●</span>
-                          ))}
-                        </div>
-                      </div>
-                    </td>
                     <td style={{ padding: "12px 14px", color: conv.waitTime.includes("g") && parseInt(conv.waitTime) >= 4 ? ORANGE : "rgba(0,56,101,0.65)", fontWeight: conv.waitTime.includes("g") && parseInt(conv.waitTime) >= 4 ? 600 : 400, whiteSpace: "nowrap" }}>{conv.waitTime}</td>
-                    <td style={{ padding: "12px 14px" }}>
-                      <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: sc.bg, color: sc.color, fontWeight: 600, whiteSpace: "nowrap" }}>{conv.status}</span>
-                    </td>
                     <td style={{ padding: "12px 14px" }}>
                       <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
                         {conv.status !== "Đã xử lý" ? (
@@ -897,6 +895,29 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
             </tbody>
           </table>
         </div>
+        <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "10px", padding: "12px 18px" }}>
+          <button
+            type="button"
+            aria-label="Trang trước"
+            title="Trang trước"
+            disabled={negativePage <= 1}
+            onClick={() => setNegativePage((page) => Math.max(1, page - 1))}
+            style={{ width: "32px", height: "32px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.14)", background: "#fff", color: NAVY, display: "grid", placeItems: "center", cursor: negativePage <= 1 ? "not-allowed" : "pointer", opacity: negativePage <= 1 ? 0.45 : 1 }}
+          >
+            <ChevronLeft size={17} aria-hidden="true" />
+          </button>
+          <span style={{ fontSize: "12px", color: NAVY }}>Trang {negativePage}/{Math.max(1, Math.ceil(negativeConversations.length / 5))}</span>
+          <button
+            type="button"
+            aria-label="Trang sau"
+            title="Trang sau"
+            disabled={negativePage * 5 >= negativeConversations.length}
+            onClick={() => setNegativePage((page) => page + 1)}
+            style={{ width: "32px", height: "32px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.14)", background: "#fff", color: NAVY, display: "grid", placeItems: "center", cursor: negativePage * 5 >= negativeConversations.length ? "not-allowed" : "pointer", opacity: negativePage * 5 >= negativeConversations.length ? 0.45 : 1 }}
+          >
+            <ChevronRight size={17} aria-hidden="true" />
+          </button>
+        </div>
       </div>
 
       {/* Keywords */}
@@ -905,7 +926,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
           <AlertTriangle size={15} style={{ color: ORANGE }} /> Từ khóa gây cảm xúc tiêu cực
         </h3>
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-          {negKeywords.map((kw, i) => (
+          {negKeywords.slice(0, 5).map((kw, i) => (
             <div key={i} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px 12px", borderRadius: "10px", backgroundColor: "#FFF4EE" }}>
               <span style={{ fontSize: "11px", color: ORANGE, fontWeight: 700 }}>#{i + 1}</span>
               <span style={{ flex: 1, fontSize: "13px", color: NAVY }}>"{kw.word}"</span>

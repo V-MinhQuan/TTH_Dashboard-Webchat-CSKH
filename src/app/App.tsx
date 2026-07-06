@@ -144,9 +144,8 @@ function MainApp() {
 
   const handleNavigate = useCallback((nextScreen: string) => {
     if (nextScreen === activeScreen) return;
-    resetFilters();
     setActiveScreen(nextScreen);
-  }, [activeScreen, resetFilters]);
+  }, [activeScreen]);
 
   useEffect(() => {
     const interval = setInterval(triggerRefresh, 1800000);
@@ -196,7 +195,7 @@ function MainApp() {
       case "personalinfo":
         return <PersonalInfo onNavigate={handleNavigate} />;
       case "chatbot_sheet":
-        return <SheetChatbot filters={filters} />;
+        return <SheetChatbot />;
       default:
         return <Overview {...baseProps} isRefreshing={isRefreshing} lastUpdated={lastUpdated} onManualRefresh={triggerRefresh} />;
     }

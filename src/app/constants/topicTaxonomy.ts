@@ -164,7 +164,7 @@ export const TOPIC_TAXONOMY = [
 export type TopicGroup = (typeof TOPIC_TAXONOMY)[number];
 export type TopicGroupId = TopicGroup["id"];
 
-export const TOPIC_FILTER_OPTIONS = TOPIC_TAXONOMY.map((topic) => ({
+export const TOPIC_FILTER_OPTIONS = TOPIC_TAXONOMY.filter((topic) => topic.id !== "khac").map((topic) => ({
   value: topic.label,
   label: topic.label,
   available: true,

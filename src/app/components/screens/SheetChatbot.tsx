@@ -1,18 +1,17 @@
 import { useState, useEffect, useCallback, useMemo, type CSSProperties } from "react";
 import { useAuth } from "../../context/AuthContext";
-import { Plus, Search, Filter, CheckCircle2, XCircle, Clock, Edit2 } from "lucide-react";
+import { Plus, Search, Filter, CheckCircle2, XCircle, Clock, Edit2, RotateCcw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ErrorSourceBadge } from "../common/ErrorSourceBadge";
 import { getAiFailureDefinition } from "../../constants/aiFailureTaxonomy";
 import { TOPIC_FILTER_OPTIONS } from "../../constants/topicTaxonomy";
 import { FeedbackFormDialog } from "../feedback/FeedbackFormDialog";
-import type { FilterValues } from "../FilterPanel";
 import {
+  deleteSheetChatbotRow,
   getSheetChatbotRows,
   mergeSheetChatbotToFaq,
   updateSheetChatbotStatus,
 } from "../../services/sheetChatbotApi";
-import { mapGlobalFiltersToAnalyticsRequest } from "../../utils/dateFilters";
 
 const NAVY = "#003865";
 const ORANGE = "#D73C01";
@@ -40,10 +39,6 @@ interface SheetRow {
   risk: RiskLevel;
   status: SheetStatus;
   notes: string;
-}
-
-interface SheetChatbotProps {
-  filters: FilterValues;
 }
 
 const statusConfig: Record<SheetStatus, { bg: string; color: string; icon: typeof CheckCircle2 }> = {
@@ -114,6 +109,36 @@ const tableFilterOptionStyle: CSSProperties = {
   fontSize: "11px",
   fontWeight: 600,
   fontFamily: "inherit",
+};
+
+const actionHeaderCellStyle: CSSProperties = {
+  ...tableHeaderCellStyle,
+  width: "190px",
+  minWidth: "190px",
+};
+
+const actionCellStyle: CSSProperties = {
+  padding: "12px 14px",
+  width: "190px",
+  minWidth: "190px",
+  whiteSpace: "nowrap",
+};
+
+const actionButtonGroupStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "6px",
+  flexWrap: "nowrap",
+  whiteSpace: "nowrap",
+};
+
+const actionButtonBaseStyle: CSSProperties = {
+  padding: "3px 9px",
+  borderRadius: "6px",
+  cursor: "pointer",
+  fontSize: "10px",
+  fontWeight: 600,
+  whiteSpace: "nowrap",
 };
 
 function uniqueSortedText(values: unknown[]) {
@@ -199,7 +224,7 @@ function formatAddedAt(value: string) {
   return date.toLocaleDateString("vi-VN");
 }
 
-export function SheetChatbot({ filters }: SheetChatbotProps) {
+export function SheetChatbot() {
   const { role, user } = useAuth();
   const currentUserName = role === "manager" ? "Admin FLIC" : user?.name || "Thu Trang";
   const apiRole = role === "manager" ? "manager" : "staff";
@@ -214,19 +239,19 @@ export function SheetChatbot({ filters }: SheetChatbotProps) {
   const [filterStatus, setFilterStatus] = useState(ALL_FILTER_VALUE);
   const [filterRisk, setFilterRisk] = useState(ALL_FILTER_VALUE);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<SheetRow | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const loadRows = useCallback(async () => {
     setIsLoading(true);
     setLoadError(null);
 
     try {
-      const globalFilterParams = mapGlobalFiltersToAnalyticsRequest(filters);
       const response = await getSheetChatbotRows({
         page: 1,
         pageSize: 500,
         role: apiRole,
         addedBy: apiRole === "manager" ? undefined : currentUserName,
-        ...globalFilterParams,
       });
       setRows(response.data);
     } catch (error) {
@@ -237,7 +262,7 @@ export function SheetChatbot({ filters }: SheetChatbotProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [apiRole, currentUserName, filters]);
+  }, [apiRole, currentUserName]);
 
   useEffect(() => {
     loadRows();
@@ -302,7 +327,7 @@ export function SheetChatbot({ filters }: SheetChatbotProps) {
         return;
       }
 
-      const updated = await updateSheetChatbotStatus(id, status, currentUserName);
+      const updated = await updateSheetChatbotStatus(id, status);
       setRows(prev => prev.map(row => row.id === updated.id ? updated : row));
       toast.success("Đã cập nhật trạng thái dữ liệu chatbot");
     } catch (error) {
@@ -310,13 +335,24 @@ export function SheetChatbot({ filters }: SheetChatbotProps) {
     }
   };
 
-  const handleMergeFaq = async (id: string) => {
+  const handleDeleteRejected = async (row: SheetRow) => {
+    if (row.status !== "Từ chối") return;
+    setDeleteTarget(row);
+  };
+
+  const confirmDeleteRejected = async () => {
+    if (!deleteTarget) return;
+
     try {
-      await mergeSheetChatbotToFaq(id, currentUserName);
-      await loadRows();
-      toast.success("Đã duyệt để hiển thị trong danh sách FAQ.");
+      setDeletingId(deleteTarget.id);
+      await deleteSheetChatbotRow(deleteTarget.id);
+      setRows((current) => current.filter((item) => item.id !== deleteTarget.id));
+      setDeleteTarget(null);
+      toast.success("Đã xóa phản hồi bị từ chối khỏi database.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Không thể gộp FAQ");
+      toast.error(error instanceof Error ? error.message : "Không thể xóa phản hồi khỏi database.");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -418,7 +454,7 @@ export function SheetChatbot({ filters }: SheetChatbotProps) {
                     <th style={tableHeaderCellStyle}>
                       <FilterableHeader label="Trạng thái" value={filterStatus} options={SHEET_STATUSES} onChange={setFilterStatus} />
                     </th>
-                    <th style={tableHeaderCellStyle}>Hành động</th>
+                    <th style={actionHeaderCellStyle}>Hành động</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -460,25 +496,42 @@ export function SheetChatbot({ filters }: SheetChatbotProps) {
                             <StatusIcon size={10} /> {row.status}
                           </span>
                         </td>
-                        <td style={{ padding: "12px 14px" }}>
+                        <td style={actionCellStyle}>
                           {role === "manager" ? (
-                            <div style={{ display: "flex", gap: "5px", flexWrap: "wrap" }}>
+                            <div style={actionButtonGroupStyle}>
                               {row.status === "Chờ xử lý" || row.status === "Cần chỉnh sửa" ? (
                                 <>
-                                  <button onClick={() => updateStatus(row.id, "Đã duyệt")} style={{ padding: "3px 9px", borderRadius: "6px", border: "1px solid #bbf7d0", background: "#f0fdf4", color: "#16a34a", cursor: "pointer", fontSize: "10px", fontWeight: 600 }}>Duyệt</button>
-                                  <button onClick={() => { setEditingRow(row); setShowAddModal(true); }} style={{ padding: "3px 9px", borderRadius: "6px", border: "1px solid #e9d5ff", background: "#faf5ff", color: "#7c3aed", cursor: "pointer", fontSize: "10px", fontWeight: 600 }}>Chỉnh sửa</button>
-                                  <button onClick={() => updateStatus(row.id, "Từ chối")} style={{ padding: "3px 9px", borderRadius: "6px", border: "1px solid rgba(0,62,154,0.12)", background: "#f8fafc", color: "#64748b", cursor: "pointer", fontSize: "10px", fontWeight: 600 }}>Từ chối</button>
+                                  <button onClick={() => updateStatus(row.id, "Đã duyệt")} style={{ ...actionButtonBaseStyle, border: "1px solid #bbf7d0", background: "#f0fdf4", color: "#16a34a" }}>Duyệt</button>
+                                  <button onClick={() => { setEditingRow(row); setShowAddModal(true); }} style={{ ...actionButtonBaseStyle, border: "1px solid #e9d5ff", background: "#faf5ff", color: "#7c3aed" }}>Chỉnh sửa</button>
+                                  <button onClick={() => updateStatus(row.id, "Từ chối")} style={{ ...actionButtonBaseStyle, border: "1px solid rgba(0,62,154,0.12)", background: "#f8fafc", color: "#64748b" }}>Từ chối</button>
                                 </>
-                              ) : row.status === "Đã duyệt" ? (
-                                <button onClick={() => handleMergeFaq(row.id)} style={{ padding: "3px 9px", borderRadius: "6px", border: `1px solid ${NAVY}20`, background: "#f8fafc", color: NAVY, cursor: "pointer", fontSize: "10px", fontWeight: 600 }}>Gộp FAQ</button>
+                              ) : row.status === "Từ chối" ? (
+                                <>
+                                  <button
+                                    aria-label={`Hoàn tác phản hồi ${row.id} về trạng thái Chờ xử lý`}
+                                    title="Đưa về Chờ xử lý"
+                                    onClick={() => void updateStatus(row.id, "Chờ xử lý")}
+                                    style={{ ...actionButtonBaseStyle, width: "28px", height: "24px", padding: 0, border: `1px solid ${NAVY}20`, background: "#eff6ff", color: NAVY, display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                                  >
+                                    <RotateCcw size={13} />
+                                  </button>
+                                  <button
+                                    aria-label={`Xóa phản hồi ${row.id}`}
+                                    title="Xóa khỏi database"
+                                    onClick={() => void handleDeleteRejected(row)}
+                                    style={{ ...actionButtonBaseStyle, width: "28px", height: "24px", padding: 0, border: "1px solid #fecaca", background: "#fff1f2", color: "#dc2626", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                </>
                               ) : (
                                 <span style={{ fontSize: "11px", color: "rgba(0,62,154,0.4)" }}>—</span>
                               )}
                             </div>
                           ) : (
-                            <div>
+                            <div style={actionButtonGroupStyle}>
                               {row.status === "Cần chỉnh sửa" ? (
-                                <button onClick={() => { setEditingRow(row); setShowAddModal(true); }} style={{ padding: "3px 9px", borderRadius: "6px", border: `1px solid #e9d5ff`, background: "#faf5ff", color: "#7c3aed", cursor: "pointer", fontSize: "10px", fontWeight: 600 }}>Chỉnh sửa</button>
+                                <button onClick={() => { setEditingRow(row); setShowAddModal(true); }} style={{ ...actionButtonBaseStyle, border: `1px solid #e9d5ff`, background: "#faf5ff", color: "#7c3aed" }}>Chỉnh sửa</button>
                               ) : (
                                 <span style={{ fontSize: "11px", color: "rgba(0,62,154,0.4)" }}>{row.status}</span>
                               )}
@@ -517,6 +570,51 @@ export function SheetChatbot({ filters }: SheetChatbotProps) {
             setEditingRow(null);
           }}
         />
+      )}
+
+      {deleteTarget && (
+        <div
+          role="presentation"
+          onKeyDown={(event) => {
+            if (event.key === "Escape" && !deletingId) setDeleteTarget(null);
+          }}
+          style={{ position: "fixed", inset: 0, zIndex: 320, display: "grid", placeItems: "center", padding: "16px", background: "rgba(0,56,101,0.48)" }}
+        >
+          <div role="dialog" aria-modal="true" aria-labelledby="delete-feedback-title" style={{ width: "min(460px, 100%)", borderRadius: "16px", background: "#fff", padding: "22px", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: "12px", marginBottom: "14px" }}>
+              <div style={{ width: "36px", height: "36px", borderRadius: "50%", background: "#fff1f2", color: "#dc2626", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                <Trash2 size={18} />
+              </div>
+              <div>
+                <h3 id="delete-feedback-title" style={{ margin: "0 0 6px", color: NAVY, fontSize: "17px" }}>Xóa phản hồi bị từ chối?</h3>
+                <p style={{ margin: 0, color: "rgba(0,56,101,0.68)", fontSize: "13px", lineHeight: 1.5 }}>
+                  Phản hồi này sẽ bị xóa vĩnh viễn khỏi database.
+                </p>
+              </div>
+            </div>
+            <div style={{ borderRadius: "10px", border: "1px solid rgba(0,56,101,0.08)", background: "#f8fafc", padding: "10px 12px", color: NAVY, fontSize: "12px", fontWeight: 600, lineHeight: 1.45, marginBottom: "18px" }}>
+              {deleteTarget.question}
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                disabled={Boolean(deletingId)}
+                style={{ padding: "9px 15px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.16)", background: "#fff", color: NAVY, cursor: deletingId ? "not-allowed" : "pointer", fontWeight: 600 }}
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmDeleteRejected()}
+                disabled={Boolean(deletingId)}
+                style={{ padding: "9px 16px", borderRadius: "8px", border: 0, background: deletingId ? "#fca5a5" : "#dc2626", color: "#fff", cursor: deletingId ? "not-allowed" : "pointer", fontWeight: 700 }}
+              >
+                {deletingId ? "Đang xóa..." : "Xóa khỏi database"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

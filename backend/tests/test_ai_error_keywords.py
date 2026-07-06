@@ -401,7 +401,7 @@ class FakeApiService:
 
 class MissingSchemaApiService:
     def list(self, **_kwargs):
-        raise AiErrorKeywordSchemaUnavailableError("Bảng dbo.AiErrorKeywords chưa được khởi tạo.")
+        raise AiErrorKeywordSchemaUnavailableError("Bảng dbo.WebChat_AiErrorKeywords chưa được khởi tạo.")
 
 
 def test_create_endpoint_uses_authenticated_creator_and_manager_role():
@@ -481,13 +481,13 @@ def test_migration_and_rollback_are_idempotent_and_scoped():
     migration = migration_path.read_text(encoding="utf-8")
     rollback = rollback_path.read_text(encoding="utf-8")
 
-    assert "IF OBJECT_ID(N'dbo.AiErrorKeywords', N'U') IS NULL" in migration
+    assert "IF OBJECT_ID(N'dbo.WebChat_AiErrorKeywords', N'U') IS NULL" in migration
     assert "IF NOT EXISTS" in migration
-    assert "CREATE UNIQUE INDEX UX_AiErrorKeywords_KeywordNormalized" in migration
-    assert "CK_AiErrorKeywords_Status" in migration
-    assert "CK_AiErrorKeywords_Taxonomy" in migration
+    assert "CREATE UNIQUE INDEX UX_WebChat_AiErrorKeywords_KeywordNormalized" in migration
+    assert "CK_WebChat_AiErrorKeywords_Status" in migration
+    assert "CK_WebChat_AiErrorKeywords_Taxonomy" in migration
     assert "AI có nguy cơ tự tạo thông tin" in migration
     assert "Không tìm thấy dữ liệu" in migration
-    assert "IF OBJECT_ID(N'dbo.AiErrorKeywords', N'U') IS NOT NULL" in rollback
-    assert "DROP TABLE dbo.AiErrorKeywords" in rollback
+    assert "IF OBJECT_ID(N'dbo.WebChat_AiErrorKeywords', N'U') IS NOT NULL" in rollback
+    assert "DROP TABLE dbo.WebChat_AiErrorKeywords" in rollback
     assert "DROP DATABASE" not in rollback.upper()
