@@ -6,6 +6,8 @@ import {
   LineChart, Line,
   PieChart, Pie, Cell,
 } from "recharts";
+import { getDateParamsFromFilters } from "../../utils/dateFilters";
+import { TOPIC_COLORS } from "../../colors";
 import { FilterPanel, FilterValues } from "../FilterPanel";
 import { buildApiUrl, fetchApiJson } from "../../services/dashboardApi";
 import { FeedbackFormDialog } from "../feedback/FeedbackFormDialog";
@@ -59,34 +61,34 @@ const TOPIC_LINE_STYLES = Object.fromEntries(
 
 const groupToneClasses: Record<string, { activeBorder: string; activeShadow: string; text: string; strip: string }> = {
   sat_hach_cntt: {
-    activeBorder: "border-[#003865]",
-    activeShadow: "shadow-[0_4px_16px_rgba(0,56,101,0.13)]",
-    text: "text-[#003865]",
-    strip: "bg-[#003865]",
+    activeBorder: "border-[#002E8D]",
+    activeShadow: "shadow-[0_4px_16px_rgba(0,46,141,0.16)]",
+    text: "text-[#002E8D]",
+    strip: "bg-[#002E8D]",
   },
   toeic: {
-    activeBorder: "border-[#ED5206]",
-    activeShadow: "shadow-[0_4px_16px_rgba(237,82,6,0.16)]",
-    text: "text-[#ED5206]",
-    strip: "bg-[#ED5206]",
+    activeBorder: "border-[#00A3E0]",
+    activeShadow: "shadow-[0_4px_16px_rgba(0,163,224,0.16)]",
+    text: "text-[#00A3E0]",
+    strip: "bg-[#00A3E0]",
   },
   mos: {
-    activeBorder: "border-[#1565C0]",
-    activeShadow: "shadow-[0_4px_16px_rgba(21,101,192,0.16)]",
-    text: "text-[#1565C0]",
-    strip: "bg-[#1565C0]",
+    activeBorder: "border-[#00D2FF]",
+    activeShadow: "shadow-[0_4px_16px_rgba(0,210,255,0.16)]",
+    text: "text-[#00D2FF]",
+    strip: "bg-[#00D2FF]",
   },
   hoc_tieng_anh: {
-    activeBorder: "border-[#F36C2E]",
-    activeShadow: "shadow-[0_4px_16px_rgba(243,108,46,0.16)]",
-    text: "text-[#F36C2E]",
-    strip: "bg-[#F36C2E]",
+    activeBorder: "border-[#308D16]",
+    activeShadow: "shadow-[0_4px_16px_rgba(48,141,22,0.16)]",
+    text: "text-[#308D16]",
+    strip: "bg-[#308D16]",
   },
   hoc_tin_hoc: {
-    activeBorder: "border-[#0288D1]",
-    activeShadow: "shadow-[0_4px_16px_rgba(2,136,209,0.16)]",
-    text: "text-[#0288D1]",
-    strip: "bg-[#0288D1]",
+    activeBorder: "border-[#FFA100]",
+    activeShadow: "shadow-[0_4px_16px_rgba(255,161,0,0.16)]",
+    text: "text-[#FFA100]",
+    strip: "bg-[#FFA100]",
   },
   khac: {
     activeBorder: "border-[#64748B]",
@@ -482,10 +484,31 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
   const visibleTrendGroups = (trendGroupsWithData.length > 0 ? trendGroupsWithData : kpiGroups)
     .filter((group) => !activeGroup || activeGroup === group.id);
 
+  const getExportData = () => {
+    const headers = ["Chủ đề", "Từ khóa", "Số lượt nhắc đến", "Lượt nhắc gần đây", "Số bài viết liên quan", "Đề xuất FAQ"];
+    const rows: string[][] = [];
+    finalGroups.forEach((group) => {
+      uniqueGroupKeywords(group).forEach((word) => {
+        const keywordData = group.keywords.find(k => k.word === word);
+        if (keywordData) {
+          rows.push([
+            group.name || group.id,
+            keywordData.word || "",
+            String(keywordData.count || 0),
+            String(keywordData.recentCount || 0),
+            String(keywordData.articleCount || 0),
+            keywordData.isSuggestedFaq ? "Có" : "Không",
+          ]);
+        }
+      });
+    });
+    return { headers, rows };
+  };
+
   return (
     <div className="p-6" data-export-target="true">
       {/* Truyền handleApplyFilters để chỉ fetch khi bấm "Áp dụng" */}
-      <FilterPanel filters={filters} onFiltersChange={handleApplyFilters} />
+      <FilterPanel filters={filters} onFiltersChange={handleApplyFilters} getExportData={getExportData} isLoading={groupsQuery.isLoading || trendQuery.isLoading} />
 
       {/* Page title */}
       <div className="mb-5 flex items-start justify-between gap-4">
@@ -519,8 +542,8 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
               <YAxis tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
               <Tooltip />
               <Legend iconSize={10} />
-              <Bar dataKey="Số câu hỏi" fill={NAVY} radius={[4, 4, 0, 0]} />
-              {hasAiFailedMetric && <Bar dataKey="Số câu AI phản hồi không chính xác" fill={ORANGE} radius={[4, 4, 0, 0]} />}
+              <Bar maxBarSize={40} dataKey="Số câu hỏi" fill={NAVY} radius={[4, 4, 0, 0]} />
+              {hasAiFailedMetric && <Bar maxBarSize={40} dataKey="Số câu AI phản hồi không chính xác" fill={ORANGE} radius={[4, 4, 0, 0]} />}
             </BarChart>
           </ResponsiveContainer>
           {!hasAiFailedMetric && (
@@ -582,7 +605,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
               <Legend iconSize={10} />
               {visibleTrendGroups.map((topic, index) => {
                 const LINE_COLORS = ["#00A3E0", "#00D2FF", "#002E8D", "#308D16", "#FFA100", "#64748B"];
-                const color = LINE_COLORS[index % LINE_COLORS.length];
+                const color = TOPIC_COLORS[topic.name] || LINE_COLORS[index % LINE_COLORS.length];
                 return (
                   <Line
                     key={topic.id}
@@ -590,8 +613,8 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
                     dataKey={topic.name}
                     stroke={color}
                     strokeDasharray=""
-                    strokeWidth={2.8}
-                    dot={{ r: 3, fill: color }}
+                    strokeWidth={2.5}
+                    dot={false}
                   />
                 );
               })}
@@ -610,19 +633,6 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
               <span className="text-sm font-bold text-[#003865]">{group.name}</span>
               <div className="ml-auto flex gap-2.5 text-[11px]">
                 <span className="text-[rgba(0,56,101,0.45)]">Từ khóa hàng đầu</span>
-                <button
-                  onClick={() => {
-                    setSelectedGroupId(group.id);
-                  }}
-                  title={faqLoadErrorsByGroup[group.id] || undefined}
-                  className="cursor-pointer rounded-md border border-[#ED5206] bg-white px-2 py-0.5 text-[11px] font-semibold text-[#ED5206]"
-                >
-                  {selectedGroupId === group.id && selectedFaqQuery.isFetching && !isFaqGroupLoaded(group.id)
-                    ? "FAQ đang tải"
-                    : faqLoadErrorsByGroup[group.id]
-                      ? "FAQ lỗi tải"
-                      : `+${getFaqNeededCount(group)} FAQ cần thêm`}
-                </button>
               </div>
             </div>
             <div className="px-[18px] py-3.5">
@@ -731,22 +741,6 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
                           <div className="mt-1.5 text-[11px] text-[rgba(0,56,101,0.45)]">
                             Nguồn phát hiện: {item.source}
                           </div>
-                        </div>
-                        <div>
-                          <button
-                            onClick={() => setActiveMissingFaq({
-                              groupId: selectedGroupId,
-                              index,
-                              item: {
-                                question: item.question,
-                                source: item.source,
-                                suggestedAnswer: item.suggestedAnswer,
-                              },
-                            })}
-                            className="cursor-pointer rounded-lg border border-[#ED5206] bg-white px-3 py-[5px] text-[11px] font-semibold text-[#ED5206]"
-                          >
-                            Thêm FAQ
-                          </button>
                         </div>
                       </div>
                     </div>

@@ -136,8 +136,8 @@ class ConversationRepository(BaseRepository):
             query = f"""
                 SELECT
                   CONVERT(VARCHAR(10), a.messageAt, 120) AS date_str,
-                  SUM(CASE WHEN ISNULL(a.issueFlag, 0) = 1 THEN 1 ELSE 0 END) AS ai_fail,
-                  SUM(CASE WHEN ISNULL(a.issueFlag, 0) = 0 THEN 1 ELSE 0 END) AS ai_ok
+                  SUM(CASE WHEN ISNULL(a.issueFlag, 0) = 1 OR a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin') THEN 1 ELSE 0 END) AS ai_fail,
+                  SUM(CASE WHEN ISNULL(a.issueFlag, 0) = 0 AND (a.issueType IS NULL OR a.issueType NOT IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin')) THEN 1 ELSE 0 END) AS ai_ok
                 FROM WebChat_MessageAnalytics a
                 {status_join}
                 WHERE {" AND ".join(conditions)}
@@ -178,8 +178,8 @@ class ConversationRepository(BaseRepository):
             query = f"""
                 SELECT
                   {source_case} AS source,
-                  SUM(CASE WHEN ISNULL(a.issueFlag, 0) = 1 THEN 1 ELSE 0 END) AS ai_fail,
-                  SUM(CASE WHEN ISNULL(a.issueFlag, 0) = 0 THEN 1 ELSE 0 END) AS ai_ok
+                  SUM(CASE WHEN ISNULL(a.issueFlag, 0) = 1 OR a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin') THEN 1 ELSE 0 END) AS ai_fail,
+                  SUM(CASE WHEN ISNULL(a.issueFlag, 0) = 0 AND (a.issueType IS NULL OR a.issueType NOT IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin')) THEN 1 ELSE 0 END) AS ai_ok
                 FROM WebChat_MessageAnalytics a
                 {status_join}
                 WHERE {" AND ".join(conditions)}
@@ -669,7 +669,6 @@ class ConversationRepository(BaseRepository):
             topic,
             ai_status,
         )
-
         if topic and str(topic).strip() != "Tất cả":
             return self._get_topic_scoped_ai_daily_stats(
                 start_date,
@@ -736,16 +735,11 @@ class ConversationRepository(BaseRepository):
                     s.date_str,
                     s.keyword_no_data,
                     s.keyword_uncertain,
-                    MAX(CASE WHEN direct_issue.issue_type = N'Không tìm thấy dữ liệu' OR context_issue.issue_type = N'Không tìm thấy dữ liệu' THEN 1 ELSE 0 END) AS analytics_no_data,
-                    MAX(CASE WHEN direct_issue.issue_type IN (N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin') OR context_issue.issue_type IN (N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin') THEN 1 ELSE 0 END) AS analytics_uncertain
+                    MAX(CASE WHEN direct_issue.issue_type = N'Không tìm thấy dữ liệu' THEN 1 ELSE 0 END) AS analytics_no_data,
+                    MAX(CASE WHEN direct_issue.issue_type IN (N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin') THEN 1 ELSE 0 END) AS analytics_uncertain
                   FROM scoped s
                   LEFT JOIN analytics_issues direct_issue
                     ON direct_issue.message_id = s.message_id
-                  LEFT JOIN analytics_issues context_issue
-                    ON context_issue.customer_id = s.customer_id
-                   AND context_issue.source_key = s.source_key
-                   AND context_issue.message_at >= DATEADD(SECOND, -2, s.sent_at)
-                   AND context_issue.message_at <= DATEADD(SECOND, 2, s.sent_at)
                   GROUP BY s.message_id, s.date_str, s.keyword_no_data, s.keyword_uncertain
                 ),
                 classified AS (
@@ -908,7 +902,6 @@ class ConversationRepository(BaseRepository):
             topic,
             ai_status,
         )
-
         conn = get_db_connection()
         try:
             topic_scope_cte, topic_params = self._analytics_topic_scope_cte(
@@ -978,16 +971,11 @@ class ConversationRepository(BaseRepository):
                     s.date_str,
                     s.keyword_no_data,
                     s.keyword_uncertain,
-                    MAX(CASE WHEN direct_issue.issue_type = N'Không tìm thấy dữ liệu' OR context_issue.issue_type = N'Không tìm thấy dữ liệu' THEN 1 ELSE 0 END) AS analytics_no_data,
-                    MAX(CASE WHEN direct_issue.issue_type IN (N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin') OR context_issue.issue_type IN (N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin') THEN 1 ELSE 0 END) AS analytics_uncertain
+                    MAX(CASE WHEN direct_issue.issue_type = N'Không tìm thấy dữ liệu' THEN 1 ELSE 0 END) AS analytics_no_data,
+                    MAX(CASE WHEN direct_issue.issue_type IN (N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin') THEN 1 ELSE 0 END) AS analytics_uncertain
                   FROM scoped s
                   LEFT JOIN analytics_issues direct_issue
                     ON direct_issue.message_id = s.message_id
-                  LEFT JOIN analytics_issues context_issue
-                    ON context_issue.customer_id = s.customer_id
-                   AND context_issue.source_key = s.source_key
-                   AND context_issue.message_at >= DATEADD(SECOND, -2, s.sent_at)
-                   AND context_issue.message_at <= DATEADD(SECOND, 2, s.sent_at)
                   GROUP BY s.message_id, s.date_str, s.keyword_no_data, s.keyword_uncertain
                 ),
                 classified AS (
@@ -1439,16 +1427,11 @@ class ConversationRepository(BaseRepository):
                     s.source,
                     s.keyword_no_data,
                     s.keyword_uncertain,
-                    MAX(CASE WHEN direct_issue.issue_type = N'Không tìm thấy dữ liệu' OR context_issue.issue_type = N'Không tìm thấy dữ liệu' THEN 1 ELSE 0 END) AS analytics_no_data,
-                    MAX(CASE WHEN direct_issue.issue_type IN (N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin') OR context_issue.issue_type IN (N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin') THEN 1 ELSE 0 END) AS analytics_uncertain
+                    MAX(CASE WHEN direct_issue.issue_type = N'Không tìm thấy dữ liệu' THEN 1 ELSE 0 END) AS analytics_no_data,
+                    MAX(CASE WHEN direct_issue.issue_type IN (N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin') THEN 1 ELSE 0 END) AS analytics_uncertain
                   FROM scoped s
                   LEFT JOIN analytics_issues direct_issue
                     ON direct_issue.message_id = s.message_id
-                  LEFT JOIN analytics_issues context_issue
-                    ON context_issue.customer_id = s.customer_id
-                   AND context_issue.source_key = s.source_key
-                   AND context_issue.message_at >= DATEADD(SECOND, -2, s.sent_at)
-                   AND context_issue.message_at <= DATEADD(SECOND, 2, s.sent_at)
                   GROUP BY s.message_id, s.source, s.keyword_no_data, s.keyword_uncertain
                 ),
                 classified AS (
@@ -1707,16 +1690,11 @@ class ConversationRepository(BaseRepository):
                     s.topic,
                     s.keyword_no_data,
                     s.keyword_uncertain,
-                    MAX(CASE WHEN direct_issue.issue_type = N'Không tìm thấy dữ liệu' OR context_issue.issue_type = N'Không tìm thấy dữ liệu' THEN 1 ELSE 0 END) AS analytics_no_data,
-                    MAX(CASE WHEN direct_issue.issue_type IN (N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin') OR context_issue.issue_type IN (N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin') THEN 1 ELSE 0 END) AS analytics_uncertain
+                    MAX(CASE WHEN direct_issue.issue_type = N'Không tìm thấy dữ liệu' THEN 1 ELSE 0 END) AS analytics_no_data,
+                    MAX(CASE WHEN direct_issue.issue_type IN (N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin') THEN 1 ELSE 0 END) AS analytics_uncertain
                   FROM scoped s
                   LEFT JOIN analytics_issues direct_issue
                     ON direct_issue.message_id = s.message_id
-                  LEFT JOIN analytics_issues context_issue
-                    ON context_issue.customer_id = s.customer_id
-                   AND context_issue.source_key = s.source_key
-                   AND context_issue.message_at >= DATEADD(SECOND, -2, s.sent_at)
-                   AND context_issue.message_at <= DATEADD(SECOND, 2, s.sent_at)
                   GROUP BY s.message_id, s.source, s.topic, s.keyword_no_data, s.keyword_uncertain
                 ),
                 classified AS (

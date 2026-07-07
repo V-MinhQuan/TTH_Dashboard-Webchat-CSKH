@@ -46,9 +46,10 @@ interface NotificationGroup {
 interface HeaderProps {
   activeScreen: string;
   onNavigate: (screen: string) => void;
+  onResetFilters?: () => void;
 }
 
-export function Header({ activeScreen, onNavigate }: HeaderProps) {
+export function Header({ activeScreen, onNavigate, onResetFilters }: HeaderProps) {
   const { role, user, logout } = useAuth();
   const { settings } = useSettings();
   const [showNotifications, setShowNotifications] = useState(false);
@@ -273,7 +274,7 @@ export function Header({ activeScreen, onNavigate }: HeaderProps) {
                   {group.items.map((n) => (
                     <div
                       key={n.id}
-                      onClick={() => { setShowNotifications(false); onNavigate(n.targetScreen); }}
+                      onClick={() => { setShowNotifications(false); onResetFilters?.(); onNavigate(n.targetScreen); }}
                       style={{ padding: "14px 20px", borderBottom: "1px solid rgba(0,56,101,0.04)", display: "flex", gap: "12px", cursor: "pointer", transition: "background 0.15s", opacity: n.status === "completed" ? 0.55 : 1 }}
                       onMouseEnter={(e) => (e.currentTarget as HTMLDivElement).style.backgroundColor = "#f8fafc"}
                       onMouseLeave={(e) => (e.currentTarget as HTMLDivElement).style.backgroundColor = "transparent"}

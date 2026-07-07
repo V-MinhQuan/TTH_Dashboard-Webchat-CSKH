@@ -240,7 +240,7 @@ export function mapApiGroups(apiGroups: any[]): KeywordGroup[] {
     return {
       id: apiGroup.id,
       name: apiGroup.name || group?.name || apiGroup.id,
-      color: apiGroup.color || group?.color || NAVY,
+      color: group?.color || apiGroup.color || NAVY,
       totalQuestions: apiGroup.totalQuestions || 0,
       changeRate: apiGroup.changeRate || 0,
       aiFailed: aiFailed !== null && Number.isFinite(aiFailed) ? aiFailed : null,

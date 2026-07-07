@@ -191,7 +191,6 @@ def _analytics_keyword_match(words: list) -> tuple[str, list]:
         "a.matchedNegativeKeywords",
         "a.standardizedQuestion",
         "m.TextContent",
-        "cmsg.TextContent",
     ]
     parts = []
     params = []
@@ -276,13 +275,9 @@ class KeywordRepository:
                 ))
             return {word: merged.get(word, 0) for word in words}
 
-        join_sql, filter_clauses, filter_params = _build_message_filters(
-            start_date=start_date,
-            end_date=end_date,
-            channel=channel,
-            conversation_status=conversation_status,
-            ai_status=ai_status,
-        )
+        join_sql, filter_clauses, filter_params = _build_message_filters(start_date=start_date, end_date=end_date, channel=channel, conversation_status=conversation_status, ai_status=ai_status)
+        if ai_status and 'WebChat_MessageAnalytics a' not in join_sql:
+            join_sql += ' LEFT JOIN dbo.WebChat_MessageAnalytics a ON m.id_webchat_messageLogs = a.messageId'
 
         select_parts = []
         like_params = []
@@ -418,14 +413,14 @@ class KeywordRepository:
         unique_words = list(dict.fromkeys(all_words))
         word_filter_sql = " OR ".join(["m.TextContent LIKE ?" for _ in unique_words])
         word_filter_params = [f"%{word}%" for word in unique_words]
-        where_extra = " AND " + " AND ".join(f"({clause})" for clause in filter_clauses)
+        where_extra = (" AND " + " AND ".join(f"({clause})" for clause in filter_clauses)) if filter_clauses else ""
         query = f"""
             SELECT {', '.join(select_parts)}
             FROM WebChat_MessageLogs m
             {join_sql}
             WHERE m.TextContent IS NOT NULL AND m.TextContent != ''
               AND ({word_filter_sql})
-            {where_extra}
+              {where_extra}
         """
 
         try:
@@ -468,7 +463,7 @@ class KeywordRepository:
         has_khac = "khac" in group_words_map
 
         for group_id, words in group_words_map.items():
-            if not words:
+            if not words or group_id == "khac":
                 continue
             all_words.extend(words)
             group_or = " OR ".join(["m.TextContent LIKE ?" for _ in words])
@@ -479,43 +474,51 @@ class KeywordRepository:
         word_filter_sql = " OR ".join(["m.TextContent LIKE ?" for _ in unique_words])
         word_filter_params = [f"%{word}%" for word in unique_words]
         where_extra = (" AND " + " AND ".join(f"({clause})" for clause in filter_clauses)) if filter_clauses else ""
-        
+
+        total_messages = 0
         if has_khac:
-            if word_filter_sql:
-                select_parts.append(f"SUM(CASE WHEN NOT ({word_filter_sql}) THEN 1 ELSE 0 END) AS [khac]")
-                select_params.extend(word_filter_params)
-            else:
-                select_parts.append("COUNT(*) AS [khac]")
-                
-            query = f"""
-                SELECT {', '.join(select_parts)}
+            total_query = f"""
+                SELECT COUNT(*)
                 FROM WebChat_MessageLogs m
                 {join_sql}
                 WHERE m.TextContent IS NOT NULL AND m.TextContent != ''
                 {where_extra}
             """
-            params = tuple(select_params + filter_params)
-        elif select_parts and word_filter_sql:
-            query = f"""
-                SELECT {', '.join(select_parts)}
-                FROM WebChat_MessageLogs m
-                {join_sql}
-                WHERE m.TextContent IS NOT NULL AND m.TextContent != ''
-                  AND ({word_filter_sql})
-                {where_extra}
-            """
-            params = tuple(select_params + word_filter_params + filter_params)
-        else:
-            return {group_id: 0 for group_id in group_words_map}
+            try:
+                total_rows = execute_query(total_query, tuple(filter_params))
+                if total_rows and isinstance(total_rows[0], dict):
+                    total_messages = list(total_rows[0].values())[0]
+            except Exception as e:
+                print("Lỗi count total groups:", e)
+
+        if not select_parts or not word_filter_sql:
+            result = {group_id: 0 for group_id in group_words_map if group_id != "khac"}
+            if has_khac:
+                result["khac"] = total_messages
+            return result
+
+        select_parts.append("COUNT(*) AS [matched_total]")
+        query = f"""
+            SELECT {', '.join(select_parts)}
+            FROM WebChat_MessageLogs m
+            {join_sql}
+            WHERE m.TextContent IS NOT NULL AND m.TextContent != ''
+              AND ({word_filter_sql})
+              {where_extra}
+        """
+        params = tuple(select_params + word_filter_params + filter_params)
 
         try:
             rows = execute_query(query, params)
             row = rows[0] if rows else {}
-            return {group_id: row.get(group_id) or 0 for group_id in group_words_map}
+            result = {group_id: row.get(group_id) or 0 for group_id in group_words_map if group_id != "khac"}
+            if has_khac:
+                matched_total = row.get("matched_total") or 0
+                result["khac"] = max(0, total_messages - matched_total)
+            return result
         except Exception as e:
             print("Lỗi batch_count_groups:", e)
-            raise
-
+            return {group_id: 0 for group_id in group_words_map}
     def batch_count_keywords_and_groups(
         self,
         group_words_map: dict,
@@ -537,8 +540,7 @@ class KeywordRepository:
         if not unique_words:
             return {"keyword_counts": {}, "group_totals": {}}
 
-        keyword_counts = self.batch_count_keyword_occurrences(
-            unique_words,
+        join_sql, filter_clauses, filter_params = _build_message_filters(
             start_date=start_date,
             end_date=end_date,
             channel=channel,
@@ -546,19 +548,76 @@ class KeywordRepository:
             ai_status=ai_status,
         )
 
-        group_totals = self.batch_count_groups(
-            group_words_map,
-            start_date=start_date,
-            end_date=end_date,
-            channel=channel,
-            conversation_status=conversation_status,
-            ai_status=ai_status,
-        )
-
-        return {
-            "keyword_counts": keyword_counts,
-            "group_totals": group_totals,
-        }
+        select_parts = []
+        select_params = []
+        
+        # 1. Select cho keywords
+        for i, w in enumerate(unique_words):
+            select_parts.append(f"SUM(CASE WHEN m.TextContent LIKE ? THEN 1 ELSE 0 END) AS kw_{i}")
+            select_params.append(f"%{w}%")
+            
+        # 2. Select cho groups
+        has_khac = "khac" in group_words_map
+        for group_id, words in group_words_map.items():
+            if not words or group_id == "khac":
+                continue
+            group_or = " OR ".join(["m.TextContent LIKE ?" for _ in words])
+            select_parts.append(f"SUM(CASE WHEN ({group_or}) THEN 1 ELSE 0 END) AS [{group_id}]")
+            select_params.extend([f"%{word}%" for word in words])
+            
+        select_parts.append("COUNT(*) AS [matched_total]")
+        
+        word_filter_sql = " OR ".join(["m.TextContent LIKE ?" for _ in unique_words])
+        word_filter_params = [f"%{word}%" for word in unique_words]
+        where_extra = (" AND " + " AND ".join(f"({clause})" for clause in filter_clauses)) if filter_clauses else ""
+        
+        query = f"""
+            SELECT {', '.join(select_parts)}
+            FROM WebChat_MessageLogs m
+            {join_sql}
+            WHERE m.TextContent IS NOT NULL AND m.TextContent != ''
+              AND m.FromHost = 0
+              AND ({word_filter_sql})
+              {where_extra}
+        """
+        
+        params = tuple(select_params + word_filter_params + filter_params)
+        
+        total_messages = 0
+        if has_khac:
+            total_query = f"""
+                SELECT COUNT(*)
+                FROM WebChat_MessageLogs m
+                {join_sql}
+                WHERE m.TextContent IS NOT NULL AND m.TextContent != ''
+                  AND m.FromHost = 0
+                {where_extra}
+            """
+            try:
+                total_rows = execute_query(total_query, tuple(filter_params))
+                if total_rows and isinstance(total_rows[0], dict):
+                    total_messages = list(total_rows[0].values())[0]
+            except Exception as e:
+                print("Lỗi count total groups in combo:", e)
+                
+        try:
+            rows = execute_query(query, params)
+            row = rows[0] if rows else {}
+            
+            keyword_counts = {w: (row.get(f"kw_{i}") or 0) for i, w in enumerate(unique_words)}
+            
+            group_totals = {group_id: row.get(group_id) or 0 for group_id in group_words_map if group_id != "khac"}
+            if has_khac:
+                matched_total = row.get("matched_total") or 0
+                group_totals["khac"] = max(0, total_messages - matched_total)
+                
+            return {
+                "keyword_counts": keyword_counts,
+                "group_totals": group_totals,
+            }
+        except Exception as e:
+            print("Lỗi combo batch_count_keywords_and_groups:", e)
+            return {"keyword_counts": {}, "group_totals": {}}
 
     def batch_count_ai_failed_groups(
         self,
@@ -581,7 +640,7 @@ class KeywordRepository:
         has_khac = "khac" in group_words_map
 
         for group_id, words in group_words_map.items():
-            if not words:
+            if not words or group_id == "khac":
                 continue
             all_words.extend(words)
             match_sql, match_params = _analytics_keyword_match(words)
@@ -589,17 +648,6 @@ class KeywordRepository:
             select_params.extend(match_params)
 
         unique_words = list(dict.fromkeys(all_words))
-        
-        if has_khac:
-            if unique_words:
-                match_sql, match_params = _analytics_keyword_match(unique_words)
-                select_parts.append(f"SUM(CASE WHEN NOT {match_sql} THEN 1 ELSE 0 END) AS [khac]")
-                select_params.extend(match_params)
-            else:
-                select_parts.append("SUM(1) AS [khac]")
-
-        if not select_parts:
-            return {}
 
         clauses = ["a.issueFlag = 1"]
         filter_params = []
@@ -636,8 +684,8 @@ class KeywordRepository:
                 clauses.append("a.issueType IN (N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin')")
 
         where_sql = " AND ".join(f"({clause})" for clause in clauses)
-        query = f"""
-            SELECT {', '.join(select_parts)}
+        
+        base_from_join = """
             FROM dbo.WebChat_MessageAnalytics a
             LEFT JOIN dbo.WebChat_MessageLogs m
               ON m.id_webchat_messageLogs = a.messageId
@@ -646,22 +694,48 @@ class KeywordRepository:
             LEFT JOIN dbo.WebChat_ConversationStatus s
               ON c.CustomerId = s.CustomerId
              AND c.Source = s.Source
-            OUTER APPLY (
-                SELECT TOP 1 cmsg.TextContent
-                FROM dbo.WebChat_MessageLogs cmsg
-                WHERE cmsg.Source = c.Source
-                  AND cmsg.SenderId = c.CustomerId
-                  AND cmsg.FromHost = 0
-                  AND cmsg.SentAt <= a.messageAt
-                ORDER BY cmsg.SentAt DESC
-            ) cmsg
-            WHERE {where_sql}
         """
 
-        rows = execute_query(query, tuple(select_params + filter_params))
-        row = rows[0] if rows else {}
-        return {group_id: row.get(group_id) or 0 for group_id in group_words_map}
+        total_messages = 0
+        if has_khac:
+            total_query = f"""
+                SELECT COUNT(*)
+                {base_from_join}
+                WHERE {where_sql}
+            """
+            try:
+                total_rows = execute_query(total_query, tuple(filter_params))
+                if total_rows and isinstance(total_rows[0], dict):
+                    total_messages = list(total_rows[0].values())[0]
+            except Exception as e:
+                print("Lỗi count total ai failed:", e)
 
+        if not select_parts or not unique_words:
+            result = {group_id: 0 for group_id in group_words_map if group_id != "khac"}
+            if has_khac:
+                result["khac"] = total_messages
+            return result
+
+        match_sql, match_params = _analytics_keyword_match(unique_words)
+        select_parts.append("COUNT(*) AS [matched_total]")
+        
+        query = f"""
+            SELECT {', '.join(select_parts)}
+            {base_from_join}
+            WHERE {where_sql} AND ({match_sql})
+        """
+
+        try:
+            rows = execute_query(query, tuple(select_params + filter_params + match_params))
+            row = rows[0] if rows else {}
+            result = {group_id: row.get(group_id) or 0 for group_id in group_words_map if group_id != "khac"}
+            if has_khac:
+                matched_total = row.get("matched_total") or 0
+                result["khac"] = max(0, total_messages - matched_total)
+            return result
+        except Exception as e:
+            print("Lỗi batch_count_ai_failed_groups:", e)
+            return {group_id: 0 for group_id in group_words_map}
     def get_monthly_counts_for_words(
         self,
         words: list,
@@ -801,8 +875,9 @@ class KeywordRepository:
                     FROM WebChat_MessageLogs m
                     {join_sql}
                     WHERE m.TextContent IS NOT NULL AND m.TextContent != ''
+                      AND m.FromHost = 0
                       AND ({word_filter_sql})
-                    {where_extra}
+                      {where_extra}
                     GROUP BY CONVERT(VARCHAR(10), m.SentAt, 120)
                     ORDER BY bucket_key
                 """
@@ -815,8 +890,9 @@ class KeywordRepository:
                     FROM WebChat_MessageLogs m
                     {join_sql}
                     WHERE m.TextContent IS NOT NULL AND m.TextContent != ''
+                      AND m.FromHost = 0
                       AND ({word_filter_sql})
-                    {where_extra}
+                      {where_extra}
                     GROUP BY YEAR(m.SentAt), DATEPART(ISO_WEEK, m.SentAt)
                     ORDER BY MIN(m.SentAt)
                 """
@@ -830,8 +906,9 @@ class KeywordRepository:
                     FROM WebChat_MessageLogs m
                     {join_sql}
                     WHERE m.TextContent IS NOT NULL AND m.TextContent != ''
+                      AND m.FromHost = 0
                       AND ({word_filter_sql})
-                    {where_extra}
+                      {where_extra}
                     GROUP BY YEAR(m.SentAt), MONTH(m.SentAt)
                     ORDER BY yr, mo
                 """
@@ -1019,6 +1096,110 @@ class KeywordRepository:
         return result
 
     # ─── Giữ lại để tương thích ngược ──────────────────────────────────────
+    
+
+    def batch_count_all_stats(
+        self,
+        words: list[str],
+        current_start: str,
+        current_end: str,
+        previous_start: str,
+        previous_end: str,
+        channel: str = None,
+        conversation_status: str = None,
+        ai_status: str = None,
+    ) -> dict:
+        if not words:
+            return {}
+
+        # Batch the words to avoid SQL Server timeout with too many LIKEs + JOINs
+        if len(words) > KEYWORD_COUNT_BATCH_SIZE:
+            merged = {}
+            for start in range(0, len(words), KEYWORD_COUNT_BATCH_SIZE):
+                chunk = words[start:start + KEYWORD_COUNT_BATCH_SIZE]
+                chunk_result = self.batch_count_all_stats(
+                    chunk,
+                    current_start=current_start,
+                    current_end=current_end,
+                    previous_start=previous_start,
+                    previous_end=previous_end,
+                    channel=channel,
+                    conversation_status=conversation_status,
+                    ai_status=ai_status,
+                )
+                merged.update(chunk_result)
+            return merged
+
+        join_sql, filter_clauses, filter_params = _build_message_filters(start_date=start_date, end_date=end_date, channel=channel, conversation_status=conversation_status, ai_status=ai_status)
+        if ai_status and 'WebChat_MessageAnalytics a' not in join_sql:
+            join_sql += ' LEFT JOIN dbo.WebChat_MessageAnalytics a ON m.id_webchat_messageLogs = a.messageId'
+            
+        word_checks = []
+        for i, word in enumerate(words):
+            word_checks.append(f"CASE WHEN m.TextContent LIKE ? THEN 1 ELSE 0 END AS w_{i}")
+        
+        word_filter_sql = " OR ".join(["m.TextContent LIKE ?" for _ in words])
+        word_filter_params = [f"%{word}%" for word in words]
+        
+        cur_s = _parse_filter_datetime(current_start)
+        cur_e = _parse_filter_datetime(current_end, is_end=True)
+        prev_s = _parse_filter_datetime(previous_start)
+        prev_e = _parse_filter_datetime(previous_end, is_end=True)
+        
+        inner_query = f"""
+            SELECT 
+                {', '.join(word_checks)},
+                CASE WHEN m.SentAt >= ? AND m.SentAt <= ? THEN 1 ELSE 0 END AS is_cur,
+                CASE WHEN m.SentAt >= ? AND m.SentAt <= ? THEN 1 ELSE 0 END AS is_prev,
+                CASE WHEN a.issueFlag = 1 THEN 1 ELSE 0 END AS is_failed
+            FROM WebChat_MessageLogs m
+            {join_sql}
+            WHERE m.TextContent IS NOT NULL AND m.TextContent != ''
+              AND ({word_filter_sql})
+              AND (
+                  (m.SentAt >= ? AND m.SentAt <= ?) OR 
+                  (m.SentAt >= ? AND m.SentAt <= ?)
+              )
+              {' AND ' + ' AND '.join(filter_clauses) if filter_clauses else ''}
+        """
+        
+        select_parts = []
+        for i in range(len(words)):
+            select_parts.append(f"SUM(CASE WHEN w_{i}=1 AND is_cur=1 THEN 1 ELSE 0 END) AS cur_{i}")
+            select_parts.append(f"SUM(CASE WHEN w_{i}=1 AND is_prev=1 THEN 1 ELSE 0 END) AS prev_{i}")
+            select_parts.append(f"SUM(CASE WHEN w_{i}=1 AND is_cur=1 AND is_failed=1 THEN 1 ELSE 0 END) AS failed_{i}")
+            
+        outer_query = f"""
+            SELECT {', '.join(select_parts)}
+            FROM ({inner_query}) t
+        """
+        
+        params = []
+        
+        params.extend([cur_s, cur_e])
+        params.extend([prev_s, prev_e])
+        
+        params.extend([cur_s, cur_e, prev_s, prev_e])
+        params.extend(filter_params)
+
+        try:
+            from app.core.legacy_db_executor import execute_query
+            rows = execute_query(outer_query, tuple(params))
+            row = rows[0] if rows else {}
+            
+            result = {}
+            for i, word in enumerate(words):
+                result[word] = {
+                    "cur": row.get(f"cur_{i}") or 0,
+                    "prev": row.get(f"prev_{i}") or 0,
+                    "failed": row.get(f"failed_{i}") or 0,
+                }
+            return result
+        except Exception as e:
+            print("Lỗi batch_count_all_stats:", e)
+            return {word: {"cur": 0, "prev": 0, "failed": 0} for word in words}
+
+
     def count_cooccurrence(self, group_words: list, cross_word: str, filters: dict = None) -> int:
         if not group_words:
             return 0

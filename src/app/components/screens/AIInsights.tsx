@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { AlertTriangle, CheckCircle, XCircle, ChevronDown, ChevronUp, FilePlus2, Clock, Table2, Activity, Download, BoldIcon, Filter } from "lucide-react";
 import {
   LineChart, Line, BarChart, Bar, AreaChart, Area, XAxis, YAxis,
-  CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine,
+  CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine, PieChart, Pie, Cell
 } from "recharts";
 import { ChartCard } from "../ChartCard";
 import { FilterPanel, FilterValues } from "../FilterPanel";
@@ -15,7 +15,8 @@ import { exportFailedConversationsCsv, getAllFailedConversations, getFailedConve
 import { getAiFailureDefinition } from "../../constants/aiFailureTaxonomy";
 import { TOPIC_TAXONOMY, mapTopicToGroupId, topicLabelForGroupId } from "../../constants/topicTaxonomy";
 import { StatusBadge } from "../common/StatusBadge";
-import { analyticsFiltersToSearchParams, mapGlobalFiltersToAnalyticsRequest } from "../../utils/dateFilters";
+import { analyticsFiltersToSearchParams, mapGlobalFiltersToAnalyticsRequest, getDateParamsFromFilters } from "../../utils/dateFilters";
+import { TOPIC_COLORS } from "../../colors";
 
 const NAVY = "#003865";
 const ORANGE = "#D73C01";
@@ -37,8 +38,8 @@ const TOPIC_DETAIL_CONVERSATIONS_PAGE_SIZE = 3;
 const TABLE_FILTER_ALL = "Tất cả";
 const AI_ANALYTICS_TIMEOUT_MS = 120000;
 const AI_TOPIC_FAILURE_TYPES = [
-  { id: "no_data", label: "Không tìm thấy dữ liệu", key: "thieuDL" },
-  { id: "uncertain", label: "AI không chắc chắn", key: "khongChac" },
+  { id: "no_data", label: "Không tìm thấy dữ liệu", key: "thieuDL", keywords: "no_data, missing_data, thieuDL, Không tìm thấy" },
+  { id: "uncertain", label: "AI không chắc chắn", key: "khongChac", keywords: "not_understood, Không hiểu câu hỏi, uncertain, khongChac, khongHieu" },
 ] as const;
 const TOPIC_FAILURE_NUMERIC_KEYS = [
   "thieuDL",
@@ -543,7 +544,11 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
 
         if (cancelled) return;
         if (qm?.success) setQualityMetrics(qm.data);
-        if (ft?.success) setFailureTrend(ft.data);
+        if (ft?.success) setFailureTrend(ft.data.map((d: any) => ({
+          date: d.date,
+          hallucination: d.hallucination || 0,
+          uncertain: d.uncertain || 0
+        })));
         if (Array.isArray(fbt)) setFailureByTopic(fbt);
         if (fc?.records) {
           setFailedConversations(fc.records.map(mapFailedConversation));
@@ -607,7 +612,12 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
   const topFailureTopics = useMemo(
     () => [...canonicalFailureByTopic]
       .sort((left, right) => visibleTopicFailureTotal(right) - visibleTopicFailureTotal(left))
-      .slice(0, topN),
+      .slice(0, topN)
+      .map(t => ({
+        topic: t.topic,
+        thieuDL: t.thieuDL || 0,
+        khongChac: t.khongChac || 0
+      })),
     [canonicalFailureByTopic, topN],
   );
   const supplementalFailureTopics = useMemo(
@@ -895,10 +905,22 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
     return items;
   }, [optionalDataErrors.staffReportedErrors, optionalDataErrors.suggestedFAQs]);
 
+  const getExportData = () => {
+    const headers = ["Chủ đề", "Không tìm thấy dữ liệu", "AI không chắc chắn", "Tổng số lỗi"];
+    const rows = canonicalFailureByTopic.map(t => [
+      t.topic,
+      String(t.thieuDL || 0),
+      String(t.khongChac || 0),
+      String(visibleTopicFailureTotal(t))
+    ]);
+    return { headers, rows };
+  };
+
   return (
     <div style={{ padding: "24px" }}>
-      <FilterPanel filters={filters} onFiltersChange={onFiltersChange} />
+      <FilterPanel filters={filters} onFiltersChange={onFiltersChange} getExportData={getExportData} isLoading={loading} />
 
+      <div data-export-target="true">
       {loading ? <AIInsightsSkeleton /> : (
         <>
           {optionalNoticeItems.length > 0 && (
@@ -911,8 +933,8 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
           {/* KPI Row - AI insights */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "14px", marginBottom: "24px" }}>
             {[
-              { icon: CheckCircle, label: "AI trả lời thành công", value: kpiStats.ai_success.toString(), change: "Theo bộ lọc" },
-              { icon: XCircle, label: "AI trả lời thất bại", value: kpiStats.ai_failure.toString(), change: "Theo bộ lọc" },
+              { icon: CheckCircle, label: "AI phản hồi thành công", value: kpiStats.ai_success.toString(), change: "Theo bộ lọc" },
+              { icon: XCircle, label: "AI phản hồi thất bại", value: kpiStats.ai_failure.toString(), change: "Theo bộ lọc" },
               { icon: Activity, label: "Tỷ lệ chính xác", value: `${Math.round(kpiStats.ai_accuracy)}%`, change: "Theo bộ lọc" },
             ].map(({ icon: Icon, label, value, change }) => {
               const badgeBg = "#f8fafc";
@@ -990,18 +1012,18 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
 
                       {isBar ? (
                         <>
-                          <Bar dataKey="failure" name="AI phản hồi không chính xác" fill={OCEAN_PRIMARY} radius={layout === "vertical" ? [0, 4, 4, 0] : [4, 4, 0, 0]} />
-                          <Bar dataKey="uncertain" name="AI phản hồi không chắc chắn" fill={OCEAN_SECONDARY} radius={layout === "vertical" ? [0, 4, 4, 0] : [4, 4, 0, 0]} />
+                          <Bar maxBarSize={40} dataKey="hallucination" name="Không tìm thấy dữ liệu" fill={OCEAN_PRIMARY} radius={layout === "vertical" ? [0, 4, 4, 0] : [4, 4, 0, 0]} label={editValues?.dataLabels !== false ? { position: "top", fontSize: 10, fill: "rgba(0,56,101,0.6)" } : undefined} />
+                          <Bar maxBarSize={40} dataKey="uncertain" name="AI không chắc chắn" fill={OCEAN_SECONDARY} radius={layout === "vertical" ? [0, 4, 4, 0] : [4, 4, 0, 0]} label={editValues?.dataLabels !== false ? { position: "top", fontSize: 10, fill: "rgba(0,56,101,0.6)" } : undefined} />
                         </>
                       ) : isArea ? (
                         <>
-                          <Area type="monotone" dataKey="failure" name="AI phản hồi không chính xác" stroke={OCEAN_PRIMARY} fill={`${OCEAN_PRIMARY}30`} strokeWidth={2} />
-                          <Area type="monotone" dataKey="uncertain" name="AI phản hồi không chắc chắn" stroke={OCEAN_SECONDARY} fill={`${OCEAN_SECONDARY}30`} strokeWidth={2} />
+                          <Area type="monotone" dataKey="hallucination" name="Không tìm thấy dữ liệu" stroke={OCEAN_PRIMARY} fill={`${OCEAN_PRIMARY}30`} strokeWidth={2} />
+                          <Area type="monotone" dataKey="uncertain" name="AI không chắc chắn" stroke={OCEAN_SECONDARY} fill={`${OCEAN_SECONDARY}30`} strokeWidth={2} />
                         </>
                       ) : (
                         <>
-                          <Line type="monotone" dataKey="failure" name="AI phản hồi không chính xác" stroke="#00A3E0" strokeWidth={2.5} dot={{ r: 3 }} />
-                          <Line type="monotone" dataKey="uncertain" name="AI phản hồi không chắc chắn" stroke="#00D2FF" strokeWidth={2} dot={{ r: 2 }} />
+                          <Line type="monotone" dataKey="hallucination" name="Không tìm thấy dữ liệu" stroke={OCEAN_PRIMARY} strokeWidth={2} dot={{ r: 3 }} />
+                          <Line type="monotone" dataKey="uncertain" name="AI không chắc chắn" stroke={OCEAN_SECONDARY} strokeWidth={2} dot={{ r: 3 }} />
                         </>
                       )}
                     </ChartComp>
@@ -1016,7 +1038,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
                 onOpenBuilder={() => onNavigate("chartbuilder")}
                 data={topFailureTopics}
                 defaultChartType="hbar"
-                supportedChartTypes={["line", "area", "bar", "hbar"]}
+                supportedChartTypes={["line", "area", "bar", "hbar", "pie", "donut"]}
                 headerExtra={(
                   <label htmlFor="top-n-topics-select" style={{ display: "inline-flex", alignItems: "center", gap: "8px", color: NAVY, fontSize: "12px", fontWeight: 600, whiteSpace: "nowrap" }}>
                     Số chủ đề
@@ -1027,10 +1049,40 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
                 )}
               >
                 {({ chartType, chartData, editValues }: any) => {
+                  const showLegend = editValues?.legend !== false;
+                  
+                  if (chartType === "pie" || chartType === "donut") {
+                    const pieData = (Array.isArray(chartData) ? chartData : []).map((d: any) => ({
+                      name: d.topic === "Khác" ? "Học Tin học" : d.topic,
+                      value: (d.thieuDL || 0) + (d.khongChac || 0)
+                    }));
+                    
+                    const COLORS = [OCEAN_PRIMARY, OCEAN_SECONDARY, "#00A3E0", "#00D2FF", "#ED5206"];
+                    return (
+                      <ResponsiveContainer width="100%" height={210}>
+                        <PieChart>
+                          <Pie 
+                            data={pieData} 
+                            cx="50%" 
+                            cy="50%" 
+                            innerRadius={chartType === "pie" ? 0 : 50} 
+                            outerRadius={80} 
+                            dataKey="value" 
+                            label={showLegend ? { fontSize: 10, fill: "rgba(0,56,101,0.6)" } : false}
+                          >
+                            {pieData.map((d, i) => <Cell key={i} fill={TOPIC_COLORS[d.name] || COLORS[i % COLORS.length]} />)}
+                          </Pie>
+                          <Tooltip />
+                          {showLegend && <Legend iconSize={10} />}
+                        </PieChart>
+                      </ResponsiveContainer>
+                    );
+                  }
+
                   const isBar = chartType === "bar" || chartType === "hbar";
                   const isArea = chartType === "area";
                   const ChartComp = isBar ? BarChart : isArea ? AreaChart : LineChart;
-                  const layout = chartType === "hbar" || chartType === "pie" || chartType === "donut" ? "vertical" : "horizontal";
+                  const layout = chartType === "hbar" ? "vertical" : "horizontal";
 
                   return (
                     <ResponsiveContainer width="100%" height={210}>
@@ -1043,12 +1095,12 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
                         <XAxis dataKey={layout === "vertical" ? undefined : "topic"} type={layout === "vertical" ? "number" : "category"} tick={{ fontSize: 10, fill: "rgba(0,56,101,0.5)" }} />
                         <YAxis dataKey={layout === "vertical" ? "topic" : undefined} type={layout === "vertical" ? "category" : "number"} tick={{ fontSize: 10, fill: "rgba(0,56,101,0.6)" }} width={layout === "vertical" ? 90 : undefined} />
                         <Tooltip />
-                        {editValues?.legend !== false && <Legend />}
+                        {showLegend && <Legend />}
 
                         {isBar ? (
                           <>
-                            <Bar dataKey="thieuDL" name="Không tìm thấy dữ liệu" stackId="a" fill={OCEAN_PRIMARY} />
-                            <Bar dataKey="khongChac" name="AI không chắc chắn" stackId="a" fill={OCEAN_SECONDARY} radius={layout === "vertical" ? [0, 4, 4, 0] : [4, 4, 0, 0]} />
+                            <Bar maxBarSize={40} dataKey="thieuDL" name="Không tìm thấy dữ liệu" stackId="a" fill={OCEAN_PRIMARY} />
+                            <Bar maxBarSize={40} dataKey="khongChac" name="AI không chắc chắn" stackId="a" fill={OCEAN_SECONDARY} radius={layout === "vertical" ? [0, 4, 4, 0] : [4, 4, 0, 0]} />
                           </>
                         ) : isArea ? (
                           <>
@@ -1377,7 +1429,10 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
                         const count = topicFailureVisibleCount(selectedTopicFailure, definition.key);
                         return (
                           <tr key={definition.id}>
-                            <td className="flic-td-left" style={{ padding: "10px 12px", color: NAVY }}>{definition.label}</td>
+                            <td className="flic-td-left" style={{ padding: "10px 12px", color: NAVY }}>
+                              <div>{definition.label}</div>
+                              {definition.keywords && <div style={{ fontSize: "11px", color: "rgba(0,56,101,0.5)", marginTop: "4px" }}>Keywords: {definition.keywords}</div>}
+                            </td>
                             <td style={{ padding: "10px 12px", textAlign: "right", color: NAVY, fontWeight: 700 }}>{count}</td>
                           </tr>
                         );
@@ -1580,6 +1635,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

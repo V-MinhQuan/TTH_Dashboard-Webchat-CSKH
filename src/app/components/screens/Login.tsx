@@ -44,8 +44,15 @@ export function LoginScreen() {
         return;
       }
 
+      const backendRole = resJson.data?.role || "";
+      let mappedRole = "staff";
+      if (backendRole.toUpperCase() === "ADMIN" || backendRole.toUpperCase() === "MANAGER" || backendRole.toLowerCase() === "manager") {
+        mappedRole = "manager";
+      }
+
       const userData = {
         ...resJson.data,
+        role: mappedRole,
         accessToken: resJson.data?.accessToken || resJson.accessToken || resJson.token,
         tokenExpiresAt: resJson.data?.tokenExpiresAt || resJson.tokenExpiresAt,
       };
@@ -112,11 +119,8 @@ export function LoginScreen() {
             />
           </div>
           <h1 style={{ margin: '0 0 6px', color: NAVY, fontSize: '20px', fontWeight: 700, letterSpacing: '-0.3px' }}>
-            Hệ thống phân tích hỗ trợ CSKH Web ChatBot FLIC
+            Dashboard Web ChatBot CSKH FLIC
           </h1>
-          <p style={{ margin: 0, color: '#64748b', fontSize: '12px', lineHeight: 1.6 }}>
-            Bảng điều khiển trực quan hóa dữ liệu WebChat CSKH kết hợp Phân tích AI
-          </p>
         </div>
 
         {/* Form */}

@@ -63,6 +63,10 @@ export const BTN_PRIMARY_SHADOW = "0 4px 12px rgba(237, 82, 6, 0.18)";
 
 // ── Status chip palette ───────────────────────────────────────────
 export const STATUS_COLORS: Record<string, { bg: string; color: string; border: string }> = {
+  // ── AI status (canonical labels) ──────────────────────────────────
+  "AI phản hồi thất bại":                { bg: RED_50,    color: RED_TEXT,   border: RED_100    },
+  "AI phản hồi thành công":              { bg: GREEN_SOFT,color: GREEN,      border: GREEN_BORDER},
+  // ── Legacy aliases (backward compat) ──────────────────────────────
   "AI thất bại":                        { bg: RED_50,    color: RED_TEXT,   border: RED_100    },
   "Chưa xử lý":                         { bg: ORANGE_50, color: ORANGE,     border: ORANGE_200 },
   "Cần kiểm duyệt":                     { bg: AMBER_50,  color: AMBER_TEXT, border: AMBER_100  },
@@ -79,3 +83,21 @@ export const STATUS_COLORS: Record<string, { bg: string; color: string; border: 
   "Không tìm thấy dữ liệu":             { bg: ORANGE_50, color: ORANGE,     border: ORANGE_200 },
 };
 
+// ── Channel & Topic Mapping ───────────────────────────────────────
+export const CHANNEL_COLORS: Record<string, string> = {
+  "Facebook": "#ED5206",
+  "ZaloOA": "#42A5F5",
+  "Zalo OA": "#42A5F5",
+  "ZaloBusiness": "#003865",
+  "Zalo Business": "#003865",
+  "ChatWidget": "#D73C01",
+  "Chat Widget": "#D73C01",
+};
+
+export const TOPIC_COLORS: Record<string, string> = {
+  "TOEIC": "#00A3E0",
+  "MOS": "#00D2FF",
+  "Sát hạch CNTT": "#002E8D",
+  "Học Tin học": "#FFA100",
+  "Học Tiếng Anh": "#308D16",
+};

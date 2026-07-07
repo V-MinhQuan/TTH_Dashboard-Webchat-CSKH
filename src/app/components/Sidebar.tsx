@@ -71,15 +71,15 @@ export function Sidebar({ activeScreen, onNavigate, collapsed, onToggleCollapse 
         className="flex items-center justify-center px-3"
       >
         <div data-testid="sidebar-logo-frame" className="sidebar-logo-frame" style={{
-          backgroundColor: collapsed ? "transparent" : "#fff",
-          borderRadius: collapsed ? "50%" : "12px",
-          padding: collapsed ? "0" : "8px 14px",
+          backgroundColor: "transparent",
+          borderRadius: collapsed ? "50%" : "0px",
+          padding: "0",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          width: collapsed ? "46px" : "100%",
-          height: collapsed ? "46px" : "50px",
-          boxShadow: collapsed ? "none" : "0 2px 8px rgba(0,56,101,0.08)",
+          width: collapsed ? "51px" : "100%",
+          height: collapsed ? "51px" : "54px",
+          boxShadow: "none",
           overflow: "hidden",
         }}>
           {collapsed ? (
@@ -87,17 +87,25 @@ export function Sidebar({ activeScreen, onNavigate, collapsed, onToggleCollapse 
               src={flicLogoCircle}
               alt="Logo FLIC"
               style={{
-                width: "46px",
-                height: "46px",
-                objectFit: "cover",
-                borderRadius: "50%",
+                width: "51px",
+                height: "51px",
+                objectFit: "contain",
+                transform: "scale(1.15)",
+                mixBlendMode: "darken",
+                filter: "brightness(1.02)"
               }}
             />
           ) : (
             <ImageWithFallback
               src={flicLogoLong}
               alt="Logo FLIC"
-              style={{ width: "100%", height: "auto", maxHeight: "40px", objectFit: "contain" }}
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "contain",
+                mixBlendMode: "darken",
+                filter: "brightness(1.02)"
+              }}
             />
           )}
         </div>

@@ -1,0 +1,30 @@
+# Kế hoạch khắc phục triệt để lỗi xuất dữ liệu (PDF, PNG, Excel)
+
+Vấn đề chúng ta gặp phải trong những lần xuất dữ liệu vừa qua không phải do logic code viết sai, mà bắt nguồn từ **cơ chế nạp module (Module Resolution) của Vite** khi làm việc với các thư viện cũ.
+
+## Phân tích nguyên nhân gốc rễ
+Hệ thống sử dụng 3 thư viện: `html2canvas` (chụp ảnh màn hình), `jspdf` (tạo PDF) và `exceljs` (tạo file Excel). Cả 3 thư viện này đều được viết theo chuẩn CommonJS/UMD cũ. Trong khi đó, Vite là một bundler hiện đại cực kỳ khắt khe với chuẩn ES Modules (ESM).
+- **Khi nạp động (`await import(...)`)**: Vite đóng gói thư viện nhưng đôi khi làm mất hàm xuất mặc định (`default export`), trả về một Object rỗng `{}`, dẫn đến lỗi `... is not a function`.
+- **Khi nạp cứng (`import ... from ...`)**: Ở chế độ Strict Mode, Vite không tìm thấy module mặc định nên ném thẳng lỗi `SyntaxError: does not provide an export named 'default'`, khiến toàn bộ giao diện màn hình bị trắng (Crash UI).
+
+## Đề xuất phương án sửa chữa
+Tôi đưa ra 2 phương án để giải quyết triệt để vấn đề này. Bạn có thể xem xét và quyết định:
+
+> [!TIP]
+> **Phương án 1 (Khuyên dùng): Cơ chế "Nạp động + Dự phòng bằng CDN"**
+> *Chiến lược:* Vẫn nạp động thư viện lúc người dùng bấm nút Xuất (để không làm nặng web lúc mới vào). Nếu Vite bị lỗi nạp thư viện (trả về Object rỗng), hệ thống sẽ tự động bắt lỗi và tải trực tiếp thư viện đó từ máy chủ CDN toàn cầu của Cloudflare.
+> *Ưu điểm:* Đảm bảo web không bao giờ bị Crash UI. Code cực kỳ "chống đạn" (Bulletproof) với mọi môi trường. Bất chấp Vite có bị lỗi hay không, file vẫn xuất được.
+> *Nhược điểm:* Khi Vite lỗi, người dùng cần có mạng internet để tải thư viện qua CDN (file rất nhẹ, khoảng 1MB).
+
+> [!WARNING]
+> **Phương án 2: Can thiệp sâu vào cấu hình của Vite (`vite.config.ts`)**
+> *Chiến lược:* Thêm cấu hình `optimizeDeps` vào file `vite.config.ts` để ép Vite biên dịch chuẩn xác 3 thư viện này, sau đó dùng cú pháp import đặc biệt (`import * as ...`) ở đầu file `exportService.ts`.
+> *Ưu điểm:* Thư viện được gom cục bộ, không phụ thuộc mạng ngoài.
+> *Nhược điểm:* Đòi hỏi phải thay đổi cấu hình lõi của dự án (Vite). Nếu không khéo có thể ảnh hưởng đến quá trình build production sau này.
+
+## Open Questions (Câu hỏi cho bạn)
+Hiện tại tôi đã ngầm thiết lập **Phương án 1** trong lần cập nhật code ngay trước đó (nhưng bạn chưa test thử). 
+1. Bạn có muốn dùng luôn **Phương án 1** (rất an toàn, chỉ cần bạn F5 và test lại là xong)?
+2. Hay bạn muốn tôi dọn dẹp lại code và chuyển sang cấu hình theo **Phương án 2**?
+
+Hãy bấm **Proceed** hoặc trả lời để tôi biết ý kiến của bạn nhé!

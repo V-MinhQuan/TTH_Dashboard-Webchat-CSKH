@@ -340,12 +340,12 @@ class BaseRepository:
 
     def _analytics_ai_status_condition(self, ai_status=None, alias="a"):
         if ai_status == "AI trả lời thành công":
-            return f"({alias}.issueFlag IS NULL OR {alias}.issueFlag = 0)"
+            return f"(({alias}.issueFlag IS NULL OR {alias}.issueFlag = 0) AND ({alias}.issueType IS NULL OR {alias}.issueType NOT IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin')))"
         if ai_status == "AI trả lời thất bại":
-            return f"{alias}.issueFlag = 1"
+            return f"({alias}.issueFlag = 1 OR {alias}.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin'))"
         if ai_status == "Không tìm thấy dữ liệu":
-            return f"{alias}.issueFlag = 1 AND {alias}.issueType = N'Không tìm thấy dữ liệu'"
+            return f"({alias}.issueFlag = 1 OR {alias}.issueFlag IS NULL OR {alias}.issueFlag = 0) AND {alias}.issueType = N'Không tìm thấy dữ liệu'"
         if ai_status in ("AI không chắc chắn", "AI trả lời không chắc chắn"):
-            return f"{alias}.issueFlag = 1 AND {alias}.issueType IN (N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin')"
+            return f"({alias}.issueFlag = 1 OR {alias}.issueFlag IS NULL OR {alias}.issueFlag = 0) AND {alias}.issueType IN (N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin')"
         return None
 

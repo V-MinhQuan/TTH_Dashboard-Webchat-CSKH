@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, type CSSProperties } from "react";
 import { useAuth } from "../../context/AuthContext";
-import { Plus, Search, Filter, CheckCircle2, XCircle, Clock, Edit2, RotateCcw, Trash2 } from "lucide-react";
+import { Plus, Search, Filter, CheckCircle2, XCircle, Clock, Edit2, RotateCcw, Trash2, Check, Pencil, X, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { ErrorSourceBadge } from "../common/ErrorSourceBadge";
 import { getAiFailureDefinition } from "../../constants/aiFailureTaxonomy";
@@ -114,14 +114,14 @@ const tableFilterOptionStyle: CSSProperties = {
 
 const actionHeaderCellStyle: CSSProperties = {
   ...tableHeaderCellStyle,
-  width: "190px",
-  minWidth: "190px",
+  width: "100px",
+  minWidth: "100px",
 };
 
 const actionCellStyle: CSSProperties = {
   padding: "12px 14px",
-  width: "190px",
-  minWidth: "190px",
+  width: "100px",
+  minWidth: "100px",
   whiteSpace: "nowrap",
 };
 
@@ -148,8 +148,29 @@ function uniqueSortedText(values: unknown[]) {
     const text = String(value || "").trim();
     if (text) uniqueValues.add(text);
   });
-  return Array.from(uniqueValues).sort((left, right) => left.localeCompare(right, "vi-VN"));
+  return Array.from(uniqueValues).sort((a, b) => a.localeCompare(b, "vi"));
 }
+
+const ExpandableText = ({ text, maxLength = 15, isExpanded, onToggle }: { text: string, maxLength?: number, isExpanded: boolean, onToggle: () => void }) => {
+  if (!text) return null;
+  if (text.length <= maxLength) return <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block" }}>{text}</span>;
+
+  return (
+    <div 
+      onClick={onToggle}
+      title={isExpanded ? "Bấm để thu gọn" : "Bấm để xem chi tiết"}
+      style={{ 
+        cursor: "pointer",
+        display: "block",
+        whiteSpace: isExpanded ? "normal" : "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis"
+      }}
+    >
+      {isExpanded ? text : `${text.slice(0, maxLength)}...`}
+    </div>
+  );
+};
 
 function FilterableHeader({
   label,
@@ -232,6 +253,8 @@ export function SheetChatbot() {
   const [rows, setRows] = useState<SheetRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  
+  const [expandedCellId, setExpandedCellId] = useState<string | null>(null);
   const [editingRow, setEditingRow] = useState<SheetRow | null>(null);
 
   const [search, setSearch] = useState("");
@@ -494,11 +517,25 @@ export function SheetChatbot() {
                       >
                         <td style={{ padding: "12px 14px", color: "rgba(0,62,154,0.55)", whiteSpace: "nowrap" }}>{formatAddedAt(row.addedAt)}</td>
                         <td style={{ padding: "12px 14px", color: NAVY, fontWeight: 600, whiteSpace: "nowrap" }}>{row.addedBy}</td>
-                        <td className="flic-td-left" style={{ padding: "12px 14px", maxWidth: "200px" }}>
-                          <div style={{ color: NAVY, fontWeight: 500, lineHeight: 1.4, fontSize: "12px" }}>{row.question}</div>
+                        <td className="flic-td-left" style={{ padding: "12px 14px", maxWidth: "160px" }}>
+                          <div style={{ color: NAVY, fontWeight: 500, lineHeight: 1.4, fontSize: "12px", whiteSpace: "normal", wordBreak: "break-word" }}>
+                            <ExpandableText 
+                              text={row.question} 
+                              maxLength={15}
+                              isExpanded={expandedCellId === `${row.id}-q`}
+                              onToggle={() => setExpandedCellId(prev => prev === `${row.id}-q` ? null : `${row.id}-q`)}
+                            />
+                          </div>
                         </td>
-                        <td className="flic-td-left" style={{ padding: "12px 14px", maxWidth: "200px" }}>
-                          <div style={{ color: "rgba(0,62,154,0.7)", lineHeight: 1.4, fontSize: "12px" }}>{row.correctAnswer.slice(0, 80)}{row.correctAnswer.length > 80 ? "..." : ""}</div>
+                        <td className="flic-td-left" style={{ padding: "12px 14px", maxWidth: "160px" }}>
+                          <div style={{ color: "rgba(0,62,154,0.7)", lineHeight: 1.4, fontSize: "12px", whiteSpace: "normal", wordBreak: "break-word" }}>
+                            <ExpandableText 
+                              text={row.correctAnswer} 
+                              maxLength={15}
+                              isExpanded={expandedCellId === `${row.id}-a`}
+                              onToggle={() => setExpandedCellId(prev => prev === `${row.id}-a` ? null : `${row.id}-a`)}
+                            />
+                          </div>
                         </td>
                         <td style={{ padding: "12px 14px" }}>
                           <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: "#eff6ff", color: "#3b82f6", whiteSpace: "nowrap" }}>{row.topic}</span>
@@ -520,9 +557,30 @@ export function SheetChatbot() {
                             <div style={actionButtonGroupStyle}>
                               {row.status === "Chờ xử lý" || row.status === "Cần chỉnh sửa" ? (
                                 <>
-                                  <button onClick={() => updateStatus(row.id, "Đã duyệt")} style={{ ...actionButtonBaseStyle, border: "1px solid #bbf7d0", background: "#f0fdf4", color: "#16a34a" }}>Duyệt</button>
-                                  <button onClick={() => { setEditingRow(row); setShowAddModal(true); }} style={{ ...actionButtonBaseStyle, border: "1px solid #e9d5ff", background: "#faf5ff", color: "#7c3aed" }}>Chỉnh sửa</button>
-                                  <button onClick={() => updateStatus(row.id, "Từ chối")} style={{ ...actionButtonBaseStyle, border: "1px solid rgba(0,62,154,0.12)", background: "#f8fafc", color: "#64748b" }}>Từ chối</button>
+                                  <button
+                                    title="Duyệt phản hồi"
+                                    aria-label={`Duyệt phản hồi ${row.id}`}
+                                    onClick={() => updateStatus(row.id, "Đã duyệt")}
+                                    style={{ ...actionButtonBaseStyle, width: "28px", height: "24px", padding: 0, border: "1px solid #bbf7d0", background: "#f0fdf4", color: "#16a34a", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                                  >
+                                    <Check size={14} aria-hidden="true" />
+                                  </button>
+                                  <button
+                                    title="Chỉnh sửa phản hồi"
+                                    aria-label={`Chỉnh sửa phản hồi ${row.id}`}
+                                    onClick={() => { setEditingRow(row); setShowAddModal(true); }}
+                                    style={{ ...actionButtonBaseStyle, width: "28px", height: "24px", padding: 0, border: "1px solid #e9d5ff", background: "#faf5ff", color: "#7c3aed", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                                  >
+                                    <Pencil size={13} aria-hidden="true" />
+                                  </button>
+                                  <button
+                                    title="Từ chối phản hồi"
+                                    aria-label={`Từ chối phản hồi ${row.id}`}
+                                    onClick={() => updateStatus(row.id, "Từ chối")}
+                                    style={{ ...actionButtonBaseStyle, width: "28px", height: "24px", padding: 0, border: "1px solid rgba(0,62,154,0.12)", background: "#f8fafc", color: "#64748b", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                                  >
+                                    <X size={14} aria-hidden="true" />
+                                  </button>
                                 </>
                               ) : row.status === "Từ chối" ? (
                                 <>
@@ -540,7 +598,7 @@ export function SheetChatbot() {
                                     onClick={() => void handleDeleteRejected(row)}
                                     style={{ ...actionButtonBaseStyle, width: "28px", height: "24px", padding: 0, border: "1px solid #fecaca", background: "#fff1f2", color: "#dc2626", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
                                   >
-                                    <Trash2 size={13} />
+                                    <X size={14} />
                                   </button>
                                 </>
                               ) : (
@@ -550,7 +608,14 @@ export function SheetChatbot() {
                           ) : (
                             <div style={actionButtonGroupStyle}>
                               {row.status === "Cần chỉnh sửa" ? (
-                                <button onClick={() => { setEditingRow(row); setShowAddModal(true); }} style={{ ...actionButtonBaseStyle, border: `1px solid #e9d5ff`, background: "#faf5ff", color: "#7c3aed" }}>Chỉnh sửa</button>
+                                <button
+                                  aria-label={`Chỉnh sửa phản hồi ${row.id}`}
+                                  title="Chỉnh sửa phản hồi"
+                                  onClick={() => { setEditingRow(row); setShowAddModal(true); }}
+                                  style={{ ...actionButtonBaseStyle, width: "28px", height: "24px", padding: 0, border: `1px solid #e9d5ff`, background: "#faf5ff", color: "#7c3aed", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                                >
+                                  <Pencil size={13} aria-hidden="true" />
+                                </button>
                               ) : (
                                 <span style={{ fontSize: "11px", color: "rgba(0,62,154,0.4)" }}>{row.status}</span>
                               )}

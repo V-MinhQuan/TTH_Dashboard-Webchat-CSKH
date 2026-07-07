@@ -32,6 +32,8 @@ export interface FilterCatalogOption {
 export interface FilterPanelProps {
   filters: FilterValues;
   onFiltersChange: (filters: FilterValues) => void;
+  getExportData?: () => { headers: string[]; rows: string[][] };
+  isLoading?: boolean;
 }
 
 const dateRanges = ["30 ngày qua", "7 ngày qua", "Hôm nay", "Tùy chỉnh"];
@@ -123,6 +125,8 @@ const ACTIVE_FILTER_LABELS: Readonly<Record<ActiveFilterKey, string>> = Object.f
 export function FilterPanel({
   filters,
   onFiltersChange,
+  getExportData,
+  isLoading,
 }: FilterPanelProps) {
   const globalFilters = useOptionalGlobalFilters();
   const [isExpanded, setIsExpanded] = useState(true);
@@ -134,6 +138,17 @@ export function FilterPanel({
   const exportMenuRef = useRef<HTMLDivElement>(null);
   const { settings } = useSettings();
   const localFilters = globalFilters?.draftFilters ?? fallbackDraft;
+
+  const [isAnimating, setIsAnimating] = useState(false);
+  useEffect(() => {
+    if (isLoading) {
+      setIsAnimating(false);
+    } else {
+      setIsAnimating(true);
+      const timer = setTimeout(() => setIsAnimating(false), 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [isLoading]);
 
   const setLocalFilters = (updater: FilterValues | ((current: FilterValues) => FilterValues)) => {
     const next = typeof updater === "function" ? updater(localFilters) : updater;
@@ -249,6 +264,12 @@ export function FilterPanel({
   // Req #16: Multi-format export
   const handleExport = async (format: ExportFormat) => {
     setExportMenuOpen(false);
+
+    if (isLoading || isAnimating) {
+      toast.error("Vui lòng chờ biểu đồ và dữ liệu tải xong hoàn toàn trước khi xuất file.");
+      return;
+    }
+
     const target = document.querySelector<HTMLElement>('[data-export-target="true"]') || document.querySelector<HTMLElement>('[data-pdf-report="overview"]');
     if (!target) {
       toast.error("Không tìm thấy nội dung để xuất. Vui lòng kiểm tra lại màn hình hiện tại.");
@@ -267,6 +288,7 @@ export function FilterPanel({
         target,
         filenameBase: base,
         filters: globalFilters?.appliedFilters ?? filters,
+        rawData: getExportData?.(),
       });
       if (!result.hasTable) {
         toast.warning(`Không tìm thấy bảng dữ liệu để xuất ${format.toUpperCase()}.`);
@@ -275,8 +297,9 @@ export function FilterPanel({
       if (format === "pdf") toast.success("Đã xuất PDF", { description: "File đã được tải xuống." });
       else if (format === "png") toast.success("Đã xuất PNG");
       else toast.success(`Đã xuất ${format.toUpperCase()} – ${result.rowCount} dòng`);
-    } catch {
-      toast.error("Không thể xuất dữ liệu. Vui lòng thử lại.");
+    } catch (err: any) {
+      console.error(err);
+      toast.error(`Lỗi xuất dữ liệu: ${err?.message || "Không xác định"}`);
     } finally {
       setExporting(false);
     }

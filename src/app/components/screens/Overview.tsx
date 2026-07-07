@@ -735,9 +735,21 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
   const reportAlerts = urgentAlerts.slice(0, 6);
   const reportTopQuestions = topQuestions.slice(0, 5);
   const reportPriorityConversations = priorityConversations.slice(0, 6);
+  const getExportData = () => {
+    const headers = ["Chỉ số", "Giá trị"];
+    const rows = [
+      ["Tổng hội thoại", String(kpiData?.kpi?.total_conversations || 0)],
+      ["Tổng tin nhắn khách hàng", String(kpiData?.kpi?.total_messages || 0)],
+      ["Chờ xử lý", String(kpiData?.statusSummary?.pending || 0)],
+      ["Đang tư vấn", String(kpiData?.statusSummary?.open || 0)],
+      ["Hoàn thành", String(kpiData?.statusSummary?.closed || 0)],
+      ["AI phản hồi thất bại", String(kpiData?.aiFailures || 0)]
+    ];
+    return { headers, rows };
+  };
 
   return (
-    <div style={{ padding: "24px" }}>
+    <div style={{ padding: "24px" }} data-export-target="true">
       <style>{`
         @keyframes spin {
           from { transform: rotate(0deg); }
@@ -750,7 +762,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
       `}</style>
 
       {/* Bộ lọc Panel */}
-      <FilterPanel filters={filters} onFiltersChange={onFiltersChange} />
+      <FilterPanel filters={filters} onFiltersChange={onFiltersChange} getExportData={getExportData} isLoading={loading || localRefreshing || alertLoadState !== "ready" || topQuestionsLoadState !== "ready" || priorityLoadState !== "ready"} />
 
       <div aria-hidden="true" style={{ position: "absolute", left: "-12000px", top: 0, width: "1120px", pointerEvents: "none" }}>
         <section

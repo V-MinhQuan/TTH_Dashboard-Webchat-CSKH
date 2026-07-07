@@ -3,7 +3,7 @@ export const TOPIC_TAXONOMY = [
     id: "toeic",
     label: "TOEIC",
     shortLabel: "TOEIC",
-    color: "#ED5206",
+    color: "#00A3E0",
     sheetTopic: "TOEIC",
     scopeTerms: [
       "TOEIC",
@@ -29,7 +29,7 @@ export const TOPIC_TAXONOMY = [
     id: "mos",
     label: "MOS",
     shortLabel: "MOS",
-    color: "#1565C0",
+    color: "#00D2FF",
     sheetTopic: "MOS",
     scopeTerms: [
       "MOS",
@@ -56,7 +56,7 @@ export const TOPIC_TAXONOMY = [
     id: "sat_hach_cntt",
     label: "Sát hạch CNTT",
     shortLabel: "Sát hạch CNTT",
-    color: "#003865",
+    color: "#002E8D",
     sheetTopic: "Sát hạch CNTT",
     scopeTerms: [
       "Sát hạch CNTT",
@@ -92,7 +92,7 @@ export const TOPIC_TAXONOMY = [
     id: "hoc_tieng_anh",
     label: "Học Tiếng Anh",
     shortLabel: "Học Tiếng Anh",
-    color: "#F36C2E",
+    color: "#308D16",
     sheetTopic: "Học Tiếng Anh",
     scopeTerms: [
       "Học Tiếng Anh",
@@ -126,7 +126,7 @@ export const TOPIC_TAXONOMY = [
     id: "hoc_tin_hoc",
     label: "Học Tin học",
     shortLabel: "Học Tin học",
-    color: "#0288D1",
+    color: "#FFA100",
     sheetTopic: "Học Tin học",
     scopeTerms: [
       "Học Tin học",

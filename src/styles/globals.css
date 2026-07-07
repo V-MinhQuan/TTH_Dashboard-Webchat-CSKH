@@ -260,15 +260,20 @@
   justify-content: center !important;
 }
 
+.app-main table th.flic-td-left,
 .app-main table td.flic-td-left,
+.app-main [data-slot="table-head"].flic-td-left,
 .app-main [data-slot="table-cell"].flic-td-left {
   text-align: left !important;
 }
 
+.app-main table th.flic-td-left > div,
 .app-main table td.flic-td-left > div {
   text-align: left !important;
 }
 
+.app-main table th.flic-td-left > div[style*="display: flex"],
+.app-main table th.flic-td-left > div[style*="display:flex"],
 .app-main table td.flic-td-left > div[style*="display: flex"],
 .app-main table td.flic-td-left > div[style*="display:flex"] {
   justify-content: flex-start !important;

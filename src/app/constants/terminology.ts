@@ -1,4 +1,4 @@
-import type { SemanticTone } from "../styles/semanticTokens";
+﻿import type { SemanticTone } from "../styles/semanticTokens";
 import { STATUS_TONES } from "../styles/semanticTokens";
 
 export const TERMINOLOGY = {
@@ -80,9 +80,9 @@ export const TERMINOLOGY = {
     logout: "Đăng xuất",
   },
   AI: {
-    success: "AI trả lời thành công",
-    failed: "AI trả lời thất bại",
-    wrong: "AI trả lời sai",
+    success: "AI phản hồi thành công",
+    failed: "AI phản hồi thất bại",
+    wrong: "AI phản hồi sai",
     uncertain: "AI không chắc chắn",
     missing_data: "Không tìm thấy dữ liệu",
     incorrect_answer: "Câu trả lời sai",
@@ -143,8 +143,8 @@ export function getStatusDefinition(value: string): StatusDefinition | null {
 
 /**
  * Chuyển đổi giá trị trạng thái raw (từ DB/API) sang label hiển thị chuẩn.
- * Backward compatible: "Đang xử lý" → "Đang tư vấn"
- * "Đã xử lý" → "Hoàn thành"
+ * Backward compatible: "Đang xử lý" -> "Đang tư vấn"
+ * "Đã xử lý" -> "Hoàn thành"
  */
 export function getDisplayStatus(raw: string): string {
   const legacyMap: Record<string, string> = {

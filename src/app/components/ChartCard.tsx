@@ -11,16 +11,16 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 
-const NAVY      = "#003865";
-const ORANGE    = "#D73C01";   // used only for active border/icon accents
-const CTA       = "#ED5206";
-const CTA_SOFT  = "#F36C2E";
+const NAVY = "#003865";
+const ORANGE = "#D73C01";   // used only for active border/icon accents
+const CTA = "#ED5206";
+const CTA_SOFT = "#F36C2E";
 const ORANGE_50 = "#FFF4EE";  // soft active toolbar bg
-const ORANGE_200= "#FBCBB8";  // soft border
-const AMBER_50  = "#FFF7E6";
-const AMBER_TEXT= "#B7791F";
-const RED_50    = "#FFF1F1";
-const RED_TEXT  = "#B42318";
+const ORANGE_200 = "#FBCBB8";  // soft border
+const AMBER_50 = "#FFF7E6";
+const AMBER_TEXT = "#B7791F";
+const RED_50 = "#FFF1F1";
+const RED_TEXT = "#B42318";
 
 const chartTypes = [
   { id: "bar", label: "Cột đứng", icon: BarChart },
@@ -55,10 +55,65 @@ function toTableRows(data: any) {
   return [];
 }
 
+function formatColumnHeader(key: string) {
+  const labels: Record<string, string> = {
+    "ai_ok": "AI phản hồi thành công",
+    "ai_fail": "AI phản hồi thất bại",
+    "hoidthoai": "Số hội thoại",
+    "name": "Loại cảm xúc",
+    "channel": "Kênh",
+    "topic": "Chủ đề",
+    "date": "Ngày",
+    "failure": "AI phản hồi thất bại",
+    "success": "AI phản hồi thành công",
+    "uncertain": "AI không chắc chắn",
+    "total": "Tổng số",
+    "unresolved": "Chưa xử lý",
+    "negative": "Tiêu cực",
+    "processing": "Đang xử lý",
+    "completed": "Hoàn thành",
+    "positive": "Tích cực",
+    "neutral": "Trung lập",
+    "thieuDL": "Không tìm thấy dữ liệu",
+    "khongChac": "AI không chắc chắn",
+    "value": "Giá trị",
+    "Số lượng": "Số lượng",
+    "Tỷ lệ": "Tỷ lệ",
+    "Điểm số": "Điểm số",
+    "avg_time": "Thời gian phản hồi TB",
+    "hallucination": "Không tìm thấy dữ liệu",
+    "processed": "Đã xử lý",
+    "unprocessed": "Chưa xử lý",
+    "Chờ xử lý": "Chờ xử lý",
+    "Đang tư vấn": "Đang tư vấn",
+    "AI thành công": "AI thành công",
+    "AI phản hồi thất bại": "AI phản hồi thất bại",
+    "saiCauTra": "Sai câu trả lời",
+    "khongChinhXac": "Không chính xác",
+    "khongHieu": "Không hiểu câu hỏi",
+    "thieuThongTin": "Thiếu thông tin",
+    "loiTriThuc": "Lỗi tri thức",
+    "loiHeThong": "Lỗi hệ thống",
+    "ngoaiPhamVi": "Ngoài phạm vi",
+    "colorKey": "Kênh",
+    "satisfaction": "Mức độ hài lòng",
+    "color": "Màu sắc",
+    "khac": "Khác"
+  };
+  return labels[key] || key;
+}
+
 function formatCellValue(value: any) {
   if (typeof value === "number") return value.toLocaleString("vi-VN");
   if (value === null || value === undefined) return "";
-  return String(value);
+
+  // Format YYYY-MM-DD date to DD/MM/YYYY (vi-VN style)
+  const strVal = String(value);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(strVal)) {
+    const [year, month, day] = strVal.split("-");
+    return `${day}/${month}/${year}`;
+  }
+  return strVal;
 }
 
 function ChartRenderer({ type, data }: { type: string; data: any[] }) {
@@ -86,7 +141,7 @@ function ChartRenderer({ type, data }: { type: string; data: any[] }) {
           <Tooltip />
           <Legend />
           <Line type="monotone" dataKey="hoidthoai" name="Hội thoại" stroke="#00A3E0" strokeWidth={2} dot={{ r: 3 }} />
-          <Line type="monotone" dataKey="ai_ok" name="AI trả lời thành công" stroke="#00D2FF" strokeWidth={2} dot={{ r: 3 }} />
+          <Line type="monotone" dataKey="ai_ok" name="AI phản hồi thành công" stroke="#00D2FF" strokeWidth={2} dot={{ r: 3 }} />
         </ReLineChart>
       </ResponsiveContainer>
     );
@@ -101,7 +156,7 @@ function ChartRenderer({ type, data }: { type: string; data: any[] }) {
           <Tooltip />
           <Legend />
           <Area type="monotone" dataKey="hoidthoai" name="Hội thoại" stroke={NAVY} fill={`${NAVY}20`} strokeWidth={2} />
-          <Area type="monotone" dataKey="ai_ok" name="AI trả lời thành công" stroke={ORANGE} fill={`${ORANGE}20`} strokeWidth={2} />
+          <Area type="monotone" dataKey="ai_ok" name="AI phản hồi thành công" stroke={ORANGE} fill={`${ORANGE}20`} strokeWidth={2} />
         </ReAreaChart>
       </ResponsiveContainer>
     );
@@ -115,8 +170,8 @@ function ChartRenderer({ type, data }: { type: string; data: any[] }) {
           <YAxis dataKey="name" type="category" tick={{ fontSize: 11, fill: "rgba(0,59,185,0.5)" }} width={80} />
           <Tooltip />
           <Legend />
-          <Bar dataKey="hoidthoai" name="Hội thoại" fill={NAVY} radius={[0, 4, 4, 0]} />
-          <Bar dataKey="ai_ok" name="AI trả lời thành công" fill={ORANGE} radius={[0, 4, 4, 0]} />
+          <Bar maxBarSize={40} dataKey="hoidthoai" name="Hội thoại" fill={NAVY} radius={[0, 4, 4, 0]} label={editValues?.dataLabels !== false ? { position: 'right', fontSize: 10, fill: "rgba(0,59,185,0.6)" } : undefined} />
+          <Bar maxBarSize={40} dataKey="ai_ok" name="AI phản hồi thành công" fill={ORANGE} radius={[0, 4, 4, 0]} label={editValues?.dataLabels !== false ? { position: 'right', fontSize: 10, fill: "rgba(0,59,185,0.6)" } : undefined} />
         </ReBarChart>
       </ResponsiveContainer>
     );
@@ -129,8 +184,8 @@ function ChartRenderer({ type, data }: { type: string; data: any[] }) {
         <YAxis tick={{ fontSize: 11, fill: "rgba(0,59,185,0.5)" }} />
         <Tooltip />
         <Legend />
-        <Bar dataKey="hoidthoai" name="Hội thoại" fill={NAVY} radius={[4, 4, 0, 0]} />
-        <Bar dataKey="ai_ok" name="AI trả lời thành công" fill={ORANGE} radius={[4, 4, 0, 0]} />
+        <Bar maxBarSize={40} dataKey="hoidthoai" name="Hội thoại" fill={NAVY} radius={[4, 4, 0, 0]} label={editValues?.dataLabels !== false ? { position: 'top', fontSize: 10, fill: "rgba(0,59,185,0.6)" } : undefined} />
+        <Bar maxBarSize={40} dataKey="ai_ok" name="AI phản hồi thành công" fill={ORANGE} radius={[4, 4, 0, 0]} label={editValues?.dataLabels !== false ? { position: 'top', fontSize: 10, fill: "rgba(0,59,185,0.6)" } : undefined} />
       </ReBarChart>
     </ResponsiveContainer>
   );
@@ -169,7 +224,7 @@ export function ChartCard({
   headerExtra,
   baseFilters,
   axisOptions = ["Chủ đề", "Kênh", "Ngày", "Tuần", "Tháng"],
-  valueOptions = ["Số hội thoại", "AI trả lời thành công", "AI trả lời thất bại", "Điểm cảm xúc"],
+  valueOptions = ["Số hội thoại", "AI phản hồi thành công", "AI phản hồi thất bại", "Điểm cảm xúc"],
 }: ChartCardProps) {
   const [chartType, setChartType] = useState(defaultChartType);
   const [chartTitle, setChartTitle] = useState(title);
@@ -368,9 +423,14 @@ export function ChartCard({
     ? channels
     : Array.from(new Set(["Tất cả", baseFilterValues.channel].filter(Boolean)));
   const dateOptions = Array.from(new Set(["30 ngày qua", "7 ngày qua", "Hôm nay", baseFilterValues.dateRange].filter(Boolean)));
+  const technicalColumns = ["id", "key", "rawKey", "_id", "colorKey", "source"];
   const tableColumns = Array.from(
     new Set(tableRows.flatMap((row: any) => row && typeof row === "object" ? Object.keys(row) : []))
-  );
+  ).filter(col => !technicalColumns.includes(col));
+
+  const isNumericColumn = (col: string) => {
+    return tableRows.some((row: any) => typeof row[col] === "number");
+  };
 
   return (
     <div style={{ position: "relative" }}>
@@ -389,12 +449,12 @@ export function ChartCard({
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <span style={{ fontWeight: 600, fontSize: "14px", color: NAVY }}>{chartTitle}</span>
             {isEdited && (
-              <span style={{ fontSize: "10px", backgroundColor: "#f0fdf4", color: "#228A61", padding: "2px 8px", borderRadius: "20px", fontWeight: 600, border: "1px solid #bbf7d0" }}>
+              <span style={{ fontSize: "10px", backgroundColor: "#f0fdf4", color: "#228A61", padding: "2px 8px", borderRadius: "20px", fontWeight: 600, border: "1px solid #bbf7d0", whiteSpace: "nowrap" }}>
                 Đã chỉnh sửa
               </span>
             )}
             {filterActive && (
-              <span style={{ fontSize: "10px", backgroundColor: ORANGE_50, color: ORANGE, padding: "2px 8px", borderRadius: "20px", fontWeight: 600, border: `1px solid ${ORANGE_200}` }}>
+              <span style={{ fontSize: "10px", backgroundColor: ORANGE_50, color: ORANGE, padding: "2px 8px", borderRadius: "20px", fontWeight: 600, border: `1px solid ${ORANGE_200}`, whiteSpace: "nowrap" }}>
                 Đã lọc
               </span>
             )}
@@ -404,97 +464,97 @@ export function ChartCard({
               {headerExtra}
               {showToolbarActions && (
                 <div style={{ display: "flex", gap: "4px" }}>
-              {toolbarItems.map(({ icon: Icon, tooltip, active, onClick }, i) => (
-                <div key={i} style={{ position: "relative" }}>
-                  <button
-                    onClick={onClick}
-                    title={tooltip}
-                    style={{
-                      width: "30px",
-                      height: "30px",
-                      borderRadius: "8px",
-                      border: active ? `1.5px solid ${ORANGE}` : "1.5px solid transparent",
-                      backgroundColor: active ? ORANGE_50 : "#f8fafc",
-                      color: active ? ORANGE : "rgba(0,59,185,0.5)",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      transition: "all 0.2s",
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!active) {
-                        (e.currentTarget as HTMLButtonElement).style.backgroundColor = "#f0f4f8";
-                        (e.currentTarget as HTMLButtonElement).style.color = NAVY;
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!active) {
-                        (e.currentTarget as HTMLButtonElement).style.backgroundColor = "#f8fafc";
-                        (e.currentTarget as HTMLButtonElement).style.color = "rgba(0,59,185,0.5)";
-                      }
-                    }}
-                  >
-                    <Icon size={14} />
-                  </button>
-                </div>
-              ))}
+                  {toolbarItems.map(({ icon: Icon, tooltip, active, onClick }, i) => (
+                    <div key={i} style={{ position: "relative" }}>
+                      <button
+                        onClick={onClick}
+                        title={tooltip}
+                        style={{
+                          width: "30px",
+                          height: "30px",
+                          borderRadius: "8px",
+                          border: active ? `1.5px solid ${ORANGE}` : "1.5px solid transparent",
+                          backgroundColor: active ? ORANGE_50 : "#f8fafc",
+                          color: active ? ORANGE : "rgba(0,59,185,0.5)",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          transition: "all 0.2s",
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!active) {
+                            (e.currentTarget as HTMLButtonElement).style.backgroundColor = "#f0f4f8";
+                            (e.currentTarget as HTMLButtonElement).style.color = NAVY;
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!active) {
+                            (e.currentTarget as HTMLButtonElement).style.backgroundColor = "#f8fafc";
+                            (e.currentTarget as HTMLButtonElement).style.color = "rgba(0,59,185,0.5)";
+                          }
+                        }}
+                      >
+                        <Icon size={14} />
+                      </button>
+                    </div>
+                  ))}
                 </div>
               )}
 
               {/* Chart Type Popover */}
               {chartTypeOpen && (
-              <div
-                style={{
-                  position: "absolute",
-                  top: "calc(100% + 8px)",
-                  right: 0,
-                  backgroundColor: "#fff",
-                  borderRadius: "14px",
-                  boxShadow: "0 8px 32px rgba(0,59,185,0.18)",
-                  border: "1px solid rgba(0,59,185,0.1)",
-                  padding: "12px",
-                  zIndex: 200,
-                  width: "280px",
-                }}
-              >
-                <div style={{ fontSize: "12px", fontWeight: 600, color: "rgba(0,59,185,0.5)", marginBottom: "10px", letterSpacing: "0.05em" }}>CHỌN LOẠI BIỂU ĐỒ</div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px" }}>
-                  {chartTypes.map((ct) => {
-                    const Ic = ct.icon;
-                    const isSelected = chartType === ct.id;
-                    return (
-                      <button
-                        key={ct.id}
-                        onClick={() => {
-                          if (supportedChartTypes && !supportedChartTypes.includes(ct.id)) {
-                            toast.error(`Dữ liệu không phù hợp với biểu đồ ${ct.label.toLowerCase()}`);
-                            return;
-                          }
-                          setChartType(ct.id);
-                          setChartTypeOpen(false);
-                          toast.success(`Đã đổi loại biểu đồ: ${ct.label}`);
-                        }}
-                        style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          alignItems: "center",
-                          gap: "6px",
-                          padding: "10px 6px",
-                          borderRadius: "10px",
-                          border: isSelected ? `2px solid ${ORANGE}` : "2px solid transparent",
-                          backgroundColor: isSelected ? ORANGE_50 : "#f8fafc",
-                          cursor: "pointer",
-                          transition: "all 0.15s",
-                        }}
-                      >
-                        <Ic size={16} style={{ color: isSelected ? ORANGE : "rgba(0,59,185,0.6)" }} />
-                        <span style={{ fontSize: "11px", color: isSelected ? ORANGE : "rgba(0,59,185,0.7)", fontWeight: isSelected ? 600 : 400 }}>{ct.label}</span>
-                      </button>
-                    );
-                  })}
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "calc(100% + 8px)",
+                    right: 0,
+                    backgroundColor: "#fff",
+                    borderRadius: "14px",
+                    boxShadow: "0 8px 32px rgba(0,59,185,0.18)",
+                    border: "1px solid rgba(0,59,185,0.1)",
+                    padding: "12px",
+                    zIndex: 200,
+                    width: "280px",
+                  }}
+                >
+                  <div style={{ fontSize: "12px", fontWeight: 600, color: "rgba(0,59,185,0.5)", marginBottom: "10px", letterSpacing: "0.05em" }}>CHỌN LOẠI BIỂU ĐỒ</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px" }}>
+                    {chartTypes.map((ct) => {
+                      const Ic = ct.icon;
+                      const isSelected = chartType === ct.id;
+                      return (
+                        <button
+                          key={ct.id}
+                          onClick={() => {
+                            if (supportedChartTypes && !supportedChartTypes.includes(ct.id)) {
+                              toast.error(`Dữ liệu không phù hợp`);
+                              return;
+                            }
+                            setChartType(ct.id);
+                            setChartTypeOpen(false);
+                            toast.success(`Đã đổi loại biểu đồ: ${ct.label}`);
+                          }}
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            gap: "6px",
+                            padding: "10px 6px",
+                            borderRadius: "10px",
+                            border: isSelected ? `2px solid ${ORANGE}` : "2px solid transparent",
+                            backgroundColor: isSelected ? ORANGE_50 : "#f8fafc",
+                            cursor: "pointer",
+                            transition: "all 0.15s",
+                          }}
+                        >
+                          <Ic size={16} style={{ color: isSelected ? ORANGE : "rgba(0,59,185,0.6)" }} />
+                          <span style={{ fontSize: "11px", color: isSelected ? ORANGE : "rgba(0,59,185,0.7)", fontWeight: isSelected ? 600 : 400 }}>{ct.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
               )}
             </div>
           )}
@@ -613,8 +673,8 @@ export function ChartCard({
                 <thead>
                   <tr style={{ backgroundColor: "#f8fafc" }}>
                     {tableColumns.map((h) => (
-                      <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontWeight: 600, color: "rgba(0,59,185,0.6)", fontSize: "11px", letterSpacing: "0.04em", borderBottom: "1px solid rgba(0,59,185,0.08)" }}>
-                        {h}
+                      <th key={h} style={{ padding: "12px 16px", textAlign: isNumericColumn(h) ? "right" : "left", fontWeight: 600, color: "rgba(0,59,185,0.6)", fontSize: "11px", letterSpacing: "0.04em", borderBottom: "1px solid rgba(0,59,185,0.08)" }}>
+                        {formatColumnHeader(h)}
                       </th>
                     ))}
                   </tr>
@@ -626,7 +686,7 @@ export function ChartCard({
                       onMouseLeave={(e) => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "transparent"}
                     >
                       {tableColumns.map((col) => (
-                        <td key={col} style={{ padding: "12px 16px", color: typeof row[col] === "number" ? NAVY : "rgba(0,59,185,0.68)", fontWeight: typeof row[col] === "number" ? 600 : 400 }}>
+                        <td key={col} style={{ padding: "12px 16px", textAlign: isNumericColumn(col) ? "right" : "left", color: typeof row[col] === "number" ? NAVY : "rgba(0,59,185,0.68)", fontWeight: typeof row[col] === "number" ? 600 : 400 }}>
                           {formatCellValue(row[col])}
                         </td>
                       ))}

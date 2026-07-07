@@ -1,6 +1,7 @@
 import unicodedata
 import json
 import time
+import asyncio
 from datetime import datetime, timedelta
 from app.core.topic_taxonomy import (
     ORDERED_TOPIC_GROUP_IDS,

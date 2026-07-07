@@ -228,6 +228,7 @@ function MainApp() {
           <Header
             activeScreen={activeScreen}
             onNavigate={handleNavigate}
+            onResetFilters={resetFilters}
           />
         </div>
         <main

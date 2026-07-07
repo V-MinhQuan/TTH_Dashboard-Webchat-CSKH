@@ -3,13 +3,13 @@ import React, { useState, useEffect } from "react";
 class ErrorBoundary extends React.Component<any, any> {
   constructor(props: any) { super(props); this.state = { hasError: false, error: null }; }
   static getDerivedStateFromError(error: any) { return { hasError: true, error }; }
-  render() { 
+  render() {
     if (this.state.hasError) return (
       <div style={{ color: "#D73C01", padding: "20px", border: "1px solid #FBCBB8", backgroundColor: "#FFF4EE", borderRadius: "10px" }}>
         <strong>Lỗi hiển thị biểu đồ:</strong> {this.state.error?.message || "Lỗi không xác định"}
       </div>
-    ); 
-    return this.props.children; 
+    );
+    return this.props.children;
   }
 }
 import { Heart, Meh, Frown, TrendingUp, AlertTriangle, Lightbulb, Star, MessageCircle, Smile, AlertCircle, Activity, ChevronLeft, ChevronRight } from "lucide-react";
@@ -37,16 +37,16 @@ type NegLevel = "Rất tiêu cực" | "Tiêu cực" | "Hơi tiêu cực";
 
 const negLevelConfig: Record<NegLevel, { bg: string; color: string; stars: number }> = {
   "Rất tiêu cực": { bg: "#FFF1F1", color: "#B42318", stars: 3 },
-  "Tiêu cực":     { bg: "#FFF4EE", color: ORANGE,   stars: 2 },
+  "Tiêu cực": { bg: "#FFF4EE", color: ORANGE, stars: 2 },
   "Hơi tiêu cực": { bg: "#FFF7E6", color: "#B7791F", stars: 1 },
 };
 
 const statusConfig: Record<string, { bg: string; color: string }> = {
   "Chờ quản lý xác nhận": { bg: "#FFF4EE", color: ORANGE },
-  "Chờ xử lý":          { bg: "#FFF7E6", color: "#B7791F" },
-  "Đang tư vấn":          { bg: "#dbeafe", color: "#3b82f6" },
-  "Đang xử lý":          { bg: "#dbeafe", color: "#3b82f6" },
-  "Hoàn thành":           { bg: "#EAF8F1", color: "#228A61" },
+  "Chờ xử lý": { bg: "#FFF7E6", color: "#B7791F" },
+  "Đang tư vấn": { bg: "#dbeafe", color: "#3b82f6" },
+  "Đang xử lý": { bg: "#dbeafe", color: "#3b82f6" },
+  "Hoàn thành": { bg: "#EAF8F1", color: "#228A61" },
 };
 
 function getNegativeLevel(sentimentLabel: unknown, sentimentScore: unknown): NegLevel {
@@ -158,7 +158,7 @@ function SentimentLoadingState() {
 export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: SentimentAnalysisProps) {
   const [loading, setLoading] = useState(false);
   const [summaryData, setSummaryData] = useState<any>(null);
-  
+
   const [sentimentTrend, setSentimentTrend] = useState<any[]>([]);
   const [topicSentiment, setTopicSentiment] = useState<any[]>([]);
   const [donutData, setDonutData] = useState<any[]>([
@@ -221,7 +221,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
           const pos = sumRes.data.summary?.positive || 0;
           const neu = sumRes.data.summary?.neutral || 0;
           const neg = sumRes.data.summary?.negative || 0;
-          
+
           setDonutData([
             { name: "Tích cực", value: Math.round((pos / total) * 100) || 0, color: SENTIMENT_POSITIVE },
             { name: "Trung lập", value: Math.round((neu / total) * 100) || 0, color: SENTIMENT_NEUTRAL },
@@ -235,7 +235,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
             { name: "Tiêu cực", value: 0, color: SENTIMENT_NEGATIVE },
           ]);
         }
-        
+
         if (trendRes?.success) {
           const rawTrend = Array.isArray(trendRes.data) ? trendRes.data : [];
           setSentimentTrend(rawTrend.map(d => {
@@ -473,547 +473,549 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
     setRefreshKey((k) => k + 1);
   };
 
+  const getExportData = () => {
+    const headers = ["Chủ đề", "Tích cực (%)", "Trung lập (%)", "Tiêu cực (%)"];
+    const rows = topicSentiment.map(d => [
+      d.topic,
+      String(d.positive),
+      String(d.neutral),
+      String(d.negative)
+    ]);
+    return { headers, rows };
+  };
+
   return (
     <div style={{ padding: "24px", position: "relative" }}>
-      <FilterPanel filters={filters} onFiltersChange={onFiltersChange} />
+      <FilterPanel filters={filters} onFiltersChange={onFiltersChange} getExportData={getExportData} isLoading={loading} />
 
-      {loading ? (
-        <SentimentLoadingState />
-      ) : (
-        <>
-          {/* Section Label */}
-          <div style={{ marginBottom: "16px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <div style={{ width: "4px", height: "22px", borderRadius: "2px", background: `linear-gradient(180deg, ${ORANGE}, #ED5206)` }} />
-              <h2 style={{ fontSize: "16px", fontWeight: 700, color: NAVY, margin: 0 }}>Phân tích cảm xúc</h2>
+      <div data-export-target="true">
+        {loading ? (
+          <SentimentLoadingState />
+        ) : (
+          <>
+            {/* Section Label */}
+            <div style={{ marginBottom: "16px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <div style={{ width: "4px", height: "22px", borderRadius: "2px", background: `linear-gradient(180deg, ${ORANGE}, #ED5206)` }} />
+                <h2 style={{ fontSize: "16px", fontWeight: 700, color: NAVY, margin: 0 }}>Phân tích cảm xúc</h2>
+              </div>
+              <p style={{ fontSize: "12px", color: "rgba(0,56,101,0.5)", marginLeft: "14px", marginTop: "4px" }}>Theo dõi và phân tích thái độ, mức độ hài lòng của khách hàng</p>
             </div>
-            <p style={{ fontSize: "12px", color: "rgba(0,56,101,0.5)", marginLeft: "14px", marginTop: "4px" }}>Theo dõi và phân tích thái độ, mức độ hài lòng của khách hàng</p>
-          </div>
 
           {/* KPI Cards */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "16px", marginBottom: "24px" }}>
             {[
-              { icon: MessageCircle, label: "Hội thoại đã phân tích", value: analyzedConversationCount.toLocaleString("vi-VN"), color: "#003BB9", bg: "#eff6ff" },
-              { icon: Smile, label: "Tỷ lệ Tích cực", value: posPctStr, color: "#228A61", bg: "#f0fdf4" },
-              { icon: Meh, label: "Tỷ lệ Trung lập", value: neuPctStr, color: "#E5A850", bg: "#fffbeb" },
-              { icon: AlertCircle, label: "Tỷ lệ Tiêu cực", value: negPctStr, color: ORANGE, bg: "#fff5f5" },
-              { icon: Activity, label: "Mức độ hài lòng chung", value: satisfactionStr, change: `(${satisfactionPctLabel})`, color: "#a855f7", bg: "#faf5ff", trend: "Điểm trung bình (quy đổi)" },
-            ].map(({ icon: Icon, label, value, change, color, bg, trend }) => (
-              <div key={label} style={{ 
-                backgroundColor: "#fff", 
-                borderRadius: "20px", 
-                border: "1px solid rgba(0,56,101,0.08)", 
-                boxShadow: "0 2px 12px rgba(0,56,101,0.06)", 
-                padding: "20px 24px",
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "center",
-                minHeight: "140px"
-              }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-                  <div style={{ width: "42px", height: "42px", borderRadius: "14px", backgroundColor: "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    <Icon size={28} style={{ color }} strokeWidth={2} />
+              { icon: MessageCircle, label: "Hội thoại đã phân tích", value: analyzedConversationCount.toLocaleString("vi-VN"), color: "#003BB9" },
+              { icon: Smile, label: "Tỷ lệ Tích cực", value: posPctStr, color: "#228A61" },
+              { icon: Meh, label: "Tỷ lệ Trung lập", value: neuPctStr, color: "#E5A850" },
+              { icon: Frown, label: "Tỷ lệ Tiêu cực", value: negPctStr, color: "#EA4335" },
+              { icon: Activity, label: "Mức độ hài lòng chung", value: satisfactionStr, change: `Điểm TB: ${satisfactionPctLabel}`, color: "#8A2BE2" },
+            ].map(({ icon: Icon, label, value, change, color }) => (
+              <div
+                key={label}
+                style={{
+                  backgroundColor: "#fff",
+                  borderRadius: "14px",
+                  border: "1px solid rgba(0,56,101,0.08)",
+                  boxShadow: "0 2px 10px rgba(0,62,154,0.06)",
+                  padding: "14px 18px",
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "space-between",
+                  transition: "box-shadow 0.2s ease",
+                  cursor: "default",
+                  minHeight: "90px",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.boxShadow = "0 6px 20px rgba(0,62,154,0.11)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.boxShadow = "0 2px 10px rgba(0,62,154,0.06)";
+                }}
+              >
+                {/* Top row: Icon & Label (left aligned) */}
+                <div style={{ display: "flex", justifyContent: "flex-start", alignItems: "center", gap: "8px" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <Icon size={24} style={{ color }} strokeWidth={2.5} />
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
-                    <div style={{ fontSize: "13px", color: "rgba(0,56,101,0.55)", fontWeight: 500, marginBottom: "4px" }}>{label}</div>
-                    <div style={{ fontSize: "28px", fontWeight: 700, color: NAVY, lineHeight: 1.1 }}>{value}</div>
-                    
-                    {(trend || change) && (
-                      <div style={{ marginTop: "6px", display: "flex", flexDirection: "column", gap: "2px" }}>
-                        {trend && <div style={{ fontSize: "11px", color: "rgba(0,56,101,0.45)" }}>{trend}</div>}
-                        {change && <div style={{ fontSize: "11px", color: "rgba(0,56,101,0.45)", fontWeight: 500 }}>{change}</div>}
-                      </div>
-                    )}
+                  <div style={{ fontSize: "14px", fontWeight: 600, color: "rgba(0,56,101,0.6)", lineHeight: 1.2, textAlign: "left" }}>
+                    {label}
+                  </div>
+                </div>
+
+                {/* Bottom row: Value (centered) */}
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", marginTop: "6px" }}>
+                  <div style={{ fontSize: "26px", fontWeight: 700, color: NAVY, lineHeight: 1 }}>
+                    {value}
+                  </div>
+                  <div style={{ fontSize: "10px", color: "rgba(0,56,101,0.45)", fontWeight: 500, marginTop: "2px", minHeight: "12px" }}>
+                    {change || ""}
                   </div>
                 </div>
               </div>
             ))}
           </div>
 
-      {/* Charts */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginBottom: "24px" }}>
-        <ErrorBoundary>
-        <ChartCard title="Xu hướng cảm xúc theo thời gian" data={sentimentTrend} onOpenBuilder={() => onNavigate("chartbuilder")}>
-          {({ chartType, chartData, editValues }: any) => {
-            const showLegend = editValues?.legend !== false;
-            const safeData = Array.isArray(chartData) ? chartData : [];
-            
-            if (safeData.length < 14) {
-              return (
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "220px", color: "rgba(0,56,101,0.4)", fontSize: "13px", fontStyle: "italic" }}>
-                  Chưa đủ dữ liệu để dự báo. Cần tối thiểu 14 ngày lịch sử liên tục.
-                </div>
-              );
-            }
-            
-            if (chartType === "pie" || chartType === "donut") {
-              const pieData = [
-                { name: "Tích cực", value: safeData.reduce((a: number, c: any) => a + (c.positive || 0), 0), fill: SENTIMENT_POSITIVE },
-                { name: "Trung lập", value: safeData.reduce((a: number, c: any) => a + (c.neutral || 0), 0), fill: SENTIMENT_NEUTRAL },
-                { name: "Tiêu cực", value: safeData.reduce((a: number, c: any) => a + (c.negative || 0), 0), fill: SENTIMENT_NEGATIVE },
-              ];
-              return (
-                <ResponsiveContainer width="100%" height={220}>
-                  <PieChart>
-                    <Pie data={pieData} cx="50%" cy="50%" innerRadius={chartType === "pie" ? 0 : 50} outerRadius={80} dataKey="value">
-                      {pieData.map((d, i) => <Cell key={i} fill={d.fill} />)}
-                    </Pie>
-                    <Tooltip formatter={(v: any) => `${v}%`} />
-                    {showLegend && <Legend iconSize={10} />}
-                  </PieChart>
-                </ResponsiveContainer>
-              );
-            }
+          {/* Charts */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginBottom: "24px" }}>
+            <ErrorBoundary>
+              <ChartCard title="Xu hướng cảm xúc theo thời gian" data={sentimentTrend} onOpenBuilder={() => onNavigate("chartbuilder")}>
+                {({ chartType, chartData, editValues }: any) => {
+                  const showLegend = editValues?.legend !== false;
+                  const safeData = Array.isArray(chartData) ? chartData : [];
 
-            if (chartType === "bar" || chartType === "hbar") {
-              return (
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={safeData} layout={chartType === "hbar" ? "vertical" : "horizontal"}>
-                    <CartesianGrid stroke="rgba(0,56,101,0.06)" />
-                    {chartType === "hbar" ? <XAxis type="number" tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} /> : <XAxis dataKey="date" tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />}
-                    {chartType === "hbar" ? <YAxis dataKey="date" type="category" tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} width={80} /> : <YAxis tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} unit="%" />}
-                    <Tooltip formatter={(v: any) => `${v}%`} />
-                    {showLegend && <Legend iconSize={10} />}
-                    <Bar dataKey="positive" name="Tích cực" fill={SENTIMENT_POSITIVE} radius={chartType === "hbar" ? [0,4,4,0] : [4,4,0,0]} />
-                    <Bar dataKey="neutral" name="Trung lập" fill={SENTIMENT_NEUTRAL} radius={chartType === "hbar" ? [0,4,4,0] : [4,4,0,0]} />
-                    <Bar dataKey="negative" name="Tiêu cực" fill={SENTIMENT_NEGATIVE} radius={chartType === "hbar" ? [0,4,4,0] : [4,4,0,0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              );
-            }
-            
-            const ChartComponent: any = chartType === "area" ? AreaChart : LineChart;
-            const SeriesComponent: any = chartType === "area" ? Area : Line;
-            
-            return (
-              <ResponsiveContainer width="100%" height={220}>
-                <ChartComponent data={safeData}>
-                  <CartesianGrid stroke="rgba(0,56,101,0.06)" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
-                  <YAxis tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} unit="%" />
-                  <Tooltip formatter={(v: any) => `${v}%`} />
-                  {showLegend && <Legend iconSize={10} />}
-                  <SeriesComponent type="monotone" dataKey="positive" name="Tích cực" stroke={chartType === "line" ? "#00A3E0" : SENTIMENT_POSITIVE} fill={SENTIMENT_POSITIVE} strokeWidth={2} dot={{ r: 2 }} />
-                  <SeriesComponent type="monotone" dataKey="neutral" name="Trung lập" stroke={chartType === "line" ? "#00D2FF" : SENTIMENT_NEUTRAL} fill={SENTIMENT_NEUTRAL} strokeWidth={2} dot={{ r: 2 }} />
-                  <SeriesComponent type="monotone" dataKey="negative" name="Tiêu cực" stroke={chartType === "line" ? "#002E8D" : SENTIMENT_NEGATIVE} fill={SENTIMENT_NEGATIVE} strokeWidth={2} dot={{ r: 2 }} />
-                </ChartComponent>
-              </ResponsiveContainer>
-            );
-          }}
-        </ChartCard>
-        </ErrorBoundary>
-
-        <ErrorBoundary>
-        <ChartCard title="Phân bổ cảm xúc tổng quan" data={donutData} defaultChartType="donut" onOpenBuilder={() => onNavigate("chartbuilder")}>
-          {({ chartType, chartData, editValues }: any) => {
-            const showLegend = editValues?.legend !== false;
-            const safeData = Array.isArray(chartData) ? chartData : [];
-            
-            if (chartType === "pie" || chartType === "donut") {
-              return (
-                <div style={{ display: "flex", alignItems: "center", gap: "24px", height: "220px" }}>
-                  <PieChart width={200} height={200}>
-                    <Pie data={safeData} cx={100} cy={100} innerRadius={chartType === "pie" ? 0 : 55} outerRadius={85} dataKey="value">
-                      {safeData.map((d: any) => <Cell key={`sentiment-donut-${d.name}`} fill={d.color || "#003BB9"} />)}
-                    </Pie>
-                    <Tooltip formatter={(v: any) => `${v}%`} />
-                  </PieChart>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                    {showLegend && safeData.map((item: any, i: number) => (
-                      <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", minWidth: "140px" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                          <div style={{ width: "10px", height: "10px", borderRadius: "50%", backgroundColor: item.color || "#003BB9" }} />
-                          <span style={{ fontSize: "13px", color: "rgba(0,56,101,0.6)" }}>{item.name}</span>
-                        </div>
-                        <span style={{ fontSize: "13px", fontWeight: 600, color: "#003865" }}>{item.value}%</span>
+                  if (safeData.length < 14) {
+                    return (
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "220px", color: "rgba(0,56,101,0.4)", fontSize: "13px", fontStyle: "italic" }}>
+                        Chưa đủ dữ liệu để dự báo. Cần tối thiểu 14 ngày lịch sử liên tục.
                       </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            }
-            
-            if (chartType === "bar" || chartType === "hbar") {
-              return (
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={safeData} layout={chartType === "hbar" ? "vertical" : "horizontal"} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                    <CartesianGrid stroke="rgba(0,56,101,0.06)" />
-                    {chartType === "hbar" ? <XAxis type="number" /> : <XAxis dataKey="name" tick={{ fontSize: 11 }} />}
-                    {chartType === "hbar" ? <YAxis dataKey="name" type="category" width={80} tick={{ fontSize: 11 }} /> : <YAxis />}
-                    <Tooltip formatter={(v: any) => `${v}%`} />
-                    {showLegend && <Legend />}
-                    <Bar dataKey="value" name="Tỷ lệ">
-                      {safeData.map((d: any, i: number) => <Cell key={i} fill={d.color || "#003BB9"} />)}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              );
-            }
-            
-            const ChartComponent: any = chartType === "area" ? AreaChart : LineChart;
-            const SeriesComponent: any = chartType === "area" ? Area : Line;
-            
-            return (
-              <ResponsiveContainer width="100%" height={220}>
-                <ChartComponent data={safeData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                  <CartesianGrid stroke="rgba(0,56,101,0.06)" />
-                  <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                  <YAxis />
-                  <Tooltip formatter={(v: any) => `${v}%`} />
-                  {showLegend && <Legend />}
-                  <SeriesComponent type="monotone" dataKey="value" name="Tỷ lệ" stroke="#003BB9" fill="#003BB9" strokeWidth={2} />
-                </ChartComponent>
-              </ResponsiveContainer>
-            );
-          }}
-        </ChartCard>
-        </ErrorBoundary>
-      </div>
+                    );
+                  }
 
-      {/* Stacked by Topic */}
-      <div style={{ marginBottom: "24px" }}>
-        <ErrorBoundary>
-        <ChartCard title="Cảm xúc theo chủ đề" data={dynamicTopicData} onOpenBuilder={() => onNavigate("chartbuilder")}>
-          {({ chartType, chartData, editValues }: any) => {
-            const showLegend = editValues?.legend !== false;
-            const safeData = Array.isArray(chartData) ? chartData : [];
+                  if (chartType === "pie" || chartType === "donut") {
+                    const pieData = [
+                      { name: "Tích cực", value: safeData.reduce((a: number, c: any) => a + (c.positive || 0), 0), fill: SENTIMENT_POSITIVE },
+                      { name: "Trung lập", value: safeData.reduce((a: number, c: any) => a + (c.neutral || 0), 0), fill: SENTIMENT_NEUTRAL },
+                      { name: "Tiêu cực", value: safeData.reduce((a: number, c: any) => a + (c.negative || 0), 0), fill: SENTIMENT_NEGATIVE },
+                    ];
+                    return (
+                      <ResponsiveContainer width="100%" height={220}>
+                        <PieChart>
+                          <Pie data={pieData} cx="50%" cy="50%" innerRadius={chartType === "pie" ? 0 : 50} outerRadius={80} dataKey="value">
+                            {pieData.map((d, i) => <Cell key={i} fill={d.fill} />)}
+                          </Pie>
+                          <Tooltip formatter={(v: any) => `${v}%`} />
+                          {showLegend && <Legend iconSize={10} />}
+                        </PieChart>
+                      </ResponsiveContainer>
+                    );
+                  }
 
-            // Hiển thị empty state nếu không có dữ liệu từ API
-            if (safeData.length === 0) {
-              return (
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "220px", color: "rgba(0,56,101,0.4)", fontSize: "13px", fontStyle: "italic" }}>
-                  Chưa có dữ liệu phân tích chủ đề. Dữ liệu sẽ hiển thị khi ML service phân tích xong tin nhắn.
-                </div>
-              );
-            }
+                  if (chartType === "bar" || chartType === "hbar") {
+                    return (
+                      <ResponsiveContainer width="100%" height={220}>
+                        <BarChart data={safeData} layout={chartType === "hbar" ? "vertical" : "horizontal"}>
+                          <CartesianGrid stroke="rgba(0,56,101,0.06)" />
+                          {chartType === "hbar" ? <XAxis type="number" tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} /> : <XAxis dataKey="date" tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />}
+                          {chartType === "hbar" ? <YAxis dataKey="date" type="category" tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} width={80} /> : <YAxis tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} unit="%" />}
+                          <Tooltip formatter={(v: any) => `${v}%`} />
+                          {showLegend && <Legend iconSize={10} />}
+                          <Bar dataKey="positive" name="Tích cực" fill={SENTIMENT_POSITIVE} radius={chartType === "hbar" ? [0, 4, 4, 0] : [4, 4, 0, 0]} />
+                          <Bar dataKey="neutral" name="Trung lập" fill={SENTIMENT_NEUTRAL} radius={chartType === "hbar" ? [0, 4, 4, 0] : [4, 4, 0, 0]} />
+                          <Bar dataKey="negative" name="Tiêu cực" fill={SENTIMENT_NEGATIVE} radius={chartType === "hbar" ? [0, 4, 4, 0] : [4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    );
+                  }
 
-            if (chartType === "pie" || chartType === "donut") {
-              const pieData = safeData.map((d: any) => ({
-                 name: d.topic,
-                 value: (d.positive || 0) + (d.neutral || 0) + (d.negative || 0)
-              }));
-              return (
-                <ResponsiveContainer width="100%" height={260}>
-                  <PieChart>
-                    <Pie data={pieData} cx="50%" cy="50%" innerRadius={chartType === "pie" ? 0 : 60} outerRadius={90} dataKey="value" label={showLegend ? { fontSize: 11, fill: "rgba(0,56,101,0.6)" } : false}>
-                      {pieData.map((d, i) => <Cell key={i} fill={SENTIMENT_TOPIC_COLORS[i % SENTIMENT_TOPIC_COLORS.length]} />)}
-                    </Pie>
-                    <Tooltip />
-                    {showLegend && <Legend iconSize={10} />}
-                  </PieChart>
-                </ResponsiveContainer>
-              );
-            }
-            
-            if (chartType === "bar" || chartType === "hbar") {
-              return (
-                <ResponsiveContainer width="100%" height={260}>
-                  <BarChart data={safeData} margin={{ top: 20, right: 20, left: -20, bottom: 20 }} layout={chartType === "hbar" ? "vertical" : "horizontal"}>
-                    <CartesianGrid stroke="rgba(0,56,101,0.06)" vertical={chartType !== "hbar"} horizontal={chartType === "hbar"} />
-                    {chartType === "hbar" ? <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "rgba(0,56,101,0.4)" }} tickFormatter={(v) => `${v}%`} /> : <XAxis dataKey="topic" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "rgba(0,56,101,0.4)" }} dy={10} />}
-                    {chartType === "hbar" ? <YAxis dataKey="topic" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "rgba(0,56,101,0.4)" }} width={100} /> : <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "rgba(0,56,101,0.4)" }} tickFormatter={(v) => `${v}%`} />}
-                    <Tooltip cursor={{ fill: "rgba(0,56,101,0.02)" }} formatter={(v: any) => `${v}%`} />
-                    {showLegend && <Legend iconSize={8} iconType="square" wrapperStyle={{ bottom: 0 }} />}
-                    <Bar dataKey="positive" name="Tích cực" stackId="a" fill={SENTIMENT_POSITIVE} />
-                    <Bar dataKey="neutral" name="Trung lập" stackId="a" fill={SENTIMENT_NEUTRAL} />
-                    <Bar dataKey="negative" name="Tiêu cực" stackId="a" fill={SENTIMENT_NEGATIVE} radius={chartType === "hbar" ? [0,4,4,0] : [4,4,0,0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              );
-            }
-            
-            const ChartComponent: any = chartType === "area" ? AreaChart : LineChart;
-            const SeriesComponent: any = chartType === "area" ? Area : Line;
-            
-            return (
-              <ResponsiveContainer width="100%" height={260}>
-                <ChartComponent data={safeData} margin={{ top: 20, right: 20, left: -20, bottom: 20 }}>
-                  <CartesianGrid stroke="rgba(0,56,101,0.06)" vertical={false} />
-                  <XAxis dataKey="topic" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "rgba(0,56,101,0.4)" }} dy={10} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "rgba(0,56,101,0.4)" }} tickFormatter={(v) => `${v}%`} />
-                  <Tooltip cursor={{ fill: "rgba(0,56,101,0.02)" }} formatter={(v: any) => `${v}%`} />
-                  {showLegend && <Legend iconSize={8} iconType="square" wrapperStyle={{ bottom: 0 }} />}
-                  <SeriesComponent type="monotone" dataKey="positive" name="Tích cực" stroke={chartType === "line" ? "#00A3E0" : SENTIMENT_POSITIVE} fill={SENTIMENT_POSITIVE} strokeWidth={2} />
-                  <SeriesComponent type="monotone" dataKey="neutral" name="Trung lập" stroke={chartType === "line" ? "#00D2FF" : SENTIMENT_NEUTRAL} fill={SENTIMENT_NEUTRAL} strokeWidth={2} />
-                  <SeriesComponent type="monotone" dataKey="negative" name="Tiêu cực" stroke={chartType === "line" ? "#002E8D" : SENTIMENT_NEGATIVE} fill={SENTIMENT_NEGATIVE} strokeWidth={2} />
-                </ChartComponent>
-              </ResponsiveContainer>
-            );
-          }}
-        </ChartCard>
-        </ErrorBoundary>
-      </div>
+                  const ChartComponent: any = chartType === "area" ? AreaChart : LineChart;
+                  const SeriesComponent: any = chartType === "area" ? Area : Line;
 
-      {/* Positive Conversations Table */}
-      <div style={{ backgroundColor: "#fff", borderRadius: "20px", border: "1px solid rgba(0,56,101,0.08)", boxShadow: "0 2px 12px rgba(0,56,101,0.06)", overflow: "hidden", marginBottom: "24px" }}>
-        <div style={{ padding: "18px 24px", borderBottom: "1px solid rgba(0,56,101,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <Smile size={16} style={{ color: "#228A61" }} />
-            <h3 style={{ color: NAVY, fontSize: "14px", fontWeight: 700, margin: 0 }}>Hội thoại có cảm xúc tích cực</h3>
-            <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "20px", backgroundColor: "#ecfdf3", color: "#16794f", fontWeight: 600 }}>{positiveTotal} hội thoại</span>
+                  return (
+                    <ResponsiveContainer width="100%" height={220}>
+                      <ChartComponent data={safeData}>
+                        <CartesianGrid stroke="rgba(0,56,101,0.06)" />
+                        <XAxis dataKey="date" tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
+                        <YAxis tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} unit="%" />
+                        <Tooltip formatter={(v: any) => `${v}%`} />
+                        {showLegend && <Legend iconSize={10} />}
+                        <SeriesComponent type="monotone" dataKey="positive" name="Tích cực" stroke={chartType === "line" ? "#00A3E0" : SENTIMENT_POSITIVE} fill={SENTIMENT_POSITIVE} strokeWidth={2} dot={{ r: 2 }} />
+                        <SeriesComponent type="monotone" dataKey="neutral" name="Trung lập" stroke={chartType === "line" ? "#00D2FF" : SENTIMENT_NEUTRAL} fill={SENTIMENT_NEUTRAL} strokeWidth={2} dot={{ r: 2 }} />
+                        <SeriesComponent type="monotone" dataKey="negative" name="Tiêu cực" stroke={chartType === "line" ? "#002E8D" : SENTIMENT_NEGATIVE} fill={SENTIMENT_NEGATIVE} strokeWidth={2} dot={{ r: 2 }} />
+                      </ChartComponent>
+                    </ResponsiveContainer>
+                  );
+                }}
+              </ChartCard>
+            </ErrorBoundary>
+
+            <ErrorBoundary>
+              <ChartCard title="Phân bổ cảm xúc tổng quan" data={donutData} defaultChartType="donut" onOpenBuilder={() => onNavigate("chartbuilder")}>
+                {({ chartType, chartData, editValues }: any) => {
+                  const showLegend = editValues?.legend !== false;
+                  const safeData = Array.isArray(chartData) ? chartData : [];
+
+                  if (chartType === "pie" || chartType === "donut") {
+                    return (
+                      <div style={{ display: "flex", alignItems: "center", gap: "24px", height: "220px" }}>
+                        <PieChart width={200} height={200}>
+                          <Pie data={safeData} cx={100} cy={100} innerRadius={chartType === "pie" ? 0 : 55} outerRadius={85} dataKey="value">
+                            {safeData.map((d: any) => <Cell key={`sentiment-donut-${d.name}`} fill={d.color || "#003BB9"} />)}
+                          </Pie>
+                          <Tooltip formatter={(v: any) => `${v}%`} />
+                        </PieChart>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                          {showLegend && safeData.map((item: any, i: number) => (
+                            <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", minWidth: "140px" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                <div style={{ width: "10px", height: "10px", borderRadius: "50%", backgroundColor: item.color || "#003BB9" }} />
+                                <span style={{ fontSize: "13px", color: "rgba(0,56,101,0.6)" }}>{item.name}</span>
+                              </div>
+                              <span style={{ fontSize: "13px", fontWeight: 600, color: "#003865" }}>{item.value}%</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  if (chartType === "bar" || chartType === "hbar") {
+                    return (
+                      <ResponsiveContainer width="100%" height={220}>
+                        <BarChart data={safeData} layout={chartType === "hbar" ? "vertical" : "horizontal"} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                          <CartesianGrid stroke="rgba(0,56,101,0.06)" />
+                          {chartType === "hbar" ? <XAxis type="number" /> : <XAxis dataKey="name" tick={{ fontSize: 11 }} />}
+                          {chartType === "hbar" ? <YAxis dataKey="name" type="category" width={80} tick={{ fontSize: 11 }} /> : <YAxis />}
+                          <Tooltip formatter={(v: any) => `${v}%`} />
+                          {showLegend && <Legend />}
+                          <Bar dataKey="value" name="Tỷ lệ">
+                            {safeData.map((d: any, i: number) => <Cell key={i} fill={d.color || "#003BB9"} />)}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    );
+                  }
+
+                  const ChartComponent: any = chartType === "area" ? AreaChart : LineChart;
+                  const SeriesComponent: any = chartType === "area" ? Area : Line;
+
+                  return (
+                    <ResponsiveContainer width="100%" height={220}>
+                      <ChartComponent data={safeData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                        <CartesianGrid stroke="rgba(0,56,101,0.06)" />
+                        <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                        <YAxis />
+                        <Tooltip formatter={(v: any) => `${v}%`} />
+                        {showLegend && <Legend />}
+                        <SeriesComponent type="monotone" dataKey="value" name="Tỷ lệ" stroke="#003BB9" fill="#003BB9" strokeWidth={2} />
+                      </ChartComponent>
+                    </ResponsiveContainer>
+                  );
+                }}
+              </ChartCard>
+            </ErrorBoundary>
           </div>
-          <span style={{ fontSize: "11px", color: "rgba(0,56,101,0.55)" }}>Quy tắc: cảm xúc của bản phân tích mới nhất trong mỗi hội thoại</span>
-        </div>
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
-            <thead><tr style={{ backgroundColor: "#f8fafc" }}>
-              {["Khách hàng", "Nội dung đại diện", "Chủ đề", "Kênh", "Cảm xúc", "Thời gian", "Điểm"].map((header) => (
-                <th key={header} style={{ padding: "10px 14px", textAlign: "left", fontWeight: 600, color: "rgba(0,56,101,0.5)", fontSize: "10px", letterSpacing: "0.04em", borderBottom: "1px solid rgba(0,56,101,0.06)", whiteSpace: "nowrap" }}>{header}</th>
-              ))}
-            </tr></thead>
-            <tbody>
-              {positiveLoading && <tr><td colSpan={7} style={{ padding: "22px", textAlign: "center", color: "rgba(0,56,101,0.55)" }}>Đang tải trang {positivePage}...</td></tr>}
-              {!positiveLoading && positiveError && <tr><td colSpan={7} style={{ padding: "22px", textAlign: "center", color: "#b42318" }}>{positiveError}</td></tr>}
-              {!positiveLoading && !positiveError && positiveConversations.length === 0 && <tr><td colSpan={7} style={{ padding: "22px", textAlign: "center", color: "rgba(0,56,101,0.55)" }}>Chưa có dữ liệu hội thoại tích cực trong khoảng lọc.</td></tr>}
-              {!positiveLoading && !positiveError && positiveConversations.map((conversation) => (
-                <tr
-                  key={conversation.id}
-                  style={{ borderBottom: "1px solid rgba(0,56,101,0.04)" }}
-                  onMouseEnter={(e) => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "#fafbfc"}
-                  onMouseLeave={(e) => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "transparent"}
-                >
-                  <td style={{ padding: "12px 14px" }}>
-                    <div style={{ fontWeight: 600, color: NAVY, fontSize: "12px" }}>{conversation.customer}</div>
-                    {conversation.customerReference && <div style={{ fontSize: "10px", color: "rgba(0,56,101,0.4)", fontFamily: "monospace", marginTop: "2px" }}>{conversation.customerReference}</div>}
-                  </td>
-                  <td className="flic-td-left" style={{ padding: "12px 14px", maxWidth: "240px" }}>
-                    <div style={{ fontSize: "12px", color: "rgba(0,56,101,0.7)", lineHeight: 1.5, fontStyle: "italic" }}>"{conversation.content}"</div>
-                  </td>
-                  <td style={{ padding: "12px 14px", maxWidth: "150px" }}>
-                    <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: "#eff6ff", color: "#3b82f6", display: "inline-block", wordBreak: "break-word" }}>{conversation.topic}</span>
-                  </td>
-                  <td style={{ padding: "12px 14px", color: "rgba(0,56,101,0.65)", whiteSpace: "nowrap" }}>{conversation.channel}</td>
-                  <td style={{ padding: "12px 14px" }}>
-                    <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: "#ecfdf3", color: "#16794f", fontWeight: 600, whiteSpace: "nowrap", display: "inline-block" }}>{conversation.label}</span>
-                  </td>
-                  <td style={{ padding: "12px 14px", color: "rgba(0,56,101,0.65)", whiteSpace: "nowrap" }}>{conversation.messageAt ? new Date(conversation.messageAt).toLocaleString("vi-VN") : "Chưa xác định"}</td>
-                  <td style={{ padding: "12px 14px", color: NAVY, fontWeight: 600, whiteSpace: "nowrap" }}>{conversation.score === null ? "Chưa có dữ liệu" : conversation.score.toFixed(2)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "10px", padding: "12px 18px" }}>
-          <button
-            type="button"
-            aria-label="Trang trước"
-            title="Trang trước"
-            disabled={positiveLoading || positivePage <= 1}
-            onClick={() => setPositivePage((page) => Math.max(1, page - 1))}
-            style={{ width: "32px", height: "32px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.14)", background: "#fff", color: NAVY, display: "grid", placeItems: "center", cursor: positiveLoading || positivePage <= 1 ? "not-allowed" : "pointer", opacity: positiveLoading || positivePage <= 1 ? 0.45 : 1 }}
-          >
-            <ChevronLeft size={17} aria-hidden="true" />
-          </button>
-          <span style={{ fontSize: "12px", color: NAVY }}>Trang {positivePage}/{Math.max(1, Math.ceil(positiveTotal / 5))}</span>
-          <button
-            type="button"
-            aria-label="Trang sau"
-            title="Trang sau"
-            disabled={positiveLoading || positivePage * 5 >= positiveTotal}
-            onClick={() => setPositivePage((page) => page + 1)}
-            style={{ width: "32px", height: "32px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.14)", background: "#fff", color: NAVY, display: "grid", placeItems: "center", cursor: positiveLoading || positivePage * 5 >= positiveTotal ? "not-allowed" : "pointer", opacity: positiveLoading || positivePage * 5 >= positiveTotal ? 0.45 : 1 }}
-          >
-            <ChevronRight size={17} aria-hidden="true" />
-          </button>
-        </div>
-      </div>
 
-      {/* Negative Conversations Table */}
-      <div style={{ backgroundColor: "#fff", borderRadius: "20px", border: "1px solid rgba(0,56,101,0.08)", boxShadow: "0 2px 12px rgba(0,56,101,0.06)", overflow: "hidden", marginBottom: "24px" }}>
-        <div style={{ padding: "18px 24px", borderBottom: "1px solid rgba(0,56,101,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <Frown size={16} style={{ color: ORANGE }} />
-            <h3 style={{ color: NAVY, fontSize: "14px", fontWeight: 700, margin: 0 }}>Hội thoại có cảm xúc tiêu cực cần xử lý</h3>
-            <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "20px", backgroundColor: "#FFF4EE", border: "1px solid #FBCBB8", color: ORANGE, fontWeight: 600 }}>{negativeConversations.length} hội thoại</span>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <button
-              aria-label="Làm mới danh sách hội thoại tiêu cực"
-              onClick={refreshNegConversations}
-              style={{ padding: "6px 14px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.15)", background: "#fff", color: NAVY, cursor: "pointer", fontSize: "12px", fontWeight: 600 }}
-            >
-              Làm mới
-            </button>
-          </div>
-          {selectedConvIds.size > 0 && (
-            <div role="toolbar" aria-label="Thao tác hàng loạt" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <span style={{ fontSize: "12px", color: NAVY, fontWeight: 600 }}>Đã chọn {selectedConvIds.size} hội thoại</span>
-              <button
-                onClick={() => setShowBulkConfirm(true)}
-                style={{ padding: "6px 14px", borderRadius: "8px", border: "none", background: `linear-gradient(135deg, #ED5206 0%, #F36C2E 100%)`, color: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 600, boxShadow: "0 4px 12px rgba(237,82,6,0.18)" }}
+          {/* Stacked by Topic */}
+          <div style={{ marginBottom: "24px" }}>
+            <ErrorBoundary>
+              <ChartCard 
+                title="Cảm xúc theo chủ đề" 
+                data={dynamicTopicData} 
+                onOpenBuilder={() => onNavigate("chartbuilder")}
+                supportedChartTypes={["bar", "hbar"]}
               >
-                Đánh dấu đã xử lý {selectedConvIds.size} hội thoại
+                {({ chartType, chartData, editValues }: any) => {
+                  const showLegend = editValues?.legend !== false;
+                  const safeData = Array.isArray(chartData) ? chartData : [];
+
+                  // Hiển thị empty state nếu không có dữ liệu từ API
+                  if (safeData.length === 0) {
+                    return (
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "220px", color: "rgba(0,56,101,0.4)", fontSize: "13px", fontStyle: "italic" }}>
+                        Chưa có dữ liệu phân tích chủ đề. Dữ liệu sẽ hiển thị khi ML service phân tích xong tin nhắn.
+                      </div>
+                    );
+                  }
+
+                  if (chartType === "bar" || chartType === "hbar") {
+                    return (
+                      <ResponsiveContainer width="100%" height={260}>
+                        <BarChart data={safeData} margin={{ top: 20, right: 20, left: -20, bottom: 20 }} layout={chartType === "hbar" ? "vertical" : "horizontal"}>
+                          <CartesianGrid stroke="rgba(0,56,101,0.06)" vertical={chartType !== "hbar"} horizontal={chartType === "hbar"} />
+                          {chartType === "hbar" ? <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "rgba(0,56,101,0.4)" }} tickFormatter={(v) => `${v}%`} /> : <XAxis dataKey="topic" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "rgba(0,56,101,0.4)" }} dy={10} />}
+                          {chartType === "hbar" ? <YAxis dataKey="topic" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "rgba(0,56,101,0.4)" }} width={100} /> : <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "rgba(0,56,101,0.4)" }} tickFormatter={(v) => `${v}%`} />}
+                          <Tooltip cursor={{ fill: "rgba(0,56,101,0.02)" }} formatter={(v: any) => `${v}%`} />
+                          {showLegend && <Legend iconSize={8} iconType="square" wrapperStyle={{ bottom: 0 }} />}
+                          <Bar maxBarSize={40} dataKey="positive" name="Tích cực" stackId="a" fill={SENTIMENT_POSITIVE} />
+                          <Bar maxBarSize={40} dataKey="neutral" name="Trung lập" stackId="a" fill={SENTIMENT_NEUTRAL} />
+                          <Bar maxBarSize={40} dataKey="negative" name="Tiêu cực" stackId="a" fill={SENTIMENT_NEGATIVE} radius={chartType === "hbar" ? [0, 4, 4, 0] : [4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    );
+                  }
+
+                  return (
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "260px", color: "rgba(0,56,101,0.4)", fontSize: "13px", fontStyle: "italic", textAlign: "center", padding: "0 20px" }}>
+                      Dữ liệu không phù hợp để hiển thị dưới dạng biểu đồ này. Vui lòng chọn biểu đồ cột đứng hoặc biểu đồ cột ngang.
+                    </div>
+                  );
+                }}
+              </ChartCard>
+            </ErrorBoundary>
+          </div>
+
+          {/* Positive Conversations Table */}
+          <div style={{ backgroundColor: "#fff", borderRadius: "20px", border: "1px solid rgba(0,56,101,0.08)", boxShadow: "0 2px 12px rgba(0,56,101,0.06)", overflow: "hidden", marginBottom: "24px" }}>
+            <div style={{ padding: "18px 24px", borderBottom: "1px solid rgba(0,56,101,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <Smile size={16} style={{ color: "#228A61" }} />
+                <h3 style={{ color: NAVY, fontSize: "14px", fontWeight: 700, margin: 0 }}>Hội thoại có cảm xúc tích cực</h3>
+                <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "20px", backgroundColor: "#ecfdf3", color: "#16794f", fontWeight: 600 }}>{positiveTotal} hội thoại</span>
+              </div>
+              <span style={{ fontSize: "11px", color: "rgba(0,56,101,0.55)" }}>Quy tắc: cảm xúc của bản phân tích mới nhất trong mỗi hội thoại</span>
+            </div>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+                <thead><tr style={{ backgroundColor: "#f8fafc" }}>
+                  {["Khách hàng", "Nội dung đại diện", "Chủ đề", "Kênh", "Cảm xúc", "Thời gian", "Điểm"].map((header) => (
+                    <th key={header} style={{ padding: "10px 14px", textAlign: "left", fontWeight: 600, color: "rgba(0,56,101,0.5)", fontSize: "10px", letterSpacing: "0.04em", borderBottom: "1px solid rgba(0,56,101,0.06)", whiteSpace: "nowrap" }}>{header}</th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {positiveLoading && <tr><td colSpan={7} style={{ padding: "22px", textAlign: "center", color: "rgba(0,56,101,0.55)" }}>Đang tải trang {positivePage}...</td></tr>}
+                  {!positiveLoading && positiveError && <tr><td colSpan={7} style={{ padding: "22px", textAlign: "center", color: "#b42318" }}>{positiveError}</td></tr>}
+                  {!positiveLoading && !positiveError && positiveConversations.length === 0 && <tr><td colSpan={7} style={{ padding: "22px", textAlign: "center", color: "rgba(0,56,101,0.55)" }}>Chưa có dữ liệu hội thoại tích cực trong khoảng lọc.</td></tr>}
+                  {!positiveLoading && !positiveError && positiveConversations.map((conversation) => (
+                    <tr
+                      key={conversation.id}
+                      style={{ borderBottom: "1px solid rgba(0,56,101,0.04)" }}
+                      onMouseEnter={(e) => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "#fafbfc"}
+                      onMouseLeave={(e) => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "transparent"}
+                    >
+                      <td style={{ padding: "12px 14px" }}>
+                        <div style={{ fontWeight: 600, color: NAVY, fontSize: "12px" }}>{conversation.customer}</div>
+                        {conversation.customerReference && <div style={{ fontSize: "10px", color: "rgba(0,56,101,0.4)", fontFamily: "monospace", marginTop: "2px" }}>{conversation.customerReference}</div>}
+                      </td>
+                      <td className="flic-td-left" style={{ padding: "12px 14px", maxWidth: "240px" }}>
+                        <div style={{ fontSize: "12px", color: "rgba(0,56,101,0.7)", lineHeight: 1.5, fontStyle: "italic" }}>"{conversation.content}"</div>
+                      </td>
+                      <td style={{ padding: "12px 14px", maxWidth: "150px" }}>
+                        <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: "#eff6ff", color: "#3b82f6", display: "inline-block", wordBreak: "break-word" }}>{conversation.topic}</span>
+                      </td>
+                      <td style={{ padding: "12px 14px", color: "rgba(0,56,101,0.65)", whiteSpace: "nowrap" }}>{conversation.channel}</td>
+                      <td style={{ padding: "12px 14px" }}>
+                        <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: "#ecfdf3", color: "#16794f", fontWeight: 600, whiteSpace: "nowrap", display: "inline-block" }}>{conversation.label}</span>
+                      </td>
+                      <td style={{ padding: "12px 14px", color: "rgba(0,56,101,0.65)", whiteSpace: "nowrap" }}>{conversation.messageAt ? new Date(conversation.messageAt).toLocaleString("vi-VN") : "Chưa xác định"}</td>
+                      <td style={{ padding: "12px 14px", color: NAVY, fontWeight: 600, whiteSpace: "nowrap" }}>{conversation.score === null ? "Chưa có dữ liệu" : conversation.score.toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "10px", padding: "12px 18px" }}>
+              <button
+                type="button"
+                aria-label="Trang trước"
+                title="Trang trước"
+                disabled={positiveLoading || positivePage <= 1}
+                onClick={() => setPositivePage((page) => Math.max(1, page - 1))}
+                style={{ width: "32px", height: "32px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.14)", background: "#fff", color: NAVY, display: "grid", placeItems: "center", cursor: positiveLoading || positivePage <= 1 ? "not-allowed" : "pointer", opacity: positiveLoading || positivePage <= 1 ? 0.45 : 1 }}
+              >
+                <ChevronLeft size={17} aria-hidden="true" />
+              </button>
+              <span style={{ fontSize: "12px", color: NAVY }}>Trang {positivePage}/{Math.max(1, Math.ceil(positiveTotal / 5))}</span>
+              <button
+                type="button"
+                aria-label="Trang sau"
+                title="Trang sau"
+                disabled={positiveLoading || positivePage * 5 >= positiveTotal}
+                onClick={() => setPositivePage((page) => page + 1)}
+                style={{ width: "32px", height: "32px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.14)", background: "#fff", color: NAVY, display: "grid", placeItems: "center", cursor: positiveLoading || positivePage * 5 >= positiveTotal ? "not-allowed" : "pointer", opacity: positiveLoading || positivePage * 5 >= positiveTotal ? 0.45 : 1 }}
+              >
+                <ChevronRight size={17} aria-hidden="true" />
               </button>
             </div>
-          )}
-        </div>
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
-            <thead>
-              <tr style={{ backgroundColor: "#f8fafc" }}>
-                <th style={{ padding: "10px 12px", width: "40px", textAlign: "center", borderBottom: "1px solid rgba(0,56,101,0.06)" }}>
-                  <input
-                    type="checkbox"
-                    aria-label="Chọn tất cả hội thoại trên trang"
-                    checked={allPageSelected}
-                    onChange={toggleAllPage}
-                    disabled={currentSelectableIds.length === 0}
-                  />
-                </th>
-                {["Khách hàng", "Nội dung phàn nàn", "Chủ đề", "Kênh", "Thời gian chờ", "Hành động"].map((h) => (
-                  <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontWeight: 600, color: "rgba(0,56,101,0.5)", fontSize: "10px", letterSpacing: "0.04em", borderBottom: "1px solid rgba(0,56,101,0.06)", whiteSpace: "nowrap" }}>
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {negativeConversations.length === 0 && (
-                <tr>
-                  <td colSpan={7} style={{ padding: "22px 14px", textAlign: "center", color: "rgba(0,56,101,0.55)", fontSize: "12px" }}>
-                    Không có hội thoại có cảm xúc tiêu cực cần xử lý trong khoảng lọc.
-                  </td>
-                </tr>
-              )}
-              {paginatedNegativeConversations.map((conv) => {
-                const lc = negLevelConfig[conv.level];
-                const sc = statusConfig[conv.status] || { bg: "#f1f5f9", color: "#64748b" };
-                return (
-                  <tr key={conv.id}
-                    style={{ borderBottom: "1px solid rgba(0,56,101,0.04)" }}
-                    onMouseEnter={(e) => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "#fafbfc"}
-                    onMouseLeave={(e) => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "transparent"}
+          </div>
+
+          {/* Negative Conversations Table */}
+          <div style={{ backgroundColor: "#fff", borderRadius: "20px", border: "1px solid rgba(0,56,101,0.08)", boxShadow: "0 2px 12px rgba(0,56,101,0.06)", overflow: "hidden", marginBottom: "24px" }}>
+            <div style={{ padding: "18px 24px", borderBottom: "1px solid rgba(0,56,101,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <Frown size={16} style={{ color: ORANGE }} />
+                <h3 style={{ color: NAVY, fontSize: "14px", fontWeight: 700, margin: 0 }}>Hội thoại có cảm xúc tiêu cực cần xử lý</h3>
+                <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "20px", backgroundColor: "#FFF4EE", border: "1px solid #FBCBB8", color: ORANGE, fontWeight: 600 }}>{negativeConversations.length} hội thoại</span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <button
+                  aria-label="Làm mới danh sách hội thoại tiêu cực"
+                  onClick={refreshNegConversations}
+                  style={{ padding: "6px 14px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.15)", background: "#fff", color: NAVY, cursor: "pointer", fontSize: "12px", fontWeight: 600 }}
+                >
+                  Làm mới
+                </button>
+              </div>
+              {selectedConvIds.size > 0 && (
+                <div role="toolbar" aria-label="Thao tác hàng loạt" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <span style={{ fontSize: "12px", color: NAVY, fontWeight: 600 }}>Đã chọn {selectedConvIds.size} hội thoại</span>
+                  <button
+                    onClick={() => setShowBulkConfirm(true)}
+                    style={{ padding: "6px 14px", borderRadius: "8px", border: "none", background: `linear-gradient(135deg, #ED5206 0%, #F36C2E 100%)`, color: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 600, boxShadow: "0 4px 12px rgba(237,82,6,0.18)" }}
                   >
-                    <td style={{ padding: "10px 12px", textAlign: "center" }}>
+                    Đánh dấu đã xử lý {selectedConvIds.size} hội thoại
+                  </button>
+                </div>
+              )}
+            </div>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+                <thead>
+                  <tr style={{ backgroundColor: "#f8fafc" }}>
+                    <th style={{ padding: "10px 12px", width: "40px", textAlign: "center", borderBottom: "1px solid rgba(0,56,101,0.06)" }}>
                       <input
                         type="checkbox"
-                        aria-label={`Chọn hội thoại ${conv.id}`}
-                        checked={selectedConvIds.has(conv.conversationId)}
-                        disabled={!Number.isInteger(conv.conversationId) || conv.status === "Đã xử lý"}
-                        onChange={() => setSelectedConvIds((prev) => {
-                          const next = new Set(prev);
-                          if (next.has(conv.conversationId)) next.delete(conv.conversationId);
-                          else next.add(conv.conversationId);
-                          return next;
-                        })}
+                        aria-label="Chọn tất cả hội thoại trên trang"
+                        checked={allPageSelected}
+                        onChange={toggleAllPage}
+                        disabled={currentSelectableIds.length === 0}
                       />
-                    </td>
-                    <td style={{ padding: "12px 14px" }}>
-                      <div style={{ fontWeight: 600, color: NAVY, fontSize: "12px" }}>{conv.customer}</div>
-                      {conv.customerReference && <div style={{ fontSize: "10px", color: "rgba(0,56,101,0.4)", fontFamily: "monospace", marginTop: "2px" }}>{conv.customerReference}</div>}
-                    </td>
-                    <td className="flic-td-left" style={{ padding: "12px 14px", maxWidth: "240px" }}>
-                      <div style={{ fontSize: "12px", color: "rgba(0,56,101,0.7)", lineHeight: 1.5, fontStyle: "italic" }}>"{conv.complaint}"</div>
-                    </td>
-                    <td style={{ padding: "12px 14px", maxWidth: "150px" }}>
-                      <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: "#eff6ff", color: "#3b82f6", display: "inline-block", wordBreak: "break-word" }}>{conv.topic}</span>
-                    </td>
-                    <td style={{ padding: "12px 14px", color: "rgba(0,56,101,0.65)", whiteSpace: "nowrap" }}>{conv.channel}</td>
-                    <td style={{ padding: "12px 14px", color: conv.waitTime.includes("g") && parseInt(conv.waitTime) >= 4 ? ORANGE : "rgba(0,56,101,0.65)", fontWeight: conv.waitTime.includes("g") && parseInt(conv.waitTime) >= 4 ? 600 : 400, whiteSpace: "nowrap" }}>{conv.waitTime}</td>
-                    <td style={{ padding: "12px 14px" }}>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
-                        {conv.status !== "Đã xử lý" ? (
-                          <button
-                            onClick={() => { void handleCloseNegativeConversation(conv); }}
-                            style={{ padding: "4px 10px", borderRadius: "6px", border: `1px solid ${ORANGE}30`, background: "#fff3ef", color: ORANGE, cursor: "pointer", fontSize: "10px", fontWeight: 600, whiteSpace: "nowrap" }}
-                          >
-                            Đánh dấu xử lý
-                          </button>
-                        ) : (
-                          <span style={{ fontSize: "10px", color: "rgba(0,56,101,0.4)", fontWeight: 600, textAlign: "center" }}>Hoàn tất</span>
-                        )}
-                      </div>
-                    </td>
+                    </th>
+                    {["Khách hàng", "Nội dung phàn nàn", "Chủ đề", "Kênh", "Thời gian chờ", "Hành động"].map((h) => (
+                      <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontWeight: 600, color: "rgba(0,56,101,0.5)", fontSize: "10px", letterSpacing: "0.04em", borderBottom: "1px solid rgba(0,56,101,0.06)", whiteSpace: "nowrap" }}>
+                        {h}
+                      </th>
+                    ))}
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "10px", padding: "12px 18px" }}>
-          <button
-            type="button"
-            aria-label="Trang trước"
-            title="Trang trước"
-            disabled={negativePage <= 1}
-            onClick={() => setNegativePage((page) => Math.max(1, page - 1))}
-            style={{ width: "32px", height: "32px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.14)", background: "#fff", color: NAVY, display: "grid", placeItems: "center", cursor: negativePage <= 1 ? "not-allowed" : "pointer", opacity: negativePage <= 1 ? 0.45 : 1 }}
-          >
-            <ChevronLeft size={17} aria-hidden="true" />
-          </button>
-          <span style={{ fontSize: "12px", color: NAVY }}>Trang {negativePage}/{Math.max(1, Math.ceil(negativeConversations.length / 5))}</span>
-          <button
-            type="button"
-            aria-label="Trang sau"
-            title="Trang sau"
-            disabled={negativePage * 5 >= negativeConversations.length}
-            onClick={() => setNegativePage((page) => page + 1)}
-            style={{ width: "32px", height: "32px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.14)", background: "#fff", color: NAVY, display: "grid", placeItems: "center", cursor: negativePage * 5 >= negativeConversations.length ? "not-allowed" : "pointer", opacity: negativePage * 5 >= negativeConversations.length ? 0.45 : 1 }}
-          >
-            <ChevronRight size={17} aria-hidden="true" />
-          </button>
-        </div>
-      </div>
-
-      {/* Keywords */}
-      <div style={{ backgroundColor: "#fff", borderRadius: "20px", border: "1px solid rgba(0,56,101,0.08)", boxShadow: "0 2px 12px rgba(0,56,101,0.06)", padding: "20px", marginBottom: "24px" }}>
-        <h3 style={{ color: NAVY, fontSize: "14px", fontWeight: 700, marginBottom: "16px", margin: "0 0 16px", display: "flex", alignItems: "center", gap: "8px" }}>
-          <AlertTriangle size={15} style={{ color: ORANGE }} /> Từ khóa gây cảm xúc tiêu cực
-        </h3>
-        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-          {negKeywords.slice(0, 5).map((kw, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px 12px", borderRadius: "10px", backgroundColor: "#FFF4EE" }}>
-              <span style={{ fontSize: "11px", color: ORANGE, fontWeight: 700 }}>#{i + 1}</span>
-              <span style={{ flex: 1, fontSize: "13px", color: NAVY }}>"{kw.word}"</span>
-              <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "20px", backgroundColor: "#eff6ff", color: "#3b82f6" }}>{kw.topic}</span>
-              <span style={{ fontSize: "13px", fontWeight: 600, color: ORANGE }}>{kw.count}</span>
+                </thead>
+                <tbody>
+                  {negativeConversations.length === 0 && (
+                    <tr>
+                      <td colSpan={7} style={{ padding: "22px 14px", textAlign: "center", color: "rgba(0,56,101,0.55)", fontSize: "12px" }}>
+                        Không có hội thoại có cảm xúc tiêu cực cần xử lý trong khoảng lọc.
+                      </td>
+                    </tr>
+                  )}
+                  {paginatedNegativeConversations.map((conv) => {
+                    const lc = negLevelConfig[conv.level];
+                    const sc = statusConfig[conv.status] || { bg: "#f1f5f9", color: "#64748b" };
+                    return (
+                      <tr key={conv.id}
+                        style={{ borderBottom: "1px solid rgba(0,56,101,0.04)" }}
+                        onMouseEnter={(e) => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "#fafbfc"}
+                        onMouseLeave={(e) => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "transparent"}
+                      >
+                        <td style={{ padding: "10px 12px", textAlign: "center" }}>
+                          <input
+                            type="checkbox"
+                            aria-label={`Chọn hội thoại ${conv.id}`}
+                            checked={selectedConvIds.has(conv.conversationId)}
+                            disabled={!Number.isInteger(conv.conversationId) || conv.status === "Đã xử lý"}
+                            onChange={() => setSelectedConvIds((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(conv.conversationId)) next.delete(conv.conversationId);
+                              else next.add(conv.conversationId);
+                              return next;
+                            })}
+                          />
+                        </td>
+                        <td style={{ padding: "12px 14px" }}>
+                          <div style={{ fontWeight: 600, color: NAVY, fontSize: "12px" }}>{conv.customer}</div>
+                          {conv.customerReference && <div style={{ fontSize: "10px", color: "rgba(0,56,101,0.4)", fontFamily: "monospace", marginTop: "2px" }}>{conv.customerReference}</div>}
+                        </td>
+                        <td className="flic-td-left" style={{ padding: "12px 14px", maxWidth: "240px" }}>
+                          <div style={{ fontSize: "12px", color: "rgba(0,56,101,0.7)", lineHeight: 1.5, fontStyle: "italic" }}>"{conv.complaint}"</div>
+                        </td>
+                        <td style={{ padding: "12px 14px", maxWidth: "150px" }}>
+                          <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: "#eff6ff", color: "#3b82f6", display: "inline-block", wordBreak: "break-word" }}>{conv.topic}</span>
+                        </td>
+                        <td style={{ padding: "12px 14px", color: "rgba(0,56,101,0.65)", whiteSpace: "nowrap" }}>{conv.channel}</td>
+                        <td style={{ padding: "12px 14px", color: conv.waitTime.includes("g") && parseInt(conv.waitTime) >= 4 ? ORANGE : "rgba(0,56,101,0.65)", fontWeight: conv.waitTime.includes("g") && parseInt(conv.waitTime) >= 4 ? 600 : 400, whiteSpace: "nowrap" }}>{conv.waitTime}</td>
+                        <td style={{ padding: "12px 14px" }}>
+                          <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+                            {conv.status !== "Đã xử lý" ? (
+                              <button
+                                onClick={() => { void handleCloseNegativeConversation(conv); }}
+                                style={{ padding: "4px 10px", borderRadius: "6px", border: `1px solid ${ORANGE}30`, background: "#fff3ef", color: ORANGE, cursor: "pointer", fontSize: "10px", fontWeight: 600, whiteSpace: "nowrap" }}
+                              >
+                                Đánh dấu xử lý
+                              </button>
+                            ) : (
+                              <span style={{ fontSize: "10px", color: "rgba(0,56,101,0.4)", fontWeight: 600, textAlign: "center" }}>Hoàn tất</span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
-          ))}
-          {negKeywords.length === 0 && (
-            <p style={{ fontSize: "13px", color: "rgba(0,56,101,0.55)", margin: 0, fontStyle: "italic" }}>Chưa có dữ liệu từ khóa tiêu cực.</p>
-          )}
-        </div>
-      </div>
-
-      {showBulkConfirm && (
-        <div
-          role="presentation"
-          onKeyDown={(e) => { if (e.key === "Escape" && !bulkSubmitting) setShowBulkConfirm(false); }}
-          style={{ position: "fixed", inset: 0, background: "rgba(0,56,101,0.45)", zIndex: 1000, display: "grid", placeItems: "center", padding: "16px" }}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="bulk-confirm-title"
-            aria-describedby="bulk-confirm-desc"
-            style={{ width: "min(440px, 100%)", background: "#fff", borderRadius: "16px", padding: "24px", boxShadow: "0 20px 55px rgba(0,56,101,0.24)" }}
-          >
-            <h3 id="bulk-confirm-title" style={{ margin: "0 0 10px", color: NAVY, fontSize: "18px" }}>Xác nhận đánh dấu đã xử lý</h3>
-            <p id="bulk-confirm-desc" style={{ margin: "0 0 20px", color: "rgba(0,56,101,0.72)", lineHeight: 1.55 }}>
-              Thao tác sẽ áp dụng cho chính xác {selectedConvIds.size} hội thoại đã chọn trên trang hiện tại.
-            </p>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+            <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "10px", padding: "12px 18px" }}>
               <button
-                autoFocus
-                onClick={() => setShowBulkConfirm(false)}
-                disabled={bulkSubmitting}
-                style={{ padding: "9px 14px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.2)", background: "#fff", color: NAVY, cursor: "pointer" }}
+                type="button"
+                aria-label="Trang trước"
+                title="Trang trước"
+                disabled={negativePage <= 1}
+                onClick={() => setNegativePage((page) => Math.max(1, page - 1))}
+                style={{ width: "32px", height: "32px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.14)", background: "#fff", color: NAVY, display: "grid", placeItems: "center", cursor: negativePage <= 1 ? "not-allowed" : "pointer", opacity: negativePage <= 1 ? 0.45 : 1 }}
               >
-                Hủy
+                <ChevronLeft size={17} aria-hidden="true" />
               </button>
+              <span style={{ fontSize: "12px", color: NAVY }}>Trang {negativePage}/{Math.max(1, Math.ceil(negativeConversations.length / 5))}</span>
               <button
-                onClick={() => { void handleBulkClose(); }}
-                disabled={bulkSubmitting}
-                style={{ padding: "9px 14px", borderRadius: "8px", border: "none", background: "#ED5206", color: "#fff", fontWeight: 700, cursor: bulkSubmitting ? "not-allowed" : "pointer" }}
+                type="button"
+                aria-label="Trang sau"
+                title="Trang sau"
+                disabled={negativePage * 5 >= negativeConversations.length}
+                onClick={() => setNegativePage((page) => page + 1)}
+                style={{ width: "32px", height: "32px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.14)", background: "#fff", color: NAVY, display: "grid", placeItems: "center", cursor: negativePage * 5 >= negativeConversations.length ? "not-allowed" : "pointer", opacity: negativePage * 5 >= negativeConversations.length ? 0.45 : 1 }}
               >
-                {bulkSubmitting ? "Đang xử lý..." : `Xác nhận xử lý ${selectedConvIds.size} hội thoại`}
+                <ChevronRight size={17} aria-hidden="true" />
               </button>
             </div>
           </div>
-        </div>
-      )}
+
+          {/* Keywords */}
+          <div style={{ backgroundColor: "#fff", borderRadius: "20px", border: "1px solid rgba(0,56,101,0.08)", boxShadow: "0 2px 12px rgba(0,56,101,0.06)", padding: "20px", marginBottom: "24px" }}>
+            <h3 style={{ color: NAVY, fontSize: "14px", fontWeight: 700, marginBottom: "16px", margin: "0 0 16px", display: "flex", alignItems: "center", gap: "8px" }}>
+              <AlertTriangle size={15} style={{ color: ORANGE }} /> Từ khóa gây cảm xúc tiêu cực
+            </h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              {negKeywords.slice(0, 5).map((kw, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px 12px", borderRadius: "10px", backgroundColor: "#FFF4EE" }}>
+                  <span style={{ fontSize: "11px", color: ORANGE, fontWeight: 700 }}>#{i + 1}</span>
+                  <span style={{ flex: 1, fontSize: "13px", color: NAVY }}>"{kw.word}"</span>
+                  <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "20px", backgroundColor: "#eff6ff", color: "#3b82f6" }}>{kw.topic}</span>
+                  <span style={{ fontSize: "13px", fontWeight: 600, color: ORANGE }}>{kw.count}</span>
+                </div>
+              ))}
+              {negKeywords.length === 0 && (
+                <p style={{ fontSize: "13px", color: "rgba(0,56,101,0.55)", margin: 0, fontStyle: "italic" }}>Chưa có dữ liệu từ khóa tiêu cực.</p>
+              )}
+            </div>
+          </div>
+
+          {showBulkConfirm && (
+            <div
+              role="presentation"
+              onKeyDown={(e) => { if (e.key === "Escape" && !bulkSubmitting) setShowBulkConfirm(false); }}
+              style={{ position: "fixed", inset: 0, background: "rgba(0,56,101,0.45)", zIndex: 1000, display: "grid", placeItems: "center", padding: "16px" }}
+            >
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="bulk-confirm-title"
+                aria-describedby="bulk-confirm-desc"
+                style={{ width: "min(440px, 100%)", background: "#fff", borderRadius: "16px", padding: "24px", boxShadow: "0 20px 55px rgba(0,56,101,0.24)" }}
+              >
+                <h3 id="bulk-confirm-title" style={{ margin: "0 0 10px", color: NAVY, fontSize: "18px" }}>Xác nhận đánh dấu đã xử lý</h3>
+                <p id="bulk-confirm-desc" style={{ margin: "0 0 20px", color: "rgba(0,56,101,0.72)", lineHeight: 1.55 }}>
+                  Thao tác sẽ áp dụng cho chính xác {selectedConvIds.size} hội thoại đã chọn trên trang hiện tại.
+                </p>
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+                  <button
+                    autoFocus
+                    onClick={() => setShowBulkConfirm(false)}
+                    disabled={bulkSubmitting}
+                    style={{ padding: "9px 14px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.2)", background: "#fff", color: NAVY, cursor: "pointer" }}
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    onClick={() => { void handleBulkClose(); }}
+                    disabled={bulkSubmitting}
+                    style={{ padding: "9px 14px", borderRadius: "8px", border: "none", background: "#ED5206", color: "#fff", fontWeight: 700, cursor: bulkSubmitting ? "not-allowed" : "pointer" }}
+                  >
+                    {bulkSubmitting ? "Đang xử lý..." : `Xác nhận xử lý ${selectedConvIds.size} hội thoại`}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </>
-      )}
+        )}
+      </div>
     </div>
   );
 }

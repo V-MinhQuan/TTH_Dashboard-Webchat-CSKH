@@ -322,7 +322,7 @@ export function Settings({ defaultSection = "profile" }: { defaultSection?: stri
     if (activeSection === "notifications") {
       const notifItems = [
         { label: "Thông báo qua Email", desc: "Nhận cảnh báo và báo cáo qua email", key: "emailNotif" },
-        { label: "Cảnh báo AI thất bại", desc: "Thông báo ngay khi tỷ lệ AI thất bại vượt ngưỡng", key: "aiFailAlert" },
+        { label: "Cảnh báo AI phản hồi thất bại", desc: "Thông báo ngay khi tỷ lệ AI phản hồi thất bại vượt ngưỡng", key: "aiFailAlert" },
       ];
       return (
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
@@ -387,7 +387,7 @@ export function Settings({ defaultSection = "profile" }: { defaultSection?: stri
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div>
-                <div style={{ fontWeight: 600, fontSize: "14px", color: NAVY }}>Hiển thị hội thoại AI thất bại</div>
+                <div style={{ fontWeight: 600, fontSize: "14px", color: NAVY }}>Hiển thị hội thoại AI phản hồi thất bại</div>
                 <div style={{ fontSize: "12px", color: "rgba(0,56,101,0.5)", marginTop: "2px" }}>Ưu tiên hiển thị hội thoại AI trả lời sai</div>
               </div>
               <Toggle value={settings.showAiFailed} onChange={(v) => update("showAiFailed", v)} />

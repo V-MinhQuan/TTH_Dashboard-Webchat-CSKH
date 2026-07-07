@@ -41,8 +41,8 @@ def get_db_connection():
             database=DB_DATABASE,
             port=DB_PORT,
             tds_version='7.0',
-            timeout=30,
-            login_timeout=10
+            timeout=120,
+            login_timeout=30
         )
         return conn
     except Exception as e:
