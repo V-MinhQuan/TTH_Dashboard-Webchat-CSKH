@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
-import flicLogo from '../../../assets/flic-logo-transparent.png';
+import flicLogo from '../../../assets/flic-logo-long_login.png';
 import { Eye, EyeOff, Lock, User } from 'lucide-react';
 
 const NAVY = "#003865";
@@ -107,19 +107,17 @@ export function LoginScreen() {
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
           <div style={{
-            width: '72px', height: '72px', margin: '0 auto 18px',
-            borderRadius: '16px', backgroundColor: '#f0f4fa',
+            width: '320px', margin: '0 auto 18px',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: '10px',
           }}>
             <ImageWithFallback
               src={flicLogo}
               alt="FLIC AI Logo"
-              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+              style={{ width: '100%', height: 'auto', objectFit: 'contain' }}
             />
           </div>
           <h1 style={{ margin: '0 0 6px', color: NAVY, fontSize: '20px', fontWeight: 700, letterSpacing: '-0.3px' }}>
-            Dashboard Web ChatBot CSKH FLIC
+            Hệ thống phân tích Web Chatbot CSKH FLIC
           </h1>
         </div>
 
