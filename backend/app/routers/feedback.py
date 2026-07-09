@@ -18,6 +18,7 @@ from app.sheet_chatbot.service import (
     SheetChatbotValidationError,
     sheet_chatbot_service,
 )
+from app.repositories.activity import activity_repo
 
 router = APIRouter(prefix="/api/admin/sheet-chatbot", tags=["feedback-library"])
 
@@ -125,6 +126,13 @@ async def create_feedback(
         data = await service.create_row(payload)
     except Exception as error:
         _raise_domain_error(error)
+
+    activity_repo.log_activity(
+        user_id=session.username,
+        action_type="Thêm mẫu câu",
+        entity="Thư viện phản hồi",
+        details=f"Đã thêm mẫu câu: '{request.question[:50]}...'"
+    )
     return {"success": True, "message": "Thêm phản hồi thành công.", "data": data}
 
 
@@ -132,13 +140,25 @@ async def create_feedback(
 async def update_feedback(
     row_id: str,
     request: FeedbackUpdateRequest,
-    _: SessionClaims = Depends(require_roles("manager", "staff")),
+    session: SessionClaims = Depends(require_roles("manager", "staff")),
     service: SheetChatbotService = Depends(get_feedback_service),
 ):
     try:
         data = await service.update_row(row_id, request.model_dump(by_alias=True, exclude_none=True))
     except Exception as error:
         _raise_domain_error(error)
+
+    # We use request.question or request.answer if available, otherwise just mention row_id
+    detail_msg = f"Đã sửa mẫu câu ID: {row_id}"
+    if request.question:
+        detail_msg += f" (Câu hỏi: '{request.question[:30]}...')"
+
+    activity_repo.log_activity(
+        user_id=session.username,
+        action_type="Cập nhật mẫu câu",
+        entity="Thư viện phản hồi",
+        details=detail_msg
+    )
     return {"success": True, "message": "Cập nhật phản hồi thành công.", "data": data}
 
 
@@ -153,6 +173,13 @@ async def update_feedback_status(
         data = await service.update_status(row_id, request.status, reviewer=session.username, notes=request.notes)
     except Exception as error:
         _raise_domain_error(error)
+
+    activity_repo.log_activity(
+        user_id=session.username,
+        action_type="Đánh giá phản hồi",
+        entity="Thư viện phản hồi",
+        details=f"Đã cập nhật trạng thái thành '{request.status}' cho mẫu câu ID: {row_id}"
+    )
     return {"success": True, "message": "Cập nhật trạng thái phản hồi thành công.", "data": data}
 
 
@@ -167,18 +194,31 @@ async def merge_feedback_to_faq(
         data = await service.merge_to_faq(row_id, reviewer=session.username)
     except Exception as error:
         _raise_domain_error(error)
+
+    activity_repo.log_activity(
+        user_id=session.username,
+        action_type="Gộp vào FAQ",
+        entity="Thư viện phản hồi",
+        details=f"Đã gộp mẫu câu ID {row_id} vào FAQ chính thức"
+    )
     return {"success": True, "message": "Gộp phản hồi vào FAQ thành công.", "data": data}
 
 
 @router.delete("/{row_id}")
 async def delete_feedback(
     row_id: str,
-    _: SessionClaims = Depends(require_roles("manager")),
+    session: SessionClaims = Depends(require_roles("manager")),
     service: SheetChatbotService = Depends(get_feedback_service),
 ):
     try:
         await service.delete_row(row_id)
     except Exception as error:
         _raise_domain_error(error)
-    return {"success": True, "message": "Xóa phản hồi thành công.", "data": None}
 
+    activity_repo.log_activity(
+        user_id=session.username,
+        action_type="Xóa mẫu câu",
+        entity="Thư viện phản hồi",
+        details=f"Đã xóa mẫu câu ID {row_id}"
+    )
+    return {"success": True, "message": "Xóa phản hồi thành công.", "data": None}

@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.services.auth_service import AuthService
+from app.repositories.activity import activity_repo
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -32,4 +33,11 @@ def login(
     response = {key: value for key, value in result.items() if key != "status_code"}
     if not response["success"]:
         return JSONResponse(status_code=status_code, content=response)
+        
+    activity_repo.log_activity(
+        user_id=request.username,
+        action_type="Đăng nhập",
+        entity="Hệ thống",
+        details="Đăng nhập thành công vào hệ thống"
+    )
     return response

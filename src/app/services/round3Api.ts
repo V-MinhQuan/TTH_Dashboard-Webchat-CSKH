@@ -68,7 +68,12 @@ export async function getTopicFailures(params: URLSearchParams) {
     throw new Error(response.message || "Không thể tải lỗi AI theo chủ đề.");
   }
 
-  const rows = Array.isArray(response.data) ? response.data : [];
+  let rows: unknown[] = [];
+  if (Array.isArray(response.data)) {
+    rows = response.data;
+  } else if (response.data && typeof response.data === "object" && "rows" in response.data) {
+    rows = Array.isArray((response.data as any).rows) ? (response.data as any).rows : [];
+  }
   return rows.map(normalizeTopicFailure);
 }
 

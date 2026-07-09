@@ -136,8 +136,8 @@ class ConversationRepository(BaseRepository):
             query = f"""
                 SELECT
                   CONVERT(VARCHAR(10), a.messageAt, 120) AS date_str,
-                  SUM(CASE WHEN ISNULL(a.issueFlag, 0) = 1 OR a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin') THEN 1 ELSE 0 END) AS ai_fail,
-                  SUM(CASE WHEN ISNULL(a.issueFlag, 0) = 0 AND (a.issueType IS NULL OR a.issueType NOT IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin')) THEN 1 ELSE 0 END) AS ai_ok
+                  SUM(CASE WHEN a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn') THEN 1 ELSE 0 END) AS ai_fail,
+                  SUM(CASE WHEN NOT (a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn')) THEN 1 ELSE 0 END) AS ai_ok
                 FROM WebChat_MessageAnalytics a
                 {status_join}
                 WHERE {" AND ".join(conditions)}
@@ -178,8 +178,8 @@ class ConversationRepository(BaseRepository):
             query = f"""
                 SELECT
                   {source_case} AS source,
-                  SUM(CASE WHEN ISNULL(a.issueFlag, 0) = 1 OR a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin') THEN 1 ELSE 0 END) AS ai_fail,
-                  SUM(CASE WHEN ISNULL(a.issueFlag, 0) = 0 AND (a.issueType IS NULL OR a.issueType NOT IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin')) THEN 1 ELSE 0 END) AS ai_ok
+                  SUM(CASE WHEN a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn') THEN 1 ELSE 0 END) AS ai_fail,
+                  SUM(CASE WHEN NOT (a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn')) THEN 1 ELSE 0 END) AS ai_ok
                 FROM WebChat_MessageAnalytics a
                 {status_join}
                 WHERE {" AND ".join(conditions)}
@@ -213,7 +213,7 @@ class ConversationRepository(BaseRepository):
 
         conn = get_db_connection()
         try:
-            conditions = ["ISNULL(a.issueFlag, 0) = 1"]
+            conditions = ["a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn')"]
             params = []
             status_join = self._append_analytics_scope_filters(
                 conditions,
@@ -727,7 +727,7 @@ class ConversationRepository(BaseRepository):
                     a.messageAt AS message_at,
                     a.issueType AS issue_type
                   FROM WebChat_MessageAnalytics a
-                  WHERE a.issueFlag = 1
+                  WHERE a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn')
                 ),
                 flagged AS (
                   SELECT
@@ -963,7 +963,7 @@ class ConversationRepository(BaseRepository):
                     a.messageAt AS message_at,
                     a.issueType AS issue_type
                   FROM WebChat_MessageAnalytics a
-                  WHERE a.issueFlag = 1
+                  WHERE a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn')
                 ),
                 flagged AS (
                   SELECT
@@ -1419,7 +1419,7 @@ class ConversationRepository(BaseRepository):
                     a.messageAt AS message_at,
                     a.issueType AS issue_type
                   FROM WebChat_MessageAnalytics a
-                  WHERE a.issueFlag = 1
+                  WHERE a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn')
                 ),
                 flagged AS (
                   SELECT
@@ -1681,7 +1681,7 @@ class ConversationRepository(BaseRepository):
                     a.messageAt AS message_at,
                     a.issueType AS issue_type
                   FROM WebChat_MessageAnalytics a
-                  WHERE a.issueFlag = 1
+                  WHERE a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn')
                 ),
                 flagged AS (
                   SELECT
@@ -2389,7 +2389,7 @@ class ConversationRepository(BaseRepository):
                         ai_conditions.append(topic_sql)
 
                     analytics_conditions = [
-                        "a.issueFlag = 1",
+                        "a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn')",
                         valid_analytics_condition("a"),
                     ]
                     analytics_params = []

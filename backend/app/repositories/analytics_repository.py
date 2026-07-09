@@ -251,7 +251,7 @@ class AnalyticsRepository:
         with self._connection_factory() as conn:
             columns = inspect_message_analytics_columns(conn)
             where, params = self._build_read_where(filters, columns)
-            issue_expr = "SUM(CASE WHEN a.issueFlag = 1 THEN 1 ELSE 0 END)" if columns.get("issueFlag") else "0"
+            issue_expr = "SUM(CASE WHEN a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn') THEN 1 ELSE 0 END)" if columns.get("issueFlag") else "0"
             version_expr = "a.analyzerVersion" if columns.get("analyzerVersion") else "CAST(NULL AS NVARCHAR(50))"
             source_expr = "a.sentimentSource" if columns.get("sentimentSource") else "CAST(NULL AS NVARCHAR(50))"
 
@@ -304,7 +304,7 @@ class AnalyticsRepository:
         with self._connection_factory() as conn:
             columns = inspect_message_analytics_columns(conn)
             where, params = self._build_read_where(filters, columns)
-            issue_expr = "SUM(CASE WHEN a.issueFlag = 1 THEN 1 ELSE 0 END)" if columns.get("issueFlag") else "0"
+            issue_expr = "SUM(CASE WHEN a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn') THEN 1 ELSE 0 END)" if columns.get("issueFlag") else "0"
             rows = execute_all(
                 conn,
                 f"""
@@ -662,10 +662,20 @@ class AnalyticsRepository:
                 f"""
                 SELECT
                   COUNT(*) AS total,
-                  SUM(CASE WHEN a.issueFlag = 1 THEN 1 ELSE 0 END) AS failure_count,
+                  SUM(CASE WHEN a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0
+                           AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn') 
+                           AND (latestStatus.NoResponseNeeded IS NULL OR latestStatus.NoResponseNeeded = 0)
+                           THEN 1 ELSE 0 END) AS failure_count,
                   SUM(CASE WHEN a.issueType = N'AI có nguy cơ tự tạo thông tin' THEN 1 ELSE 0 END) AS hallucination_count,
                   AVG(a.issueConfidence) AS avg_confidence
                 FROM dbo.WebChat_MessageAnalytics a
+                LEFT JOIN dbo.WebChat_Conversations c ON c.Id = a.conversationId
+                OUTER APPLY (
+                  SELECT TOP 1 s.NoResponseNeeded
+                  FROM dbo.WebChat_ConversationStatus s WITH (NOLOCK)
+                  WHERE s.CustomerId = c.CustomerId AND s.Source = c.Source
+                  ORDER BY CASE WHEN s.MarkedAt IS NULL THEN 0 ELSE 1 END DESC, s.MarkedAt DESC, s.Id DESC
+                ) latestStatus
                 {where}
                 """,
                 params,
@@ -681,7 +691,7 @@ class AnalyticsRepository:
                 conn,
                 f"""
                 SELECT
-                  SUM(CASE WHEN a.needStaffReview = 1 AND a.issueFlag = 1 THEN 1 ELSE 0 END) AS reported_errors,
+                  SUM(CASE WHEN a.needStaffReview = 1 AND a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn') THEN 1 ELSE 0 END) AS reported_errors,
                   SUM(CASE WHEN a.needStaffReview = 1 THEN 1 ELSE 0 END) AS pending_review
                 FROM dbo.WebChat_MessageAnalytics a
                 {where}
@@ -702,10 +712,26 @@ class AnalyticsRepository:
                 f"""
                 SELECT
                   CONVERT(date, a.messageAt) AS date,
-                  SUM(CASE WHEN a.issueFlag = 1 THEN 1 ELSE 0 END) AS failure,
-                  SUM(CASE WHEN a.issueType = N'AI có nguy cơ tự tạo thông tin' THEN 1 ELSE 0 END) AS hallucination,
-                  SUM(CASE WHEN a.issueType = N'AI không chắc chắn' THEN 1 ELSE 0 END) AS uncertain
+                  SUM(CASE WHEN a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0
+                           AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn') 
+                           AND (latestStatus.NoResponseNeeded IS NULL OR latestStatus.NoResponseNeeded = 0)
+                           THEN 1 ELSE 0 END) AS failure,
+                  SUM(CASE WHEN a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0
+                           AND a.issueType = N'Không tìm thấy dữ liệu' 
+                           AND (latestStatus.NoResponseNeeded IS NULL OR latestStatus.NoResponseNeeded = 0)
+                           THEN 1 ELSE 0 END) AS thieuDL,
+                  SUM(CASE WHEN a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0
+                           AND a.issueType = N'AI không chắc chắn' 
+                           AND (latestStatus.NoResponseNeeded IS NULL OR latestStatus.NoResponseNeeded = 0)
+                           THEN 1 ELSE 0 END) AS khongChac
                 FROM dbo.WebChat_MessageAnalytics a
+                LEFT JOIN dbo.WebChat_Conversations c ON c.Id = a.conversationId
+                OUTER APPLY (
+                  SELECT TOP 1 s.NoResponseNeeded
+                  FROM dbo.WebChat_ConversationStatus s WITH (NOLOCK)
+                  WHERE s.CustomerId = c.CustomerId AND s.Source = c.Source
+                  ORDER BY CASE WHEN s.MarkedAt IS NULL THEN 0 ELSE 1 END DESC, s.MarkedAt DESC, s.Id DESC
+                ) latestStatus
                 {where}
                 GROUP BY CONVERT(date, a.messageAt)
                 ORDER BY date ASC
@@ -730,21 +756,19 @@ class AnalyticsRepository:
                 f"""
                 SELECT
                   {detected_topics_expr},
-                  SUM(CASE WHEN a.issueType = N'Câu trả lời sai' THEN 1 ELSE 0 END) AS saiCauTra,
-                  SUM(CASE WHEN a.issueType = N'Không hiểu ý khách hàng' THEN 1 ELSE 0 END) AS khongHieu,
-                  SUM(CASE WHEN a.issueType = N'Câu trả lời thiếu thông tin' THEN 1 ELSE 0 END) AS thieuThongTin,
-                  SUM(CASE WHEN a.issueType = N'Thông tin không chính xác' THEN 1 ELSE 0 END) AS khongChinhXac,
                   SUM(CASE WHEN a.issueType = N'Không tìm thấy dữ liệu' THEN 1 ELSE 0 END) AS thieuDL,
-                  SUM(CASE WHEN a.issueType = N'Lỗi hệ thống/mạng' THEN 1 ELSE 0 END) AS loiHeThong,
-                  SUM(CASE WHEN a.issueType = N'Lỗi tri thức hệ thống' THEN 1 ELSE 0 END) AS loiTriThuc,
-                  SUM(CASE WHEN a.issueType = N'Khác' THEN 1 ELSE 0 END) AS khac,
-                  -- Legacy fields
-                  SUM(CASE WHEN a.issueType = N'AI không chắc chắn' THEN 1 ELSE 0 END) AS khongChac,
-                  SUM(CASE WHEN a.issueType = N'Câu hỏi ngoài phạm vi' THEN 1 ELSE 0 END) AS ngoaiPhamVi,
-                  SUM(CASE WHEN a.issueType = N'AI có nguy cơ tự tạo thông tin' THEN 1 ELSE 0 END) AS hallucination
+                  SUM(CASE WHEN a.issueType = N'AI không chắc chắn' THEN 1 ELSE 0 END) AS khongChac
                 FROM dbo.WebChat_MessageAnalytics a
                 LEFT JOIN dbo.WebChat_Conversations c ON c.Id = a.conversationId
-                {where + " AND" if where else "WHERE"} a.issueFlag = 1
+                OUTER APPLY (
+                  SELECT TOP 1 s.NoResponseNeeded
+                  FROM dbo.WebChat_ConversationStatus s WITH (NOLOCK)
+                  WHERE s.CustomerId = c.CustomerId AND s.Source = c.Source
+                  ORDER BY CASE WHEN s.MarkedAt IS NULL THEN 0 ELSE 1 END DESC, s.MarkedAt DESC, s.Id DESC
+                ) latestStatus
+                {where + " AND" if where else "WHERE"} a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0
+                  AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn')
+                  AND (latestStatus.NoResponseNeeded IS NULL OR latestStatus.NoResponseNeeded = 0)
                 {group_by_clause}
                 """,
                 query_params,
@@ -762,8 +786,8 @@ class AnalyticsRepository:
             base_filters["issueFlag"] = True # Force filter for AI failed ones
             where, params = self._build_read_where(base_filters, columns)
 
-            # Since we add condition to where directly, need to check if where exists
-            condition_str = "a.issueFlag = 1"
+            # Chỉ lấy lỗi AI chưa được xử lý (issueResolved=0 hoặc NULL)
+            condition_str = "a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn')"
             if where:
                 where += f" AND {condition_str}"
             else:
@@ -811,6 +835,12 @@ class AnalyticsRepository:
                         ON m.id_webchat_messagelogs = a.messageId
                       LEFT JOIN dbo.WebChat_Conversations c
                         ON c.Id = a.conversationId
+                      OUTER APPLY (
+                        SELECT TOP 1 s.NoResponseNeeded
+                        FROM dbo.WebChat_ConversationStatus s WITH (NOLOCK)
+                        WHERE s.CustomerId = c.CustomerId AND s.Source = c.Source
+                        ORDER BY CASE WHEN s.MarkedAt IS NULL THEN 0 ELSE 1 END DESC, s.MarkedAt DESC, s.Id DESC
+                      ) latestStatus
                       {_CUSTOMER_INFO_APPLY}
                       OUTER APPLY (
                         SELECT TOP 1 customerMessage.TextContent
@@ -821,7 +851,7 @@ class AnalyticsRepository:
                           AND customerMessage.SentAt <= COALESCE(m.SentAt, a.messageAt)
                         ORDER BY customerMessage.SentAt DESC, customerMessage.id_webchat_messagelogs DESC
                       ) cmsg
-                      {where}
+                      {where} AND (latestStatus.NoResponseNeeded IS NULL OR latestStatus.NoResponseNeeded = 0)
                     )
                 """
                 total_row = execute_one(
@@ -858,7 +888,15 @@ class AnalyticsRepository:
                 FROM dbo.WebChat_MessageAnalytics a
                 LEFT JOIN dbo.WebChat_MessageLogs m
                   ON m.id_webchat_messagelogs = a.messageId
-                {where}
+                LEFT JOIN dbo.WebChat_Conversations c
+                  ON c.Id = a.conversationId
+                OUTER APPLY (
+                  SELECT TOP 1 s.NoResponseNeeded
+                  FROM dbo.WebChat_ConversationStatus s WITH (NOLOCK)
+                  WHERE s.CustomerId = c.CustomerId AND s.Source = c.Source
+                  ORDER BY CASE WHEN s.MarkedAt IS NULL THEN 0 ELSE 1 END DESC, s.MarkedAt DESC, s.Id DESC
+                ) latestStatus
+                {where} AND (latestStatus.NoResponseNeeded IS NULL OR latestStatus.NoResponseNeeded = 0)
                 """,
                 params,
             )
@@ -894,6 +932,12 @@ class AnalyticsRepository:
                   ON m.id_webchat_messagelogs = a.messageId
                 LEFT JOIN dbo.WebChat_Conversations c
                   ON c.Id = a.conversationId
+                OUTER APPLY (
+                  SELECT TOP 1 s.NoResponseNeeded
+                  FROM dbo.WebChat_ConversationStatus s WITH (NOLOCK)
+                  WHERE s.CustomerId = c.CustomerId AND s.Source = c.Source
+                  ORDER BY CASE WHEN s.MarkedAt IS NULL THEN 0 ELSE 1 END DESC, s.MarkedAt DESC, s.Id DESC
+                ) latestStatus
                 {_CUSTOMER_INFO_APPLY}
                 OUTER APPLY (
                   SELECT TOP 1 cmsg.TextContent
@@ -904,7 +948,7 @@ class AnalyticsRepository:
                     AND cmsg.SentAt <= m.SentAt
                   ORDER BY cmsg.SentAt DESC
                 ) cmsg
-                {where}
+                {where} AND (latestStatus.NoResponseNeeded IS NULL OR latestStatus.NoResponseNeeded = 0)
                 ORDER BY a.messageAt DESC
                 OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
                 """,
@@ -929,7 +973,7 @@ class AnalyticsRepository:
             columns = inspect_message_analytics_columns(conn)
             where, params = self._build_read_where(filters, columns)
 
-            condition_str = "a.needStaffReview = 1 AND a.issueFlag = 1"
+            condition_str = "a.needStaffReview = 1 AND a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn')"
             if where:
                 where += f" AND {condition_str}"
             else:
@@ -1022,7 +1066,7 @@ class AnalyticsRepository:
                 else "CAST(NULL AS NVARCHAR(MAX))"
             )
             extra_join = ""
-            extra_conditions = ["a.issueFlag = 1"]
+            extra_conditions = ["a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn')"]
             conversation_status = filters.get("conversationStatus")
             if conversation_status and conversation_status != "Tất cả":
                 extra_join = """
@@ -1043,7 +1087,7 @@ class AnalyticsRepository:
                 if ai_status == "AI trả lời thành công":
                     extra_conditions.append("a.issueFlag = 0")
                 elif ai_status == "AI trả lời thất bại":
-                    extra_conditions.append("a.issueFlag = 1")
+                    extra_conditions.append("a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn')")
                 elif ai_status == "Không tìm thấy dữ liệu":
                     extra_conditions.append("a.issueType = N'Không tìm thấy dữ liệu'" if columns.get("issueType") else "1 = 0")
                 elif ai_status in ("AI không chắc chắn", "AI trả lời không chắc chắn"):
@@ -1278,9 +1322,9 @@ class AnalyticsRepository:
             if not columns.get("issueFlag"):
                 conditions.append("1 = 0")
             elif normalized_ai_status in {"success", "ai tra loi thanh cong"}:
-                conditions.append("ISNULL(a.issueFlag, 0) = 0")
+                conditions.append("(ISNULL(a.issueFlag, 0) = 0 OR a.issueResolved = 1 OR a.issueType NOT IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn'))")
             elif normalized_ai_status in {"failed", "failure", "ai tra loi that bai"}:
-                conditions.append("a.issueFlag = 1")
+                conditions.append("a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn')")
         return ("WHERE " + " AND ".join(conditions)) if conditions else "", params
 
     def _build_need_review_where(
@@ -1292,7 +1336,7 @@ class AnalyticsRepository:
     ) -> Tuple[str, List[Any]]:
         review_parts = ["a.needStaffReview = 1", "a.sentimentLabel = 'negative'"]
         if columns.get("issueFlag"):
-            review_parts.append("a.issueFlag = 1")
+            review_parts.append("a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn')")
         base_filters = dict(filters)
         search = base_filters.pop("search", None)
         where, params = self._build_read_where(base_filters, columns)
@@ -1328,12 +1372,12 @@ class AnalyticsRepository:
         if mode == "needReview":
             parts = ["a.needStaffReview = 1", "a.sentimentLabel = 'negative'"]
             if columns.get("issueFlag"):
-                parts.append("a.issueFlag = 1")
+                parts.append("a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn')")
             return f"({ ' OR '.join(parts) })"
         if mode == "issue":
             parts = []
             if columns.get("issueFlag"):
-                parts.append("a.issueFlag = 1")
+                parts.append("a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn')")
             if columns.get("issueType"):
                 parts.append("a.issueType IS NOT NULL")
             return f"({ ' OR '.join(parts) })" if parts else "1 = 0"
@@ -1559,3 +1603,20 @@ class AnalyticsRepository:
                 conditions.append(f"{topic_column} LIKE ?")
                 params.append(f'%"{filters["topic"]}"%')
             return ("WHERE " + " AND ".join(conditions)) if conditions else "", params
+
+    def resolve_ai_issues(self, analytics_ids: List[int]) -> int:
+        if not analytics_ids:
+            return 0
+        with self._connection_factory() as conn:
+            placeholders = ",".join(["?"] * len(analytics_ids))
+            sql = f"""
+            UPDATE dbo.WebChat_MessageAnalytics
+            SET issueResolved = 1
+            WHERE id IN ({placeholders})
+              AND issueFlag = 1
+            """
+            cursor = conn.cursor()
+            cursor.execute(sql, analytics_ids)
+            count = cursor.rowcount
+            conn.commit()
+            return count

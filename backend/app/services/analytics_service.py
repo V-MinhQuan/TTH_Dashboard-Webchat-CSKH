@@ -251,17 +251,30 @@ class AnalyticsService:
             "pending_review": int(row.get("pending_review") or 0),
         }
 
+    def resolve_ai_issues(self, analytics_ids: List[int]) -> int:
+        return self.repository.resolve_ai_issues(analytics_ids)
+
     def get_ai_failure_trend(self, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
-        payload = self.repository.get_ai_failure_trend(filters)
+        # Nếu không có bộ lọc ngày nào → mặc định 30 ngày gần nhất
+        effective = dict(filters)
+        has_date = any(
+            effective.get(k)
+            for k in ("dateRange", "fromDate", "toDate", "startDate", "endDate")
+        )
+        if not has_date:
+            effective["dateRange"] = "last30days"
+
+        payload = self.repository.get_ai_failure_trend(effective)
         return [
             {
                 "date": _date_str(row.get("date")),
                 "failure": int(row.get("failure") or 0),
-                "hallucination": int(row.get("hallucination") or 0),
-                "uncertain": int(row.get("uncertain") or 0),
+                "thieuDL": int(row.get("thieuDL") or 0),
+                "khongChac": int(row.get("khongChac") or 0),
             }
             for row in payload.get("rows", [])
         ]
+
 
     def get_ai_failure_by_topic(self, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
         payload = self.repository.get_ai_failure_by_topic(filters)

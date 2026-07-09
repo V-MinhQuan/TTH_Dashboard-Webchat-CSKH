@@ -474,7 +474,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
 
   const hasAiFailedMetric = finalGroups.some((g) => g.aiFailed !== null);
 
-  const barData = kpiGroups.map((g) => ({ name: g.name.split(" / ")[0], "Số câu hỏi": g.totalQuestions, "Số câu AI phản hồi không chính xác": g.aiFailed }));
+  const barData = kpiGroups.map((g) => ({ name: g.name.split(" / ")[0], "Số tin nhắn": g.totalQuestions, "Số câu AI phản hồi thất bại": g.aiFailed }));
   const donutData = kpiGroups.map((g) => ({ id: g.id, name: g.name.split(" / ")[0], value: g.totalQuestions }));
   const trendGroupsWithData = kpiGroups.filter((group) => (
     activeGroup === group.id ||
@@ -485,24 +485,56 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
     .filter((group) => !activeGroup || activeGroup === group.id);
 
   const getExportData = () => {
-    const headers = ["Chủ đề", "Từ khóa", "Số lượt nhắc đến", "Lượt nhắc gần đây", "Số bài viết liên quan", "Đề xuất FAQ"];
-    const rows: string[][] = [];
+    const datasets: any[] = [];
+
+    // 1. Phân loại từ khóa theo chủ đề
+    const keywordRows: string[][] = [];
     finalGroups.forEach((group) => {
       uniqueGroupKeywords(group).forEach((word) => {
         const keywordData = group.keywords.find(k => k.word === word);
         if (keywordData) {
-          rows.push([
+          keywordRows.push([
             group.name || group.id,
             keywordData.word || "",
-            String(keywordData.count || 0),
-            String(keywordData.recentCount || 0),
-            String(keywordData.articleCount || 0),
-            keywordData.isSuggestedFaq ? "Có" : "Không",
+            String(keywordData.count || 0)
           ]);
         }
       });
     });
-    return { headers, rows };
+    datasets.push({
+      title: "Từ khóa theo chủ đề",
+      headers: ["Chủ đề", "Từ khóa", "Số lượt nhắc đến"],
+      rows: keywordRows
+    });
+
+    // 2. Xu hướng từ khóa theo ngày
+    if (finalTrendRows && finalTrendRows.length > 0) {
+      // Find all dynamic topics, excluding "khac" and "Khác"
+      const topicKeys = Array.from(new Set(finalTrendRows.flatMap(row => Object.keys(row).filter(k => k !== "date" && k.toLowerCase() !== "khac" && k.toLowerCase() !== "khác"))));
+      datasets.push({
+        title: "Xu hướng theo ngày",
+        headers: ["Ngày", ...topicKeys],
+        rows: finalTrendRows.map(row => [
+          row.date,
+          ...topicKeys.map(k => String(row[k] || 0))
+        ])
+      });
+    }
+
+    // 3. Tóm tắt KPI các chủ đề
+    if (kpiGroups && kpiGroups.length > 0) {
+      datasets.push({
+        title: "KPI theo chủ đề",
+        headers: ["Chủ đề", "Tổng tin nhắn", "AI phản hồi thất bại"],
+        rows: kpiGroups.map(g => [
+          g.name,
+          String(g.totalQuestions || 0),
+          String(g.aiFailed || 0)
+        ])
+      });
+    }
+
+    return datasets;
   };
 
   return (
@@ -525,7 +557,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
             <span aria-hidden="true" className={cn("absolute inset-y-0 left-0 w-1", toneForGroup(g.id).strip)} />
             <div className="mb-2.5 text-[13px] font-bold text-[#003865]">{g.name}</div>
             <div className={cn("mb-1.5 text-[22px] font-bold", toneForGroup(g.id).text)}>{g.totalQuestions.toLocaleString("vi-VN")}</div>
-            <div className={labelTextClass}>tổng câu hỏi</div>
+            <div className={labelTextClass}>tổng tin nhắn</div>
           </div>
         ))}
       </div>
@@ -534,7 +566,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
       <div className="mb-5 grid grid-cols-[2fr_1fr] gap-5">
         {/* Bar chart */}
         <div className={cardShellClass}>
-          <div className="mb-4 text-sm font-bold text-[#003865]">Số câu hỏi theo nhóm chủ đề</div>
+          <div className="mb-4 text-sm font-bold text-[#003865]">Số tin nhắn AI phản hồi thất bại theo chủ đề</div>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={barData} margin={{ top: 0, right: 10, bottom: 0, left: -10 }}>
               <CartesianGrid stroke="rgba(0,56,101,0.06)" />
@@ -542,8 +574,8 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
               <YAxis tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
               <Tooltip />
               <Legend iconSize={10} />
-              <Bar maxBarSize={40} dataKey="Số câu hỏi" fill={NAVY} radius={[4, 4, 0, 0]} />
-              {hasAiFailedMetric && <Bar maxBarSize={40} dataKey="Số câu AI phản hồi không chính xác" fill={ORANGE} radius={[4, 4, 0, 0]} />}
+              <Bar maxBarSize={40} dataKey="Số tin nhắn" fill={NAVY} radius={[4, 4, 0, 0]} />
+              {hasAiFailedMetric && <Bar maxBarSize={40} dataKey="Số câu AI phản hồi thất bại" fill={ORANGE} radius={[4, 4, 0, 0]} />}
             </BarChart>
           </ResponsiveContainer>
           {!hasAiFailedMetric && (
@@ -555,7 +587,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
 
         {/* Donut chart */}
         <div className={cardShellClass}>
-          <div className="mb-4 text-sm font-bold text-[#003865]">Tỷ lệ nhóm chủ đề</div>
+          <div className="mb-4 text-sm font-bold text-[#003865]">Tỷ lệ số câu hỏi theo chủ đề</div>
           <ResponsiveContainer width="100%" height={220}>
             <PieChart>
               <Pie

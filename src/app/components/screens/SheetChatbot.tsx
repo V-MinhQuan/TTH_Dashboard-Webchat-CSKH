@@ -260,7 +260,6 @@ export function SheetChatbot() {
   const [search, setSearch] = useState("");
   const [filterTopic, setFilterTopic] = useState(ALL_FILTER_VALUE);
   const [filterChannel, setFilterChannel] = useState(ALL_FILTER_VALUE);
-  const [filterSource, setFilterSource] = useState(ALL_FILTER_VALUE);
   const [filterStatus, setFilterStatus] = useState(ALL_FILTER_VALUE);
   const [filterRisk, setFilterRisk] = useState(ALL_FILTER_VALUE);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -314,10 +313,6 @@ export function SheetChatbot() {
     () => TOPIC_FILTER_OPTIONS.map((option) => option.label),
     [],
   );
-  const sourceOptions = useMemo(
-    () => uniqueSortedText(visibleRows.map((row) => displayFailureSource(row.source))),
-    [visibleRows],
-  );
   const channelOptions = useMemo(
     () => uniqueSortedText(visibleRows.map((row) => row.channel || "Chưa xác định")),
     [visibleRows],
@@ -330,19 +325,12 @@ export function SheetChatbot() {
   }, [filterTopic, topicOptions]);
 
   useEffect(() => {
-    if (filterSource !== ALL_FILTER_VALUE && !sourceOptions.includes(filterSource)) {
-      setFilterSource(ALL_FILTER_VALUE);
-    }
-  }, [filterSource, sourceOptions]);
-
-  useEffect(() => {
     if (filterChannel !== ALL_FILTER_VALUE && !channelOptions.includes(filterChannel)) {
       setFilterChannel(ALL_FILTER_VALUE);
     }
   }, [channelOptions, filterChannel]);
 
   const filtered = visibleRows.filter(r => {
-    const sourceLabel = displayFailureSource(r.source);
     const channelLabel = r.channel || "Chưa xác định";
     const matchSearch = r.question.toLowerCase().includes(search.toLowerCase()) ||
       r.topic.toLowerCase().includes(search.toLowerCase()) ||
@@ -350,10 +338,9 @@ export function SheetChatbot() {
       r.addedBy.toLowerCase().includes(search.toLowerCase());
     const matchTopic = filterTopic === ALL_FILTER_VALUE || r.topic === filterTopic;
     const matchChannel = filterChannel === ALL_FILTER_VALUE || channelLabel === filterChannel;
-    const matchSource = filterSource === ALL_FILTER_VALUE || sourceLabel === filterSource;
     const matchStatus = filterStatus === ALL_FILTER_VALUE || r.status === filterStatus;
     const matchRisk = filterRisk === ALL_FILTER_VALUE || r.risk === filterRisk;
-    return matchSearch && matchTopic && matchChannel && matchSource && matchStatus && matchRisk;
+    return matchSearch && matchTopic && matchChannel && matchStatus && matchRisk;
   });
 
   const updateStatus = async (id: string, status: SheetStatus) => {
@@ -487,9 +474,6 @@ export function SheetChatbot() {
                       <FilterableHeader label="Kênh" value={filterChannel} options={channelOptions} onChange={setFilterChannel} />
                     </th>
                     <th style={tableHeaderCellStyle}>
-                      <FilterableHeader label="Nguồn" value={filterSource} options={sourceOptions} onChange={setFilterSource} />
-                    </th>
-                    <th style={tableHeaderCellStyle}>
                       <FilterableHeader label="Mức rủi ro" value={filterRisk} options={RISK_LEVELS} onChange={setFilterRisk} />
                     </th>
                     <th style={tableHeaderCellStyle}>
@@ -541,9 +525,6 @@ export function SheetChatbot() {
                           <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: "#eff6ff", color: "#3b82f6", whiteSpace: "nowrap" }}>{row.topic}</span>
                         </td>
                         <td style={{ padding: "12px 14px", color: "rgba(0,62,154,0.62)", whiteSpace: "nowrap" }}>{row.channel || "Chưa xác định"}</td>
-                        <td style={{ padding: "12px 14px" }}>
-                          <span style={{ fontSize: "10px", color: "rgba(0,62,154,0.6)", whiteSpace: "nowrap" }}>{displayFailureSource(row.source)}</span>
-                        </td>
                         <td style={{ padding: "12px 14px" }}>
                           <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: rc.bg, color: rc.color, fontWeight: 600 }}>{row.risk}</span>
                         </td>
@@ -671,9 +652,9 @@ export function SheetChatbot() {
                 <Trash2 size={18} />
               </div>
               <div>
-                <h3 id="delete-feedback-title" style={{ margin: "0 0 6px", color: NAVY, fontSize: "17px" }}>Xóa phản hồi bị từ chối?</h3>
+                <h3 id="delete-feedback-title" style={{ margin: "0 0 6px", color: NAVY, fontSize: "17px" }}>Xác nhận xóa phản hồi</h3>
                 <p style={{ margin: 0, color: "rgba(0,56,101,0.68)", fontSize: "13px", lineHeight: 1.5 }}>
-                  Phản hồi này sẽ bị xóa vĩnh viễn khỏi database.
+                  Phản hồi này sẽ bị xóa vĩnh viễn
                 </p>
               </div>
             </div>
@@ -695,7 +676,7 @@ export function SheetChatbot() {
                 disabled={Boolean(deletingId)}
                 style={{ padding: "9px 16px", borderRadius: "8px", border: 0, background: deletingId ? "#fca5a5" : "#dc2626", color: "#fff", cursor: deletingId ? "not-allowed" : "pointer", fontWeight: 700 }}
               >
-                {deletingId ? "Đang xóa..." : "Xóa khỏi database"}
+                {deletingId ? "Đang xóa..." : "Xác nhận xóa"}
               </button>
             </div>
           </div>

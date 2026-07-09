@@ -1,3 +1,4 @@
+import difflib
 import json
 import logging
 import re
@@ -74,7 +75,7 @@ GEMINI_PROVIDER_BUDGET_SECONDS = 2.5
 GEMINI_REQUEST_TIMEOUT_SECONDS = 1.0
 OPENAI_PROVIDER_BUDGET_SECONDS = 1.0
 OPENAI_REQUEST_TIMEOUT_SECONDS = 1.0
-LOCAL_GROUP_SIMILARITY_THRESHOLD = 0.72
+LOCAL_GROUP_SIMILARITY_THRESHOLD = 0.82
 QUESTION_STOPWORDS = {
     "a",
     "ad",
@@ -138,6 +139,11 @@ QUESTION_PHRASE_TOKENS = {
         "chung nhan",
         "nhan bang",
         "lay bang",
+        "nhan chung chi",
+        "co chung chi",
+        "khi nao co chung",
+        "chung chi khi nao",
+        "bang tot nghiep",
         "bang",
     ),
     "phieu_diem": (
@@ -956,6 +962,32 @@ def token_overlap_score(left, right) -> float:
     return len(left & right) / max(1, min(len(left), len(right)))
 
 
+def semantic_similarity_score(text_a: str, text_b: str, tokens_a: set, tokens_b: set) -> float:
+    """Kết hợp SequenceMatcher (cấu trúc chuỗi) + token overlap (từ vựng)
+    để đánh giá độ tương đồng ngữ nghĩa chính xác hơn."""
+    if not text_a or not text_b:
+        return 0.0
+
+    # Chuẩn hóa văn bản trước khi so sánh chuỗi
+    norm_a = strip_vietnamese_marks(clean_question_text(text_a)).lower()
+    norm_b = strip_vietnamese_marks(clean_question_text(text_b)).lower()
+
+    # Điểm tương đồng cấu trúc chuỗi (SequenceMatcher)
+    seq_score = difflib.SequenceMatcher(None, norm_a, norm_b).ratio()
+
+    # Điểm tương đồng từ vựng (token overlap)
+    tok_score = token_overlap_score(tokens_a, tokens_b)
+
+    # Trọng số: 60% token overlap (ý nghĩa cụm từ) + 40% cấu trúc chuỗi
+    combined = tok_score * 0.6 + seq_score * 0.4
+
+    # Penalty: nếu cấu trúc chuỗi rất khác nhau (< 0.35) dù token giống -> hạ điểm
+    if seq_score < 0.35 and tok_score > 0.7:
+        combined *= 0.75
+
+    return combined
+
+
 def question_intents(value: str = ""):
     normalized = strip_vietnamese_marks(clean_question_text(value)).lower()
     return {
@@ -992,7 +1024,11 @@ def question_item_topic_ids(item) -> set[str]:
 def topic_sets_are_compatible(left: set[str], right: set[str]) -> bool:
     if not left or not right:
         return True
-    return left == right
+    # Hai topic khác nhau hoàn toàn -> không tương thích
+    if not (left & right):
+        return False
+    # Nếu có ít nhất 1 topic chung -> tương thích
+    return True
 
 
 def question_item_compatibility(representative: str, item) -> tuple[bool, str]:
@@ -1065,6 +1101,9 @@ def validate_ai_question_groups(groups, source_items):
 
 
 def build_local_question_groups(items):
+    """Gom nhóm câu hỏi theo độ tương đồng ngữ nghĩa (Fallback khi LLM hết quota).
+    Sử dụng thuật toán kết hợp SequenceMatcher + Token Overlap với threshold 0.82.
+    """
     groups = []
     token_index = defaultdict(set)
 
@@ -1078,9 +1117,15 @@ def build_local_question_groups(items):
         best_index = None
         best_score = 0.0
         for index in candidate_indexes:
-            if not topic_sets_are_compatible(groups[index].get("topicIds", set()), item_topic_ids):
+            group = groups[index]
+            # Lớp lọc 1: Chủ đề (Topic) phải tương thích
+            if not topic_sets_are_compatible(group.get("topicIds", set()), item_topic_ids):
                 continue
-            score = token_overlap_score(tokens, groups[index]["tokens"])
+            # Lớp lọc 2: Tính điểm ngữ nghĩa kết hợp
+            score = semantic_similarity_score(
+                item["question"], group["question"],
+                tokens, group["tokens"]
+            )
             if score > best_score:
                 best_score = score
                 best_index = index
@@ -1108,6 +1153,9 @@ def build_local_question_groups(items):
         group["count"] += item["count"]
         group["itemIds"].append(item["id"])
         group["topicIds"].update(item_topic_ids)
+        # Cập nhật câu hỏi đại diện nếu câu mới ngắn gọn hơn (dễ hiểu hơn)
+        if len(item["question"]) < len(group["question"]):
+            group["question"] = item["question"]
         for variant in item.get("variants") or []:
             group["variantCounts"][variant["question"]] += variant["count"]
 

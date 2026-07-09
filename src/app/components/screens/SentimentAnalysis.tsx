@@ -473,15 +473,112 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
     setRefreshKey((k) => k + 1);
   };
 
-  const getExportData = () => {
-    const headers = ["Chủ đề", "Tích cực (%)", "Trung lập (%)", "Tiêu cực (%)"];
-    const rows = topicSentiment.map(d => [
-      d.topic,
-      String(d.positive),
-      String(d.neutral),
-      String(d.negative)
-    ]);
-    return { headers, rows };
+  const getExportData = async () => {
+    const datasets: any[] = [];
+    
+    // 1. Phân tích theo chủ đề
+    datasets.push({
+      title: "Phân tích theo chủ đề",
+      headers: ["Chủ đề", "Tích cực (%)", "Trung lập (%)", "Tiêu cực (%)"],
+      rows: topicSentiment.map(d => [d.topic, String(d.positive), String(d.neutral), String(d.negative)])
+    });
+
+    // 2. Từ khóa tiêu cực phổ biến
+    datasets.push({
+      title: "Từ khóa tiêu cực phổ biến",
+      headers: ["Từ khóa", "Tần suất", "Chủ đề"],
+      rows: negKeywords.map(k => [k.word, String(k.count), k.topic])
+    });
+
+    // 3. Hội thoại tích cực (Fetch ALL with Pagination)
+    let posRows: string[][] = [];
+    const posHeaders = ["Khách hàng", "Nội dung đại diện", "Chủ đề", "Kênh", "Cảm xúc", "Thời gian"];
+    const PAGE_SIZE = 100; // Backend max_page_size is 100
+    let loadingToastId: string | number | undefined;
+    
+    try {
+      const queryParams = buildSentimentQueryParams(filters);
+      queryParams.set("page", "1");
+      queryParams.set("pageSize", String(PAGE_SIZE));
+      
+      loadingToastId = toast.loading("Đang khởi tạo tải dữ liệu hội thoại tích cực...");
+      const posRes = await fetchApiJson<any>(buildApiUrl("/api/analytics/positive-conversations", queryParams), { cache: false });
+      
+      if (posRes?.success) {
+        let allRecords: any[] = Array.isArray(posRes.data?.records) ? posRes.data.records : [];
+        const totalRecords = Number(posRes.data?.pagination?.total) || allRecords.length;
+        const totalPages = Math.ceil(totalRecords / PAGE_SIZE);
+
+        if (totalPages > 1) {
+          // Fetch remaining pages sequentially to avoid overwhelming the server
+          for (let p = 2; p <= totalPages; p++) {
+             toast.loading(`Đang tải dữ liệu hội thoại tích cực... (${p}/${totalPages})`, { id: loadingToastId });
+             const nextParams = buildSentimentQueryParams(filters);
+             nextParams.set("page", String(p));
+             nextParams.set("pageSize", String(PAGE_SIZE));
+             const nextRes = await fetchApiJson<any>(buildApiUrl("/api/analytics/positive-conversations", nextParams), { cache: false });
+             if (nextRes?.success && Array.isArray(nextRes.data?.records)) {
+                 allRecords = allRecords.concat(nextRes.data.records);
+             } else {
+                 throw new Error(`Lỗi khi tải trang ${p}`);
+             }
+          }
+        }
+        
+        toast.dismiss(loadingToastId);
+        
+        const filteredRecords = allRecords.map(mapPositiveConversation).filter(conv => {
+          if (!filters.topic || filters.topic === "Tất cả") return true;
+          return mapTopicToGroupId(conv.topic) === mapTopicToGroupId(filters.topic);
+        });
+        posRows = filteredRecords.map(c => [
+          `${c.customer}${c.customerReference ? `\n${c.customerReference}` : ""}`,
+          c.content,
+          c.topic,
+          c.channel,
+          c.label,
+          c.messageAt ? new Date(c.messageAt).toLocaleString("vi-VN") : "Chưa xác định"
+        ]);
+      } else {
+        throw new Error("Không thành công");
+      }
+    } catch (e) {
+      console.error("Lỗi khi tải hội thoại tích cực cho export:", e);
+      if (loadingToastId) toast.dismiss(loadingToastId);
+      toast.error("Mạng yếu hoặc dữ liệu quá lớn, chỉ có thể xuất dữ liệu hiện tại.");
+      
+      posRows = positiveConversations.map(c => [
+        `${c.customer}${c.customerReference ? `\n${c.customerReference}` : ""}`,
+        c.content,
+        c.topic,
+        c.channel,
+        c.label,
+        c.messageAt ? new Date(c.messageAt).toLocaleString("vi-VN") : "Chưa xác định"
+      ]);
+    }
+    
+    datasets.push({
+      title: "Hội thoại có cảm xúc tích cực",
+      headers: posHeaders,
+      rows: posRows
+    });
+
+    // 4. Hội thoại tiêu cực
+    datasets.push({
+      title: "Hội thoại có cảm xúc tiêu cực",
+      headers: ["Khách hàng", "Nội dung đại diện", "Chủ đề", "Kênh", "Mức độ", "Thời gian chờ", "Trạng thái"],
+      rows: negativeConversations.map(c => [
+        c.customer + (c.customerReference ? `\n${c.customerReference}` : ""),
+        c.complaint,
+        c.topic,
+        c.channel,
+        c.level,
+        c.waitTime,
+        c.status
+      ])
+    });
+
+    return datasets;
   };
 
   return (
@@ -721,10 +818,10 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
                   if (chartType === "bar" || chartType === "hbar") {
                     return (
                       <ResponsiveContainer width="100%" height={260}>
-                        <BarChart data={safeData} margin={{ top: 20, right: 20, left: -20, bottom: 20 }} layout={chartType === "hbar" ? "vertical" : "horizontal"}>
-                          <CartesianGrid stroke="rgba(0,56,101,0.06)" vertical={chartType !== "hbar"} horizontal={chartType === "hbar"} />
-                          {chartType === "hbar" ? <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "rgba(0,56,101,0.4)" }} tickFormatter={(v) => `${v}%`} /> : <XAxis dataKey="topic" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "rgba(0,56,101,0.4)" }} dy={10} />}
-                          {chartType === "hbar" ? <YAxis dataKey="topic" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "rgba(0,56,101,0.4)" }} width={100} /> : <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "rgba(0,56,101,0.4)" }} tickFormatter={(v) => `${v}%`} />}
+                        <BarChart data={safeData} margin={{ top: 20, right: 20, bottom: 20 }} layout={chartType === "hbar" ? "vertical" : "horizontal"}>
+                          <CartesianGrid stroke="rgba(0,56,101,0.06)" />
+                          {chartType === "hbar" ? <XAxis type="number" tick={{ fontSize: 11, fill: "rgba(0,56,101,0.4)" }} tickFormatter={(v) => `${v}%`} /> : <XAxis dataKey="topic" tick={{ fontSize: 11, fill: "rgba(0,56,101,0.4)" }} dy={10} />}
+                          {chartType === "hbar" ? <YAxis dataKey="topic" type="category" tick={{ fontSize: 11, fill: "rgba(0,56,101,0.4)" }} width={100} /> : <YAxis tick={{ fontSize: 11, fill: "rgba(0,56,101,0.4)" }} tickFormatter={(v) => `${v}%`} />}
                           <Tooltip cursor={{ fill: "rgba(0,56,101,0.02)" }} formatter={(v: any) => `${v}%`} />
                           {showLegend && <Legend iconSize={8} iconType="square" wrapperStyle={{ bottom: 0 }} />}
                           <Bar maxBarSize={40} dataKey="positive" name="Tích cực" stackId="a" fill={SENTIMENT_POSITIVE} />
@@ -758,14 +855,14 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
                 <thead><tr style={{ backgroundColor: "#f8fafc" }}>
-                  {["Khách hàng", "Nội dung đại diện", "Chủ đề", "Kênh", "Cảm xúc", "Thời gian", "Điểm"].map((header) => (
+                  {["Khách hàng", "Nội dung đại diện", "Chủ đề", "Kênh", "Cảm xúc", "Thời gian"].map((header) => (
                     <th key={header} style={{ padding: "10px 14px", textAlign: "left", fontWeight: 600, color: "rgba(0,56,101,0.5)", fontSize: "10px", letterSpacing: "0.04em", borderBottom: "1px solid rgba(0,56,101,0.06)", whiteSpace: "nowrap" }}>{header}</th>
                   ))}
                 </tr></thead>
                 <tbody>
-                  {positiveLoading && <tr><td colSpan={7} style={{ padding: "22px", textAlign: "center", color: "rgba(0,56,101,0.55)" }}>Đang tải trang {positivePage}...</td></tr>}
-                  {!positiveLoading && positiveError && <tr><td colSpan={7} style={{ padding: "22px", textAlign: "center", color: "#b42318" }}>{positiveError}</td></tr>}
-                  {!positiveLoading && !positiveError && positiveConversations.length === 0 && <tr><td colSpan={7} style={{ padding: "22px", textAlign: "center", color: "rgba(0,56,101,0.55)" }}>Chưa có dữ liệu hội thoại tích cực trong khoảng lọc.</td></tr>}
+                  {positiveLoading && <tr><td colSpan={6} style={{ padding: "22px", textAlign: "center", color: "rgba(0,56,101,0.55)" }}>Đang tải trang {positivePage}...</td></tr>}
+                  {!positiveLoading && positiveError && <tr><td colSpan={6} style={{ padding: "22px", textAlign: "center", color: "#b42318" }}>{positiveError}</td></tr>}
+                  {!positiveLoading && !positiveError && positiveConversations.length === 0 && <tr><td colSpan={6} style={{ padding: "22px", textAlign: "center", color: "rgba(0,56,101,0.55)" }}>Chưa có dữ liệu hội thoại tích cực trong khoảng lọc.</td></tr>}
                   {!positiveLoading && !positiveError && positiveConversations.map((conversation) => (
                     <tr
                       key={conversation.id}
@@ -788,7 +885,6 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
                         <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: "#ecfdf3", color: "#16794f", fontWeight: 600, whiteSpace: "nowrap", display: "inline-block" }}>{conversation.label}</span>
                       </td>
                       <td style={{ padding: "12px 14px", color: "rgba(0,56,101,0.65)", whiteSpace: "nowrap" }}>{conversation.messageAt ? new Date(conversation.messageAt).toLocaleString("vi-VN") : "Chưa xác định"}</td>
-                      <td style={{ padding: "12px 14px", color: NAVY, fontWeight: 600, whiteSpace: "nowrap" }}>{conversation.score === null ? "Chưa có dữ liệu" : conversation.score.toFixed(2)}</td>
                     </tr>
                   ))}
                 </tbody>

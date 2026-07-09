@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   MessageSquare, MessageCircle, CheckCircle, XCircle, AlertTriangle,
-  Eye, Plus, RefreshCw, Search, X,
+  Eye, Plus, RefreshCw, Search, X, Loader2
 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip,
@@ -32,6 +32,7 @@ import { SourceChart } from "../dashboard/SourceChart";
 import { FeedbackFormDialog } from "../feedback/FeedbackFormDialog";
 import { getDateParamsFromFilters } from "../../utils/dateFilters";
 import { mapTopicToGroupId } from "../../constants/topicTaxonomy";
+import { getSheetChatbotDuplicates } from "../../services/sheetChatbotApi";
 
 const NAVY = "#003865";
 const ORANGE = "#D73C01";
@@ -120,6 +121,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
   const [localRefreshing, setLocalRefreshing] = useState<boolean>(false);
   const [lastUpdatedTime, setLastUpdatedTime] = useState<string>(parentLastUpdated || "08:00");
   const [feedbackQuestion, setFeedbackQuestion] = useState<TopQuestion | null>(null);
+  const [checkingFaqId, setCheckingFaqId] = useState<string | null>(null);
   const [selectedTopQuestion, setSelectedTopQuestion] = useState<TopQuestion | null>(null);
   const [detailSearch, setDetailSearch] = useState("");
   const [topQuestionSearch, setTopQuestionSearch] = useState("");
@@ -572,8 +574,20 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
     setDetailSearch("");
   };
 
-  const openTopQuestionFaq = (question: TopQuestion) => {
-    setFeedbackQuestion(question);
+  const openTopQuestionFaq = async (question: TopQuestion) => {
+    try {
+      setCheckingFaqId(question.question);
+      const duplicates = await getSheetChatbotDuplicates(question.question, 0.8, 1);
+      if (duplicates && duplicates.length > 0) {
+        toast.info("Đã tồn tại trong thư viện phản hồi");
+        return;
+      }
+      setFeedbackQuestion(question);
+    } catch (e: any) {
+      toast.error(e.message || "Lỗi kiểm tra thư viện phản hồi");
+    } finally {
+      setCheckingFaqId(null);
+    }
   };
 
   const detailQuestions = useMemo(() => {
@@ -735,17 +749,100 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
   const reportAlerts = urgentAlerts.slice(0, 6);
   const reportTopQuestions = topQuestions.slice(0, 5);
   const reportPriorityConversations = priorityConversations.slice(0, 6);
-  const getExportData = () => {
-    const headers = ["Chỉ số", "Giá trị"];
-    const rows = [
-      ["Tổng hội thoại", String(kpiData?.kpi?.total_conversations || 0)],
-      ["Tổng tin nhắn khách hàng", String(kpiData?.kpi?.total_messages || 0)],
-      ["Chờ xử lý", String(kpiData?.statusSummary?.pending || 0)],
-      ["Đang tư vấn", String(kpiData?.statusSummary?.open || 0)],
-      ["Hoàn thành", String(kpiData?.statusSummary?.closed || 0)],
-      ["AI phản hồi thất bại", String(kpiData?.aiFailures || 0)]
-    ];
-    return { headers, rows };
+  const getExportData = async () => {
+    const datasets: any[] = [];
+    
+    // 1. Tổng quan
+    datasets.push({
+      title: "Tổng quan KPI",
+      headers: ["Chỉ số", "Giá trị"],
+      rows: [
+        ["Tổng hội thoại", String(kpiData?.totalConversations || 0)],
+        ["Tổng tin nhắn khách hàng", String(kpiData?.totalMessages || 0)],
+        ["Chờ xử lý", String(kpiData?.statusSummary?.pending || 0)],
+        ["Đang tư vấn", String(kpiData?.statusSummary?.open || 0)],
+        ["Hoàn thành", String(kpiData?.statusSummary?.closed || 0)],
+        ["AI phản hồi thất bại", String(kpiData?.aiFailures || 0)]
+      ]
+    });
+
+    // 2. Tình trạng xử lý
+    datasets.push({
+      title: "Tình trạng xử lý",
+      headers: ["Trạng thái", "Số lượng", "Tỷ lệ (%)"],
+      rows: reportStatusRows.map(r => [r.label, String(r.value), `${((r.value / maxStatusValue) * 100).toFixed(1)}%`])
+    });
+
+    // 3. Phân bổ theo kênh
+    datasets.push({
+      title: "Phân bổ theo kênh",
+      headers: ["Kênh", "Hội thoại", "Tin nhắn"],
+      rows: sourceStats.map(s => [s.name, String(s.hoiday), String(s.tinnan)])
+    });
+
+    // 4. Xu hướng 
+    datasets.push({
+      title: "Xu hướng hội thoại",
+      headers: ["Ngày", "Tổng hội thoại"],
+      rows: dailyTrends.map((d: any) => [d.date, String(d.total)])
+    });
+
+    // 5. Cảnh báo khẩn cấp
+    // Tải toàn bộ cảnh báo nếu có API, hoặc lấy từ state (urgentAlertRows)
+    let fullAlerts = urgentAlertRows;
+    datasets.push({
+      title: "Cảnh báo khẩn cấp",
+      headers: ["Khách hàng", "Vấn đề", "Nguồn", "Thời gian"],
+      rows: fullAlerts.map(a => [
+        a.customer + (a.customerReference ? `\n${a.customerReference}` : ""),
+        a.issue,
+        a.channel || "Không rõ",
+        a.time
+      ])
+    });
+
+    // 6. Top chủ đề
+    // Fetch top questions with larger limit if possible, or use state
+    datasets.push({
+      title: "Chủ đề phổ biến",
+      headers: ["Chủ đề", "Số lượng"],
+      rows: topQuestionRows.map(q => [q.question, String(q.count)])
+    });
+
+    // 7. Hội thoại ưu tiên (Fetch all pending)
+    let fullPriority = priorityConversationRows;
+    let loadingToastId: string | number | undefined;
+    try {
+      loadingToastId = toast.loading("Đang tải toàn bộ hội thoại ưu tiên...");
+      let dateParams = getDateParamsFromFilters(filters);
+      const rows = await getDashboardPriorityConversations({
+        ...dateParams,
+        channel: filters.channel,
+        topic: filters.topic,
+        conversationStatus: filters.conversationStatus,
+        aiStatus: filters.aiStatus,
+        limit: 1000,
+        signal: undefined,
+      });
+      fullPriority = rows;
+      toast.dismiss(loadingToastId);
+    } catch (error) {
+      if (loadingToastId) toast.dismiss(loadingToastId);
+      toast.warning("Không thể tải toàn bộ hội thoại ưu tiên, sử dụng dữ liệu hiển thị.");
+    }
+
+    datasets.push({
+      title: "Hội thoại ưu tiên",
+      headers: ["Khách hàng", "Nội dung gần nhất", "Kênh", "Mức độ ưu tiên"],
+      rows: fullPriority.map(c => [
+        (c.customer || "") + (c.customerId ? ` (${c.customerId})` : ""),
+        c.lastMessage || "",
+        c.source || "",
+        c.priority || ""
+      ])
+    });
+
+    return datasets;
   };
 
   return (
@@ -1060,6 +1157,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
             data={dailyTrends}
             defaultChartType="line"
             defaultAxisX="Ngày"
+            supportedChartTypes={["line", "area", "bar", "hbar"]}
             baseFilters={filters}
             axisOptions={["Ngày"]}
             valueOptions={["Số hội thoại", "AI trả lời thành công", "AI trả lời thất bại"]}
@@ -1208,8 +1306,8 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                             : "AI trả lời thất bại"
                       }
                       stroke="#003BB9"
-                      strokeWidth={2}
-                      dot={{ r: 2 }}
+                      strokeWidth={1.5}
+                      dot={false}
                       connectNulls={false}
                       label={editValues.dataLabels}
                     />
@@ -1433,8 +1531,8 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                       dataKey="value"
                       name="Số hội thoại"
                       stroke="#003BB9"
-                      strokeWidth={2}
-                      dot={{ r: 3 }}
+                      strokeWidth={1.5}
+                      dot={false}
                       label={editValues.dataLabels}
                     />
                   </LineChart>
@@ -1547,8 +1645,8 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                           <button onClick={() => openTopQuestionDetails(q)} style={{ padding: "4px 9px", borderRadius: "7px", border: "1px solid rgba(0,59,185,0.2)", background: "#f8fafc", color: "#003BB9", cursor: "pointer", fontSize: "11px", display: "flex", alignItems: "center", gap: "3px" }}>
                             <Eye size={10} /> Chi tiết
                           </button>
-                          <button onClick={() => openTopQuestionFaq(q)} style={{ padding: "4px 9px", borderRadius: "7px", border: "1px solid rgba(0,59,185,0.15)", background: "#fff", color: "rgba(0,59,185,0.65)", cursor: "pointer", fontSize: "11px", display: "flex", alignItems: "center", gap: "3px" }}>
-                            <Plus size={10} /> Thêm FAQ
+                          <button onClick={() => openTopQuestionFaq(q)} disabled={checkingFaqId === q.question} style={{ padding: "4px 9px", borderRadius: "7px", border: "1px solid rgba(0,59,185,0.15)", background: "#fff", color: "rgba(0,59,185,0.65)", cursor: checkingFaqId === q.question ? "not-allowed" : "pointer", fontSize: "11px", display: "flex", alignItems: "center", gap: "3px", opacity: checkingFaqId === q.question ? 0.6 : 1 }}>
+                            {checkingFaqId === q.question ? <Loader2 size={10} className="animate-spin" /> : <Plus size={10} />} Thêm FAQ
                           </button>
                         </div>
                       </td>

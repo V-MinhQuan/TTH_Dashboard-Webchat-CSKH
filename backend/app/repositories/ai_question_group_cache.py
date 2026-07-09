@@ -193,6 +193,28 @@ class AiQuestionGroupCacheRepository:
                 return
             logger.warning("Could not write AI question group DB cache: %s", exc)
 
+    def invalidate_all(self) -> int:
+        """Đánh dấu toàn bộ cache là không còn hợp lệ (IsActive=0).
+        Dùng khi thuật toán gom nhóm thay đổi, buộc hệ thống tính lại từ đầu.
+        Trả về số hàng bị vô hiệu hóa.
+        """
+        try:
+            with self._connection_factory() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    f"UPDATE {AI_QUESTION_GROUP_CACHE_TABLE} SET IsActive = 0, UpdatedAt = SYSUTCDATETIME() WHERE IsActive = 1"
+                )
+                affected = cursor.rowcount
+                conn.commit()
+                logger.info("Invalidated %s AI question group cache rows.", affected)
+                return affected
+        except Exception as exc:
+            if _is_missing_cache_table(exc):
+                logger.info("AI question group DB cache table is not available yet.")
+                return 0
+            logger.warning("Could not invalidate AI question group DB cache: %s", exc)
+            return 0
+
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)

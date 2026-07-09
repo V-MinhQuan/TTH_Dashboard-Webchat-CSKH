@@ -13,7 +13,7 @@ class UserRepository:
             conn = get_db_connection()
             cursor = conn.cursor(as_dict=True)
             cursor.execute(
-                "SELECT UserName, DangHoatDong, HoTen, ShortName, Email, DienThoai, Password FROM [WebChat_User] WHERE UserName = %s",
+                "SELECT UserName, DangHoatDong, HoTen, ShortName, Email, DienThoai, Password, VaiTro FROM [WebChat_User] WHERE UserName = %s",
                 (username,)
             )
             row = cursor.fetchone()
@@ -23,7 +23,7 @@ class UserRepository:
                     "name": row["HoTen"] or row["ShortName"] or row["UserName"],
                     "email": row["Email"] or f"{row['UserName']}@flic.edu.vn",
                     "phone": row["DienThoai"] or "0123456789",
-                    "role": "manager" if row["UserName"] in ("test", "thuynt", "admin") else "staff",
+                    "role": "manager" if row.get("VaiTro") == "Quản lý CSKH" else "staff" if row.get("VaiTro") == "Nhân viên CSKH" else ("manager" if row["UserName"] in ("test", "thuynt", "admin") else "staff"),
                     "password": row["Password"],
                     "active": bool(row["DangHoatDong"])
                 }
@@ -41,12 +41,12 @@ class UserRepository:
             conn = get_db_connection()
             cursor = conn.cursor(as_dict=True)
             cursor.execute(
-                "SELECT UserName, DangHoatDong, HoTen, ShortName, Email, DienThoai FROM [WebChat_User]"
+                "SELECT UserName, DangHoatDong, HoTen, ShortName, Email, DienThoai, VaiTro FROM [WebChat_User]"
             )
             rows = cursor.fetchall()
             users = []
             for row in rows:
-                role = "Quản lý CSKH" if row["UserName"] in ("test", "thuynt", "admin") else "Nhân viên CSKH"
+                role = row.get("VaiTro") or ("Quản lý CSKH" if row["UserName"] in ("test", "thuynt", "admin") else "Nhân viên CSKH")
                 channels = "Tất cả" if role == "Quản lý CSKH" else "Zalo Business, Facebook"
                 permissions = "Toàn quyền hệ thống" if role == "Quản lý CSKH" else "Xử lý hội thoại"
                 
@@ -72,7 +72,8 @@ class UserRepository:
                 conn.close()
         return []
 
-    def create_user(self, username: str, password: str, name: str, email: str, phone: str, active: bool = True) -> dict:
+
+    def create_user(self, username: str, password: str, name: str, email: str, phone: str, active: bool = True, role: str = "Nhân viên CSKH") -> dict:
         username = username.strip()
         if not username:
             raise Exception("Tên đăng nhập là bắt buộc.")
@@ -90,10 +91,10 @@ class UserRepository:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                INSERT INTO [WebChat_User] (UserName, Password, DangHoatDong, HoTen, ShortName, Email, DienThoai)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO [WebChat_User] (UserName, Password, DangHoatDong, HoTen, ShortName, Email, DienThoai, VaiTro)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 """,
-                (username, password, 1 if active else 0, name or username, name or username, email or None, phone or None)
+                (username, password, 1 if active else 0, name or username, name or username, email or None, phone or None, role)
             )
             conn.commit()
         except Exception as e:
@@ -110,6 +111,27 @@ class UserRepository:
             raise Exception("Không thể lấy thông tin người dùng sau khi tạo.")
         created.pop("password", None)
         return created
+
+
+    def update_user_role(self, username: str, role: str) -> bool:
+        username = username.strip()
+        conn = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE [WebChat_User] SET VaiTro = %s WHERE UserName = %s",
+                (role, username)
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            print(f"[UserRepository] Lỗi cập nhật quyền DB: {e}")
+            raise e
+        finally:
+            if conn:
+                conn.close()
+        return False
 
     def update_profile(self, username: str, name: str, email: str, phone: str) -> bool:
         username = username.strip()

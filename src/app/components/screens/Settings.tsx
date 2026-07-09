@@ -101,12 +101,10 @@ function OtpModal({ isOpen, onClose, onConfirm }: { isOpen: boolean; onClose: ()
 const adminSections = [
   { id: "profile", label: "Thông tin người dùng", icon: User },
   { id: "users", label: "Người dùng & phân quyền", icon: Users },
-  { id: "notifications", label: "Thông báo", icon: Bell },
 ];
 
 const staffSections = [
   { id: "profile", label: "Thông tin cá nhân", icon: User },
-  { id: "notifications", label: "Thông báo", icon: Bell },
   { id: "channels", label: "Kênh phụ trách", icon: MessageSquare },
   { id: "display", label: "Tùy chọn hiển thị", icon: Eye },
 ];
@@ -317,30 +315,6 @@ export function Settings({ defaultSection = "profile" }: { defaultSection?: stri
 
     if (activeSection === "users") {
       return <div style={{ margin: "-28px" }}><UserManagement /></div>;
-    }
-
-    if (activeSection === "notifications") {
-      const notifItems = [
-        { label: "Thông báo qua Email", desc: "Nhận cảnh báo và báo cáo qua email", key: "emailNotif" },
-        { label: "Cảnh báo AI phản hồi thất bại", desc: "Thông báo ngay khi tỷ lệ AI phản hồi thất bại vượt ngưỡng", key: "aiFailAlert" },
-      ];
-      return (
-        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-          <SectionTitle title="Thông báo" />
-          {notifItems.map(({ label, desc, key }: any) => {
-            const isEnabled = (settings as any)[key];
-            return (
-              <div key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", borderRadius: "12px", border: "1px solid rgba(0,56,101,0.08)", backgroundColor: "#f8fafc", opacity: isEnabled ? 1 : 0.6, transition: "opacity 0.2s" }}>
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: "14px", color: NAVY }}>{label}</div>
-                  <div style={{ fontSize: "12px", color: "rgba(0,56,101,0.5)", marginTop: "2px" }}>{desc}</div>
-                </div>
-                <Toggle value={isEnabled} onChange={(v) => update(key, v)} />
-              </div>
-            );
-          })}
-        </div>
-      );
     }
 
     if (activeSection === "channels" && role === "staff") {

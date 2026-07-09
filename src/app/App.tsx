@@ -18,6 +18,7 @@ const ChartBuilder = lazy(() => import("./components/screens/ChartBuilder").then
 const Settings = lazy(() => import("./components/screens/Settings").then((m) => ({ default: m.Settings })));
 const SheetChatbot = lazy(() => import("./components/screens/SheetChatbot").then((m) => ({ default: m.SheetChatbot })));
 const PersonalInfo = lazy(() => import("./components/screens/PersonalInfo").then((m) => ({ default: m.PersonalInfo })));
+const ActivityHistory = lazy(() => import("./components/screens/ActivityHistory").then((m) => ({ default: m.ActivityHistory })));
 
 function formatTime(d: Date) {
   return new Intl.DateTimeFormat('en-GB', {
@@ -40,6 +41,7 @@ const VALID_SCREEN_IDS = new Set([
   "users",
   "profile",
   "personalinfo",
+  "activity_history",
   "chatbot_sheet",
 ]);
 const PATH_TO_SCREEN = new Map([
@@ -56,6 +58,8 @@ const PATH_TO_SCREEN = new Map([
   ["/profile", "profile"],
   ["/personal-info", "personalinfo"],
   ["/personalinfo", "personalinfo"],
+  ["/activity-history", "activity_history"],
+  ["/activity_history", "activity_history"],
   ["/chatbot-sheet", "chatbot_sheet"],
   ["/chatbot_sheet", "chatbot_sheet"],
 ]);
@@ -194,6 +198,8 @@ function MainApp() {
         return <Settings defaultSection="profile" />;
       case "personalinfo":
         return <PersonalInfo onNavigate={handleNavigate} />;
+      case "activity_history":
+        return <ActivityHistory />;
       case "chatbot_sheet":
         return <SheetChatbot />;
       default:

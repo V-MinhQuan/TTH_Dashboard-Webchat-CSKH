@@ -21,7 +21,7 @@ import { CHANNEL_COLORS, TOPIC_COLORS } from "../../colors";
 
 const NAVY = "#003865";
 const ORANGE = "#D73C01";
-const AVG_RESPONSE_TIME_COLOR = "#F36C2E";
+const AVG_RESPONSE_TIME_COLOR = "#42A5F5";
 
 const getInsightData = (ch: any) => {
   const observations: string[] = [];
@@ -165,7 +165,7 @@ function renderMetricChart({
           <YAxis tick={{ fontSize: 10, fill: "rgba(0,56,101,0.5)" }} />
           <Tooltip formatter={(value: number) => [`${value}${tooltipSuffix}`, valueName]} />
           {editValues.legend && <Legend iconSize={10} />}
-          <Line type="monotone" dataKey={valueKey} name={valueName} stroke={color} strokeWidth={2} dot={{ r: 3 }} label={editValues.dataLabels ? { fontSize: 10 } : undefined} />
+          <Line type="monotone" dataKey={valueKey} name={valueName} stroke={color} strokeWidth={1.5} dot={false} label={editValues.dataLabels ? { fontSize: 10 } : undefined} />
         </LineChart>
       </ResponsiveContainer>
     );
@@ -255,7 +255,7 @@ function renderTrendChart(chartType: string, chartRows: any[], channels: string[
             return <Bar maxBarSize={40} key={channel} dataKey={channel} fill={CHANNEL_COLORS[channel] || NAVY} radius={[4, 4, 0, 0]} label={editValues.dataLabels ? { position: "top", fontSize: 10 } : undefined} />;
           }
           const LINE_COLORS = ["#00A3E0", "#00D2FF", "#002E8D", "#308D16", "#FFA100", "#64748B"];
-          return <Line key={channel} type="monotone" dataKey={channel} stroke={CHANNEL_COLORS[channel] || LINE_COLORS[index % LINE_COLORS.length]} strokeWidth={2} dot={{ r: 2 }} label={editValues.dataLabels ? { fontSize: 10 } : undefined} />;
+          return <Line key={channel} type="monotone" dataKey={channel} stroke={CHANNEL_COLORS[channel] || LINE_COLORS[index % LINE_COLORS.length]} strokeWidth={1.5} dot={false} label={editValues.dataLabels ? { fontSize: 10 } : undefined} />;
         })}
       </ChartComponent>
     </ResponsiveContainer>
@@ -295,7 +295,7 @@ function renderStackedChart(chartType: string, rows: any[], keys: string[], edit
           {editValues.legend && <Legend iconSize={10} />}
           {keys.map((key, index) => chartType === "area"
             ? <Area key={key} type="monotone" dataKey={key} stroke={STATUS_COLORS[key] || NAVY} fill={`${STATUS_COLORS[key] || NAVY}22`} strokeWidth={2} />
-            : <Line key={key} type="monotone" dataKey={key} stroke={["#00A3E0", "#00D2FF", "#002E8D", "#308D16", "#FFA100", "#64748B"][index % 6]} strokeWidth={2} dot={{ r: 2 }} />
+            : <Line key={key} type="monotone" dataKey={key} stroke={["#00A3E0", "#00D2FF", "#002E8D", "#308D16", "#FFA100", "#64748B"][index % 6]} strokeWidth={1.5} dot={false} />
           )}
         </ChartComponent>
       </ResponsiveContainer>
@@ -491,30 +491,79 @@ export function ChannelAnalysis({ filters, onFiltersChange, onNavigate }: Channe
 
   const channelData = (data?.channels || []).filter((item: any) => isSourceEnabled(item.channel || ""));
 
-  const getExportData = useCallback(() => {
-    if (!data) return { headers: [], rows: [] };
-    const headers = ["Kênh", "Tổng hội thoại", "Chờ xử lý", "Đang xử lý", "Hoàn thành", "AI phản hồi", "AI thất bại", "Tỷ lệ AI thành công", "Cảm xúc tiêu cực", "Thời gian chờ TB (phút)"];
-    const rows = (data.channelSummaries || []).map(ch => {
-      const aiRate = ch.ai_ok + ch.ai_fail > 0 ? Math.round((ch.ai_ok / (ch.ai_ok + ch.ai_fail)) * 100) : 0;
-      return [
-        ch.channel || "Khác",
-        String(ch.total || 0),
-        String(ch.unresolved || 0),
-        String(ch.processing || 0),
-        String(ch.resolved || 0),
-        String((ch.ai_ok || 0) + (ch.ai_fail || 0)),
-        String(ch.ai_fail || 0),
-        `${aiRate}%`,
-        String(ch.negative || 0),
-        String(ch.avg_time || 0)
-      ];
-    });
-    return { headers, rows };
-  }, [data]);
-
   const channelTrend = data?.trend || [];
   const channelStatusData = (data?.statusByChannel || []).filter((item: any) => isSourceEnabled(item.channel || ""));
   const heatmapData = data?.heatmap || [];
+
+  const getExportData = useCallback(() => {
+    if (!data) return [];
+    
+    const datasets: any[] = [];
+    
+    // 1. Hiệu suất tổng quan
+    datasets.push({
+      title: "Hiệu suất các kênh",
+      headers: ["Kênh", "Tổng hội thoại", "Chờ xử lý", "Đang tư vấn", "Hoàn thành", "AI phản hồi", "AI thất bại", "Tỷ lệ AI thành công", "Thời gian chờ TB (phút)"],
+      rows: channelData.map((ch: any) => {
+        const aiRate = ch.ai_ok + ch.ai_fail > 0 ? Math.round((ch.ai_ok / (ch.ai_ok + ch.ai_fail)) * 100) : 0;
+        const status = channelStatusData.find((s: any) => s.channel === ch.channel);
+        return [
+          ch.channel || "Khác",
+          String(ch.total || 0),
+          String(ch.unresolved || 0),
+          String(status?.["Đang tư vấn"] || 0),
+          String(status?.["Hoàn thành"] || 0),
+          String((ch.ai_ok || 0) + (ch.ai_fail || 0)),
+          String(ch.ai_fail || 0),
+          `${aiRate}%`,
+          String(ch.avg_time || 0)
+        ];
+      })
+    });
+
+    // 2. Lưu lượng theo ngày (Trend)
+    if (channelTrend && channelTrend.length > 0) {
+      // Find all channels dynamically from the trend data
+      const trendKeys = Array.from(new Set(channelTrend.flatMap((d: any) => Object.keys(d).filter(k => k !== "date"))));
+      datasets.push({
+        title: "Lưu lượng theo ngày",
+        headers: ["Ngày", ...trendKeys],
+        rows: channelTrend.map((d: any) => [
+          d.date,
+          ...trendKeys.map(k => String(d[k] || 0))
+        ])
+      });
+    }
+
+    // 3. Trạng thái xử lý theo kênh
+    if (channelStatusData && channelStatusData.length > 0) {
+      datasets.push({
+        title: "Trạng thái xử lý theo kênh",
+        headers: ["Kênh", "Chờ xử lý", "Đang tư vấn", "Hoàn thành"],
+        rows: channelStatusData.map((ch: any) => [
+          ch.channel || "Khác",
+          String(ch["Chờ xử lý"] || 0),
+          String(ch["Đang tư vấn"] || 0),
+          String(ch["Hoàn thành"] || 0)
+        ])
+      });
+    }
+
+    // 4. Heatmap: Tương quan kênh & chủ đề
+    if (heatmapData && heatmapData.length > 0) {
+      datasets.push({
+        title: "Tương quan kênh và chủ đề",
+        headers: ["Kênh", "Chủ đề", "Số hội thoại"],
+        rows: heatmapData.map((h: any) => [
+          h.channel || "Khác",
+          h.topic || "Không xác định",
+          String(h.value || 0)
+        ])
+      });
+    }
+
+    return datasets;
+  }, [data, channelData, channelTrend, channelStatusData, heatmapData]);
 
   const availableChannels = useMemo(() => {
     const channels = data?.channelsList?.length ? data.channelsList : channelData.map((item: any) => item.channel);

@@ -5,6 +5,7 @@ from typing import Optional
 from app.settings.service import settings_service
 from app.settings.user_service import user_service
 from app.core.auth import SessionClaims, require_roles
+from app.repositories.activity import activity_repo
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -53,6 +54,11 @@ class UserCreateSchema(BaseModel):
     email: str = ""
     phone: str = ""
     active: bool = True
+    role: str = "Nhân viên CSKH"
+
+
+class UserRoleSchema(BaseModel):
+    role: str
 
 
 class UserStatusSchema(BaseModel):
@@ -104,6 +110,12 @@ def update_settings(
     try:
         updates = body.model_dump(exclude_unset=True)
         data = settings_service.update_settings(updates)
+        activity_repo.log_activity(
+            user_id=_.username,
+            action_type="Cập nhật hệ thống",
+            entity="Cài đặt",
+            details="Đã thay đổi cấu hình hệ thống"
+        )
         return {
             "success": True,
             "message": "Update settings successfully",
@@ -146,10 +158,44 @@ def create_user(
             email=body.email,
             phone=body.phone,
             active=body.active,
+            role=body.role
+        )
+        activity_repo.log_activity(
+            user_id=_.username,
+            action_type="Tạo tài khoản",
+            entity="Quản trị người dùng",
+            details=f"Tạo tài khoản mới: {body.username}"
         )
         return {
             "success": True,
             "message": "Tạo người dùng thành công.",
+            "data": data
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+
+@router.put("/users/{username}/role")
+def update_user_role(
+    username: str,
+    body: UserRoleSchema,
+    _: SessionClaims = Depends(require_roles("manager")),
+):
+    try:
+        data = user_service.update_user_role(username, body.role)
+        activity_repo.log_activity(
+            user_id=_.username,
+            action_type="Cập nhật quyền",
+            entity="Quản trị người dùng",
+            details=f"Phân quyền '{body.role}' cho tài khoản {username}"
+        )
+        return {
+            "success": True,
+            "message": "Update user role successfully",
             "data": data
         }
     except Exception as e:
@@ -167,6 +213,13 @@ def update_user_status(
 ):
     try:
         data = user_service.set_user_active(username, body.active)
+        status_str = "Kích hoạt" if body.active else "Khóa"
+        activity_repo.log_activity(
+            user_id=_.username,
+            action_type=f"{status_str} tài khoản",
+            entity="Quản trị người dùng",
+            details=f"Đã {status_str.lower()} tài khoản {username}"
+        )
         return {
             "success": True,
             "message": "Cập nhật trạng thái người dùng thành công.",
@@ -187,6 +240,12 @@ def reset_user_password(
 ):
     try:
         data = user_service.reset_user_password(username, body.newPassword)
+        activity_repo.log_activity(
+            user_id=_.username,
+            action_type="Khôi phục mật khẩu",
+            entity="Quản trị người dùng",
+            details=f"Reset mật khẩu cho tài khoản {username}"
+        )
         return {
             "success": True,
             "message": "Reset mật khẩu người dùng thành công.",
@@ -233,6 +292,12 @@ def update_profile(
             name=body.name,
             email=body.email,
             phone=body.phone
+        )
+        activity_repo.log_activity(
+            user_id=session.username,
+            action_type="Cập nhật hồ sơ",
+            entity="Cài đặt cá nhân",
+            details="Cập nhật thông tin cá nhân thành công"
         )
         return {
             "success": True,
@@ -302,6 +367,12 @@ def confirm_password_change(
             username=body.username,
             otp_code=body.otp,
             new_password=body.newPassword
+        )
+        activity_repo.log_activity(
+            user_id=session.username,
+            action_type="Đổi mật khẩu",
+            entity="Cài đặt cá nhân",
+            details="Tự đổi mật khẩu qua OTP"
         )
         return {
             "success": True,

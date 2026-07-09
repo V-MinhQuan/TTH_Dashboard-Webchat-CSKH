@@ -7,7 +7,7 @@ interface ExportRequest {
   target: HTMLElement;
   filenameBase: string;
   filters: FilterValues;
-  rawData?: { headers: string[]; rows: string[][] };
+  rawData?: any;
 }
 
 function filterSummary(filters: FilterValues) {
@@ -98,13 +98,15 @@ export function collectAllTableData(target: HTMLElement): TableData[] {
   }).filter(data => data.headers.length > 0 || data.rows.length > 0);
 }
 
-function safeSpreadsheetCell(value: string) {
-  const safe = /^[=+@-]/.test(value.trimStart()) ? `'${value}` : value;
+function safeSpreadsheetCell(value: any) {
+  const strValue = String(value ?? "");
+  const safe = /^[=+@-]/.test(strValue.trimStart()) ? `'${strValue}` : strValue;
   return `"${safe.replace(/"/g, '""')}"`;
 }
 
-function safeWorkbookCell(value: string) {
-  return /^[=+@-]/.test(value.trimStart()) ? `'${value}` : value;
+function safeWorkbookCell(value: any) {
+  const strValue = String(value ?? "");
+  return /^[=+@-]/.test(strValue.trimStart()) ? `'${strValue}` : strValue;
 }
 
 function downloadBlob(blob: Blob, filename: string) {
@@ -180,13 +182,17 @@ async function renderSnapshot(target: HTMLElement, filters: FilterValues) {
 
 export async function exportDashboardData({ format, target, filenameBase, filters, rawData }: ExportRequest) {
   if (format === "csv" || format === "xlsx") {
-    const allDatasets: TableData[] = [];
-    if (rawData && (rawData.headers?.length > 0 || rawData.rows?.length > 0)) {
-      allDatasets.push({ title: "Tổng quan", headers: rawData.headers, rows: rawData.rows });
+    let allDatasets: TableData[] = [];
+    if (Array.isArray(rawData)) {
+      allDatasets = rawData;
+    } else {
+      if (rawData && (rawData.headers?.length > 0 || rawData.rows?.length > 0)) {
+        allDatasets.push({ title: "Tổng quan", headers: rawData.headers, rows: rawData.rows });
+      }
+      
+      const tables = collectAllTableData(target);
+      allDatasets.push(...tables);
     }
-    
-    const tables = collectAllTableData(target);
-    allDatasets.push(...tables);
 
     if (allDatasets.length === 0) return { rowCount: 0, hasTable: false };
 
@@ -237,11 +243,66 @@ export async function exportDashboardData({ format, target, filenameBase, filter
 
       const workbook = new ExcelJS.Workbook();
       
+      const formatWorksheet = (worksheet: any, dataset: TableData) => {
+        const headerRowIndex = filterSummary(filters).length + 3;
+        
+        // Format filter section
+        worksheet.getRow(1).font = { bold: true, size: 12, color: { argb: "FF003865" } };
+        for (let i = 2; i <= headerRowIndex - 2; i++) {
+          worksheet.getCell(`A${i}`).font = { bold: true };
+        }
+
+        // Format table header
+        const headerRow = worksheet.getRow(headerRowIndex);
+        headerRow.eachCell((cell: any) => {
+          cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF003865" } };
+          cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+          cell.border = {
+            top: { style: "thin", color: { argb: "FFCBD5E1" } },
+            left: { style: "thin", color: { argb: "FFCBD5E1" } },
+            bottom: { style: "thin", color: { argb: "FFCBD5E1" } },
+            right: { style: "thin", color: { argb: "FFCBD5E1" } }
+          };
+        });
+
+        // Format table data
+        for (let r = headerRowIndex + 1; r <= headerRowIndex + dataset.rows.length; r++) {
+          const row = worksheet.getRow(r);
+          const isEven = (r - headerRowIndex) % 2 === 0;
+          row.eachCell((cell: any) => {
+            cell.alignment = { vertical: "middle", wrapText: true };
+            cell.border = {
+              top: { style: "thin", color: { argb: "FFCBD5E1" } },
+              left: { style: "thin", color: { argb: "FFCBD5E1" } },
+              bottom: { style: "thin", color: { argb: "FFCBD5E1" } },
+              right: { style: "thin", color: { argb: "FFCBD5E1" } }
+            };
+            if (isEven) {
+              cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF8FAFC" } };
+            }
+          });
+        }
+
+        // Auto-fit columns roughly
+        worksheet.columns.forEach((column: any, i: number) => {
+          let maxLength = 10;
+          worksheet.getColumn(i + 1).eachCell({ includeEmpty: true }, (cell: any, rowNumber: number) => {
+            if (rowNumber >= headerRowIndex) {
+              const columnLength = cell.value ? cell.value.toString().length : 0;
+              if (columnLength > maxLength) {
+                maxLength = columnLength;
+              }
+            }
+          });
+          column.width = Math.min(maxLength + 2, 50); // Cap width at 50
+        });
+      };
+
       if (allDatasets.length === 1) {
         const worksheet = workbook.addWorksheet("Dữ liệu");
         worksheet.addRows(exportRows(allDatasets[0], filters).map((row) => row.map(safeWorkbookCell)));
-        worksheet.getRow(1).font = { bold: true };
-        worksheet.getRow(filterSummary(filters).length + 3).font = { bold: true };
+        formatWorksheet(worksheet, allDatasets[0]);
       } else {
         allDatasets.forEach((dataset, idx) => {
           const rawTitle = dataset.title || `Sheet ${idx + 1}`;
@@ -257,8 +318,7 @@ export async function exportDashboardData({ format, target, filenameBase, filter
           
           const worksheet = workbook.addWorksheet(finalSheetName);
           worksheet.addRows(exportRows(dataset, filters).map((row) => row.map(safeWorkbookCell)));
-          worksheet.getRow(1).font = { bold: true };
-          worksheet.getRow(filterSummary(filters).length + 3).font = { bold: true };
+          formatWorksheet(worksheet, dataset);
         });
       }
 

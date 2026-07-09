@@ -140,8 +140,8 @@ function ChartRenderer({ type, data }: { type: string; data: any[] }) {
           <YAxis tick={{ fontSize: 11, fill: "rgba(0,59,185,0.5)" }} />
           <Tooltip />
           <Legend />
-          <Line type="monotone" dataKey="hoidthoai" name="Hội thoại" stroke="#00A3E0" strokeWidth={2} dot={{ r: 3 }} />
-          <Line type="monotone" dataKey="ai_ok" name="AI phản hồi thành công" stroke="#00D2FF" strokeWidth={2} dot={{ r: 3 }} />
+          <Line type="monotone" dataKey="hoidthoai" name="Hội thoại" stroke="#00A3E0" strokeWidth={1.5} dot={false} />
+          <Line type="monotone" dataKey="ai_ok" name="AI phản hồi thành công" stroke="#00D2FF" strokeWidth={1.5} dot={false} />
         </ReLineChart>
       </ResponsiveContainer>
     );
@@ -226,10 +226,21 @@ export function ChartCard({
   axisOptions = ["Chủ đề", "Kênh", "Ngày", "Tuần", "Tháng"],
   valueOptions = ["Số hội thoại", "AI phản hồi thành công", "AI phản hồi thất bại", "Điểm cảm xúc"],
 }: ChartCardProps) {
-  const [chartType, setChartType] = useState(defaultChartType);
+  const [chartType, setChartType] = useState(() => {
+    if (supportedChartTypes && !supportedChartTypes.includes(defaultChartType)) {
+      return supportedChartTypes[0] || defaultChartType;
+    }
+    return defaultChartType;
+  });
   const [chartTitle, setChartTitle] = useState(title);
   const [isEdited, setIsEdited] = useState(false);
   const [filterActive, setFilterActive] = useState(false);
+
+  useEffect(() => {
+    if (supportedChartTypes && !supportedChartTypes.includes(chartType)) {
+      setChartType(supportedChartTypes[0]);
+    }
+  }, [supportedChartTypes, chartType]);
   const [chartData, setChartData] = useState(data ?? []);
   const { settings } = useSettings();
 
@@ -280,12 +291,6 @@ export function ChartCard({
   }, []);
 
   const toolbarItems = [
-    {
-      icon: SlidersHorizontal,
-      tooltip: "Lọc dữ liệu",
-      active: filterActive,
-      onClick: () => { setFilterPanelOpen(true); setDataModalOpen(false); setEditPanelOpen(false); },
-    },
     {
       icon: Table2,
       tooltip: "Xem dữ liệu",
@@ -544,7 +549,8 @@ export function ChartCard({
                             borderRadius: "10px",
                             border: isSelected ? `2px solid ${ORANGE}` : "2px solid transparent",
                             backgroundColor: isSelected ? ORANGE_50 : "#f8fafc",
-                            cursor: "pointer",
+                            cursor: (supportedChartTypes && !supportedChartTypes.includes(ct.id)) ? "not-allowed" : "pointer",
+                            opacity: (supportedChartTypes && !supportedChartTypes.includes(ct.id)) ? 0.4 : 1,
                             transition: "all 0.15s",
                           }}
                         >
@@ -572,64 +578,6 @@ export function ChartCard({
         </div>
       </div>
 
-      {/* Filter Side Panel */}
-      {filterPanelOpen && (
-        <>
-          <div
-            style={{ position: "fixed", inset: 0, zIndex: 300, backgroundColor: "rgba(0,0,0,0.2)" }}
-            onClick={() => setFilterPanelOpen(false)}
-          />
-          <div
-            style={{
-              position: "fixed",
-              top: 0,
-              right: 0,
-              bottom: 0,
-              width: "360px",
-              backgroundColor: "#fff",
-              boxShadow: "-8px 0 32px rgba(0,59,185,0.15)",
-              zIndex: 400,
-              display: "flex",
-              flexDirection: "column",
-            }}
-          >
-            <div style={{ padding: "24px", borderBottom: "1px solid rgba(0,59,185,0.08)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <h3 style={{ color: NAVY, fontSize: "16px", fontWeight: 700 }}>Bộ lọc biểu đồ</h3>
-              <button onClick={() => setFilterPanelOpen(false)} style={{ border: "none", background: "transparent", cursor: "pointer", color: "rgba(0,59,185,0.4)", padding: "4px" }}>
-                <X size={20} />
-              </button>
-            </div>
-            <div style={{ flex: 1, padding: "24px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "16px" }}>
-              {[
-                { label: "Khoảng thời gian", key: "dateRange", options: dateOptions },
-                { label: "Kênh", key: "channel", options: channelOptions },
-                { label: "Chủ đề", key: "topic", options: topicOptions },
-              ].map(({ label, key, options }) => (
-                <div key={key}>
-                  <label style={{ fontSize: "11px", fontWeight: 600, color: "rgba(0,59,185,0.5)", display: "block", marginBottom: "6px", letterSpacing: "0.05em" }}>
-                    {label.toUpperCase()}
-                  </label>
-                  <select
-                    value={(filterValues as any)[key]}
-                    onChange={(e) => setFilterValues({ ...filterValues, [key]: e.target.value })}
-                    style={{ width: "100%", padding: "10px 12px", borderRadius: "10px", border: "1.5px solid rgba(0,59,185,0.12)", fontSize: "13px", color: NAVY, outline: "none", cursor: "pointer" }}
-                  >
-                    {options.map((o) => <option key={o} value={o}>{o}</option>)}
-                  </select>
-                </div>
-              ))}
-            </div>
-            <div style={{ padding: "20px 24px", borderTop: "1px solid rgba(0,59,185,0.08)", display: "flex", gap: "10px" }}>
-              <button onClick={handleFilterReset} style={{ flex: 1, padding: "10px", borderRadius: "10px", border: "1.5px solid rgba(0,59,185,0.15)", background: "#fff", cursor: "pointer", fontSize: "13px", color: NAVY, fontWeight: 500 }}>
-                Đặt lại
-              </button>
-              <button onClick={handleFilterApply} style={{ flex: 1, padding: "10px", borderRadius: "10px", border: "none", background: `linear-gradient(135deg, ${CTA} 0%, ${CTA_SOFT} 100%)`, cursor: "pointer", fontSize: "13px", color: "#fff", fontWeight: 600, boxShadow: "0 4px 12px rgba(237,82,6,0.18)" }}>
-                Áp dụng
-              </button>
-            </div>
-          </div>
-        </>
-      )}
 
       {/* Data Table Modal */}
       {dataModalOpen && (

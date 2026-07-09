@@ -64,15 +64,16 @@ def _analytics_issue_condition(alias="ai", issue_group="any"):
     if issue_group == "no_data":
         issue_filter = "a.issueType = N'Không tìm thấy dữ liệu'"
     elif issue_group == "uncertain":
-        issue_filter = "a.issueType IN (N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin')"
+        issue_filter = "a.issueType = N'AI không chắc chắn'"
     else:
-        issue_filter = "a.issueFlag = 1"
+        issue_filter = "a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn')"
 
     return f"""
         EXISTS (
           SELECT 1
           FROM WebChat_MessageAnalytics a
           WHERE a.issueFlag = 1
+            AND ISNULL(a.issueResolved, 0) = 0
             AND ({message_id_match} OR {same_conversation_match})
             AND {issue_filter}
         )

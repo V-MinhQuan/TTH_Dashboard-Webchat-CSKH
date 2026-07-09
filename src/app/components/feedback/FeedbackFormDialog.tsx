@@ -23,7 +23,6 @@ export interface FeedbackPrefillData {
   answer?: string;
   topic?: string;
   keyword?: string;
-  source?: string;
   channel?: string;
   conversationId?: string | number;
   messageId?: string | number;
@@ -46,7 +45,6 @@ interface FeedbackFormState {
   answer: string;
   topic: string;
   channel: SheetChatbotChannel | (string & {});
-  source: string;
   notes: string;
   risk: SheetChatbotRiskLevel;
   status: SheetChatbotStatus;
@@ -66,7 +64,6 @@ function initialForm(prefill?: FeedbackPrefillData): FeedbackFormState {
     answer: text(prefill?.answer),
     topic: normalizeFormTopic(prefill?.topic),
     channel: normalizeFormChannel(prefill?.channel),
-    source: normalizeFormSource(prefill?.source),
     notes: text(prefill?.notes),
     risk: prefill?.risk ?? "Trung bình",
     status: prefill?.status ?? "Chờ xử lý",
@@ -90,20 +87,6 @@ function normalizeLookupValue(value: unknown) {
     .toLocaleLowerCase("vi-VN")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-function normalizeFormSource(value: unknown) {
-  const raw = text(value);
-  if ((SHEET_CHATBOT_SOURCE_OPTIONS as readonly string[]).includes(raw)) return raw;
-
-  const definition = getAiFailureDefinition(raw);
-  const canonical = definition?.apiValue ?? raw;
-  const normalized = normalizeLookupValue(canonical);
-
-  if (normalized.includes("khong tim thay")) return "Không tìm thấy dữ liệu";
-  if (normalized.includes("khong chac")) return "AI trả lời không chắc chắn";
-  if (normalized.includes("loi he thong") || normalized.includes("system")) return "Lỗi hệ thống";
-  return DEFAULT_SOURCE;
 }
 
 function normalizeFormTopic(value: unknown) {
@@ -201,7 +184,6 @@ export function FeedbackFormDialog({
         correctAnswer: answer,
         topic,
         channel: form.channel,
-        source: form.source,
         risk: form.risk,
         status: form.status,
         notes: buildNotes(form),
@@ -254,11 +236,6 @@ export function FeedbackFormDialog({
                 {SHEET_CHATBOT_CHANNEL_OPTIONS.map((value) => <option key={value} value={value}>{value}</option>)}
               </select>
             </label>
-            <label style={labelStyle}>Nguồn
-              <select aria-label="Nguồn" value={form.source} onChange={(event) => update("source", event.target.value)} style={fieldStyle}>
-                {SHEET_CHATBOT_SOURCE_OPTIONS.map((value) => <option key={value} value={value}>{value}</option>)}
-              </select>
-            </label>
             <label style={labelStyle}>Mức rủi ro
               <select aria-label="Mức rủi ro" value={form.risk} onChange={(event) => update("risk", event.target.value as SheetChatbotRiskLevel)} style={fieldStyle}>
                 {RISK_LEVELS.map((value) => <option key={value}>{value}</option>)}
@@ -273,7 +250,7 @@ export function FeedbackFormDialog({
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "20px" }}>
           <button type="button" onClick={onClose} disabled={saving} style={{ padding: "9px 16px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.18)", background: "#fff", color: "#003865", cursor: "pointer" }}>Hủy</button>
-          <button type="button" onClick={() => void handleSave()} disabled={saving} style={{ padding: "9px 18px", borderRadius: "8px", border: 0, background: saving ? "#94a3b8" : "#ed5206", color: "#fff", fontWeight: 700, cursor: saving ? "not-allowed" : "pointer" }}>
+          <button type="button" onClick={() => void handleSave()} disabled={saving || !form.question.trim() || !form.answer.trim() || !form.topic || !form.channel || !form.risk || !form.notes.trim()} style={{ padding: "9px 18px", borderRadius: "8px", border: 0, background: (saving || !form.question.trim() || !form.answer.trim() || !form.topic || !form.channel || !form.risk || !form.notes.trim()) ? "#94a3b8" : "#ed5206", color: "#fff", fontWeight: 700, cursor: (saving || !form.question.trim() || !form.answer.trim() || !form.topic || !form.channel || !form.risk || !form.notes.trim()) ? "not-allowed" : "pointer" }}>
             {saving ? "Đang lưu..." : mode === "create" ? "Lưu phản hồi" : "Cập nhật phản hồi"}
           </button>
         </div>

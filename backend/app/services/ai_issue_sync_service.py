@@ -137,10 +137,16 @@ def sync_ai_issue_flags(*, apply: bool = False, since: Optional[str] = None) -> 
             need_staff_review = issue_flag
 
             if row.get("hasAnalytics"):
-                if (row.get("detectedTopics") or "[]") != detected_topics or (row.get("detectedKeywords") or "[]") != detected_keywords:
+                if not _is_same_issue_state(row, classification, detected_topics, detected_keywords):
                     updates.append((
+                        issue_flag,
+                        issue_type,
+                        issue_reason,
+                        issue_confidence,
+                        need_staff_review,
                         detected_topics,
                         detected_keywords,
+                        analyzed_at,
                         row["messageId"],
                     ))
             else:
@@ -179,8 +185,14 @@ def sync_ai_issue_flags(*, apply: bool = False, since: Optional[str] = None) -> 
             cursor.executemany(
                 """
                 UPDATE dbo.WebChat_MessageAnalytics
-                SET detectedTopics = ?,
-                    detectedKeywords = ?
+                SET issueFlag = ?,
+                    issueType = ?,
+                    issueReason = ?,
+                    issueConfidence = ?,
+                    needStaffReview = ?,
+                    detectedTopics = ?,
+                    detectedKeywords = ?,
+                    analyzedAt = ?
                 WHERE messageId = ?
                 """,
                 updates[i:i + 100],

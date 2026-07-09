@@ -67,6 +67,9 @@ ISSUE_RULES: tuple[IssueRule, ...] = (
             "vui lòng diễn đạt lại",
             "vui lòng cung cấp thêm thông tin",
             "không xác định được yêu cầu",
+            "tôi chưa hiểu",
+            "tôi không hiểu",
+            "không hiểu",
         ),
     ),
     IssueRule(
@@ -92,8 +95,31 @@ ISSUE_RULES: tuple[IssueRule, ...] = (
             "không thuộc phạm vi",
             "không hỗ trợ nội dung này",
             "không thể hỗ trợ vấn đề này",
+            "vượt quá khả năng",
+            "chuyển cho nhân viên tư vấn",
+            "chuyển cho nhân viên",
+            "kết nối với nhân viên",
+            "đợi trong giây lát để nhân viên",
         ),
     ),
+)
+
+
+AI_IDENTITY_KEYWORDS: tuple[str, ...] = (
+    "trợ lý ai",
+    "là ai",
+    "trợ lý ảo",
+    "không thể xác nhận",
+    "không thể xem",
+    "không có quyền",
+    "chị không thể",
+    "tôi không thể",
+    "mình không thể",
+    "em không thể",
+    "hệ thống chưa",
+    "chưa được cung cấp",
+    "chỉ là ai",
+    "chỉ là trợ lý",
 )
 
 
@@ -117,6 +143,19 @@ def classify_ai_issue(answer_text: object) -> IssueClassification:
 
     plain_text = remove_accents(normalized)
 
+    # Lọc lớp 2: Dấu hiệu giới hạn AI (Condition 1)
+    has_identity = False
+    for kw in AI_IDENTITY_KEYWORDS:
+        norm_kw = normalize_text(kw)
+        plain_kw = remove_accents(norm_kw)
+        if norm_kw in normalized or plain_kw in plain_text:
+            has_identity = True
+            break
+            
+    if not has_identity:
+        return IssueClassification(issue_flag=False)
+
+    # Lọc lớp 3: Từ khóa lỗi (Condition 2)
     for rule in ISSUE_RULES:
         for keyword in rule.keywords:
             normalized_keyword = normalize_text(keyword)

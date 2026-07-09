@@ -687,6 +687,20 @@ export async function getChannelAnalytics(params?: {
   return resJson.data;
 }
 
+export async function resolveAIIssues(analyticsIds: number[]): Promise<{ updated: number }> {
+  const resJson = await fetchApiJson<{ success: boolean; data: { updated: number }; message?: string }>(
+    buildApiUrl("/api/analytics/ai/resolve-issues"),
+    {
+      method: "POST",
+      cache: false,
+      body: JSON.stringify({ analyticsIds }),
+    },
+  );
+  if (!resJson.success) throw new Error(resJson.message || "Không thể cập nhật lỗi AI.");
+  clearApiCache();
+  return resJson.data;
+}
+
 export interface CloseConversationTarget {
   conversationId?: number | string | null;
   customerId?: string | null;
@@ -838,5 +852,21 @@ export async function resetSettingsUserPassword(username: string, newPassword?: 
     throw new Error(resJson.message || "Không thể reset mật khẩu người dùng.");
   }
   clearApiCache();
+  return resJson.data;
+}
+
+
+export async function updateSettingsUserRole(username: string, role: string) {
+  const resJson = await fetchApiJson<{ success: boolean; data: any; message?: string }>(
+    buildApiUrl(`/api/settings/users/${encodeURIComponent(username)}/role`),
+    {
+      method: "PUT",
+      cache: false,
+      body: JSON.stringify({ role }),
+    }
+  );
+  if (!resJson.success) {
+    throw new Error(resJson.message || "Không thể cập nhật vai trò người dùng.");
+  }
   return resJson.data;
 }

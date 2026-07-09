@@ -58,8 +58,11 @@ def build_date_filter(
     elif range_key == "today":
         start = current
         end = current
-    elif range_key == "last7days":
+    elif range_key in {"last7days"}:
         start = current - timedelta(days=6)
+        end = current
+    elif range_key in {"last30days", "30days"}:
+        start = current - timedelta(days=29)
         end = current
     elif range_key == "thisMonth":
         start = date(current.year, current.month, 1)

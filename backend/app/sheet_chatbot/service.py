@@ -321,7 +321,6 @@ class SheetChatbotService:
             "answer": row.get("correctAnswer"),
             "topic": faq_topic,
             "proposer": row.get("addedBy"),
-            "source": row.get("source"),
             "status": "Đã duyệt",
             "riskLevel": row.get("risk"),
             "date": self.repository.now_iso()[:10],

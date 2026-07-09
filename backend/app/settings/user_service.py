@@ -26,7 +26,7 @@ class UserService:
     def get_all_users(self) -> list[dict]:
         return user_repository.get_all_users()
 
-    def create_user(self, username: str, password: str, name: str, email: str, phone: str, active: bool = True) -> dict:
+    def create_user(self, username: str, password: str, name: str, email: str, phone: str, active: bool = True, role: str = "Nhân viên CSKH") -> dict:
         if len(password or "") < 6:
             raise Exception("Mật khẩu phải có ít nhất 6 ký tự.")
         return user_repository.create_user(
@@ -36,7 +36,13 @@ class UserService:
             email=email,
             phone=phone,
             active=active,
+            role=role,
         )
+
+
+    def update_user_role(self, username: str, role: str) -> dict:
+        user_repository.update_user_role(username, role)
+        return {"updated": True, "role": role}
 
     def update_profile(self, username: str, name: str, email: str, phone: str) -> dict:
         success = user_repository.update_profile(username, name, email, phone)
@@ -74,7 +80,7 @@ class UserService:
         
         return {
             "success": True,
-            "message": f"Mã xác thực đã được gửi tới email {to_email}." if sent else f"Không thể gửi mail thực tế. Mã xác thực đã được log ra cửa sổ console của hệ thống.",
+            "message": f"Mã xác thực đã được gửi tới email {to_email}." if sent else f"Mã OTP của bạn là: {otp_code} (Không gửi được email)",
             "email": to_email,
             "sent_via_smtp": sent
         }

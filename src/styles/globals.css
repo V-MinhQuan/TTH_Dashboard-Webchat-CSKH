@@ -449,9 +449,115 @@
 /* Category variants */
 .error-source-badge--no-data   { border-left-color: #f59e0b; background: #fffbeb; color: #92400e; }
 .error-source-badge--wrong     { border-left-color: #ef4444; background: #fff1f1; color: #b91c1c; }
+.flic-th {
+  padding: 10px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(0, 56, 101, 0.55);
+  letter-spacing: 0.04em;
+  text-align: center;
+  vertical-align: middle;
+  white-space: nowrap;
+  border-bottom: 1px solid rgba(0, 56, 101, 0.07);
+  background: #f8fafc;
+  user-select: none;
+}
+
+/* Sticky header row */
+.flic-thead-sticky thead tr {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+/* ── Req #13: Semantic status color utility classes ──────────────────────── */
+/*
+  Mapping:
+    success  → green   (Hoàn thành, Đã duyệt, Độ nghiêm trọng thấp)
+    pending  → amber   (Chờ xử lý, Chờ phản hồi)
+    danger   → red     (Từ chối, Lỗi, Nghiêm trọng cao)
+    info     → blue    (Đang tư vấn, Thông tin)
+    neutral  → gray    (Không xác định)
+*/
+.semantic-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+
+.semantic-badge--success {
+  background: var(--semantic-success-bg);
+  color: var(--semantic-success-fg);
+  border-color: var(--semantic-success-border);
+}
+
+.semantic-badge--warning {
+  background: var(--semantic-warning-bg);
+  color: var(--semantic-warning-fg);
+  border-color: var(--semantic-warning-border);
+}
+
+.semantic-badge--danger {
+  background: var(--semantic-danger-bg);
+  color: var(--semantic-danger-fg);
+  border-color: var(--semantic-danger-border);
+}
+
+.semantic-badge--info {
+  background: var(--semantic-info-bg);
+  color: var(--semantic-info-fg);
+  border-color: var(--semantic-info-border);
+}
+
+.semantic-badge--neutral {
+  background: var(--semantic-neutral-bg);
+  color: var(--semantic-neutral-fg);
+  border-color: var(--semantic-neutral-border);
+}
+
+/* ── Req #14: Error-source badge (Nguồn gốc lỗi sai) ───────────────────── */
+/*
+  Visually distinct from status badges — uses a left-border accent + muted bg.
+  Pair with an icon for accessibility (don't rely on color alone).
+*/
+.error-source-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 56, 101, 0.12);
+  border-left: 3px solid #6366f1;   /* indigo accent – distinct from orange/red/green */
+  background: #f5f3ff;
+  color: #4338ca;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.error-source-badge svg {
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+/* Category variants */
+.error-source-badge--no-data   { border-left-color: #f59e0b; background: #fffbeb; color: #92400e; }
+.error-source-badge--wrong     { border-left-color: #ef4444; background: #fff1f1; color: #b91c1c; }
 .error-source-badge--inaccurate{ border-left-color: #f97316; background: #fff7ed; color: #c2410c; }
 .error-source-badge--not-understood { border-left-color: #8b5cf6; background: #f5f3ff; color: #6d28d9; }
 .error-source-badge--missing   { border-left-color: #06b6d4; background: #ecfeff; color: #0e7490; }
 .error-source-badge--kb        { border-left-color: #10b981; background: #ecfdf5; color: #065f46; }
 .error-source-badge--system    { border-left-color: #64748b; background: #f1f5f9; color: #334155; }
 .error-source-badge--other     { border-left-color: #9ca3af; background: #f9fafb; color: #374151; }
+
+.black-placeholder::placeholder {
+  color: #000;
+  opacity: 1;
+}

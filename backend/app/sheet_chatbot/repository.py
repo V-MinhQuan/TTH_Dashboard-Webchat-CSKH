@@ -102,8 +102,8 @@ class SheetChatbotRepository:
                             Question NVARCHAR(MAX) NOT NULL,
                             CorrectAnswer NVARCHAR(MAX) NOT NULL,
                             Topic NVARCHAR(255) NULL,
-                            Channel NVARCHAR(80) NULL,
-                            Source NVARCHAR(255) NULL,
+                            Source NVARCHAR(80) NULL,
+                            
                             Risk NVARCHAR(50) NULL,
                             Status NVARCHAR(100) NULL,
                             Notes NVARCHAR(MAX) NULL,
@@ -115,10 +115,10 @@ class SheetChatbotRepository:
                     END
                 """)
                 cursor.execute(f"""
-                    IF COL_LENGTH(N'{self.table_object_name}', N'Channel') IS NULL
+                    IF COL_LENGTH(N'{self.table_object_name}', N'Source') IS NULL
                     BEGIN
                         ALTER TABLE {self.table_sql_name}
-                        ADD Channel NVARCHAR(80) NULL
+                        ADD Source NVARCHAR(80) NULL
                     END
                 """)
             conn.commit()
@@ -141,8 +141,8 @@ class SheetChatbotRepository:
                         Question AS question,
                         CorrectAnswer AS correctAnswer,
                         Topic AS topic,
-                        Channel AS channel,
-                        Source AS source,
+                        Source AS channel,
+                        
                         Risk AS risk,
                         Status AS status,
                         Notes AS notes,
@@ -175,9 +175,9 @@ class SheetChatbotRepository:
         cursor.execute(
             f"""
             INSERT INTO {self.table_sql_name}
-                (Id, AddedAt, AddedBy, Question, CorrectAnswer, Topic, Channel, Source, Risk, Status, Notes, CreatedAt, UpdatedAt, ReviewedAt, ReviewedBy)
+                (Id, AddedAt, AddedBy, Question, CorrectAnswer, Topic, Source, Risk, Status, Notes, CreatedAt, UpdatedAt, ReviewedAt, ReviewedBy)
             VALUES
-                (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 row.get("id"),
@@ -187,7 +187,6 @@ class SheetChatbotRepository:
                 row.get("correctAnswer") or "",
                 row.get("topic") or "Khác",
                 row.get("channel") or None,
-                row.get("source") or "Nhân viên đề xuất",
                 row.get("risk") or "Thấp",
                 row.get("status") or "Chờ xử lý",
                 row.get("notes") or "",

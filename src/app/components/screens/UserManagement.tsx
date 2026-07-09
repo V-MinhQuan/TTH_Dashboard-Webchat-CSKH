@@ -7,6 +7,7 @@ import {
   getAllUsers,
   resetSettingsUserPassword,
   updateSettingsUserStatus,
+  updateSettingsUserRole,
 } from "../../services/dashboardApi";
 
 const NAVY = "#003865";
@@ -19,6 +20,7 @@ const emptyNewUser = {
   phone: "",
   password: "",
   active: true,
+  role: "Nhân viên CSKH",
 };
 
 export function UserManagement() {
@@ -30,6 +32,8 @@ export function UserManagement() {
   const [editingUser, setEditingUser] = useState<any>(null);
   const [isAddingUser, setIsAddingUser] = useState(false);
   const [newUser, setNewUser] = useState(emptyNewUser);
+  const [resettingUser, setResettingUser] = useState<any>(null);
+  const [statusToggleUser, setStatusToggleUser] = useState<any>(null);
 
   const loadUsers = async (showLoader = true) => {
     if (showLoader) setLoading(true);
@@ -59,12 +63,15 @@ export function UserManagement() {
   };
 
   const handleToggleUserStatus = async (targetUser: any) => {
+    setStatusToggleUser(targetUser);
+  };
+
+  const confirmToggleStatus = async () => {
+    if (!statusToggleUser) return;
+    const targetUser = statusToggleUser;
     const username = targetUser.username || targetUser.id;
     const active = isUserActive(targetUser);
     const nextActive = !active;
-    const actionText = nextActive ? "mở khóa" : "khóa";
-
-    if (!window.confirm(`Xác nhận ${actionText} tài khoản ${username}?`)) return;
 
     setActionLoading(`status:${username}`);
     try {
@@ -75,13 +82,31 @@ export function UserManagement() {
       toast.error(err?.message || "Không thể cập nhật trạng thái tài khoản.");
     } finally {
       setActionLoading(null);
+      setStatusToggleUser(null);
+    }
+  };
+
+  const handleInlineRoleChange = async (targetUser: any, newRole: string) => {
+    const username = targetUser.username || targetUser.id;
+    setActionLoading(`role:${username}`);
+    try {
+      await updateSettingsUserRole(username, newRole);
+      toast.success("Đã cập nhật vai trò");
+      await loadUsers(false);
+    } catch (err: any) {
+      toast.error(err?.message || "Không thể cập nhật vai trò.");
+    } finally {
+      setActionLoading(null);
     }
   };
 
   const handleResetPassword = async (targetUser: any) => {
-    const username = targetUser.username || targetUser.id;
-    if (!window.confirm(`Reset mật khẩu tài khoản ${username}?`)) return;
+    setResettingUser(targetUser);
+  };
 
+  const confirmResetPassword = async () => {
+    if (!resettingUser) return;
+    const username = resettingUser.username || resettingUser.id;
     setActionLoading(`reset:${username}`);
     try {
       const result = await resetSettingsUserPassword(username);
@@ -91,6 +116,7 @@ export function UserManagement() {
       toast.error(err?.message || "Không thể reset mật khẩu.");
     } finally {
       setActionLoading(null);
+      setResettingUser(null);
     }
   };
 
@@ -102,6 +128,7 @@ export function UserManagement() {
       phone: newUser.phone.trim(),
       password: newUser.password,
       active: newUser.active,
+      role: newUser.role,
     };
 
     if (!payload.username || !payload.name || !payload.password) {
@@ -198,15 +225,19 @@ export function UserManagement() {
                   <div style={{ fontSize: "11px", color: isUserActive(user) ? "#228A61" : ORANGE, marginTop: "2px", fontWeight: 600 }}>{user.status}</div>
                 </td>
                 <td style={{ padding: "14px 20px" }}>
-                  <span style={{ fontSize: "11px", padding: "4px 8px", borderRadius: "20px", backgroundColor: user.role === "Quản lý CSKH" ? "#e0e7ff" : "#f1f5f9", color: user.role === "Quản lý CSKH" ? NAVY : "#475569", fontWeight: 600 }}>
-                    {user.role}
-                  </span>
+                  <select
+                    value={user.role}
+                    onChange={(e) => handleInlineRoleChange(user, e.target.value)}
+                    disabled={actionLoading === `role:${user.username || user.id}`}
+                    style={{ fontSize: "11px", padding: "4px 24px 4px 12px", borderRadius: "20px", backgroundColor: user.role === "Quản lý CSKH" ? "#e0e7ff" : "#f1f5f9", color: user.role === "Quản lý CSKH" ? NAVY : "#475569", fontWeight: 600, border: "none", outline: "none", cursor: actionLoading === `role:${user.username || user.id}` ? "wait" : "pointer" }}
+                  >
+                    <option value="Nhân viên CSKH">Nhân viên CSKH</option>
+                    <option value="Quản lý CSKH">Quản lý CSKH</option>
+                  </select>
                 </td>
                 <td style={{ padding: "14px 20px" }}>
                   <div style={{ display: "flex", gap: "8px" }}>
-                    <button onClick={() => setEditingUser(user)} style={{ width: "28px", height: "28px", borderRadius: "6px", border: "1px solid rgba(0,56,101,0.1)", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: NAVY }} title="Sửa quyền">
-                      <Edit2 size={14} />
-                    </button>
+
                     <button
                       onClick={() => handleToggleUserStatus(user)}
                       disabled={actionLoading === `status:${user.username || user.id}`}
@@ -348,8 +379,16 @@ export function UserManagement() {
               </div>
             </div>
 
-            <div style={{ marginBottom: "24px", padding: "12px 14px", borderRadius: "10px", background: "#f8fafc", border: "1px solid rgba(0,56,101,0.08)", color: "rgba(0,56,101,0.62)", fontSize: "12px", lineHeight: 1.5 }}>
-              Tài khoản mới được ghi vào bảng WebChat_User. Vai trò, kênh quản lý và quyền chi tiết chưa được nhập tại đây vì database hiện chưa có các cột lưu những trường này.
+            <div style={{ marginBottom: "24px" }}>
+              <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "8px" }}>Vai trò</label>
+              <select
+                value={newUser.role}
+                onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
+                style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.1)", outline: "none", fontSize: "13px", boxSizing: "border-box" }}
+              >
+                <option value="Nhân viên CSKH">Nhân viên CSKH</option>
+                <option value="Quản lý CSKH">Quản lý CSKH</option>
+              </select>
             </div>
 
             <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px", marginTop: "24px", paddingTop: "16px", borderTop: "1px solid rgba(0,56,101,0.08)" }}>
@@ -366,6 +405,48 @@ export function UserManagement() {
               >
                 {actionLoading === "create" && <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />}
                 Tạo tài khoản
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Reset Password Modal */}
+      {resettingUser && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.5)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ backgroundColor: "#fff", width: "400px", borderRadius: "16px", padding: "24px", boxShadow: "0 10px 40px rgba(0,0,0,0.1)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+              <h3 style={{ fontSize: "16px", fontWeight: 700, color: NAVY, margin: 0 }}>Reset mật khẩu</h3>
+              <button onClick={() => setResettingUser(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(0,56,101,0.4)" }}><X size={18} /></button>
+            </div>
+            <p style={{ fontSize: "14px", color: "#475569", marginBottom: "24px", lineHeight: 1.5 }}>
+              Bạn có chắc chắn muốn reset mật khẩu cho tài khoản <strong>{resettingUser.username || resettingUser.id}</strong> không?
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px" }}>
+              <button onClick={() => setResettingUser(null)} style={{ padding: "8px 16px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.1)", background: "#fff", color: NAVY, cursor: "pointer", fontWeight: 600, fontSize: "13px" }}>Hủy</button>
+              <button onClick={confirmResetPassword} disabled={actionLoading === `reset:${resettingUser.username || resettingUser.id}`} style={{ padding: "8px 16px", borderRadius: "8px", border: "none", background: ORANGE, color: "#fff", cursor: actionLoading === `reset:${resettingUser.username || resettingUser.id}` ? "wait" : "pointer", fontWeight: 600, fontSize: "13px", display: "flex", alignItems: "center", gap: "8px" }}>
+                {actionLoading === `reset:${resettingUser.username || resettingUser.id}` ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : null}
+                Reset mật khẩu
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+{/* Toggle Status Modal */}
+      {statusToggleUser && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.5)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ backgroundColor: "#fff", width: "400px", borderRadius: "16px", padding: "24px", boxShadow: "0 10px 40px rgba(0,0,0,0.1)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+              <h3 style={{ fontSize: "16px", fontWeight: 700, color: NAVY, margin: 0 }}>Xác nhận {isUserActive(statusToggleUser) ? "khóa" : "mở khóa"} tài khoản</h3>
+              <button onClick={() => setStatusToggleUser(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(0,56,101,0.4)" }}><X size={18} /></button>
+            </div>
+            <p style={{ fontSize: "14px", color: "#475569", marginBottom: "24px", lineHeight: 1.5 }}>
+              Bạn chắc chắn muốn {isUserActive(statusToggleUser) ? "khóa" : "mở khóa"} tài khoản <strong>{statusToggleUser.username || statusToggleUser.id}</strong>?
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px" }}>
+              <button onClick={() => setStatusToggleUser(null)} style={{ padding: "8px 16px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.1)", background: "#fff", color: NAVY, cursor: "pointer", fontWeight: 600, fontSize: "13px" }}>Hủy</button>
+              <button onClick={confirmToggleStatus} disabled={actionLoading === `status:${statusToggleUser.username || statusToggleUser.id}`} style={{ padding: "8px 16px", borderRadius: "8px", border: "none", background: isUserActive(statusToggleUser) ? ORANGE : "#228A61", color: "#fff", cursor: actionLoading === `status:${statusToggleUser.username || statusToggleUser.id}` ? "wait" : "pointer", fontWeight: 600, fontSize: "13px", display: "flex", alignItems: "center", gap: "8px" }}>
+                {actionLoading === `status:${statusToggleUser.username || statusToggleUser.id}` ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : null}
+                Xác nhận
               </button>
             </div>
           </div>

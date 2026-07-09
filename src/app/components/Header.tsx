@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, type ReactNode } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useSettings } from "../context/SettingsContext";
-import { Bell, ChevronDown, User, LogOut, X, Settings, HelpCircle } from "lucide-react";
+import { Bell, ChevronDown, User, LogOut, X, Settings, HelpCircle, History } from "lucide-react";
 import { getDashboardKpi } from "../services/dashboardApi";
 import { getSheetChatbotRows } from "../services/sheetChatbotApi";
 import { toast } from "sonner";
@@ -24,6 +24,7 @@ const screenLabels: Record<string, string> = {
   chatbot_sheet: "Thư viện phản hồi",
   profile: "Hồ sơ",
   personalinfo: "Thông tin cá nhân",
+  activity_history: "Lịch sử hoạt động",
 };
 
 type NotificationStatus = "pending" | "completed";
@@ -335,6 +336,7 @@ export function Header({ activeScreen, onNavigate, onResetFilters }: HeaderProps
               <div style={{ fontSize: "11px", color: "rgba(0,56,101,0.45)" }}>{user ? user.email : (role === "manager" ? "admin@flic.edu.vn" : "staff@flic.edu.vn")}</div>
             </div>
             {dropdownItem(() => { onNavigate("personalinfo"); setShowAvatar(false); }, <User size={15} style={{ color: NAVY }} />, "Thông tin cá nhân")}
+            {dropdownItem(() => { onNavigate("activity_history"); setShowAvatar(false); }, <History size={15} style={{ color: NAVY }} />, "Lịch sử hoạt động")}
             {dropdownItem(() => { onNavigate("settings"); setShowAvatar(false); }, <Settings size={15} style={{ color: NAVY }} />, role === "manager" ? "Cài đặt" : "Cài đặt cá nhân")}
             <div style={{ height: "1px", backgroundColor: "rgba(0,56,101,0.08)" }} />
             {dropdownItem(() => { setShowLogoutModal(true); setShowAvatar(false); }, <LogOut size={15} style={{ color: RED_TEXT }} />, "Đăng xuất", true)}

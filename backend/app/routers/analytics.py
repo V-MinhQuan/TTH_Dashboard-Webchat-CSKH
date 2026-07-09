@@ -4,18 +4,26 @@ import csv
 import logging
 from datetime import date, datetime
 from io import StringIO
-from typing import Iterable, Optional
+from io import StringIO
+from typing import Iterable, List, Optional
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from pydantic import BaseModel
+
 from app.core.auth import SessionClaims, require_roles
 from app.core.exceptions import AppError
 from app.schemas.analytics import CustomChartRequest
 from app.services.analytics_service import AnalyticsService
+from app.repositories.activity import activity_repo
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
+
+class ResolveAIIssuesRequest(BaseModel):
+    analyticsIds: List[int]
+
 logger = logging.getLogger(__name__)
 AI_FAILED_EXPORT_PAGE_SIZE = 100
 AI_FAILED_EXPORT_MAX_ROWS = 50000
@@ -35,7 +43,6 @@ AI_FAILED_EXPORT_COLUMNS = [
     ("Gợi ý tri thức", "issueReason", False),
     ("Thời gian", "messageAt", False),
 ]
-
 
 def get_analytics_service() -> AnalyticsService:
     return AnalyticsService()
@@ -400,3 +407,26 @@ def custom_chart(
 ):
     data = service.get_custom_chart_data(request.model_dump(by_alias=True, mode="json"))
     return {"success": True, "message": "Lay du lieu bieu do tuy chinh thanh cong.", "data": data}
+
+
+@router.post("/ai/resolve-issues")
+def resolve_ai_issues(
+    request: ResolveAIIssuesRequest,
+    service: AnalyticsService = Depends(get_analytics_service),
+    claims: SessionClaims = Depends(require_roles("ADMIN", "USER")),
+):
+    if not request.analyticsIds:
+        return {"success": True, "message": "Không có lỗi nào cần xử lý.", "data": {"updated": 0}}
+    
+    count = service.resolve_ai_issues(request.analyticsIds)
+    activity_repo.log_activity(
+        user_id=claims.username,
+        action_type="Đánh dấu xử lý",
+        entity="Hiệu suất AI",
+        details=f"Đã xử lý {count} lỗi AI"
+    )
+    return {
+        "success": True,
+        "message": f"Đã đánh dấu xử lý {count} lỗi AI.",
+        "data": {"updated": count},
+    }

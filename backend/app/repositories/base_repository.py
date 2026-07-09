@@ -59,15 +59,16 @@ class BaseRepository:
         if issue_group == "no_data":
             issue_filter = "a.issueType = N'Không tìm thấy dữ liệu'"
         elif issue_group == "uncertain":
-            issue_filter = "a.issueType IN (N'AI không chắc chắn', N'AI có nguy cơ tự tạo thông tin')"
+            issue_filter = "a.issueType = N'AI không chắc chắn'"
         else:
-            issue_filter = "a.issueFlag = 1"
+            issue_filter = "a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn')"
 
         return f"""
             EXISTS (
               SELECT 1
               FROM WebChat_MessageAnalytics a
               WHERE a.issueFlag = 1
+                AND ISNULL(a.issueResolved, 0) = 0
                 AND ({message_id_match} OR {same_conversation_match})
                 AND {issue_filter}
             )
@@ -116,7 +117,7 @@ class BaseRepository:
                    AND {status_alias}.MarkedAt IS NOT NULL
                    AND {conversation_alias}.LastCustomerMessageAt > {status_alias}.MarkedAt
                    THEN 'pending'
-              WHEN {conversation_alias}.LastHostMessageAt IS NULL
+              WHEN {conversation_alias}.LastHostMessageAt IS NULL OR {conversation_alias}.LastCustomerMessageAt > {conversation_alias}.LastHostMessageAt
                    THEN 'pending'
               ELSE 'open'
             END

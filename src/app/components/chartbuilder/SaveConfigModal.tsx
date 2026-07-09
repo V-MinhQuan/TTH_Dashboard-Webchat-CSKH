@@ -64,7 +64,7 @@ export function SaveConfigModal({ open, defaultName, saving, onOpenChange, onSav
   );
 }
 
-const overlayStyle = { position: "fixed", inset: 0, zIndex: 60, display: "grid", placeItems: "center", padding: 16, background: "rgba(15,23,42,.52)" } as const;
+const overlayStyle = { position: "fixed", inset: 0, zIndex: 99999, display: "grid", placeItems: "center", padding: 16, background: "rgba(15,23,42,.52)" } as const;
 const modalStyle = { position: "relative", width: "min(500px, 100%)", display: "grid", gap: 18, padding: 24, borderRadius: 16, border: "1px solid rgba(0,56,101,.12)", background: "#fff", boxShadow: "0 22px 70px rgba(15,23,42,.24)" } as const;
 const closeButton = { position: "absolute", top: 13, right: 13, display: "grid", placeItems: "center", width: 30, height: 30, border: 0, borderRadius: 7, background: "#f1f5f9", color: "#64748b", cursor: "pointer" } as const;
 const fieldStyle = { display: "flex", flexDirection: "column", gap: 6, fontSize: 12, color: "#003865" } as const;

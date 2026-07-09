@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Download, Filter, X, ChevronDown } from "lucide-react";
+import { Download, Filter, X, ChevronDown, Calendar } from "lucide-react";
 import { toast } from "sonner";
 
 import { useSettings } from "../context/SettingsContext";
@@ -12,6 +12,7 @@ import {
 import { TOPIC_FILTER_OPTIONS } from "../constants/topicTaxonomy";
 import { exportDashboardData, type ExportFormat } from "../services/exportService";
 import { getDateParamsFromFilters } from "../utils/dateFilters";
+import { createActivityLog } from "../services/activityApi";
 import "../../styles/globals.css";
 
 export { defaultFilterValues, type FilterValues } from "../context/GlobalFilterContext";
@@ -32,7 +33,7 @@ export interface FilterCatalogOption {
 export interface FilterPanelProps {
   filters: FilterValues;
   onFiltersChange: (filters: FilterValues) => void;
-  getExportData?: () => { headers: string[]; rows: string[][] };
+  getExportData?: () => any;
   isLoading?: boolean;
 }
 
@@ -43,7 +44,6 @@ const fallbackTopics: readonly FilterCatalogOption[] = Object.freeze(TOPIC_FILTE
 const EXPORT_FORMATS: { id: ExportFormat; label: string }[] = [
   { id: "pdf",  label: "Xuất PDF (toàn trang)" },
   { id: "png",  label: "Xuất hình ảnh PNG" },
-  { id: "csv",  label: "Xuất dữ liệu CSV" },
   { id: "xlsx", label: "Xuất Excel (XLSX)" },
 ];
 
@@ -288,15 +288,24 @@ export function FilterPanel({
         target,
         filenameBase: base,
         filters: globalFilters?.appliedFilters ?? filters,
-        rawData: getExportData?.(),
+        rawData: await getExportData?.(),
       });
       if (!result.hasTable) {
         toast.warning(`Không tìm thấy bảng dữ liệu để xuất ${format.toUpperCase()}.`);
         return;
       }
-      if (format === "pdf") toast.success("Đã xuất PDF", { description: "File đã được tải xuống." });
-      else if (format === "png") toast.success("Đã xuất PNG");
-      else toast.success(`Đã xuất ${format.toUpperCase()} – ${result.rowCount} dòng`);
+      if (format === "pdf") {
+        toast.success("Đã xuất PDF", { description: "File đã được tải xuống." });
+        createActivityLog("Xuất báo cáo", "Tổng quan", `Định dạng PDF. File: ${base}.pdf`);
+      }
+      else if (format === "png") {
+        toast.success("Đã xuất PNG");
+        createActivityLog("Xuất ảnh", "Tổng quan", `Ảnh chụp màn hình: ${base}.png`);
+      }
+      else {
+        toast.success(`Đã xuất ${format.toUpperCase()} – ${result.rowCount} dòng`);
+        createActivityLog("Xuất dữ liệu", "Bảng dữ liệu", `Định dạng ${format.toUpperCase()}, ${result.rowCount} dòng. File: ${base}.${format}`);
+      }
     } catch (err: any) {
       console.error(err);
       toast.error(`Lỗi xuất dữ liệu: ${err?.message || "Không xác định"}`);
@@ -442,11 +451,45 @@ export function FilterPanel({
               <>
                 <label className="filter-panel__date-field">
                   <span>TỪ NGÀY</span>
-                  <input aria-label="Từ ngày" type="date" value={localFilters.customDateFrom ?? ""} onChange={(event) => handleLocalChange("customDateFrom", event.target.value)} />
+                  <div style={{ position: "relative", width: "100%" }}>
+                    <input
+                      className="black-placeholder"
+                      aria-label="Từ ngày"
+                      type={localFilters.customDateFrom ? "date" : "text"}
+                      placeholder="dd/mm/yyyy"
+                      style={{ color: "#000", width: "100%" }}
+                      onFocus={(e) => {
+                        e.target.type = "date";
+                        try { e.target.showPicker(); } catch(err) {}
+                      }}
+                      onBlur={(e) => {
+                        if (!e.target.value) e.target.type = "text";
+                      }}
+                      value={localFilters.customDateFrom ?? ""}
+                      onChange={(event) => handleLocalChange("customDateFrom", event.target.value)}
+                    />
+                  </div>
                 </label>
                 <label className="filter-panel__date-field">
                   <span>ĐẾN NGÀY</span>
-                  <input aria-label="Đến ngày" type="date" value={localFilters.customDateTo ?? ""} onChange={(event) => handleLocalChange("customDateTo", event.target.value)} />
+                  <div style={{ position: "relative", width: "100%" }}>
+                    <input
+                      className="black-placeholder"
+                      aria-label="Đến ngày"
+                      type={localFilters.customDateTo ? "date" : "text"}
+                      placeholder="dd/mm/yyyy"
+                      style={{ color: "#000", width: "100%" }}
+                      onFocus={(e) => {
+                        e.target.type = "date";
+                        try { e.target.showPicker(); } catch(err) {}
+                      }}
+                      onBlur={(e) => {
+                        if (!e.target.value) e.target.type = "text";
+                      }}
+                      value={localFilters.customDateTo ?? ""}
+                      onChange={(event) => handleLocalChange("customDateTo", event.target.value)}
+                    />
+                  </div>
                 </label>
               </>
             )}

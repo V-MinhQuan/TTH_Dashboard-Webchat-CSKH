@@ -12,6 +12,7 @@ from app.schemas.conversation import (
     ConversationFilters,
 )
 from app.services.conversation_service import ConversationService
+from app.repositories.activity import activity_repo
 
 router = APIRouter(prefix="/api/conversations", tags=["conversations"])
 
@@ -47,6 +48,15 @@ def close_conversations_bulk(
         "alreadyClosed": result["alreadyClosedCount"],
         **result,
     }
+    
+    if result["affectedCount"] > 0:
+        activity_repo.log_activity(
+            user_id=session.username,
+            action_type="Đánh dấu xử lý (Hàng loạt)",
+            entity="Cuộc hội thoại",
+            details=f"Yêu cầu đóng: {len(request.conversation_ids)}, Thành công: {result['affectedCount']}"
+        )
+        
     return {
         "success": True,
         "message": f"Đã đóng {result['affectedCount']} hội thoại.",
@@ -71,6 +81,15 @@ def close_conversation(
         if data["affectedCount"]
         else "Hội thoại đã được đóng trước đó."
     )
+    
+    if data["affectedCount"]:
+        activity_repo.log_activity(
+            user_id=session.username,
+            action_type="Đánh dấu xử lý",
+            entity="Cuộc hội thoại",
+            details=f"Đã đóng hội thoại với khách hàng {request.customer_id or request.conversation_id}"
+        )
+        
     return {"success": True, "message": message, "data": data}
 
 
