@@ -24,6 +24,7 @@ def get_conversation_service() -> ConversationService:
 @router.get("")
 def list_conversations(
     filters: Annotated[ConversationFilters, Query()],
+    session: SessionClaims = Depends(require_roles("manager", "staff", "admin")),
     service: ConversationService = Depends(get_conversation_service),
 ):
     data = service.list_conversations(filters.to_repository_filters())
@@ -37,7 +38,7 @@ def list_conversations(
 @router.post("/bulk-close")
 def close_conversations_bulk(
     request: BulkCloseRequest,
-    session: SessionClaims = Depends(require_roles("manager")),
+    session: SessionClaims = Depends(require_roles("manager", "staff", "admin")),
     service: ConversationService = Depends(get_conversation_service),
 ):
     result = service.close_conversations(request.conversation_ids, session.username)
@@ -67,7 +68,7 @@ def close_conversations_bulk(
 @router.post("/close")
 def close_conversation(
     request: CloseConversationRequest,
-    session: SessionClaims = Depends(require_roles("manager", "staff")),
+    session: SessionClaims = Depends(require_roles("manager", "staff", "admin")),
     service: ConversationService = Depends(get_conversation_service),
 ):
     data = service.close_conversation(
@@ -93,27 +94,11 @@ def close_conversation(
     return {"success": True, "message": message, "data": data}
 
 
-@router.get("/by-message/{message_id}")
-def get_by_message(
-    message_id: int,
-    service: ConversationService = Depends(get_conversation_service),
-):
-    data = service.get_by_message(message_id)
-    if not data:
-        return JSONResponse(
-            status_code=404,
-            content={"success": False, "message": "Không tìm thấy hội thoại.", "data": None},
-        )
-    return {
-        "success": True,
-        "message": "Lấy hội thoại theo tin nhắn thành công.",
-        "data": data,
-    }
-
 
 @router.get("/{conversation_id}")
 def get_conversation(
     conversation_id: int,
+    session: SessionClaims = Depends(require_roles("manager", "staff", "admin")),
     service: ConversationService = Depends(get_conversation_service),
 ):
     data = service.get_conversation(conversation_id)

@@ -137,6 +137,53 @@ function MainApp() {
   const [screenSwitching, setScreenSwitching] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(() => formatTime(new Date()));
 
+  // AI Booting Toast State
+  const [aiBootingToastId, setAiBootingToastId] = useState<string | number | null>(null);
+
+  useEffect(() => {
+    let pollingTimer: number;
+
+    const checkHealth = async () => {
+      try {
+        const baseUrl = import.meta.env.VITE_API_BASE_URL || "";
+        const response = await fetch(`${baseUrl}/api/health`);
+        const data = await response.json();
+        
+        // If ML service is connected but model is NOT loaded
+        if (data.mlService === "connected" && data.details?.ml?.modelLoaded === false) {
+          if (!aiBootingToastId) {
+            import("sonner").then(({ toast }) => {
+              const id = toast.loading("AI đang khởi động model, vui lòng đợi...", {
+                duration: Number.POSITIVE_INFINITY,
+              });
+              setAiBootingToastId(id);
+            });
+          }
+          pollingTimer = window.setTimeout(checkHealth, 3000); // Check again in 3s
+        } else {
+          // AI is ready or backend disconnected, dismiss toast if exists
+          if (aiBootingToastId) {
+            import("sonner").then(({ toast }) => {
+              toast.dismiss(aiBootingToastId);
+              if (data.details?.ml?.modelLoaded) {
+                toast.success("AI đã sẵn sàng!");
+              }
+            });
+            setAiBootingToastId(null);
+          }
+        }
+      } catch (err) {
+        // Backend is down, don't show AI toast
+      }
+    };
+
+    checkHealth();
+
+    return () => {
+      if (pollingTimer) clearTimeout(pollingTimer);
+    };
+  }, [aiBootingToastId]);
+
   const triggerRefresh = useCallback(() => {
     setIsRefreshing(true);
     setRefreshVersion((version) => version + 1);

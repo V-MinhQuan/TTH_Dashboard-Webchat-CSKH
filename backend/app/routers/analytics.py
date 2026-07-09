@@ -139,16 +139,6 @@ def _keyword_mode(mode: str) -> str:
     return mode if mode in {"negative", "needReview", "issue"} else "negative"
 
 
-@router.post("/run")
-def run_analytics_disabled():
-    return JSONResponse(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        content={
-            "success": False,
-            "message": "FastAPI migration stage does not run analytics reprocess. This write/reprocess flow requires separate approval.",
-            "data": None,
-        },
-    )
 
 
 @router.get("/sentiment-summary")
@@ -169,22 +159,8 @@ def sentiment_trend(
     return {"success": True, "message": "Lay xu huong cam xuc thanh cong.", "data": data}
 
 
-@router.get("/satisfaction-summary")
-def satisfaction_summary(
-    filters: dict = Depends(_analytics_filters),
-    service: AnalyticsService = Depends(get_analytics_service),
-):
-    data = service.get_satisfaction_summary(filters)
-    return {"success": True, "message": "Lay tong hop hai long thanh cong.", "data": data}
 
 
-@router.get("/satisfaction-trend")
-def satisfaction_trend(
-    filters: dict = Depends(_analytics_filters),
-    service: AnalyticsService = Depends(get_analytics_service),
-):
-    data = service.get_satisfaction_trend(filters)
-    return {"success": True, "message": "Lay xu huong hai long thanh cong.", "data": data}
 
 
 @router.get("/topics")
@@ -207,28 +183,8 @@ def negative_keywords(
     return {"success": True, "message": "Lay danh sach tu khoa thanh cong.", "data": data}
 
 
-@router.get("/need-review-keywords")
-def need_review_keywords(
-    filters: dict = Depends(_analytics_filters),
-    mode: str = Query(default="needReview"),
-    service: AnalyticsService = Depends(get_analytics_service),
-):
-    filters = {**filters, "mode": _keyword_mode(mode)}
-    data = service.get_keywords(filters)
-    return {"success": True, "message": "Lay danh sach tu khoa can xem xet thanh cong.", "data": data}
 
 
-@router.get("/need-review-conversations")
-def need_review_conversations(
-    filters: dict = Depends(_review_filters),
-    service: AnalyticsService = Depends(get_analytics_service),
-):
-    data = service.get_need_review_conversations(filters)
-    return {
-        "success": True,
-        "message": "Lay danh sach hoi thoai can nhan vien xem xet thanh cong.",
-        "data": data,
-    }
 
 
 @router.get("/negative-conversations")
@@ -272,13 +228,6 @@ def ai_quality_metrics(
     return {"success": True, "message": "Lấy số liệu chất lượng AI thành công.", "data": data}
 
 
-@router.get("/ai/staff-activity")
-def ai_staff_activity(
-    filters: dict = Depends(_analytics_filters),
-    service: AnalyticsService = Depends(get_analytics_service),
-):
-    data = service.get_staff_activity_metrics(filters)
-    return {"success": True, "message": "Lấy số liệu hoạt động nhân viên thành công.", "data": data}
 
 
 @router.get("/ai/failure-trend")
@@ -400,20 +349,13 @@ def ai_suggested_faqs(
     return {"success": True, "message": "Lấy danh sách đề xuất FAQ thành công.", "data": data}
 
 
-@router.post("/custom-chart")
-def custom_chart(
-    request: CustomChartRequest,
-    service: AnalyticsService = Depends(get_analytics_service),
-):
-    data = service.get_custom_chart_data(request.model_dump(by_alias=True, mode="json"))
-    return {"success": True, "message": "Lay du lieu bieu do tuy chinh thanh cong.", "data": data}
 
 
 @router.post("/ai/resolve-issues")
 def resolve_ai_issues(
     request: ResolveAIIssuesRequest,
     service: AnalyticsService = Depends(get_analytics_service),
-    claims: SessionClaims = Depends(require_roles("ADMIN", "USER")),
+    claims: SessionClaims = Depends(require_roles("manager", "staff", "admin")),
 ):
     if not request.analyticsIds:
         return {"success": True, "message": "Không có lỗi nào cần xử lý.", "data": {"updated": 0}}

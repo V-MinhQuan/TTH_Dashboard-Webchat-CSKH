@@ -11,6 +11,7 @@ from app.schemas.chart_builder import (
     SavedChartConfigCreate,
 )
 from app.services.chart_builder_service import ChartBuilderService
+from app.core.auth import SessionClaims, require_roles
 
 router = APIRouter(prefix="/api/chart-builder", tags=["chart-builder"])
 
@@ -21,6 +22,7 @@ def get_chart_builder_service() -> ChartBuilderService:
 
 @router.get("/sources")
 def get_sources(
+    session: SessionClaims = Depends(require_roles("manager", "staff", "admin")),
     service: ChartBuilderService = Depends(get_chart_builder_service),
 ):
     data = service.get_available_sources()
@@ -33,6 +35,7 @@ def get_sources(
 
 @router.get("/catalog")
 def get_catalog(
+    session: SessionClaims = Depends(require_roles("manager", "staff", "admin")),
     service: ChartBuilderService = Depends(get_chart_builder_service),
 ):
     data = service.get_catalog()
@@ -46,6 +49,7 @@ def get_catalog(
 @router.post("/preview")
 def preview_chart_data(
     request: CustomChartRequest,
+    session: SessionClaims = Depends(require_roles("manager", "staff", "admin")),
     service: ChartBuilderService = Depends(get_chart_builder_service),
 ):
     try:
@@ -65,6 +69,7 @@ def preview_chart_data(
 @router.post("/data")
 def get_chart_data(
     request: ChartRequest,
+    session: SessionClaims = Depends(require_roles("manager", "staff", "admin")),
     service: ChartBuilderService = Depends(get_chart_builder_service),
 ):
     try:
@@ -84,6 +89,7 @@ def get_chart_data(
 @router.get("/configs")
 def get_configs(
     limit: int = Query(default=50, ge=1, le=100),
+    session: SessionClaims = Depends(require_roles("manager", "staff", "admin")),
     service: ChartBuilderService = Depends(get_chart_builder_service),
 ):
     data = service.get_saved_configs(limit)
@@ -97,6 +103,7 @@ def get_configs(
 @router.post("/configs", status_code=status.HTTP_201_CREATED)
 def save_config(
     config: SavedChartConfigCreate,
+    session: SessionClaims = Depends(require_roles("manager", "staff", "admin")),
     service: ChartBuilderService = Depends(get_chart_builder_service),
 ):
     try:
@@ -116,6 +123,7 @@ def save_config(
 @router.delete("/configs/{config_id}")
 def delete_config(
     config_id: UUID,
+    session: SessionClaims = Depends(require_roles("manager", "staff", "admin")),
     service: ChartBuilderService = Depends(get_chart_builder_service),
 ):
     if not service.delete_chart_config(config_id):

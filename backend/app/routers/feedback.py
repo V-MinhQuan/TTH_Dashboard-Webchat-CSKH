@@ -78,13 +78,6 @@ async def list_feedback(
     }
 
 
-@router.get("/stats")
-async def feedback_stats(
-    _: SessionClaims = Depends(require_roles("manager", "staff")),
-    service: SheetChatbotService = Depends(get_feedback_service),
-):
-    return {"success": True, "message": "Lấy thống kê thư viện phản hồi thành công.", "data": service.get_stats()}
-
 
 @router.get("/duplicates")
 async def feedback_duplicates(

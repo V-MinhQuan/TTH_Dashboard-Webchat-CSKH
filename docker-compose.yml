@@ -88,6 +88,7 @@ services:
       sh -c "
         set -e;
         pip install --timeout 120 --retries 10 -r /app/requirements.ml.txt;
+        echo n | python download_model.py;
         python -m uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
       "
 

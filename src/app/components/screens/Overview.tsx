@@ -711,7 +711,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
       isWarning: true
     },
     {
-      title: "AI trả lời thất bại",
+      title: "AI phản hồi thất bại",
       value: viNum(kpiData?.aiFailures || 0),
       icon: XCircle,
       change: trendValues?.aiFailures,
@@ -751,7 +751,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
   const reportPriorityConversations = priorityConversations.slice(0, 6);
   const getExportData = async () => {
     const datasets: any[] = [];
-    
+
     // 1. Tổng quan
     datasets.push({
       title: "Tổng quan KPI",
@@ -1160,13 +1160,13 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
             supportedChartTypes={["line", "area", "bar", "hbar"]}
             baseFilters={filters}
             axisOptions={["Ngày"]}
-            valueOptions={["Số hội thoại", "AI trả lời thành công", "AI trả lời thất bại"]}
+            valueOptions={["Số hội thoại", "AI phản hồi thành công", "AI phản hồi thất bại"]}
           >
             {({ chartType, chartData, editValues }: any) => {
               const valueKey =
-                editValues.values === "AI trả lời thành công"
+                editValues.values === "AI phản hồi thành công"
                   ? "ai_ok"
-                  : editValues.values === "AI trả lời thất bại"
+                  : editValues.values === "AI phản hồi thất bại"
                     ? "ai_fail"
                     : "total";
 
@@ -1221,8 +1221,8 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                           valueKey === "total"
                             ? "Số lượng hội thoại"
                             : valueKey === "ai_ok"
-                              ? "AI trả lời thành công"
-                              : "AI trả lời thất bại"
+                              ? "AI phản hồi thành công"
+                              : "AI phản hồi thất bại"
                         }
                         fill="#003BB9"
                         radius={[4, 4, 0, 0]}
@@ -1247,8 +1247,8 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                           valueKey === "total"
                             ? "Số lượng hội thoại"
                             : valueKey === "ai_ok"
-                              ? "AI trả lời thành công"
-                              : "AI trả lời thất bại"
+                              ? "AI phản hồi thành công"
+                              : "AI phản hồi thất bại"
                         }
                         fill="#003BB9"
                         radius={[0, 4, 4, 0]}
@@ -1274,8 +1274,8 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                           valueKey === "total"
                             ? "Số lượng hội thoại"
                             : valueKey === "ai_ok"
-                              ? "AI trả lời thành công"
-                              : "AI trả lời thất bại"
+                              ? "AI phản hồi thành công"
+                              : "AI phản hồi thất bại"
                         }
                         stroke="#003BB9"
                         fill="rgba(0,59,185,0.2)"
@@ -1302,8 +1302,8 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                         valueKey === "total"
                           ? "Số lượng hội thoại"
                           : valueKey === "ai_ok"
-                            ? "AI trả lời thành công"
-                            : "AI trả lời thất bại"
+                            ? "AI phản hồi thành công"
+                            : "AI phản hồi thất bại"
                       }
                       stroke="#003BB9"
                       strokeWidth={1.5}

@@ -25,29 +25,6 @@ def health_check():
         "message": "Backend is running successfully."
     }
 
-@router.get("/api/test-db")
-def test_db():
-    conn = get_db_connection()
-    try:
-        query = "SELECT GETDATE() AS db_time"
-        with conn.cursor(as_dict=True) as cursor:
-            cursor.execute(query)
-            row = cursor.fetchone()
-            server_time = row['db_time'] if row else None
-            
-            if isinstance(server_time, datetime):
-                # Format to ISO-8601 with Z suffix
-                server_time = server_time.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
-                
-            return {
-                "success": True,
-                "message": "Database connection test successful",
-                "data": {
-                    "serverTime": server_time
-                }
-            }
-    finally:
-        conn.close()
 
 # ---------------------------------------------------------------------------
 # DEPRECATED: /api/auth/login trong legacy.py
@@ -63,58 +40,6 @@ class LoginRequest(BaseModel):
     username: str
     password: str
 
-@router.post("/api/auth/login", deprecated=True, include_in_schema=False)
-def login_legacy(request: LoginRequest):
-    """
-    [DEPRECATED] Endpoint này đã được thay thế bởi /api/auth/login trong auth.py.
-    Sẽ không được thực thi do modular auth router được mount trước.
-    """
-    # NOTE: role cũ bị hardcode theo username — đã được sửa trong auth_service.py
-    # Giữ lại để tham khảo, không nên xóa cho đến khi migration hoàn tất.
-    username_val = request.username.strip()
-    password_val = request.password
-    
-    if not username_val or not password_val:
-        return JSONResponse(status_code=400, content={
-            "success": False,
-            "message": "Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu."
-        })
-        
-    conn = get_db_connection()
-    try:
-        query = "SELECT UserName, DangHoatDong, HoTen, ShortName FROM [WebChat_User] WHERE UserName = %s AND Password = %s"
-        with conn.cursor(as_dict=True) as cursor:
-            cursor.execute(query, (username_val, password_val))
-            row = cursor.fetchone()
-            
-            if not row:
-                return JSONResponse(status_code=401, content={
-                    "success": False,
-                    "message": "Tên đăng nhập hoặc mật khẩu không đúng."
-                })
-                
-            if not row['DangHoatDong']:
-                return JSONResponse(status_code=403, content={
-                    "success": False,
-                    "message": "Tài khoản của bạn đã bị khóa."
-                })
-                
-            # [OLD — DEPRECATED] Hardcoded role logic — đã chuyển sang auth_service.py
-            # role = 'manager' if user_name in ('test', 'thuynt') else 'staff'
-            role = 'staff'
-            user_name = row['UserName']
-            return {
-                "success": True,
-                "message": "Đăng nhập thành công. (legacy — deprecated)",
-                "data": {
-                    "username": user_name,
-                    "name": row['HoTen'],
-                    "email": f"{user_name}@flic.edu.vn",
-                    "role": role
-                }
-            }
-    finally:
-        conn.close()
 
 @router.get("/api/dashboard/kpi")
 def get_kpi(

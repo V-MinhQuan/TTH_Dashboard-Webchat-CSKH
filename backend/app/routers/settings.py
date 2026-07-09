@@ -332,27 +332,6 @@ def request_password_change_otp(
         )
 
 
-@router.post("/profile/change-password/verify-otp")
-def verify_otp(
-    body: OTPVerifySchema,
-    session: SessionClaims = Depends(require_roles("manager", "staff")),
-):
-    if body.username.strip().lower() != session.username.strip().lower():
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Bạn chỉ có thể xác thực tài khoản của chính mình.")
-    try:
-        user_service.verify_otp(
-            username=body.username,
-            otp_code=body.otp
-        )
-        return {
-            "success": True,
-            "message": "Mã OTP hợp lệ."
-        }
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
 
 
 @router.post("/profile/change-password/confirm")
