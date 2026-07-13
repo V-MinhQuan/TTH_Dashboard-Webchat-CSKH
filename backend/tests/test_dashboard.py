@@ -1263,6 +1263,7 @@ def test_dashboard_service_priority_conversations_mapping(
             "phone_number": None,
             "status": "pending",
             "source": "facebook",
+            "last_message": "Tôi cần được hỗ trợ ngay",
             "wait_mins": 30,
         },
         {
@@ -1272,6 +1273,7 @@ def test_dashboard_service_priority_conversations_mapping(
             "phone_number": "0901000000",
             "status": "open",
             "source": "zalooa",
+            "last_message": "Vui lòng kiểm tra hồ sơ giúp tôi",
             "wait_mins": 90,
         }
     ]
@@ -1301,11 +1303,13 @@ def test_dashboard_service_priority_conversations_mapping(
     assert c1["customer"] == "Mai Ly"
     assert c1["customerDisplayName"] == "Mai Ly"
     assert c1["status"] == "Chờ xử lý"
+    assert c1["lastMessage"] == "Tôi cần được hỗ trợ ngay"
     
-    # C2 (status open) -> Đang xử lý
+    # C2 (status open) -> Đang tư vấn
     c2 = next(c for c in priority_convs if c["customerId"] == "C2")
     assert c2["customer"] == "C2"
-    assert c2["status"] == "Đang xử lý"
+    assert c2["lastMessage"] == "Vui lòng kiểm tra hồ sơ giúp tôi"
+    assert c2["status"] == "Đang tư vấn"
 
 @patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_channel_conversation_stats')
 @patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_channel_ai_summary')

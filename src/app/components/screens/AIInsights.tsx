@@ -388,6 +388,7 @@ function mapFailedConversation(record: any) {
     customerName: customer.primary,
     customerReference: customer.secondary,
     messageAt: record.messageAt || null,
+    matchedNegativeKeywords: record.matchedNegativeKeywords,
   };
 }
 
@@ -1447,12 +1448,17 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
                           const matchedKeywords = new Set<string>();
 
                           relevantConvs.forEach(c => {
-                            const text = ((c.question || "") + " " + (c.aiAnswer || "")).toLowerCase();
-                            baseKeywords.forEach(k => {
-                              if (text.includes(k.toLowerCase())) {
-                                matchedKeywords.add(k);
-                              }
-                            });
+                            const dbKeywords = (c.matchedNegativeKeywords || "").split(',').map((k: string) => k.trim()).filter(Boolean);
+                            if (dbKeywords.length > 0) {
+                              dbKeywords.forEach((k: string) => matchedKeywords.add(k));
+                            } else {
+                              const text = ((c.question || "") + " " + (c.aiAnswer || "")).toLowerCase();
+                              baseKeywords.forEach(k => {
+                                if (text.includes(k.toLowerCase())) {
+                                  matchedKeywords.add(k);
+                                }
+                              });
+                            }
                           });
 
                           const hasMatched = matchedKeywords.size > 0;

@@ -24,6 +24,8 @@ import { closeConversation, fetchApiJson, buildApiUrl } from "../../services/das
 import { bulkCloseConversations, getCustomerPresentation } from "../../services/conversationApi";
 import { analyticsFiltersToSearchParams } from "../../utils/dateFilters";
 import { mapTopicToGroupId, topicLabelForGroupId } from "../../constants/topicTaxonomy";
+import { TopicLabel } from "../common/TopicLabel";
+import { ChannelLabel } from "../common/ChannelLabel";
 
 const NAVY = "#003865";
 const ORANGE = "#D73C01";
@@ -878,9 +880,9 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
                         <div style={{ fontSize: "12px", color: "rgba(0,56,101,0.7)", lineHeight: 1.5, fontStyle: "italic" }}>"{conversation.content}"</div>
                       </td>
                       <td style={{ padding: "12px 14px", maxWidth: "150px" }}>
-                        <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: "#eff6ff", color: "#3b82f6", display: "inline-block", wordBreak: "break-word" }}>{conversation.topic}</span>
+                        <TopicLabel topic={conversation.topic} />
                       </td>
-                      <td style={{ padding: "12px 14px", color: "rgba(0,56,101,0.65)", whiteSpace: "nowrap" }}>{conversation.channel}</td>
+                      <td style={{ padding: "12px 14px", whiteSpace: "nowrap" }}><ChannelLabel channel={conversation.channel} /></td>
                       <td style={{ padding: "12px 14px" }}>
                         <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: "#ecfdf3", color: "#16794f", fontWeight: 600, whiteSpace: "nowrap", display: "inline-block" }}>{conversation.label}</span>
                       </td>
@@ -1003,9 +1005,9 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
                           <div style={{ fontSize: "12px", color: "rgba(0,56,101,0.7)", lineHeight: 1.5, fontStyle: "italic" }}>"{conv.complaint}"</div>
                         </td>
                         <td style={{ padding: "12px 14px", maxWidth: "150px" }}>
-                          <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: "#eff6ff", color: "#3b82f6", display: "inline-block", wordBreak: "break-word" }}>{conv.topic}</span>
+                          <TopicLabel topic={conv.topic} />
                         </td>
-                        <td style={{ padding: "12px 14px", color: "rgba(0,56,101,0.65)", whiteSpace: "nowrap" }}>{conv.channel}</td>
+                        <td style={{ padding: "12px 14px", whiteSpace: "nowrap" }}><ChannelLabel channel={conv.channel} /></td>
                         <td style={{ padding: "12px 14px", color: conv.waitTime.includes("g") && parseInt(conv.waitTime) >= 4 ? ORANGE : "rgba(0,56,101,0.65)", fontWeight: conv.waitTime.includes("g") && parseInt(conv.waitTime) >= 4 ? 600 : 400, whiteSpace: "nowrap" }}>{conv.waitTime}</td>
                         <td style={{ padding: "12px 14px" }}>
                           <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
@@ -1062,7 +1064,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
                 <div key={i} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px 12px", borderRadius: "10px", backgroundColor: "#FFF4EE" }}>
                   <span style={{ fontSize: "11px", color: ORANGE, fontWeight: 700 }}>#{i + 1}</span>
                   <span style={{ flex: 1, fontSize: "13px", color: NAVY }}>"{kw.word}"</span>
-                  <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "20px", backgroundColor: "#eff6ff", color: "#3b82f6" }}>{kw.topic}</span>
+                  <TopicLabel topic={kw.topic} />
                   <span style={{ fontSize: "13px", fontWeight: 600, color: ORANGE }}>{kw.count}</span>
                 </div>
               ))}

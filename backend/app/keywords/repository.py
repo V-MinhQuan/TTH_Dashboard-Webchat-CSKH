@@ -9,6 +9,11 @@ JSON_FILE_PATH = os.path.join(os.path.dirname(__file__), "../data/crm_keywords.j
 KEYWORD_COUNT_BATCH_SIZE = 80
 
 
+def _json_keyword_pattern(word):
+    escaped = str(word or "").replace("~", "~~").replace("%", "~%").replace("_", "~_").replace("[", "~[")
+    return f'%"{escaped}"%'
+
+
 def _parse_filter_datetime(value, is_end=False):
     if not value:
         return None
@@ -283,11 +288,11 @@ class KeywordRepository:
         select_parts = []
         like_params = []
         for i, w in enumerate(words):
-            select_parts.append(f"SUM(CASE WHEN m.TextContent LIKE ? THEN 1 ELSE 0 END) AS col_{i}")
-            like_params.append(f"%{w}%")
+            select_parts.append(f"SUM(CASE WHEN m.detectedKeywords LIKE ? ESCAPE '~' THEN 1 ELSE 0 END) AS col_{i}")
+            like_params.append(_json_keyword_pattern(w))
 
-        word_filter_sql = " OR ".join(["m.TextContent LIKE ?" for _ in words])
-        word_filter_params = [f"%{w}%" for w in words]
+        word_filter_sql = " OR ".join(["m.detectedKeywords LIKE ? ESCAPE '~'" for _ in words])
+        word_filter_params = [_json_keyword_pattern(w) for w in words]
 
         where_sql = ""
         if filter_clauses:
@@ -298,6 +303,8 @@ class KeywordRepository:
             FROM WebChat_MessageLogs m
             {join_sql}
             WHERE m.TextContent IS NOT NULL AND m.TextContent != ''
+              AND m.FromHost = 0
+              AND m.keywordClassifierVersion IS NOT NULL
               AND ({word_filter_sql})
             {where_sql}
         """
@@ -327,8 +334,8 @@ class KeywordRepository:
         if not words:
             return 0
         try:
-            conditions = ["m.TextContent LIKE ?" for _ in words]
-            params = [f"%{w}%" for w in words]
+            conditions = ["m.detectedKeywords LIKE ? ESCAPE '~'" for _ in words]
+            params = [_json_keyword_pattern(w) for w in words]
 
             or_cond = " OR ".join(conditions)
             join_sql, filter_clauses, filter_params = _build_message_filters(
@@ -346,6 +353,8 @@ class KeywordRepository:
                 {join_sql}
                 WHERE ({or_cond})
                   AND m.TextContent IS NOT NULL AND m.TextContent != ''
+                  AND m.FromHost = 0
+                  AND m.keywordClassifierVersion IS NOT NULL
                 {where_extra}
             """
             res = execute_query(query, tuple(params + filter_params))
@@ -460,20 +469,16 @@ class KeywordRepository:
 
         select_parts = []
         select_params = []
-        all_words = []
         has_khac = "khac" in group_words_map
 
         for group_id, words in group_words_map.items():
             if not words or group_id == "khac":
                 continue
-            all_words.extend(words)
-            group_or = " OR ".join(["m.TextContent LIKE ?" for _ in words])
-            select_parts.append(f"SUM(CASE WHEN ({group_or}) THEN 1 ELSE 0 END) AS [{group_id}]")
-            select_params.extend([f"%{word}%" for word in words])
+            select_parts.append(f"SUM(CASE WHEN m.primaryTopicId = ? THEN 1 ELSE 0 END) AS [{group_id}]")
+            select_params.append(group_id)
 
-        unique_words = list(dict.fromkeys(all_words))
-        word_filter_sql = " OR ".join(["m.TextContent LIKE ?" for _ in unique_words])
-        word_filter_params = [f"%{word}%" for word in unique_words]
+        word_filter_sql = "m.keywordClassifierVersion IS NOT NULL"
+        word_filter_params = []
         where_extra = (" AND " + " AND ".join(f"({clause})" for clause in filter_clauses)) if filter_clauses else ""
 
         total_messages = 0
@@ -483,6 +488,8 @@ class KeywordRepository:
                 FROM WebChat_MessageLogs m
                 {join_sql}
                 WHERE m.TextContent IS NOT NULL AND m.TextContent != ''
+                  AND m.FromHost = 0
+                  AND m.keywordClassifierVersion IS NOT NULL
                 {where_extra}
             """
             try:
@@ -498,12 +505,13 @@ class KeywordRepository:
                 result["khac"] = total_messages
             return result
 
-        select_parts.append("COUNT(*) AS [matched_total]")
+        select_parts.append("SUM(CASE WHEN m.primaryTopicId IS NOT NULL THEN 1 ELSE 0 END) AS [matched_total]")
         query = f"""
             SELECT {', '.join(select_parts)}
             FROM WebChat_MessageLogs m
             {join_sql}
             WHERE m.TextContent IS NOT NULL AND m.TextContent != ''
+              AND m.FromHost = 0
               AND ({word_filter_sql})
               {where_extra}
         """
@@ -552,24 +560,23 @@ class KeywordRepository:
         select_parts = []
         select_params = []
         
-        # 1. Select cho keywords
+        # Read matcher-v2 output; dashboard requests never classify TextContent.
         for i, w in enumerate(unique_words):
-            select_parts.append(f"SUM(CASE WHEN m.TextContent LIKE ? THEN 1 ELSE 0 END) AS kw_{i}")
-            select_params.append(f"%{w}%")
+            select_parts.append(f"SUM(CASE WHEN m.detectedKeywords LIKE ? ESCAPE '~' THEN 1 ELSE 0 END) AS kw_{i}")
+            select_params.append(_json_keyword_pattern(w))
             
         # 2. Select cho groups
         has_khac = "khac" in group_words_map
         for group_id, words in group_words_map.items():
             if not words or group_id == "khac":
                 continue
-            group_or = " OR ".join(["m.TextContent LIKE ?" for _ in words])
-            select_parts.append(f"SUM(CASE WHEN ({group_or}) THEN 1 ELSE 0 END) AS [{group_id}]")
-            select_params.extend([f"%{word}%" for word in words])
+            select_parts.append(f"SUM(CASE WHEN m.primaryTopicId = ? THEN 1 ELSE 0 END) AS [{group_id}]")
+            select_params.append(group_id)
             
-        select_parts.append("COUNT(*) AS [matched_total]")
+        select_parts.append("SUM(CASE WHEN m.primaryTopicId IS NOT NULL THEN 1 ELSE 0 END) AS [matched_total]")
         
-        word_filter_sql = " OR ".join(["m.TextContent LIKE ?" for _ in unique_words])
-        word_filter_params = [f"%{word}%" for word in unique_words]
+        word_filter_sql = "m.keywordClassifierVersion IS NOT NULL"
+        word_filter_params = []
         where_extra = (" AND " + " AND ".join(f"({clause})" for clause in filter_clauses)) if filter_clauses else ""
         
         query = f"""
@@ -592,6 +599,7 @@ class KeywordRepository:
                 {join_sql}
                 WHERE m.TextContent IS NOT NULL AND m.TextContent != ''
                   AND m.FromHost = 0
+                  AND m.keywordClassifierVersion IS NOT NULL
                 {where_extra}
             """
             try:
@@ -650,7 +658,7 @@ class KeywordRepository:
 
         unique_words = list(dict.fromkeys(all_words))
 
-        clauses = ["a.issueFlag = 1"]
+        clauses = ["a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn') AND (s.NoResponseNeeded IS NULL OR s.NoResponseNeeded = 0)"]
         filter_params = []
 
         if start_date:
@@ -754,8 +762,8 @@ class KeywordRepository:
             if granularity not in ("day", "week", "month"):
                 granularity = "month"
 
-            conditions = ["m.TextContent LIKE ?" for _ in words]
-            params = [f"%{w}%" for w in words]
+            conditions = ["m.detectedKeywords LIKE ? ESCAPE '~'" for _ in words]
+            params = [_json_keyword_pattern(w) for w in words]
 
             or_cond = " OR ".join(conditions)
             join_sql, filter_clauses, filter_params = _build_message_filters(
@@ -781,6 +789,7 @@ class KeywordRepository:
                     {join_sql}
                     WHERE ({or_cond})
                       AND m.TextContent IS NOT NULL AND m.TextContent != ''
+                      AND m.FromHost = 0 AND m.keywordClassifierVersion IS NOT NULL
                     {where_extra}
                     GROUP BY CONVERT(VARCHAR(10), m.SentAt, 120)
                     ORDER BY bucket_key
@@ -795,6 +804,7 @@ class KeywordRepository:
                     {join_sql}
                     WHERE ({or_cond})
                       AND m.TextContent IS NOT NULL AND m.TextContent != ''
+                      AND m.FromHost = 0 AND m.keywordClassifierVersion IS NOT NULL
                     {where_extra}
                     GROUP BY YEAR(m.SentAt), DATEPART(ISO_WEEK, m.SentAt)
                     ORDER BY MIN(m.SentAt)
@@ -810,6 +820,7 @@ class KeywordRepository:
                     {join_sql}
                     WHERE ({or_cond})
                       AND m.TextContent IS NOT NULL AND m.TextContent != ''
+                      AND m.FromHost = 0 AND m.keywordClassifierVersion IS NOT NULL
                     {where_extra}
                     GROUP BY YEAR(m.SentAt), MONTH(m.SentAt)
                     ORDER BY yr, mo
@@ -851,21 +862,17 @@ class KeywordRepository:
 
             select_parts = []
             select_params = []
-            all_words = []
             for group_id, words in group_words_map.items():
                 if not words:
                     continue
-                all_words.extend(words)
-                group_or = " OR ".join(["m.TextContent LIKE ?" for _ in words])
-                select_parts.append(f"SUM(CASE WHEN ({group_or}) THEN 1 ELSE 0 END) AS [{group_id}]")
-                select_params.extend([f"%{word}%" for word in words])
+                select_parts.append(f"SUM(CASE WHEN m.primaryTopicId = ? THEN 1 ELSE 0 END) AS [{group_id}]")
+                select_params.append(group_id)
 
             if not select_parts:
                 return []
 
-            unique_words = list(dict.fromkeys(all_words))
-            word_filter_sql = " OR ".join(["m.TextContent LIKE ?" for _ in unique_words])
-            word_filter_params = [f"%{word}%" for word in unique_words]
+            word_filter_sql = "m.keywordClassifierVersion IS NOT NULL"
+            word_filter_params = []
             where_extra = (" AND " + " AND ".join(f"({clause})" for clause in filter_clauses)) if filter_clauses else ""
 
             if granularity == "day":
@@ -1031,7 +1038,7 @@ class KeywordRepository:
         if not select_parts:
             return {}
 
-        clauses = ["a.issueFlag = 1"]
+        clauses = ["a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn') AND (s.NoResponseNeeded IS NULL OR s.NoResponseNeeded = 0)"]
         filter_params = []
 
         if start_date:

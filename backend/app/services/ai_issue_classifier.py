@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import html
-import re
-import unicodedata
 from dataclasses import dataclass
 from typing import Optional
+
+from app.core.text_matching import find_keyword_matches, normalize_text, remove_accents
 
 
 @dataclass(frozen=True)
@@ -123,50 +122,23 @@ AI_IDENTITY_KEYWORDS: tuple[str, ...] = (
 )
 
 
-def normalize_text(value: object) -> str:
-    text = html.unescape(str(value or ""))
-    text = re.sub(r"<[^>]+>", " ", text)
-    text = unicodedata.normalize("NFC", text).lower()
-    return re.sub(r"\s+", " ", text).strip()
-
-
-def remove_accents(value: str) -> str:
-    decomposed = unicodedata.normalize("NFD", value)
-    without_marks = "".join(ch for ch in decomposed if unicodedata.category(ch) != "Mn")
-    return unicodedata.normalize("NFC", without_marks).replace("đ", "d")
-
-
 def classify_ai_issue(answer_text: object) -> IssueClassification:
     normalized = normalize_text(answer_text)
     if not normalized:
         return IssueClassification(issue_flag=False)
 
-    plain_text = remove_accents(normalized)
-
-    # Lọc lớp 2: Dấu hiệu giới hạn AI (Condition 1)
-    has_identity = False
-    for kw in AI_IDENTITY_KEYWORDS:
-        norm_kw = normalize_text(kw)
-        plain_kw = remove_accents(norm_kw)
-        if norm_kw in normalized or plain_kw in plain_text:
-            has_identity = True
-            break
-            
-    if not has_identity:
-        return IssueClassification(issue_flag=False)
-
-    # Lọc lớp 3: Từ khóa lỗi (Condition 2)
+    # The caller already scopes this classifier to AI answers. Requiring a second
+    # identity phrase would miss valid answers such as "Có lẽ..." or unaccented text.
     for rule in ISSUE_RULES:
-        for keyword in rule.keywords:
-            normalized_keyword = normalize_text(keyword)
-            plain_keyword = remove_accents(normalized_keyword)
-            if normalized_keyword in normalized or plain_keyword in plain_text:
-                return IssueClassification(
-                    issue_flag=True,
-                    issue_type=rule.issue_type,
-                    issue_reason=f"Dựa trên keyword trong câu trả lời AI: {keyword}",
-                    issue_confidence=rule.confidence,
-                    matched_keyword=keyword,
-                )
+        matches = find_keyword_matches(normalized, rule.keywords)
+        if matches:
+            match = matches[0]
+            return IssueClassification(
+                issue_flag=True,
+                issue_type=rule.issue_type,
+                issue_reason=f"Dựa trên keyword trong câu trả lời AI: {match.keyword}",
+                issue_confidence=round(rule.confidence * match.confidence_factor, 4),
+                matched_keyword=match.keyword,
+            )
 
     return IssueClassification(issue_flag=False)

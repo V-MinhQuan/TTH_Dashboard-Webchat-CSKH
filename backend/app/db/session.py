@@ -51,18 +51,20 @@ def build_connection_string(settings: Optional[Settings] = None) -> str:
     settings = settings or get_settings()
     encrypt = "yes" if settings.db_encrypt else "no"
     trust_cert = "yes" if settings.db_trust_server_certificate else "no"
-    return ";".join(
-        [
-            f"DRIVER={{{settings.db_driver}}}",
-            f"SERVER={settings.db_server},{settings.db_port}",
-            f"DATABASE={settings.db_name}",
-            f"UID={settings.db_user}",
-            f"PWD={settings.db_password}",
+    server_part = f"SERVER={settings.db_server},{settings.db_port}" if settings.db_server != "(local)" else f"SERVER={settings.db_server}"
+    parts = [
+        f"DRIVER={{{settings.db_driver}}}",
+        server_part,
+        f"DATABASE={settings.db_name}",
+        f"UID={settings.db_user}",
+        f"PWD={settings.db_password}",
+    ]
+    if settings.db_driver != "SQL Server":
+        parts.extend([
             f"Encrypt={encrypt}",
             f"TrustServerCertificate={trust_cert}",
-            "Connection Timeout=5",
-        ]
-    )
+        ])
+    return ";".join(parts)
 
 
 def _connect_with_pymssql(settings: Settings) -> _PymssqlConnection:
@@ -72,7 +74,7 @@ def _connect_with_pymssql(settings: Settings) -> _PymssqlConnection:
         password=settings.db_password,
         database=settings.db_name,
         port=settings.db_port,
-        tds_version="7.0",
+        tds_version="7.3",
         timeout=max(settings.db_timeout_seconds, MIN_QUERY_TIMEOUT_SECONDS),
         login_timeout=max(settings.db_timeout_seconds, 5),
     )

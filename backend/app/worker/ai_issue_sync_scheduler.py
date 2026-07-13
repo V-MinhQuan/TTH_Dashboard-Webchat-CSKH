@@ -6,6 +6,7 @@ import os
 from datetime import datetime, timedelta
 
 from app.services.ai_issue_sync_service import sync_ai_issue_flags
+from app.services.message_keyword_sync_service import sync_customer_message_keywords
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +53,34 @@ async def start_ai_issue_sync_scheduler():
         await asyncio.sleep(delay_seconds)
 
         try:
-            result = await asyncio.to_thread(sync_ai_issue_flags, apply=True)
+            keyword_total = 0
+            checkpoint = None
+            while True:
+                keyword_result = await asyncio.to_thread(
+                    sync_customer_message_keywords,
+                    apply=True,
+                    batch_size=1000,
+                    after_id=checkpoint,
+                )
+                keyword_total += keyword_result.updated_rows
+                checkpoint = keyword_result.last_message_id
+                if keyword_result.scanned_rows < 1000:
+                    break
+            ai_total_updated = 0
+            ai_total_inserted = 0
+            ai_checkpoint = None
+            while True:
+                result = await asyncio.to_thread(
+                    sync_ai_issue_flags,
+                    apply=True,
+                    batch_size=1000,
+                    after_message_id=ai_checkpoint,
+                )
+                ai_total_updated += result.updated_rows
+                ai_total_inserted += result.inserted_rows
+                ai_checkpoint = result.last_message_id
+                if result.total_ai_messages < 1000:
+                    break
             logger.info(
                 "AI issue sync completed: total=%s, updated=%s, inserted=%s, flagged=%s, counts=%s",
                 result.total_ai_messages,
@@ -61,6 +89,8 @@ async def start_ai_issue_sync_scheduler():
                 result.flagged_rows,
                 result.issue_counts,
             )
+            logger.info("Nightly AI analytics totals updated=%s inserted=%s.", ai_total_updated, ai_total_inserted)
+            logger.info("Nightly customer keyword sync updated=%s.", keyword_total)
         except Exception as exc:
             logger.exception("AI issue sync failed: %s", exc)
 

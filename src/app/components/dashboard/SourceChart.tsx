@@ -1,5 +1,6 @@
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
-import { CHANNEL_COLORS as SOURCE_COLORS } from "../../../colors";
+import { CHANNEL_COLORS as SOURCE_COLORS } from "../../colors";
+import { ChannelLabel } from "../common/ChannelLabel";
 
 const NAVY = "#003865";
 const ORANGE = "#D73C01";
@@ -69,9 +70,9 @@ export function SourceChart({ sourceSummary }: SourceChartProps) {
             ))}
           </Pie>
           <Tooltip
-            formatter={(value: number) => [
+            formatter={(value: number, _name: string, item: any) => [
               `${value.toLocaleString("vi-VN")} hội thoại (${((value / total) * 100).toFixed(1)}%)`,
-              "Số lượng"
+              `Số lượng [${item?.payload?.name || "Kênh"}]`
             ]}
             contentStyle={{ borderRadius: "8px", border: "1px solid rgba(0,59,185,0.08)", fontFamily: "sans-serif", fontSize: "12px" }}
           />
@@ -80,7 +81,8 @@ export function SourceChart({ sourceSummary }: SourceChartProps) {
             iconType="circle"
             layout="horizontal"
             verticalAlign="bottom"
-            formatter={(value) => <span style={{ fontSize: "11px", color: NAVY, fontWeight: 500 }}>{value}</span>}
+            wrapperStyle={{ width: "100%", left: 0, display: "flex", justifyContent: "center", whiteSpace: "nowrap" }}
+            formatter={(value) => <ChannelLabel channel={String(value)} badge={false} weight={400} />}
           />
         </PieChart>
       </ResponsiveContainer>

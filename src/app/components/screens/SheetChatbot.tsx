@@ -6,6 +6,8 @@ import { ErrorSourceBadge } from "../common/ErrorSourceBadge";
 import { getAiFailureDefinition } from "../../constants/aiFailureTaxonomy";
 import { TOPIC_FILTER_OPTIONS } from "../../constants/topicTaxonomy";
 import { FeedbackFormDialog } from "../feedback/FeedbackFormDialog";
+import { TopicLabel } from "../common/TopicLabel";
+import { ChannelLabel } from "../common/ChannelLabel";
 import {
   deleteSheetChatbotRow,
   getSheetChatbotRows,
@@ -522,9 +524,9 @@ export function SheetChatbot() {
                           </div>
                         </td>
                         <td style={{ padding: "12px 14px" }}>
-                          <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: "#eff6ff", color: "#3b82f6", whiteSpace: "nowrap" }}>{row.topic}</span>
+                          <TopicLabel topic={row.topic} />
                         </td>
-                        <td style={{ padding: "12px 14px", color: "rgba(0,62,154,0.62)", whiteSpace: "nowrap" }}>{row.channel || "Chưa xác định"}</td>
+                        <td style={{ padding: "12px 14px", whiteSpace: "nowrap" }}><ChannelLabel channel={row.channel} /></td>
                         <td style={{ padding: "12px 14px" }}>
                           <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: rc.bg, color: rc.color, fontWeight: 600 }}>{row.risk}</span>
                         </td>

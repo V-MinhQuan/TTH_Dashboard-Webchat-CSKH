@@ -4,7 +4,9 @@ services:
     container_name: tth-dashboard-backend
     working_dir: /app/backend
     ports:
-      - "5000:5000"
+      # Public backend port 8000 -> FastAPI port 5000 inside the container.
+      # This avoids occupying port 5000 on the hosting server.
+      - "8000:5000"
     volumes:
       - .:/app
       - pip_cache:/root/.cache/pip
@@ -16,13 +18,15 @@ services:
       CELERY_RESULT_BACKEND: "redis://redis:6379/1"
       CELERY_BACKGROUND_QUEUE: "background"
       CELERY_ENQUEUE_ON_STARTUP: "true"
-      CORS_ORIGINS: "http://localhost:5173,http://127.0.0.1:5173"
+      CORS_ORIGINS: "${CORS_ORIGINS:-http://14.225.192.252:8081}"
     depends_on:
       - ml-service
       - redis
     command: >
       sh -c "
         set -e;
+        sed -i 's/DEFAULT@SECLEVEL=2/DEFAULT@SECLEVEL=0/g' /etc/ssl/openssl.cnf || true;
+        sed -i 's/MinProtocol = TLSv1.2/MinProtocol = TLSv1.0/g' /etc/ssl/openssl.cnf || true;
         apt-get update;
         apt-get install -y --no-install-recommends curl gnupg apt-transport-https ca-certificates unixodbc-dev freetds-dev;
         curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | apt-key add -;
@@ -54,6 +58,8 @@ services:
     command: >
       sh -c "
         set -e;
+        sed -i 's/DEFAULT@SECLEVEL=2/DEFAULT@SECLEVEL=0/g' /etc/ssl/openssl.cnf || true;
+        sed -i 's/MinProtocol = TLSv1.2/MinProtocol = TLSv1.0/g' /etc/ssl/openssl.cnf || true;
         apt-get update;
         apt-get install -y --no-install-recommends curl gnupg apt-transport-https ca-certificates unixodbc-dev freetds-dev;
         curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | apt-key add -;
@@ -109,7 +115,7 @@ services:
       - ./.env:/app/.env
       - frontend_node_modules:/app/node_modules
     environment:
-      VITE_API_BASE_URL: "http://127.0.0.1:5000"
+      VITE_API_BASE_URL: "${VITE_API_BASE_URL:-http://14.225.192.252:8000}"
       CHOKIDAR_USEPOLLING: "true"
       CHOKIDAR_INTERVAL: "500"
     depends_on:

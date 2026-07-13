@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useAuth } from "../context/AuthContext";
 import { useSettings } from "../context/SettingsContext";
 import { Bell, ChevronDown, User, LogOut, X, Settings, HelpCircle, History } from "lucide-react";
@@ -44,6 +45,11 @@ interface NotificationGroup {
   items: SystemNotification[];
 }
 
+interface OverlayPosition {
+  top: number;
+  right: number;
+}
+
 interface HeaderProps {
   activeScreen: string;
   onNavigate: (screen: string) => void;
@@ -64,15 +70,65 @@ export function Header({ activeScreen, onNavigate, onResetFilters }: HeaderProps
   const [notificationsError, setNotificationsError] = useState<string | null>(null);
   const notifRef = useRef<HTMLDivElement>(null);
   const avatarRef = useRef<HTMLDivElement>(null);
+  const notifMenuRef = useRef<HTMLDivElement>(null);
+  const avatarMenuRef = useRef<HTMLDivElement>(null);
+  const [notifMenuPosition, setNotifMenuPosition] = useState<OverlayPosition>({ top: 64, right: 28 });
+  const [avatarMenuPosition, setAvatarMenuPosition] = useState<OverlayPosition>({ top: 64, right: 28 });
+
+  const getOverlayPosition = useCallback((anchor: HTMLElement | null, width: number): OverlayPosition => {
+    if (!anchor || typeof window === "undefined") return { top: 64, right: 28 };
+
+    const rect = anchor.getBoundingClientRect();
+    const margin = 12;
+    const maxRight = Math.max(margin, window.innerWidth - width - margin);
+    const right = Math.min(Math.max(margin, window.innerWidth - rect.right), maxRight);
+
+    return {
+      top: Math.max(margin, rect.bottom + 8),
+      right,
+    };
+  }, []);
+
+  const updateNotifMenuPosition = useCallback(() => {
+    setNotifMenuPosition(getOverlayPosition(notifRef.current, 360));
+  }, [getOverlayPosition]);
+
+  const updateAvatarMenuPosition = useCallback(() => {
+    setAvatarMenuPosition(getOverlayPosition(avatarRef.current, 230));
+  }, [getOverlayPosition]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (notifRef.current && !notifRef.current.contains(e.target as Node)) setShowNotifications(false);
-      if (avatarRef.current && !avatarRef.current.contains(e.target as Node)) setShowAvatar(false);
+      const target = e.target as Node;
+      const clickedNotification =
+        Boolean(notifRef.current?.contains(target)) ||
+        Boolean(notifMenuRef.current?.contains(target));
+      const clickedAvatar =
+        Boolean(avatarRef.current?.contains(target)) ||
+        Boolean(avatarMenuRef.current?.contains(target));
+
+      if (!clickedNotification) setShowNotifications(false);
+      if (!clickedAvatar) setShowAvatar(false);
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
+
+  useEffect(() => {
+    if (!showNotifications && !showAvatar) return undefined;
+
+    const handleViewportChange = () => {
+      if (showNotifications) updateNotifMenuPosition();
+      if (showAvatar) updateAvatarMenuPosition();
+    };
+
+    window.addEventListener("resize", handleViewportChange);
+    window.addEventListener("scroll", handleViewportChange, true);
+    return () => {
+      window.removeEventListener("resize", handleViewportChange);
+      window.removeEventListener("scroll", handleViewportChange, true);
+    };
+  }, [showNotifications, showAvatar, updateNotifMenuPosition, updateAvatarMenuPosition]);
 
   const notifDotColor: Record<string, string> = {
     alert: ORANGE,
@@ -231,86 +287,97 @@ export function Header({ activeScreen, onNavigate, onResetFilters }: HeaderProps
       {/* Notifications */}
       <div style={{ position: "relative" }} ref={notifRef}>
         <button
-          onClick={() => { setShowNotifications(!showNotifications); setShowAvatar(false); }}
+          onClick={() => {
+            if (!showNotifications) updateNotifMenuPosition();
+            setShowNotifications(!showNotifications);
+            setShowAvatar(false);
+          }}
           style={{ width: "36px", height: "36px", borderRadius: "10px", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: showNotifications ? "#fff3ef" : "#f4f6fa", color: showNotifications ? CTA : NAVY, transition: "all 0.2s", position: "relative" }}
         >
           <Bell size={16} />
           {pendingWorkCount > 0 && <span style={{ position: "absolute", top: "6px", right: "6px", width: "8px", height: "8px", backgroundColor: ORANGE, borderRadius: "50%", border: "2px solid #fff" }} />}
         </button>
 
-        {showNotifications && (
-          <div style={{ position: "absolute", top: "calc(100% + 8px)", right: 0, width: "360px", backgroundColor: "#fff", borderRadius: "16px", boxShadow: "0 8px 32px rgba(0,56,101,0.15)", border: "1px solid rgba(0,56,101,0.08)", overflow: "hidden", zIndex: 100 }}>
-            <div style={{ padding: "16px 20px", borderBottom: "1px solid rgba(0,56,101,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div>
-                <div style={{ fontWeight: 700, color: NAVY, fontSize: "14px" }}>Thông báo hệ thống</div>
-                <div style={{ fontSize: "11px", color: "rgba(0,56,101,0.45)", marginTop: "3px" }}>
-                  {pendingWorkCount > 0 ? `${pendingWorkCount} công việc cần xử lý` : "Không có công việc cần xử lý"}
+        {showNotifications && typeof document !== "undefined" && createPortal(
+          <div style={{ position: "fixed", inset: 0, zIndex: 2147483000, pointerEvents: "none" }}>
+            <div ref={notifMenuRef} style={{ position: "absolute", top: `${notifMenuPosition.top}px`, right: `${notifMenuPosition.right}px`, width: "360px", backgroundColor: "#fff", borderRadius: "16px", boxShadow: "0 18px 48px rgba(0,56,101,0.20)", border: "1px solid rgba(0,56,101,0.08)", overflow: "hidden", pointerEvents: "auto" }}>
+              <div style={{ padding: "16px 20px", borderBottom: "1px solid rgba(0,56,101,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontWeight: 700, color: NAVY, fontSize: "14px" }}>Thông báo hệ thống</div>
+                  <div style={{ fontSize: "11px", color: "rgba(0,56,101,0.45)", marginTop: "3px" }}>
+                    {pendingWorkCount > 0 ? `${pendingWorkCount} công việc cần xử lý` : "Không có công việc cần xử lý"}
+                  </div>
                 </div>
               </div>
-            </div>
-            <div style={{ maxHeight: "360px", overflowY: "auto" }}>
-              {notificationsLoading && (
-                <div style={{ padding: "28px 20px", textAlign: "center", color: "rgba(0,56,101,0.45)", fontSize: "13px" }}>
-                  Đang tải thông báo...
-                </div>
-              )}
-
-              {!notificationsLoading && notificationsError && (
-                <div style={{ padding: "20px", color: RED_TEXT, fontSize: "13px", lineHeight: 1.5 }}>
-                  {notificationsError}. Vui lòng kiểm tra kết nối API.
-                </div>
-              )}
-
-              {!notificationsLoading && !notificationsError && notificationsGroups.length === 0 && (
-                <div style={{ padding: "28px 20px", textAlign: "center", color: "rgba(0,56,101,0.45)", fontSize: "13px" }}>
-                  Không có thông báo cần xử lý
-                </div>
-              )}
-
-              {!notificationsLoading && !notificationsError && notificationsGroups.map(group => (
-                <div key={group.date}>
-                  <div style={{ padding: "8px 20px", backgroundColor: "#f8fafc", fontSize: "11px", fontWeight: 600, color: "rgba(0,56,101,0.5)", borderBottom: "1px solid rgba(0,56,101,0.04)" }}>
-                    {group.date.toUpperCase()}
+              <div style={{ maxHeight: "360px", overflowY: "auto" }}>
+                {notificationsLoading && (
+                  <div style={{ padding: "28px 20px", textAlign: "center", color: "rgba(0,56,101,0.45)", fontSize: "13px" }}>
+                    Đang tải thông báo...
                   </div>
-                  {group.items.map((n) => (
-                    <div
-                      key={n.id}
-                      onClick={() => { setShowNotifications(false); onResetFilters?.(); onNavigate(n.targetScreen); }}
-                      style={{ padding: "14px 20px", borderBottom: "1px solid rgba(0,56,101,0.04)", display: "flex", gap: "12px", cursor: "pointer", transition: "background 0.15s", opacity: n.status === "completed" ? 0.55 : 1 }}
-                      onMouseEnter={(e) => (e.currentTarget as HTMLDivElement).style.backgroundColor = "#f8fafc"}
-                      onMouseLeave={(e) => (e.currentTarget as HTMLDivElement).style.backgroundColor = "transparent"}
-                    >
-                      <div style={{ flexShrink: 0, marginTop: "2px" }}>
-                        {n.status === "completed" ? (
-                          <div style={{ width: "16px", height: "16px", borderRadius: "4px", backgroundColor: "#228A61", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                )}
+
+                {!notificationsLoading && notificationsError && (
+                  <div style={{ padding: "20px", color: RED_TEXT, fontSize: "13px", lineHeight: 1.5 }}>
+                    {notificationsError}. Vui lòng kiểm tra kết nối API.
+                  </div>
+                )}
+
+                {!notificationsLoading && !notificationsError && notificationsGroups.length === 0 && (
+                  <div style={{ padding: "28px 20px", textAlign: "center", color: "rgba(0,56,101,0.45)", fontSize: "13px" }}>
+                    Không có thông báo cần xử lý
+                  </div>
+                )}
+
+                {!notificationsLoading && !notificationsError && notificationsGroups.map(group => (
+                  <div key={group.date}>
+                    <div style={{ padding: "8px 20px", backgroundColor: "#f8fafc", fontSize: "11px", fontWeight: 600, color: "rgba(0,56,101,0.5)", borderBottom: "1px solid rgba(0,56,101,0.04)" }}>
+                      {group.date.toUpperCase()}
+                    </div>
+                    {group.items.map((n) => (
+                      <div
+                        key={n.id}
+                        onClick={() => { setShowNotifications(false); onResetFilters?.(); onNavigate(n.targetScreen); }}
+                        style={{ padding: "14px 20px", borderBottom: "1px solid rgba(0,56,101,0.04)", display: "flex", gap: "12px", cursor: "pointer", transition: "background 0.15s", opacity: n.status === "completed" ? 0.55 : 1 }}
+                        onMouseEnter={(e) => (e.currentTarget as HTMLDivElement).style.backgroundColor = "#f8fafc"}
+                        onMouseLeave={(e) => (e.currentTarget as HTMLDivElement).style.backgroundColor = "transparent"}
+                      >
+                        <div style={{ flexShrink: 0, marginTop: "2px" }}>
+                          {n.status === "completed" ? (
+                            <div style={{ width: "16px", height: "16px", borderRadius: "4px", backgroundColor: "#228A61", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                            </div>
+                          ) : (
+                            <div style={{ width: "16px", height: "16px", borderRadius: "4px", border: `2px solid ${notifDotColor[n.type] || CTA}` }} />
+                          )}
+                        </div>
+                        <div>
+                          <div style={{ fontSize: "13px", color: NAVY, lineHeight: 1.4, fontWeight: n.status === "pending" ? 600 : 400 }}>{n.text}</div>
+                          <div style={{ fontSize: "11px", color: "rgba(0,56,101,0.4)", marginTop: "4px", display: "flex", gap: "6px", alignItems: "center" }}>
+                            <span>{n.time}</span>
+                            <span style={{ fontSize: "10px", padding: "2px 6px", borderRadius: "4px", backgroundColor: "rgba(0,56,101,0.05)", fontWeight: 500 }}>
+                              → {screenLabels[n.targetScreen] || n.targetScreen}
+                            </span>
                           </div>
-                        ) : (
-                          <div style={{ width: "16px", height: "16px", borderRadius: "4px", border: `2px solid ${notifDotColor[n.type] || CTA}` }} />
-                        )}
-                      </div>
-                      <div>
-                        <div style={{ fontSize: "13px", color: NAVY, lineHeight: 1.4, fontWeight: n.status === "pending" ? 600 : 400 }}>{n.text}</div>
-                        <div style={{ fontSize: "11px", color: "rgba(0,56,101,0.4)", marginTop: "4px", display: "flex", gap: "6px", alignItems: "center" }}>
-                          <span>{n.time}</span>
-                          <span style={{ fontSize: "10px", padding: "2px 6px", borderRadius: "4px", backgroundColor: "rgba(0,56,101,0.05)", fontWeight: 500 }}>
-                            → {screenLabels[n.targetScreen] || n.targetScreen}
-                          </span>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              ))}
+                    ))}
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          </div>,
+          document.body
         )}
       </div>
 
       {/* Avatar */}
       <div style={{ position: "relative" }} ref={avatarRef}>
         <button
-          onClick={() => { setShowAvatar(!showAvatar); setShowNotifications(false); }}
+          onClick={() => {
+            if (!showAvatar) updateAvatarMenuPosition();
+            setShowAvatar(!showAvatar);
+            setShowNotifications(false);
+          }}
           style={{ display: "flex", alignItems: "center", gap: "8px", border: "none", cursor: "pointer", background: "transparent", borderRadius: "10px", padding: "4px 8px", transition: "background 0.2s" }}
           onMouseEnter={(e) => (e.currentTarget as HTMLButtonElement).style.backgroundColor = "#f4f6fa"}
           onMouseLeave={(e) => (e.currentTarget as HTMLButtonElement).style.backgroundColor = "transparent"}
@@ -329,18 +396,21 @@ export function Header({ activeScreen, onNavigate, onResetFilters }: HeaderProps
           <ChevronDown size={14} style={{ color: "rgba(0,56,101,0.4)" }} />
         </button>
 
-        {showAvatar && (
-          <div style={{ position: "absolute", top: "calc(100% + 8px)", right: 0, width: "210px", backgroundColor: "#fff", borderRadius: "14px", boxShadow: "0 8px 32px rgba(0,56,101,0.15)", border: "1px solid rgba(0,56,101,0.08)", overflow: "hidden", zIndex: 100 }}>
-            <div style={{ padding: "12px 16px", borderBottom: "1px solid rgba(0,56,101,0.06)", backgroundColor: "#f8fafc" }}>
-              <div style={{ fontSize: "13px", fontWeight: 700, color: NAVY }}>{user ? user.name : (role === "manager" ? "Admin FLIC" : "Nhân viên CSKH")}</div>
-              <div style={{ fontSize: "11px", color: "rgba(0,56,101,0.45)" }}>{user ? user.email : (role === "manager" ? "admin@flic.edu.vn" : "staff@flic.edu.vn")}</div>
+        {showAvatar && typeof document !== "undefined" && createPortal(
+          <div style={{ position: "fixed", inset: 0, zIndex: 2147483000, pointerEvents: "none" }}>
+            <div ref={avatarMenuRef} data-avatar-menu="true" style={{ position: "absolute", top: `${avatarMenuPosition.top}px`, right: `${avatarMenuPosition.right}px`, width: "210px", backgroundColor: "#fff", borderRadius: "14px", boxShadow: "0 18px 48px rgba(0,56,101,0.20)", border: "1px solid rgba(0,56,101,0.08)", overflow: "hidden", pointerEvents: "auto" }}>
+              <div style={{ padding: "12px 16px", borderBottom: "1px solid rgba(0,56,101,0.06)", backgroundColor: "#f8fafc" }}>
+                <div style={{ fontSize: "13px", fontWeight: 700, color: NAVY }}>{user ? user.name : (role === "manager" ? "Admin FLIC" : "Nhân viên CSKH")}</div>
+                <div style={{ fontSize: "11px", color: "rgba(0,56,101,0.45)" }}>{user ? user.email : (role === "manager" ? "admin@flic.edu.vn" : "staff@flic.edu.vn")}</div>
+              </div>
+              {dropdownItem(() => { onNavigate("personalinfo"); setShowAvatar(false); }, <User size={15} style={{ color: NAVY }} />, "Thông tin cá nhân")}
+              {dropdownItem(() => { onNavigate("activity_history"); setShowAvatar(false); }, <History size={15} style={{ color: NAVY }} />, "Lịch sử hoạt động")}
+              {dropdownItem(() => { onNavigate("settings"); setShowAvatar(false); }, <Settings size={15} style={{ color: NAVY }} />, role === "manager" ? "Cài đặt" : "Cài đặt cá nhân")}
+              <div style={{ height: "1px", backgroundColor: "rgba(0,56,101,0.08)" }} />
+              {dropdownItem(() => { setShowLogoutModal(true); setShowAvatar(false); }, <LogOut size={15} style={{ color: RED_TEXT }} />, "Đăng xuất", true)}
             </div>
-            {dropdownItem(() => { onNavigate("personalinfo"); setShowAvatar(false); }, <User size={15} style={{ color: NAVY }} />, "Thông tin cá nhân")}
-            {dropdownItem(() => { onNavigate("activity_history"); setShowAvatar(false); }, <History size={15} style={{ color: NAVY }} />, "Lịch sử hoạt động")}
-            {dropdownItem(() => { onNavigate("settings"); setShowAvatar(false); }, <Settings size={15} style={{ color: NAVY }} />, role === "manager" ? "Cài đặt" : "Cài đặt cá nhân")}
-            <div style={{ height: "1px", backgroundColor: "rgba(0,56,101,0.08)" }} />
-            {dropdownItem(() => { setShowLogoutModal(true); setShowAvatar(false); }, <LogOut size={15} style={{ color: RED_TEXT }} />, "Đăng xuất", true)}
-          </div>
+          </div>,
+          document.body
         )}
       </div>
 

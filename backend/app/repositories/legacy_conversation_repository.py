@@ -88,22 +88,21 @@ class ConversationRepository(BaseRepository):
         if ai_sql:
             conditions.append(ai_sql)
 
-        status_join = ""
+        status_join = f"""
+            LEFT JOIN WebChat_Conversations {conversation_alias}
+              ON {conversation_alias}.Id = {analytics_alias}.conversationId
+            OUTER APPLY (
+              SELECT TOP 1
+                status_meta.NoResponseNeeded,
+                status_meta.MarkedAt
+              FROM WebChat_ConversationStatus status_meta
+              WHERE CAST(status_meta.CustomerId AS NVARCHAR(255)) = CAST({conversation_alias}.CustomerId AS NVARCHAR(255))
+                AND {self._normalized_source_expr('status_meta.Source')} = {self._normalized_source_expr(f'{conversation_alias}.Source')}
+              ORDER BY CASE WHEN status_meta.MarkedAt IS NULL THEN 0 ELSE 1 END DESC, status_meta.MarkedAt DESC
+            ) {status_alias}
+        """
         status_filter = self._status_filter_value(conversation_status)
         if status_filter:
-            status_join = f"""
-                LEFT JOIN WebChat_Conversations {conversation_alias}
-                  ON {conversation_alias}.Id = {analytics_alias}.conversationId
-                OUTER APPLY (
-                  SELECT TOP 1
-                    status_meta.NoResponseNeeded,
-                    status_meta.MarkedAt
-                  FROM WebChat_ConversationStatus status_meta
-                  WHERE CAST(status_meta.CustomerId AS NVARCHAR(255)) = CAST({conversation_alias}.CustomerId AS NVARCHAR(255))
-                    AND {self._normalized_source_expr('status_meta.Source')} = {self._normalized_source_expr(f'{conversation_alias}.Source')}
-                  ORDER BY CASE WHEN status_meta.MarkedAt IS NULL THEN 0 ELSE 1 END DESC, status_meta.MarkedAt DESC
-                ) {status_alias}
-            """
             conditions.append(f"{conversation_alias}.Id IS NOT NULL")
             conditions.append(f"{self._conversation_status_case(conversation_alias, status_alias)} = %s")
             params.append(status_filter)
@@ -135,14 +134,14 @@ class ConversationRepository(BaseRepository):
             )
             query = f"""
                 SELECT
-                  CONVERT(VARCHAR(10), a.messageAt, 120) AS date_str,
-                  SUM(CASE WHEN a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn') THEN 1 ELSE 0 END) AS ai_fail,
-                  SUM(CASE WHEN NOT (a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn')) THEN 1 ELSE 0 END) AS ai_ok
+                  CAST(a.messageAt AS DATE) AS metric_date,
+                  SUM(CASE WHEN a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn') AND (latest_status.NoResponseNeeded IS NULL OR latest_status.NoResponseNeeded = 0) THEN 1 ELSE 0 END) AS ai_fail,
+                  SUM(CASE WHEN NOT (a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn') AND (latest_status.NoResponseNeeded IS NULL OR latest_status.NoResponseNeeded = 0)) THEN 1 ELSE 0 END) AS ai_ok
                 FROM WebChat_MessageAnalytics a
                 {status_join}
                 WHERE {" AND ".join(conditions)}
-                GROUP BY CONVERT(VARCHAR(10), a.messageAt, 120)
-                ORDER BY date_str
+                GROUP BY CAST(a.messageAt AS DATE)
+                ORDER BY metric_date
             """
             with conn.cursor(as_dict=True) as cursor:
                 cursor.execute(query, tuple(params))
@@ -178,8 +177,8 @@ class ConversationRepository(BaseRepository):
             query = f"""
                 SELECT
                   {source_case} AS source,
-                  SUM(CASE WHEN a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn') THEN 1 ELSE 0 END) AS ai_fail,
-                  SUM(CASE WHEN NOT (a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn')) THEN 1 ELSE 0 END) AS ai_ok
+                  SUM(CASE WHEN a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn') AND (latest_status.NoResponseNeeded IS NULL OR latest_status.NoResponseNeeded = 0) THEN 1 ELSE 0 END) AS ai_fail,
+                  SUM(CASE WHEN NOT (a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn') AND (latest_status.NoResponseNeeded IS NULL OR latest_status.NoResponseNeeded = 0)) THEN 1 ELSE 0 END) AS ai_ok
                 FROM WebChat_MessageAnalytics a
                 {status_join}
                 WHERE {" AND ".join(conditions)}
@@ -213,7 +212,7 @@ class ConversationRepository(BaseRepository):
 
         conn = get_db_connection()
         try:
-            conditions = ["a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn')"]
+            conditions = ["a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn') AND (latest_status.NoResponseNeeded IS NULL OR latest_status.NoResponseNeeded = 0)"]
             params = []
             status_join = self._append_analytics_scope_filters(
                 conditions,
@@ -469,6 +468,11 @@ class ConversationRepository(BaseRepository):
                   SUM(CASE WHEN source_key = 'ZaloBusiness' AND status IN ('pending', 'open') THEN 1 ELSE 0 END) AS zalobusiness_unresolved,
                   SUM(CASE WHEN source_key = 'Facebook' AND status IN ('pending', 'open') THEN 1 ELSE 0 END) AS facebook_unresolved,
                   SUM(CASE WHEN source_key = 'ChatWidget' AND status IN ('pending', 'open') THEN 1 ELSE 0 END) AS chatwidget_unresolved,
+                  SUM(CASE WHEN source_key = 'ZaloOA' AND status = 'pending' THEN 1 ELSE 0 END) AS zalooa_pending,
+                  SUM(CASE WHEN source_key = 'ZaloBusiness' AND status = 'pending' THEN 1 ELSE 0 END) AS zalobusiness_pending,
+                  SUM(CASE WHEN source_key = 'Facebook' AND status = 'pending' THEN 1 ELSE 0 END) AS facebook_pending,
+                  SUM(CASE WHEN source_key = 'ChatWidget' AND status = 'pending' THEN 1 ELSE 0 END) AS chatwidget_pending,
+                  SUM(CASE WHEN source_key = 'other' AND status = 'pending' THEN 1 ELSE 0 END) AS other_pending,
                   AVG(response_minutes) AS avg_response_minutes
                 FROM classified
                 {classified_where}
@@ -499,6 +503,13 @@ class ConversationRepository(BaseRepository):
                         "ZaloBusiness": row.get("zalobusiness_unresolved") or 0,
                         "Facebook": row.get("facebook_unresolved") or 0,
                         "ChatWidget": row.get("chatwidget_unresolved") or 0,
+                    },
+                    "pendingSummary": {
+                        "ZaloOA": row.get("zalooa_pending") or 0,
+                        "ZaloBusiness": row.get("zalobusiness_pending") or 0,
+                        "Facebook": row.get("facebook_pending") or 0,
+                        "ChatWidget": row.get("chatwidget_pending") or 0,
+                        "other": row.get("other_pending") or 0,
                     },
                     "averageResponseTimeMinutes": int(round(row.get("avg_response_minutes") or 0)),
                 }
@@ -624,6 +635,11 @@ class ConversationRepository(BaseRepository):
                   SUM(CASE WHEN source_key = 'ZaloBusiness' AND status IN ('pending', 'open') THEN 1 ELSE 0 END) AS zalobusiness_unresolved,
                   SUM(CASE WHEN source_key = 'Facebook' AND status IN ('pending', 'open') THEN 1 ELSE 0 END) AS facebook_unresolved,
                   SUM(CASE WHEN source_key = 'ChatWidget' AND status IN ('pending', 'open') THEN 1 ELSE 0 END) AS chatwidget_unresolved,
+                  SUM(CASE WHEN source_key = 'ZaloOA' AND status = 'pending' THEN 1 ELSE 0 END) AS zalooa_pending,
+                  SUM(CASE WHEN source_key = 'ZaloBusiness' AND status = 'pending' THEN 1 ELSE 0 END) AS zalobusiness_pending,
+                  SUM(CASE WHEN source_key = 'Facebook' AND status = 'pending' THEN 1 ELSE 0 END) AS facebook_pending,
+                  SUM(CASE WHEN source_key = 'ChatWidget' AND status = 'pending' THEN 1 ELSE 0 END) AS chatwidget_pending,
+                  SUM(CASE WHEN source_key = 'other' AND status = 'pending' THEN 1 ELSE 0 END) AS other_pending,
                   AVG(response_minutes) AS avg_response_minutes
                 FROM classified
                 {classified_where}
@@ -654,6 +670,13 @@ class ConversationRepository(BaseRepository):
                         "ZaloBusiness": row.get("zalobusiness_unresolved") or 0,
                         "Facebook": row.get("facebook_unresolved") or 0,
                         "ChatWidget": row.get("chatwidget_unresolved") or 0,
+                    },
+                    "pendingSummary": {
+                        "ZaloOA": row.get("zalooa_pending") or 0,
+                        "ZaloBusiness": row.get("zalobusiness_pending") or 0,
+                        "Facebook": row.get("facebook_pending") or 0,
+                        "ChatWidget": row.get("chatwidget_pending") or 0,
+                        "other": row.get("other_pending") or 0,
                     },
                     "averageResponseTimeMinutes": int(round(row.get("avg_response_minutes") or 0)),
                 }
@@ -1214,6 +1237,7 @@ class ConversationRepository(BaseRepository):
                   customerInfo.customer_name,
                   CAST(NULL AS NVARCHAR(50)) AS phone_number,
                   c.Source AS source,
+                  latestCustomer.TextContent AS last_message,
                   {self._conversation_status_case('c', 's')} AS status,
                   DATEDIFF(MINUTE, c.LastCustomerMessageAt, GETDATE()) AS wait_mins
                 FROM WebChat_Conversations c

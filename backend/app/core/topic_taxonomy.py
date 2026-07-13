@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import unicodedata
 import re
 from typing import Any
+
+from app.core.text_matching import KeywordMatch, find_keyword_matches, normalize_text
 
 
 TOPIC_GROUPS = [
@@ -10,7 +11,7 @@ TOPIC_GROUPS = [
         "id": "toeic",
         "name": "TOEIC",
         "short_name": "TOEIC",
-        "color": "#ED5206",
+        "color": "#0B7285",
         "scope_terms": [
             "TOEIC",
             "thi TOEIC",
@@ -34,7 +35,7 @@ TOPIC_GROUPS = [
         "id": "mos",
         "name": "MOS",
         "short_name": "MOS",
-        "color": "#1565C0",
+        "color": "#E86A92",
         "scope_terms": [
             "MOS",
             "Microsoft Office Specialist",
@@ -55,12 +56,12 @@ TOPIC_GROUPS = [
             "cấp chứng chỉ MOS",
         ],
     }, 
-     { "id": "sat_hach_cntt", "name": "Sát hạch CNTT", "short_name": "Sát hạch CNTT", "color": "#003865", "scope_terms": [ "Sát hạch CNTT", "Sát hạch Công nghệ thông tin", "thi CNTT", "thi Công nghệ thông tin", "đăng ký thi CNTT", "đăng ký sát hạch CNTT", "lịch thi CNTT", "ngày thi CNTT", "ca thi CNTT", "lệ phí thi CNTT", "phí thi CNTT", "điểm thi CNTT", "kết quả thi CNTT", "xem điểm CNTT", "chứng chỉ CNTT", "nhận chứng chỉ CNTT", "cấp chứng chỉ CNTT", "CNTT cơ bản", "CNTT nâng cao", "Tin học cơ bản", "Tin học nâng cao", "Tin cơ bản", "Tin nâng cao", "THCB", "THNC", "IC3" ] },
+     { "id": "sat_hach_cntt", "name": "Sát hạch CNTT", "short_name": "Sát hạch CNTT", "color": "#002E8D", "scope_terms": [ "Sát hạch CNTT", "Sát hạch Công nghệ thông tin", "thi CNTT", "thi Công nghệ thông tin", "đăng ký thi CNTT", "đăng ký sát hạch CNTT", "lịch thi CNTT", "ngày thi CNTT", "ca thi CNTT", "lệ phí thi CNTT", "phí thi CNTT", "điểm thi CNTT", "kết quả thi CNTT", "xem điểm CNTT", "chứng chỉ CNTT", "nhận chứng chỉ CNTT", "cấp chứng chỉ CNTT", "CNTT cơ bản", "CNTT nâng cao", "Tin học cơ bản", "Tin học nâng cao", "Tin cơ bản", "Tin nâng cao", "THCB", "THNC", "IC3" ] },
     {
         "id": "hoc_tieng_anh",
         "name": "Học Tiếng Anh",
         "short_name": "Học Tiếng Anh",
-        "color": "#F36C2E",
+        "color": "#308D16",
         "scope_terms": [
             "Học Tiếng Anh",
             "Tiếng Anh",
@@ -92,7 +93,7 @@ TOPIC_GROUPS = [
         "id": "hoc_tin_hoc",
         "name": "Học Tin học",
         "short_name": "Học Tin học",
-        "color": "#0288D1",
+        "color": "#FFA100",
         "scope_terms": [
             "Học Tin học",
             "khóa tin học",
@@ -145,10 +146,7 @@ TOPIC_LEGACY_ALIASES = {
 
 
 def normalize_topic_text(value: Any = "") -> str:
-    normalized = unicodedata.normalize("NFD", str(value or ""))
-    without_diacritics = "".join(c for c in normalized if unicodedata.category(c) != "Mn")
-    without_diacritics = without_diacritics.replace("đ", "d").replace("Đ", "D")
-    return " ".join(without_diacritics.lower().split())
+    return normalize_text(value, remove_diacritics=True)
 
 
 def canonical_topic_id(*values: Any, default_to_other: bool = False) -> str | None:
@@ -225,16 +223,16 @@ def _matches_scope_terms(text: str, topic_id: str) -> bool:
     group = TOPIC_GROUP_BY_ID.get(topic_id)
     if not group:
         return False
-    for term in group.get("scope_terms", []):
-        normalized = normalize_topic_text(term)
-        if not normalized or normalized == "khac":
-            continue
-        if normalized.isalnum() and len(normalized) <= 10:
-            if _has_code_token(text, normalized):
-                return True
-        elif normalized in text:
-            return True
-    return False
+    return bool(find_keyword_matches(text, (term for term in group.get("scope_terms", []) if normalize_topic_text(term) != "khac")))
+
+
+def match_topic_keywords(text: Any) -> dict[str, list[KeywordMatch]]:
+    result: dict[str, list[KeywordMatch]] = {}
+    for topic_id in ("toeic", "mos", "sat_hach_cntt", "hoc_tieng_anh", "hoc_tin_hoc"):
+        matches = find_keyword_matches(text, TOPIC_GROUP_BY_ID[topic_id].get("scope_terms", []))
+        if matches:
+            result[topic_id] = matches
+    return result
 
 
 def canonical_topic_label(*values: Any, default: str = "Khác") -> str:
@@ -251,19 +249,7 @@ def get_matched_topic_keywords(text: str, topic_id: str) -> list[str]:
     if not group:
         return []
     
-    matched = []
-    text_norm = normalize_topic_text(text)
-    
-    for term in group.get("scope_terms", []):
-        normalized = normalize_topic_text(term)
-        if not normalized or normalized == "khac":
-            continue
-        if normalized.isalnum() and len(normalized) <= 10:
-            if _has_code_token(text_norm, normalized):
-                matched.append(term)
-        elif normalized in text_norm:
-            matched.append(term)
-    return matched
+    return [match.keyword for match in find_keyword_matches(text, group.get("scope_terms", []))]
 
 def extract_all_keywords(customer_text: str, bot_text: str) -> list[str]:
     topic_ids = canonical_topic_ids(customer_text, bot_text)

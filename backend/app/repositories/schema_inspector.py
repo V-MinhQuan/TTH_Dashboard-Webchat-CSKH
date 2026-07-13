@@ -14,6 +14,12 @@ OPTIONAL_ANALYTICS_COLUMNS = (
     "issueConfidence",
     "issueResolved",
     "standardizedQuestion",
+    "primaryTopicId",
+    "topicConfidence",
+    "topicSource",
+    "contextMessageId",
+    "contextDistance",
+    "classifierVersion",
 )
 
 

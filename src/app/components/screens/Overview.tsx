@@ -27,12 +27,15 @@ import { DashboardKpiData, TopQuestion, PriorityConversation, UrgentAlert } from
 import { LoadingState } from "../common/LoadingState";
 import { ErrorState } from "../common/ErrorState";
 import { EmptyState } from "../common/EmptyState";
+import { TopicLabel } from "../common/TopicLabel";
+import { ChannelChartTick, ChannelLabel } from "../common/ChannelLabel";
 import { KpiCard } from "../dashboard/KpiCard";
 import { SourceChart } from "../dashboard/SourceChart";
 import { FeedbackFormDialog } from "../feedback/FeedbackFormDialog";
 import { getDateParamsFromFilters } from "../../utils/dateFilters";
 import { mapTopicToGroupId } from "../../constants/topicTaxonomy";
 import { getSheetChatbotDuplicates } from "../../services/sheetChatbotApi";
+import { CHANNEL_COLORS } from "../../colors";
 
 const NAVY = "#003865";
 const ORANGE = "#D73C01";
@@ -787,29 +790,15 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
       rows: dailyTrends.map((d: any) => [d.date, String(d.total)])
     });
 
-    // 5. Cảnh báo khẩn cấp
-    // Tải toàn bộ cảnh báo nếu có API, hoặc lấy từ state (urgentAlertRows)
-    let fullAlerts = urgentAlertRows;
-    datasets.push({
-      title: "Cảnh báo khẩn cấp",
-      headers: ["Khách hàng", "Vấn đề", "Nguồn", "Thời gian"],
-      rows: fullAlerts.map(a => [
-        a.customer + (a.customerReference ? `\n${a.customerReference}` : ""),
-        a.issue,
-        a.channel || "Không rõ",
-        a.time
-      ])
-    });
-
-    // 6. Top chủ đề
+    // 5. Câu hỏi nổi bật
     // Fetch top questions with larger limit if possible, or use state
     datasets.push({
-      title: "Chủ đề phổ biến",
+      title: "Câu hỏi nổi bật",
       headers: ["Chủ đề", "Số lượng"],
       rows: topQuestionRows.map(q => [q.question, String(q.count)])
     });
 
-    // 7. Hội thoại ưu tiên (Fetch all pending)
+    // 6. Hội thoại ưu tiên (Fetch all pending)
     let fullPriority = priorityConversationRows;
     let loadingToastId: string | number | undefined;
     try {
@@ -1034,7 +1023,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                       <span style={{ fontSize: "11px", color: "#003BB9", fontWeight: 800 }}>{alert.title}</span>
                       <span style={{ fontSize: "10px", color: "#D73C01", fontWeight: 700, whiteSpace: "nowrap" }}>{alert.waitTime}</span>
                     </div>
-                    <div style={{ fontSize: "10px", color: "rgba(0,56,101,0.62)" }}>{alert.channel} · {alert.topic} · ID {alert.customer}</div>
+                    <div style={{ fontSize: "10px", color: "rgba(0,56,101,0.62)" }}><ChannelLabel channel={alert.channel} badge={false} /> · <TopicLabel topic={alert.topic} badge={false} /> · ID {alert.customer}</div>
                   </div>
                 ))}
               </div>
@@ -1057,7 +1046,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                     <tr key={`${question.question}-${index}`} style={{ borderTop: "1px solid rgba(0,56,101,0.06)" }}>
                       <td style={{ padding: "9px 10px", color: "rgba(0,56,101,0.45)", fontWeight: 800 }}>#{index + 1}</td>
                       <td style={{ padding: "9px 10px", color: "#003865" }}>{question.question}</td>
-                      <td style={{ padding: "9px 10px", color: "#003BB9", whiteSpace: "nowrap" }}>{question.topic}</td>
+                      <td style={{ padding: "9px 10px", whiteSpace: "nowrap" }}><TopicLabel topic={question.topic} badge={false} /></td>
                       <td style={{ padding: "9px 10px", color: "#003BB9", fontWeight: 800 }}>{question.count}</td>
                     </tr>
                   ))}
@@ -1066,7 +1055,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
             </div>
 
             <div style={{ border: "1px solid rgba(0,56,101,0.1)", borderRadius: "12px", overflow: "hidden", background: "#fff" }}>
-              <div style={{ padding: "14px 16px", borderBottom: "1px solid rgba(0,56,101,0.08)", fontSize: "15px", color: "#003BB9", fontWeight: 800 }}>Hội thoại ưu tiên</div>
+              <div style={{ padding: "14px 16px", borderBottom: "1px solid rgba(0,56,101,0.08)", fontSize: "15px", color: "#003BB9", fontWeight: 800 }}>Hội thoại ưu tiên (hiển thị {priorityConversations.length}/{activeConversations} chờ xử lý)</div>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px" }}>
                 <thead>
                   <tr style={{ background: "#F8FAFC" }}>
@@ -1079,8 +1068,8 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                   {reportPriorityConversations.map((conversation) => (
                     <tr key={conversation.id} style={{ borderTop: "1px solid rgba(0,56,101,0.06)" }}>
                       <td style={{ padding: "9px 10px", color: "rgba(0,56,101,0.65)", fontFamily: "monospace" }}>{conversation.id}</td>
-                      <td style={{ padding: "9px 10px", color: "#003BB9", whiteSpace: "nowrap" }}>{conversation.channel}</td>
-                      <td style={{ padding: "9px 10px", color: "#003865" }}>{conversation.topic}</td>
+                      <td style={{ padding: "9px 10px", whiteSpace: "nowrap" }}><ChannelLabel channel={conversation.channel} /></td>
+                      <td style={{ padding: "9px 10px" }}><TopicLabel topic={conversation.topic} badge={false} /></td>
                       <td style={{ padding: "9px 10px", color: conversation.isOvertime ? "#D73C01" : "rgba(0,56,101,0.65)", whiteSpace: "nowrap", fontWeight: conversation.isOvertime ? 800 : 600 }}>{conversation.wait}</td>
                       <td style={{ padding: "9px 10px", color: "#D73C01", whiteSpace: "nowrap", fontWeight: 800 }}>{conversation.priority}</td>
                     </tr>
@@ -1391,13 +1380,6 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                 listData.sort((a, b) => a.name.localeCompare(b.name));
               }
 
-              const SOURCE_COLORS: Record<string, string> = {
-                ZaloOA: "#42A5F5",
-                ZaloBusiness: NAVY,
-                Facebook: "#ED5206",
-                ChatWidget: ORANGE,
-              };
-
               const renderSourceChart = () => {
                 if (chartType === "donut" || chartType === "pie") {
                   return (
@@ -1415,14 +1397,14 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                         {listData.map((entry) => (
                           <Cell
                             key={`cell-source-${entry.colorKey}`}
-                            fill={SOURCE_COLORS[entry.colorKey] || NAVY}
+                            fill={CHANNEL_COLORS[entry.colorKey] || NAVY}
                           />
                         ))}
                       </Pie>
                       <ChartTooltip
-                        formatter={(value: number) => [
+                        formatter={(value: number, _name: string, item: any) => [
                           `${value.toLocaleString("vi-VN")} hội thoại (${((value / total) * 100).toFixed(1)}%)`,
-                          "Số lượng",
+                          `Số lượng [${item?.payload?.name || "Kênh"}]`,
                         ]}
                         contentStyle={{
                           borderRadius: "8px",
@@ -1437,8 +1419,9 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                           iconType="circle"
                           layout="horizontal"
                           verticalAlign="bottom"
+                          wrapperStyle={{ width: "100%", left: 0, display: "flex", justifyContent: "center", whiteSpace: "nowrap" }}
                           formatter={(value) => (
-                            <span style={{ fontSize: "11px", color: "#003BB9", fontWeight: 500 }}>{value}</span>
+                            <ChannelLabel channel={String(value)} badge={false} weight={400} />
                           )}
                         />
                       )}
@@ -1450,7 +1433,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                   return (
                     <BarChart data={listData}>
                       <CartesianGrid stroke="rgba(0,59,185,0.06)" />
-                      <XAxis dataKey="name" tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
+                      <XAxis dataKey="name" tick={<ChannelChartTick />} />
                       <YAxis tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
                       <ChartTooltip />
                       {editValues.legend && <Legend iconSize={10} />}
@@ -1464,7 +1447,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                         {listData.map((entry) => (
                           <Cell
                             key={`cell-source-bar-${entry.colorKey}`}
-                            fill={SOURCE_COLORS[entry.colorKey] || NAVY}
+                            fill={CHANNEL_COLORS[entry.colorKey] || NAVY}
                           />
                         ))}
                       </Bar>
@@ -1477,7 +1460,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                     <BarChart data={listData} layout="vertical">
                       <CartesianGrid stroke="rgba(0,59,185,0.06)" />
                       <XAxis type="number" tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
-                      <YAxis dataKey="name" type="category" tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} width={80} />
+                      <YAxis dataKey="name" type="category" tick={<ChannelChartTick />} width={80} />
                       <ChartTooltip />
                       {editValues.legend && <Legend iconSize={10} />}
                       <Bar
@@ -1490,7 +1473,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                         {listData.map((entry) => (
                           <Cell
                             key={`cell-source-hbar-${entry.colorKey}`}
-                            fill={SOURCE_COLORS[entry.colorKey] || NAVY}
+                            fill={CHANNEL_COLORS[entry.colorKey] || NAVY}
                           />
                         ))}
                       </Bar>
@@ -1502,7 +1485,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                   return (
                     <AreaChart data={listData}>
                       <CartesianGrid stroke="rgba(0,59,185,0.06)" />
-                      <XAxis dataKey="name" tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
+                      <XAxis dataKey="name" tick={<ChannelChartTick />} />
                       <YAxis tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
                       <ChartTooltip />
                       {editValues.legend && <Legend iconSize={10} />}
@@ -1522,7 +1505,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                 return (
                   <LineChart data={listData}>
                     <CartesianGrid stroke="rgba(0,59,185,0.06)" />
-                    <XAxis dataKey="name" tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
+                    <XAxis dataKey="name" tick={<ChannelChartTick />} />
                     <YAxis tick={{ fontSize: 10, fill: "rgba(0,59,185,0.5)" }} />
                     <ChartTooltip />
                     {editValues.legend && <Legend iconSize={10} />}
@@ -1718,9 +1701,9 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                     >
                       <td className="flic-td-left" style={{ padding: "12px 16px", color: "#003BB9", fontWeight: 500 }}>{conv.customer}</td>
                       <td style={{ padding: "12px 16px" }}>
-                        <span style={{ fontSize: "11px", padding: "2px 7px", borderRadius: "20px", backgroundColor: "#eff6ff", color: "#3b82f6" }}>{conv.channel}</span>
+                        <ChannelLabel channel={conv.channel} />
                       </td>
-                      <td style={{ padding: "12px 16px", color: "#003BB9" }}>{conv.topic}</td>
+                      <td style={{ padding: "12px 16px" }}><TopicLabel topic={conv.topic} badge={false} /></td>
                       <td style={{ padding: "12px 16px", color: conv.isOvertime ? ORANGE : "rgba(0,59,185,0.7)", fontWeight: conv.isOvertime ? 700 : 400, whiteSpace: "nowrap" }}>
                         {conv.isOvertime && <span style={{ marginRight: "4px" }}>⚠</span>}{conv.wait}
                       </td>

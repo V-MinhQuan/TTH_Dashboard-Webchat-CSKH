@@ -1902,6 +1902,7 @@ class DashboardService:
                 "customerDisplayName": customer,
                 "customer": customer,
                 "channel": format_channel(row.get('source')),
+                "lastMessage": row.get('last_message') or '',
                 "topic": 'Khác',
                 "wait": format_wait_time(wait_mins),
                 "status": status_text,
@@ -2729,6 +2730,7 @@ class DashboardService:
             ('Facebook', 'Facebook'),
             ('Zalo OA', 'ZaloOA'),
             ('Chat Widget', 'ChatWidget'),
+            ('Khác', 'other'),
         ]
         visible_channel_defs = [item for item in all_channel_defs if not selected_source or item[1] == selected_source]
         channels_map = {
@@ -2782,22 +2784,25 @@ class DashboardService:
 
         source_summary = source_totals.get('sourceSummary', {})
         unresolved_summary = source_totals.get('unresolvedSummary', {})
+        pending_summary = source_totals.get('pendingSummary', {})
         for c_name in channels_map:
             source_key_for_map = {
                 'Zalo OA': 'ZaloOA',
                 'Zalo Business': 'ZaloBusiness',
                 'Facebook': 'Facebook',
-                'Chat Widget': 'ChatWidget'
+                'Chat Widget': 'ChatWidget',
+                'Khác': 'other',
             }.get(c_name)
             
             if source_key_for_map and not selected_source:
                 # Use accurate de-duplicated totals from conversation summary.
                 channels_map[c_name]['total'] = source_summary.get(source_key_for_map) or 0
-                channels_map[c_name]['unresolved'] = unresolved_summary.get(source_key_for_map) or 0
+                channels_map[c_name]['unresolved'] = pending_summary.get(source_key_for_map) or 0
                 
                 # Assign status map accurately based on the unresolved amount
-                status_map[c_name]['Chờ xử lý'] = channels_map[c_name]['unresolved']
-                status_map[c_name]['Hoàn thành'] = channels_map[c_name]['total'] - channels_map[c_name]['unresolved']
+                status_map[c_name]['Chờ xử lý'] = pending_summary.get(source_key_for_map) or 0
+                status_map[c_name]['Đang tư vấn'] = max(0, (unresolved_summary.get(source_key_for_map) or 0) - status_map[c_name]['Chờ xử lý'])
+                status_map[c_name]['Hoàn thành'] = max(0, channels_map[c_name]['total'] - status_map[c_name]['Chờ xử lý'] - status_map[c_name]['Đang tư vấn'])
 
         for row in ai_summary:
             c_name = format_channel(row.get('source'))
