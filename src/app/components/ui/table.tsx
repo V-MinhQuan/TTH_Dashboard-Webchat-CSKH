@@ -1,5 +1,6 @@
 "use client";
 
+
 import * as React from "react";
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 
@@ -67,6 +68,8 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
 }
 
 export interface TableHeadProps extends React.ComponentProps<"th"> {
+  className?: string;
+  children?: React.ReactNode;
   sortDirection?: "ascending" | "descending" | "none";
   sortLabel?: string;
   onSort?: () => void;

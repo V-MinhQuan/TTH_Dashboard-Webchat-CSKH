@@ -1,9 +1,9 @@
+import React from 'react';
 import { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
 import flicLogo from '../../../assets/flic-logo-long_login.png';
 import { Eye, EyeOff, Lock, User } from 'lucide-react';
-import { API_BASE_URL } from '../../services/dashboardApi';
 
 const NAVY = "#003865";
 const CTA = "#ED5206";
@@ -26,6 +26,7 @@ export function LoginScreen() {
     setError("");
     setLoading(true);
     try {
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:5000";
       const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: "POST",
         headers: {

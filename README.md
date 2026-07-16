@@ -1,361 +1,165 @@
-# TTH Dashboard — WebChat CSKH (FLIC)
+# FLIC – TTH Dashboard WebChat CSKH
 
-Dashboard phân tích hội thoại và cảm xúc cho hệ thống WebChat Chăm Sóc Khách Hàng.
+Dashboard React/Vite với FastAPI Backend, Microsoft SQL Server và Hugging Face
+Inference Providers. Production runtime không khởi động model local, Redis,
+Celery hoặc service AI riêng.
 
-## Kiến trúc hệ thống
+## Kiến trúc runtime
 
-```
-┌─────────────────────────────────────────────────────────┐
-│  Frontend  React/TypeScript + Vite          :5173 (dev) │
-├─────────────────────────────────────────────────────────┤
-│  FastAPI Backend  (backend/app/)            :5000        │
-├─────────────────────────────────────────────────────────┤
-│  ML Service  FastAPI + PhoBERT ONNX         :8001        │
-├─────────────────────────────────────────────────────────┤
-│  Database  Microsoft SQL Server             :1433        │
-├─────────────────────────────────────────────────────────┤
-│  Legacy Node.js Backend  (backend_legacy_node/) - :5000  │
-│  (Lưu trữ làm rollback, không chạy mặc định)            │
-└─────────────────────────────────────────────────────────┘
+```text
+React/Vite (:5173)
+        |
+FastAPI Backend (:5000, 1 process)
+        |
+        +-- Microsoft SQL Server
+        |
+        +-- Hugging Face Inference Providers
 ```
 
-> **Lưu ý:** Backend chính thức hoạt động là **FastAPI :5000** kết nối với **ML Service :8001** và database.
-> Node.js backend đã được di chuyển sang thư mục lưu trữ `backend_legacy_node/` để rollback khi cần thiết.
+Backend quản lý một Hugging Face client dùng chung và một background worker nhẹ
+trong FastAPI lifespan. SQL Server lưu trạng thái `pending`, `processing`,
+`completed`, `failed`, `quarantined`, nên restart Backend không làm mất hàng
+đợi phân tích. Chỉ customer message (`FromHost=0`) được gửi sang Hugging Face.
 
----
+Runtime/source `ml-service/` đã được loại khỏi working tree. Nếu cần rollback,
+khôi phục đúng revision cũ từ Git trong môi trường tách biệt; Docker Compose và
+quy trình production hiện không cài hoặc chạy service này.
 
-## Yêu cầu môi trường
+## Yêu cầu
 
-| Công cụ | Phiên bản tối thiểu | Ghi chú |
-|---------|-------------------|---------|
-| Node.js | 18+ | Khởi chạy frontend React |
-| Python | 3.10+ | Chạy FastAPI backend + ml-service |
-| npm | 9+ | Quản lý package frontend |
-| SQL Server | 2019+ | Có thể dùng SQL Server Express |
-| ODBC Driver 17 | — | Bắt buộc để kết nối SQL Server từ Python |
+- Python 3.10+; Docker Compose dùng Python 3.11.
+- Node.js 20+.
+- Microsoft ODBC Driver 17 for SQL Server.
+- SQL Server có schema/migration của dự án.
+- Hugging Face User Access Token có quyền inference.
 
----
+## Cấu hình
 
-## Cài đặt lần đầu
+Frontend chỉ nhận biến công khai:
 
-### 1. Clone và cài frontend
-
-```bash
-# Cài dependencies frontend (chạy ở thư mục gốc)
-npm install
+```powershell
+Copy-Item .env.example .env
 ```
 
-### 2. Cấu hình biến môi trường
+Backend giữ toàn bộ DB credential và provider token trong file riêng:
 
-Tạo các file `.env` từ file mẫu:
-
-```bash
-# Backend (Node.js + FastAPI dùng chung)
-copy backend\.env.example backend\.env
-
-# ML Service
-copy ml-service\.env.example ml-service\.env
+```powershell
+Copy-Item backend/.env.example backend/.env
 ```
 
-Mở `backend/.env` và điền thông tin SQL Server:
+Điền kết nối SQL Server và một trong hai biến sau vào `backend/.env`:
 
 ```env
-DB_SERVER=localhost
-DB_PORT=1433
-DB_DATABASE=dbFLIC_dev
-DB_USER=sa
-DB_PASSWORD=your_password
+HF_TOKEN=
+# Chỉ dùng khi HF_TOKEN không được cấu hình:
+HUGGINGFACE_API_KEY=
 ```
 
-### 3. Tạo virtual environment Python chung và cài dependencies
+Không thêm token vào `.env` của Frontend, biến `VITE_*`, source code, log hoặc
+Docker Compose. `.env` và `backend/.env` đã được Git ignore.
 
-```bash
-# Chạy ở thư mục gốc repo
+Các giá trị AI mặc định:
+
+```env
+HF_MODEL=wonrax/phobert-base-vietnamese-sentiment
+HF_PROVIDER=hf-inference
+HF_TIMEOUT_SECONDS=15
+HF_MAX_RETRIES=2
+HF_MAX_CONCURRENCY=3
+HF_BATCH_SIZE=10
+HF_BACKGROUND_ENABLED=false
+HF_ANALYSIS_CUTOVER_MESSAGE_ID=
+HF_BACKGROUND_INTERVAL_SECONDS=10
+HF_PROCESSING_STALE_MINUTES=10
+HF_PREDICT_RATE_LIMIT_PER_MINUTE=30
+HF_PILOT_MAX_RECORDS=3
+HF_PILOT_ENVIRONMENT=
+HF_PILOT_BACKUP_VERIFIED=false
+```
+
+Backend vẫn khởi động khi thiếu token, nhưng readiness là `degraded` và dữ liệu
+cần phân tích tiếp tục ở trạng thái `pending`.
+
+## Chạy local
+
+Cài Backend và test dependencies:
+
+```powershell
 python -m venv .venv
-
-# Windows
-.venv\Scripts\activate
-pip install -r requirements.txt
-deactivate
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
 ```
 
-File `requirements.txt` ở thư mục gốc dùng chung cho FastAPI backend, Celery worker và ml-service.
+Chạy Backend đúng port của dự án và đúng một worker:
 
-### 4. Tải model PhoBERT (chỉ cần chạy một lần)
-
-Model PhoBERT sẽ được tải từ HuggingFace và export sang ONNX (~500 MB, mất 5–15 phút lần đầu):
-
-```bash
-cd ml-service
-..\.venv\Scripts\activate
-python download_model.py
-deactivate
-cd ..
+```powershell
+python -m uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port 5000 --workers 1
 ```
 
-Model sẽ được lưu tại `ml-service/models/phobert-sentiment-onnx/`.
+Chạy Frontend ở terminal khác:
 
----
-
-## Chạy project (Development)
-
-Cần mở Redis trong WSL Ubuntu và **4 terminal PowerShell riêng biệt**, khởi động theo thứ tự:
-
-### WSL Ubuntu — Redis (cổng 6379)
-
-```bash
-sudo service redis-server start
-redis-cli ping
+```powershell
+npm ci
+npm run dev -- --host 0.0.0.0 --port 5173 --strictPort
 ```
 
-Kết quả mong đợi: `PONG`.
+Không cần chạy Redis, Celery hoặc `ml-service :8001`.
 
----
+## Chạy bằng Docker Compose
 
-### Terminal 1 — FastAPI Backend (cổng 5000)
+Tạo `backend/.env`, sau đó:
 
-```bash
-cd D:\WebChat_Project\TTH_Dashboard-Webchat-CSKH
-.venv\Scripts\activate
-python -m uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port 5000 --reload
+```powershell
+docker compose up --build
 ```
 
-Kiểm tra: http://localhost:5000/api/health
-Swagger UI: http://localhost:5000/docs
+Compose chỉ khởi động hai service `backend` và `frontend`. Production Backend
+dùng `requirements.backend.txt` và lệnh Uvicorn `--workers 1`.
 
----
+Mỗi Uvicorn worker là một process riêng. Dùng `--workers 4` sẽ tạo bốn lifespan
+worker và có thể phân tích trùng. Nếu cần scale API nhiều process, phải tách
+background worker thành process riêng hoặc thêm distributed lock trước.
 
-### Terminal 2 — Celery Worker
+## Health
 
-```bash
-cd D:\WebChat_Project\TTH_Dashboard-Webchat-CSKH
-.venv\Scripts\activate
-python -m celery --workdir backend -A app.tasks.background worker --loglevel=info --queues=background --pool=threads --concurrency=2
+```powershell
+curl.exe http://127.0.0.1:5000/api/health/live
+curl.exe http://127.0.0.1:5000/api/health/ready
+curl.exe http://127.0.0.1:5000/api/health
 ```
 
-Trên Windows phải dùng `--pool=threads`; pool mặc định của Celery dùng multiprocessing có thể lỗi `WinError 5/6`.
+- `live`: chỉ chứng minh process Backend đang chạy.
+- `ready`: kiểm tra DB, cấu hình token, trạng thái lần gọi HF gần nhất và
+  heartbeat của background worker; endpoint không gọi HF trực tiếp.
+- `/api/health`: compatibility wrapper cho Frontend/deployment cũ.
 
----
+## Kiểm thử
 
-### Terminal 3 — ML Service (cổng 8001)
-
-```bash
-cd D:\WebChat_Project\TTH_Dashboard-Webchat-CSKH
-.venv\Scripts\activate
-python -m uvicorn app.main:app --app-dir ml-service --host 0.0.0.0 --port 8001 --reload
+```powershell
+python -m pytest backend/tests -v
+python -m pytest backend/tests_fastapi -v
+python -m compileall backend/app
+npm run typecheck
+npm run test:unit
 ```
 
-Hoặc dùng script sẵn có (Windows):
+Unit tests phải mock Hugging Face; không dùng token thật và không gọi provider
+thật. Integration/E2E cần DB hoặc credential phải được báo
+`BLOCKED_ENVIRONMENT` nếu môi trường không sẵn sàng.
 
-```bash
-cd ml-service
-run_windows.bat
-```
+## Tài liệu vận hành
 
-Kiểm tra: http://localhost:8001/health
+- [Hugging Face migration và runbook](docs/HUGGINGFACE_MIGRATION.md)
+- [WebChat ingestion contract](docs/WEBCHAT_INGESTION_CONTRACT.md)
+- [Database scripts](scripts/database/README_database.md)
+- [Backend](backend/README.md)
 
----
+## Bảo mật
 
-### Terminal 4 — Frontend (cổng 5173)
-
-```bash
-cd D:\WebChat_Project\TTH_Dashboard-Webchat-CSKH
-npm run dev
-```
-
-Mở trình duyệt: http://localhost:5173
-
----
-
-## Chạy Tests
-
-### Frontend build check
-
-```bash
-npm run build
-```
-
-### FastAPI backend tests
-
-```bash
-.venv\Scripts\activate
-python -m pytest backend\tests_fastapi -q
-```
-
-### ML Service tests
-
-```bash
-.venv\Scripts\activate
-python -m pytest ml-service\tests -q
-```
-
-### Legacy Node.js backend tests (chỉ chạy khi rollback)
-
-```bash
-cd backend_legacy_node
-npm test
-```
-
----
-
-## Cấu trúc thư mục
-
-```
-TTH_Dashboard-Webchat-CSKH/
-├── src/                        # Frontend React/TypeScript
-│   └── app/
-│       ├── components/         # UI components
-│       ├── screens/            # Các màn hình chính
-│       ├── services/           # API service layer
-│       └── types/              # TypeScript types
-│
-├── backend/                    # FastAPI Backend (active runtime)
-│   ├── app/                    # Mã nguồn FastAPI
-│   │   ├── core/               # Config, logging, exceptions
-│   │   ├── db/                 # Database session pool
-│   │   ├── repositories/       # Data access layer
-│   │   ├── routers/            # API endpoints
-│   │   ├── schemas/            # Pydantic validation
-│   │   ├── services/           # Business logic
-│   │   └── main.py             # FastAPI entrypoint
-│   ├── database/               # SQL migration scripts
-│   ├── db/                     # Module Python kết nối DB dùng chung
-│   ├── docs/                   # Tài liệu API
-│   ├── reports/                # Báo cáo kỹ thuật
-│   ├── scripts/                # Tác vụ tiện ích admin
-│   ├── tests_fastapi/          # Bộ unit/integration test (pytest)
-│   └── .env.example            # Mẫu biến môi trường
-│
-├── backend_legacy_node/        # Archived Node.js backend (rollback/reference only)
-│   ├── controllers/            # Express controllers
-│   ├── routes/                 # Express routes
-│   ├── services/               # Node.js services
-│   ├── repositories/           # Node.js repositories
-│   ├── tests/                  # Jest test suite
-│   ├── server.js               # Entry point Express
-│   └── package.json            # Node.js package
-│
-├── ml-service/                 # AI Sentiment Analysis service
-│   ├── app/                    # FastAPI app
-│   │   ├── main.py             # Entrypoint
-│   │   ├── model_loader.py     # Load PhoBERT ONNX
-│   │   ├── sentiment_predictor.py
-│   │   └── ensemble.py         # Ensemble logic
-│   ├── models/                 # PhoBERT ONNX (không commit)
-│   ├── tests/                  # pytest tests
-│   ├── download_model.py       # Script tải model lần đầu
-│   ├── run_windows.bat         # Script chạy trên Windows
-│   └── .env.example            # Mẫu biến môi trường
-│
-├── docs/                       # Tài liệu kỹ thuật
-├── guidelines/                 # Hướng dẫn phát triển
-├── .env.example                # (không có, dùng backend/.env.example)
-├── .gitignore
-├── package.json                # Frontend dependencies
-├── requirements.txt            # Python dependencies chung cho backend + ml-service
-├── vite.config.ts              # Vite config + code splitting
-└── README.md
-```
-
----
-
-## API Endpoints chính
-
-### FastAPI Backend (:5000)
-
-| Method | Endpoint | Mô tả |
-|--------|----------|-------|
-| GET | `/api/health` | Kiểm tra sức khỏe toàn hệ thống (kèm DB & ML) |
-| GET | `/api/health/ml` | Kiểm tra kết nối tới ml-service |
-| GET | `/api/dashboard/kpi` | Chỉ số KPI cốt lõi trên Dashboard |
-| GET | `/api/analytics/sentiment-summary` | Tổng quan phân bổ cảm xúc |
-| GET | `/api/analytics/sentiment-trend` | Biểu đồ xu hướng cảm xúc |
-| GET | `/api/analytics/satisfaction-summary` | Điểm CSAT/thỏa mãn khách hàng |
-| GET | `/api/analytics/satisfaction-trend` | Biểu đồ xu hướng CSAT |
-| GET | `/api/analytics/topics` | Thống kê tần suất chủ đề |
-| GET | `/api/analytics/need-review-conversations` | Danh sách cuộc hội thoại cần xem xét |
-| GET | `/api/analytics/negative-conversations` | Danh sách cuộc hội thoại tiêu cực |
-| GET | `/api/analytics/need-review-keywords` | Phân tích từ khóa cần xem xét |
-| GET | `/api/analytics/negative-keywords` | Phân tích từ khóa tiêu cực |
-| GET | `/api/conversations` | Danh sách hội thoại có phân trang & lọc |
-| GET | `/api/conversations/{conversation_id}` | Chi tiết hội thoại (lịch sử tin nhắn) |
-| POST | `/api/sentiment/predict` | Phân tích cảm xúc văn bản real-time |
-| POST | `/api/analytics/run` | Chạy lại phân tích (Trả về 501 do luồng reprocess cần duyệt riêng) |
-
-### ML Service (:8001)
-
-| Method | Endpoint | Mô tả |
-|--------|----------|-------|
-| GET | `/health` | Health + model status |
-| POST | `/predict` | Dự đoán cảm xúc (PhoBERT) |
-| POST | `/predict-ensemble` | Dự đoán ensemble đầy đủ |
-| GET | `/metrics` | Metrics thống kê |
-
----
-
-## Biến môi trường quan trọng
-
-### `backend/.env`
-
-```env
-# Cổng backend FastAPI
-FASTAPI_PORT=5000       # FastAPI (uvicorn tự đọc khi chạy)
-
-# SQL Server Configuration
-DB_SERVER=localhost
-DB_PORT=1433
-DB_NAME=dbFLIC_dev
-DB_USER=sa
-DB_PASSWORD=your_password
-DB_DRIVER="ODBC Driver 17 for SQL Server"
-
-# ML Service URL
-ML_SERVICE_URL=http://localhost:8001
-ML_TIMEOUT_SECONDS=15.0
-
-# CORS Configuration
-CORS_ORIGINS=http://localhost:3000,http://localhost:5173,http://127.0.0.1:5173
-```
-
-### `ml-service/.env`
-
-```env
-# Cho phép backend gọi ml-service
-ML_ALLOWED_ORIGINS=http://localhost:5000,http://127.0.0.1:5000
-
-# Chế độ phân tích: ensemble | phobert
-SENTIMENT_MODE=ensemble
-
-# Bảo vệ DB
-ENSEMBLE_DRY_RUN=true
-ENSEMBLE_WRITE_DB=false
-```
-
----
-
-## Xử lý lỗi thường gặp
-
-**Lỗi kết nối SQL Server**
-```
-Kiểm tra: DB_SERVER, DB_USER, DB_PASSWORD trong backend/.env
-Đảm bảo ODBC Driver 17 for SQL Server đã được cài đặt.
-```
-
-**ml-service không khởi động được**
-```
-Kiểm tra thư mục ml-service/models/ đã có model chưa.
-Nếu chưa, chạy: python download_model.py
-```
-
-**Frontend không gọi được API**
-```
-Đảm bảo FastAPI backend đang chạy ở cổng 5000.
-Kiểm tra CORS_ORIGINS trong backend/.env có chứa http://localhost:5173.
-```
-
-**`python` không nhận ra lệnh**
-```
-Dùng đường dẫn tuyệt đối đến .venv:
-  backend/.venv/Scripts/python.exe
-  ml-service/.venv/Scripts/python.exe
-```
+- Token chỉ tồn tại ở Backend và được ưu tiên theo thứ tự `HF_TOKEN`, sau đó
+  `HUGGINGFACE_API_KEY`.
+- Input được chuẩn hóa và che dữ liệu nhạy cảm trước khi gửi provider.
+- Không log nội dung hội thoại đầy đủ, Authorization header hoặc raw token.
+- Lỗi provider không được biến thành `neutral`; record giữ `pending` hoặc chuyển
+  `failed` theo retry policy.
+- Hãy rotate token ngay nếu nghi ngờ bị lộ.

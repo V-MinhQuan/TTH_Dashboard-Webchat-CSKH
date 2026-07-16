@@ -40,7 +40,8 @@ interface GlobalFilterContextValue extends FilterState {
   resetFilters: () => void;
 }
 
-const STORAGE_KEY = "flic_dashboard_filters:v1";
+const STORAGE_KEY = "flic_dashboard_filters:v2";
+const LEGACY_STORAGE_KEY = "flic_dashboard_filters:v1";
 const GlobalFilterContext = createContext<GlobalFilterContextValue | null>(null);
 
 function normalizeDateRange(value: string) {
@@ -48,7 +49,12 @@ function normalizeDateRange(value: string) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
-  if (normalized === "thang nay" || normalized === "quy nay") {
+  if (
+    normalized === "thang nay"
+    || normalized === "quy nay"
+    || normalized === "toan bo du lieu"
+    || normalized === "all_time"
+  ) {
     return defaultFilterValues.dateRange;
   }
   return value;
@@ -70,13 +76,37 @@ function normalizeFilters(value: unknown): FilterValues {
     aiStatus: defaultFilterValues.aiStatus,
     aiFailureType: defaultFilterValues.aiFailureType,
   };
-  if (typeof candidate.customDateFrom === "string" && candidate.customDateFrom.trim()) {
+  if (
+    normalized.dateRange === "Tùy chỉnh"
+    && typeof candidate.customDateFrom === "string"
+    && candidate.customDateFrom.trim()
+  ) {
     normalized.customDateFrom = candidate.customDateFrom;
   }
-  if (typeof candidate.customDateTo === "string" && candidate.customDateTo.trim()) {
+  if (
+    normalized.dateRange === "Tùy chỉnh"
+    && typeof candidate.customDateTo === "string"
+    && candidate.customDateTo.trim()
+  ) {
     normalized.customDateTo = candidate.customDateTo;
   }
   return normalized;
+}
+
+function migrateLegacyFilters(value: unknown): FilterValues {
+  const candidate = value && typeof value === "object"
+    ? value as Partial<Record<keyof FilterValues, unknown>>
+    : {};
+  const preservedText = (key: "channel" | "topic", fallback: string) => {
+    const raw = candidate[key];
+    return typeof raw === "string" && raw.trim() ? raw.trim() : fallback;
+  };
+
+  return {
+    ...defaultFilterValues,
+    channel: preservedText("channel", defaultFilterValues.channel),
+    topic: preservedText("topic", defaultFilterValues.topic),
+  };
 }
 
 function readStoredState(): FilterState {
@@ -88,10 +118,39 @@ function readStoredState(): FilterState {
   }
   try {
     const raw = window.sessionStorage.getItem(STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : null;
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      const normalizedState = {
+        draftFilters: normalizeFilters(parsed?.draftFilters),
+        appliedFilters: normalizeFilters(parsed?.appliedFilters),
+      };
+      try {
+        window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(normalizedState));
+      } catch {
+        // Keep the normalized in-memory state when session storage is read-only.
+      }
+      return normalizedState;
+    }
+
+    const legacyRaw = window.sessionStorage.getItem(LEGACY_STORAGE_KEY);
+    const legacyParsed = legacyRaw ? JSON.parse(legacyRaw) : null;
+    const migratedState = legacyParsed
+      ? {
+          draftFilters: migrateLegacyFilters(legacyParsed.draftFilters),
+          appliedFilters: migrateLegacyFilters(legacyParsed.appliedFilters),
+        }
+      : {
+          draftFilters: { ...defaultFilterValues },
+          appliedFilters: { ...defaultFilterValues },
+        };
+
+    if (legacyParsed) {
+      window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(migratedState));
+      window.sessionStorage.removeItem(LEGACY_STORAGE_KEY);
+    }
     return {
-      draftFilters: normalizeFilters(parsed?.draftFilters),
-      appliedFilters: normalizeFilters(parsed?.appliedFilters),
+      draftFilters: migratedState.draftFilters,
+      appliedFilters: migratedState.appliedFilters,
     };
   } catch {
     return {

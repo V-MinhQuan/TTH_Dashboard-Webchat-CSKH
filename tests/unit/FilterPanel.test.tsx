@@ -213,7 +213,7 @@ describe("FilterPanel", () => {
     expect(container).not.toContainElement(menu);
   });
 
-  it("limits date range choices to day-based presets and custom", () => {
+  it("exposes only the supported recent and custom date ranges", () => {
     renderPanel();
 
     const dateRangeSelect = screen.getByRole("combobox", { name: "Khoảng thời gian" });

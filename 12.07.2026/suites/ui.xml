@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "https://testng.org/testng-1.0.dtd">
+<suite name="FLIC UI Suite" verbose="1" parallel="none">
+  <parameter name="allowDestructiveTests" value="false"/>
+  <listeners>
+    <listener class-name="com.flic.automation.listeners.TestListener"/>
+  </listeners>
+  <test name="Selenium UI - non-destructive">
+    <groups>
+      <run>
+        <exclude name="api"/>
+        <exclude name="destructive"/>
+      </run>
+    </groups>
+    <packages>
+      <package name="com.flic.automation.tests.ui"/>
+    </packages>
+  </test>
+</suite>

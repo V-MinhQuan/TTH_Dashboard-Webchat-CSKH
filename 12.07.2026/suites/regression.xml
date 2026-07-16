@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "https://testng.org/testng-1.0.dtd">
+<suite name="FLIC Regression Suite" verbose="1" parallel="none">
+  <parameter name="allowDestructiveTests" value="false"/>
+  <listeners>
+    <listener class-name="com.flic.automation.listeners.TestListener"/>
+  </listeners>
+  <test name="Regression - non-destructive">
+    <groups>
+      <run>
+        <include name="regression"/>
+        <exclude name="destructive"/>
+      </run>
+    </groups>
+    <packages>
+      <package name="com.flic.automation.tests.ui"/>
+      <package name="com.flic.automation.tests.api"/>
+    </packages>
+  </test>
+</suite>

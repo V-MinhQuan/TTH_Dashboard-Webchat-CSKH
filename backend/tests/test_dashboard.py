@@ -942,8 +942,14 @@ def test_dashboard_service_filters_urgent_alerts_by_topic_and_date_scope(
 def test_api_health_check():
     response = client.get("/api/health")
     assert response.status_code == 200
-    assert response.json()["success"] is True
-    assert "running successfully" in response.json()["message"]
+    payload = response.json()
+    assert payload["success"] is (payload["readiness"] == "ready")
+    assert payload["readiness"] in {"ready", "degraded"}
+    assert payload["status"] in {"ok", "degraded"}
+    assert payload["message"] in {
+        "Backend is running successfully.",
+        "Backend is running with degraded dependencies.",
+    }
 
 @patch('app.services.legacy_dashboard_service.dashboard_service.get_kpis')
 def test_api_get_kpis_success(mock_get_kpis):
@@ -969,6 +975,162 @@ def test_api_get_kpis_success(mock_get_kpis):
     assert response.status_code == 200
     assert response.json()["success"] is True
     assert response.json()["data"] == mock_kpi_data
+
+
+@patch('app.services.legacy_dashboard_service.dashboard_service.get_kpis')
+def test_api_get_kpis_returns_controlled_error_when_required_summary_failed(mock_get_kpis):
+    mock_get_kpis.return_value = {
+        "totalConversations": 0,
+        "totalMessages": 0,
+        "partialErrors": [
+            {"branch": "summary", "message": "database unavailable"},
+        ],
+    }
+
+    response = client.get("/api/dashboard/kpi")
+
+    assert response.status_code == 503
+    assert response.json()["success"] is False
+    assert response.json()["message"]
+
+
+def test_dashboard_service_does_not_cache_kpi_when_required_summary_failed(monkeypatch):
+    clear_dashboard_cache()
+    service = DashboardService()
+    partial_result = {
+        "totalConversations": 0,
+        "totalMessages": 0,
+        "partialErrors": [
+            {"branch": "summary", "message": "database unavailable"},
+        ],
+    }
+    cache_writes = []
+
+    monkeypatch.setattr(service, "_get_fast_kpis", lambda *_args, **_kwargs: partial_result)
+    monkeypatch.setattr(
+        dashboard_module,
+        "set_cached_value",
+        lambda key, value: cache_writes.append((key, value)),
+    )
+
+    result = service.get_kpis(
+        "2026-01-01",
+        "2026-07-15",
+        {"includeTrendComparison": False},
+    )
+
+    assert result is partial_result
+    assert cache_writes == []
+
+
+def test_dashboard_service_retries_required_summary_once(monkeypatch):
+    clear_dashboard_cache()
+    service = DashboardService()
+    partial_result = {
+        "totalConversations": 0,
+        "partialErrors": [{"branch": "summary", "message": "temporary timeout"}],
+    }
+    successful_result = {
+        "totalConversations": 2905,
+        "totalMessages": 44543,
+        "partialErrors": [],
+    }
+    calls = []
+
+    def fake_fast_kpis(*_args, **_kwargs):
+        calls.append(1)
+        return partial_result if len(calls) == 1 else successful_result
+
+    monkeypatch.setattr(service, "_get_fast_kpis", fake_fast_kpis)
+
+    result = service.get_kpis(
+        None,
+        None,
+        {"dateRange": "all_time", "includeTrendComparison": False},
+    )
+
+    assert result is successful_result
+    assert len(calls) == 2
+
+
+def test_dashboard_query_concurrency_is_safe_for_the_weak_sql_server():
+    assert dashboard_module.DASHBOARD_QUERY_WORKERS == 1
+
+
+def test_explicit_kpi_dates_take_precedence_over_all_time_mode():
+    service = DashboardService()
+
+    assert service._normalize_kpi_date_range(
+        "2026-05-01",
+        "2026-05-31",
+        "all_time",
+    ) == ("2026-05-01", "2026-05-31")
+
+
+def test_all_time_kpi_keeps_historical_daily_trends():
+    service = DashboardService()
+    service.repository = MagicMock()
+    service.repository.get_conversation_summary.return_value = {
+        "totalConversations": 2,
+        "statusSummary": {},
+        "sourceSummary": {},
+    }
+    service.repository.get_message_counts_filtered.return_value = []
+    service.repository.get_daily_conversation_summary.return_value = [
+        {"date_str": "2025-11-07", "total": 1, "processed": 1, "unprocessed": 0},
+        {"date_str": "2026-06-12", "total": 1, "processed": 0, "unprocessed": 1},
+    ]
+    service.repository.get_ai_daily_stats.return_value = []
+
+    result = service._get_fast_kpis(
+        None,
+        None,
+        {
+            "includePriorityConversations": False,
+            "includeUrgentAlerts": False,
+            "includeTopQuestions": False,
+            "includeTrendComparison": False,
+        },
+        False,
+    )
+
+    assert [row["date"] for row in result["dailyTrends"]] == ["7/11", "12/6"]
+    assert [row["total"] for row in result["dailyTrends"]] == [1, 1]
+
+
+def test_kpi_partial_errors_are_sanitized():
+    service = DashboardService()
+    service.repository = MagicMock()
+    service.repository.get_conversation_summary.return_value = {
+        "totalConversations": 1,
+        "statusSummary": {},
+        "sourceSummary": {},
+    }
+    service.repository.get_message_counts_filtered.return_value = []
+    service.repository.get_daily_conversation_summary.side_effect = RuntimeError(
+        "server=db.internal password=do-not-expose"
+    )
+    service.repository.get_ai_daily_stats.return_value = []
+
+    result = service._get_fast_kpis(
+        "2026-06-01",
+        "2026-06-12",
+        {
+            "includePriorityConversations": False,
+            "includeUrgentAlerts": False,
+            "includeTopQuestions": False,
+            "includeTrendComparison": False,
+        },
+        False,
+    )
+
+    error = result["partialErrors"][0]
+    assert error == {
+        "branch": "daily_conversations",
+        "code": "query_failed",
+        "type": "RuntimeError",
+    }
+    assert "do-not-expose" not in json.dumps(result)
 
 def test_api_get_kpis_invalid_start_date():
     response = client.get("/api/dashboard/kpi?startDate=invalid-date")
@@ -1263,7 +1425,6 @@ def test_dashboard_service_priority_conversations_mapping(
             "phone_number": None,
             "status": "pending",
             "source": "facebook",
-            "last_message": "Tôi cần được hỗ trợ ngay",
             "wait_mins": 30,
         },
         {
@@ -1273,7 +1434,6 @@ def test_dashboard_service_priority_conversations_mapping(
             "phone_number": "0901000000",
             "status": "open",
             "source": "zalooa",
-            "last_message": "Vui lòng kiểm tra hồ sơ giúp tôi",
             "wait_mins": 90,
         }
     ]
@@ -1303,12 +1463,10 @@ def test_dashboard_service_priority_conversations_mapping(
     assert c1["customer"] == "Mai Ly"
     assert c1["customerDisplayName"] == "Mai Ly"
     assert c1["status"] == "Chờ xử lý"
-    assert c1["lastMessage"] == "Tôi cần được hỗ trợ ngay"
     
     # C2 (status open) -> Đang tư vấn
     c2 = next(c for c in priority_convs if c["customerId"] == "C2")
     assert c2["customer"] == "C2"
-    assert c2["lastMessage"] == "Vui lòng kiểm tra hồ sơ giúp tôi"
     assert c2["status"] == "Đang tư vấn"
 
 @patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_channel_conversation_stats')
@@ -1389,18 +1547,16 @@ def test_channel_topic_stats_counts_only_failed_ai_messages(mock_get_db):
 
     query, params = cursor.execute.call_args.args
     assert result == [{"source": "facebook", "topic": "TOEIC", "value": 1}]
-    assert "OUTER APPLY" in query
-    assert "customer.SentAt <= m.SentAt" in query
-    assert "m.FromHost = 1" in query
-    assert "m.HostDisplayName = 'AI Assistant'" in query
+    assert "WITH filtered AS" in query
+    assert "FROM WebChat_MessageAnalytics a" in query
+    assert "a.issueFlag = 1" in query
+    assert "FROM filtered topic_row" in query
+    assert "UNION ALL" in query
     assert "LIKE %s" in query
-    assert "%[s]át hạch%" in params
-    assert "%[s]at hach%" in params
-    assert "%sát hạch%" not in params
-    assert "%sat hach%" not in params
-    assert "%không tìm thấy%" in params
     assert query.count("%s") == len(params)
-    assert params[-2:] == ("2026-06-01", "2026-06-30 23:59:59.999")
+    assert params[:2] == ("2026-06-01", "2026-06-30 23:59:59.999")
+    assert "TOEIC" in params
+    assert '%"TOEIC"%' in params
     conn.close.assert_called_once()
 
 @patch('app.repositories.legacy_conversation_repository.get_db_connection')

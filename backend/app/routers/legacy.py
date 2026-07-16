@@ -17,15 +17,6 @@ from app.sheet_chatbot.service import sheet_chatbot_service
 
 router = APIRouter()
 
-# Endpoints
-@router.get("/api/health")
-def health_check():
-    return {
-        "success": True,
-        "message": "Backend is running successfully."
-    }
-
-
 # ---------------------------------------------------------------------------
 # DEPRECATED: /api/auth/login trong legacy.py
 # Endpoint này đã được thay thế bởi app/routers/auth.py (modular router).
@@ -43,6 +34,7 @@ class LoginRequest(BaseModel):
 
 @router.get("/api/dashboard/kpi")
 def get_kpi(
+    dateRange: str = None,
     startDate: str = None,
     endDate: str = None,
     channel: str = None,
@@ -81,6 +73,7 @@ def get_kpi(
             })
             
     filters = {
+        "dateRange": dateRange,
         "channel": channel,
         "topic": topic,
         "conversationStatus": conversationStatus,
@@ -93,6 +86,16 @@ def get_kpi(
     }
     
     kpis = dashboard_service.get_kpis(startDate, endDate, filters)
+    required_summary_failed = any(
+        item.get("branch") == "summary"
+        for item in kpis.get("partialErrors", [])
+        if isinstance(item, dict)
+    )
+    if required_summary_failed:
+        return JSONResponse(status_code=503, content={
+            "success": False,
+            "message": "Không thể tải số liệu tổng quan từ cơ sở dữ liệu. Vui lòng thử lại.",
+        })
     return {
         "success": True,
         "message": "Dashboard KPI fetched successfully",

@@ -282,7 +282,7 @@ MESSAGE_FIELDS = _mapping(
         "ai_success": FieldDefinition(
             id="ai_success",
             label="AI trả lời thành công",
-            expression="CASE WHEN msg_ai.messageId IS NOT NULL AND ISNULL(msg_ai.issueFlag, 0) = 0 THEN 1 ELSE 0 END",
+            expression="CASE WHEN msg_ai.messageId IS NOT NULL AND msg_ai.issueFlag IS NOT NULL AND msg_ai.issueFlag = 0 THEN 1 ELSE 0 END",
             data_type="number",
             semantic_type="ai_success",
             roles=("metric",),

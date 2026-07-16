@@ -11,7 +11,10 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.auth import HMACBearerSessions, get_session_manager
+from app.config.chart_builder_catalog import get_dataset_catalog
+import app.repositories.analytics_repository as analytics_repository_module
 from app.repositories.analytics_repository import AnalyticsRepository
+from app.repositories.base_repository import BaseRepository
 from app.core.exceptions import AppError
 from app.core.exceptions import register_exception_handlers
 from app.routers import analytics
@@ -50,6 +53,138 @@ def test_analytics_source_filter_matches_channel_aliases():
     assert "a.source = ?" not in where
     assert "zalobusiness" in params
     assert "zalobiz" in params
+
+
+def test_sentiment_where_filters_completed_when_analysis_state_exists():
+    repository = AnalyticsRepository()
+
+    where, params = repository._build_read_where(
+        {"channel": "Facebook"},
+        {"analysisStatus": True},
+        completed_only=True,
+    )
+    legacy_where, _ = repository._build_read_where(
+        {"channel": "Facebook"},
+        {"analysisStatus": False},
+        completed_only=True,
+    )
+
+    assert "a.analysisStatus = 'completed'" in where
+    assert "analysisStatus" not in legacy_where
+    assert params[-1] == "messenger"
+
+
+def test_topic_kpi_query_excludes_unfinished_analysis(monkeypatch):
+    captured = {}
+
+    class ConnectionContext:
+        def __enter__(self):
+            return object()
+
+        def __exit__(self, *_args):
+            return False
+
+    monkeypatch.setattr(
+        analytics_repository_module,
+        "inspect_message_analytics_columns",
+        lambda _conn: {"analysisStatus": True},
+    )
+
+    def capture_query(_conn, query, params):
+        captured["query"] = query
+        captured["params"] = params
+        return []
+
+    monkeypatch.setattr(analytics_repository_module, "execute_all", capture_query)
+    repository = AnalyticsRepository(connection_factory=ConnectionContext)
+
+    assert repository.get_topic_raw_data({}) == []
+    assert "a.analysisStatus = 'completed'" in captured["query"]
+    assert captured["params"] == []
+
+
+def test_ai_quality_metrics_exclude_customer_rows_without_assistant_analysis(monkeypatch):
+    captured = {}
+
+    class ConnectionContext:
+        def __enter__(self):
+            return object()
+
+        def __exit__(self, *_args):
+            return False
+
+    monkeypatch.setattr(
+        analytics_repository_module,
+        "inspect_message_analytics_columns",
+        lambda _conn: {"analysisStatus": True, "issueFlag": True},
+    )
+
+    def capture_query(_conn, query, params):
+        captured["query"] = query
+        captured["params"] = params
+        return {"total": 0}
+
+    monkeypatch.setattr(analytics_repository_module, "execute_one", capture_query)
+    repository = AnalyticsRepository(connection_factory=ConnectionContext)
+
+    repository.get_ai_quality_metrics({})
+
+    assert "a.analysisStatus = 'completed'" in captured["query"]
+    assert "a.issueFlag IS NOT NULL" in captured["query"]
+    assert captured["params"] == []
+
+
+def test_all_ai_success_surfaces_exclude_unknown_assistant_quality():
+    legacy_condition = BaseRepository()._analytics_ai_status_condition(
+        "AI trả lời thành công"
+    )
+    chart_expression = get_dataset_catalog()["messages"].fields["ai_success"].expression
+
+    assert "issueFlag IS NOT NULL" in legacy_condition
+    assert "issueFlag IS NULL OR" not in legacy_condition
+    assert "msg_ai.issueFlag IS NOT NULL" in chart_expression
+    assert "ISNULL(msg_ai.issueFlag, 0)" not in chart_expression
+
+
+class SentimentStatusRepository:
+    def get_sentiment_summary(self, _filters):
+        return {
+            "row": {
+                "positive": 4,
+                "neutral": 3,
+                "negative": 2,
+                "total": 9,
+                "totalConversations": 7,
+            },
+            "analysisStatusCounts": {
+                "pending": 5,
+                "processing": 1,
+                "completed": 9,
+                "failed": 2,
+                "quarantined": 4,
+                "total": 21,
+                "unanalyzed": 12,
+            },
+            "optionalColumns": {"analysisStatus": True},
+            "analyzerVersionDistribution": [],
+            "analyzerVersionDistributionSkipped": True,
+        }
+
+
+def test_sentiment_summary_keeps_completed_denominator_and_adds_status_counts():
+    result = AnalyticsService(repository=SentimentStatusRepository()).get_sentiment_summary({})
+
+    assert result["total"] == 9
+    assert result["positive"] + result["neutral"] + result["negative"] == 9
+    assert result["analysisStatusCounts"] == {
+        "pending": 5,
+        "processing": 1,
+        "completed": 9,
+        "failed": 2,
+        "quarantined": 4,
+        "total": 21,
+        "unanalyzed": 12,
+    }
 
 
 class PositiveConversationRepository:
@@ -113,7 +248,8 @@ def test_topic_filter_uses_parameterized_metadata_and_message_log_scope():
     assert "OPENJSON" not in where
     assert "LIKE ?" in where
     assert "dbo.WebChat_MessageLogs topic_msg" in where
-    assert "topic_msg.Source = a.source" in where
+    assert "topic_msg.id_webchat_messageLogs = a.messageId" in where
+    assert "topic_msg.FromHost = 0" in where
     assert params == ["%toeic~_100~%~[a]%", "%toeic~_100~%~[a]%", "%toeic~_100~%~[a]%"]
 
 
@@ -143,7 +279,8 @@ def test_ai_status_filter_maps_public_success_failed_values_to_issue_flag():
     failed_where, failed_params = repository._build_read_where({"aiStatus": "failed"}, {"issueFlag": True})
     all_where, all_params = repository._build_read_where({"aiStatus": "Tất cả"}, {"issueFlag": True})
 
-    assert "ISNULL(a.issueFlag, 0) = 0" in success_where
+    assert "a.issueFlag IS NOT NULL" in success_where
+    assert "a.issueFlag = 0" in success_where
     assert success_params == []
     assert "a.issueFlag = 1" in failed_where
     assert failed_params == []

@@ -9,6 +9,7 @@ from app.core.config import get_settings
 from app.core.topic_taxonomy import canonical_topic_label, topic_filter_aliases
 from app.db.session import execute_all, execute_one, get_connection
 from app.repositories.display_filters import valid_analytics_condition, valid_message_condition
+from app.repositories.schema_inspector import inspect_message_analytics_columns
 from app.schemas.chart_builder import ChartDataRequest, SavedChartConfigCreate
 
 
@@ -175,6 +176,7 @@ class ChartBuilderRepository:
                     AND COL_LENGTH('dbo.WebChat_MessageAnalytics', 'detectedTopics') IS NOT NULL
                     AND COL_LENGTH('dbo.WebChat_MessageAnalytics', 'detectedKeywords') IS NOT NULL
                     AND COL_LENGTH('dbo.WebChat_MessageAnalytics', 'satisfactionScore') IS NOT NULL
+                    AND COL_LENGTH('dbo.WebChat_MessageAnalytics', 'analysisStatus') IS NOT NULL
                     THEN 1 ELSE 0 END AS analytics,
                   CASE WHEN OBJECT_ID(N'dbo.WebChat_MessageLogs', N'U') IS NOT NULL
                     AND COL_LENGTH('dbo.WebChat_MessageLogs', 'SentAt') IS NOT NULL
@@ -212,8 +214,12 @@ class ChartBuilderRepository:
         return sources
 
     def get_chart_data(self, request: ChartDataRequest) -> List[Dict[str, Any]]:
-        query, params = self._build_query(request)
         with self._connection_factory() as conn:
+            completed_only = True
+            if request.source_id != "conversation_volume":
+                columns = inspect_message_analytics_columns(conn)
+                completed_only = bool(columns.get("analysisStatus"))
+            query, params = self._build_query(request, completed_only=completed_only)
             rows = execute_all(conn, query, params)
         if request.source_id == "sentiment_by_topic":
             return self._aggregate_sentiment_topics(rows, request)
@@ -283,7 +289,12 @@ class ChartBuilderRepository:
             conn.commit()
             return changed
 
-    def _build_query(self, request: ChartDataRequest) -> Tuple[str, Sequence[Any]]:
+    def _build_query(
+        self,
+        request: ChartDataRequest,
+        *,
+        completed_only: bool = True,
+    ) -> Tuple[str, Sequence[Any]]:
         builders = {
             "sentiment_by_date": self._sentiment_by_date_query,
             "sentiment_by_topic": self._sentiment_by_topic_query,
@@ -295,10 +306,21 @@ class ChartBuilderRepository:
         builder = builders.get(request.source_id)
         if builder is None:
             raise ValueError(f"Unsupported source_id: {request.source_id}")
-        return builder(request)
+        if request.source_id == "conversation_volume":
+            return builder(request)
+        return builder(request, completed_only=completed_only)
 
-    def _sentiment_by_date_query(self, request: ChartDataRequest) -> Tuple[str, Sequence[Any]]:
-        where, params = self._analytics_filters(request, include_topic=True)
+    def _sentiment_by_date_query(
+        self,
+        request: ChartDataRequest,
+        *,
+        completed_only: bool = True,
+    ) -> Tuple[str, Sequence[Any]]:
+        where, params = self._analytics_filters(
+            request,
+            include_topic=True,
+            completed_only=completed_only,
+        )
         return (
             f"""
             SELECT
@@ -314,8 +336,17 @@ class ChartBuilderRepository:
             params,
         )
 
-    def _sentiment_by_topic_query(self, request: ChartDataRequest) -> Tuple[str, Sequence[Any]]:
-        where, params = self._analytics_filters(request, include_topic=True)
+    def _sentiment_by_topic_query(
+        self,
+        request: ChartDataRequest,
+        *,
+        completed_only: bool = True,
+    ) -> Tuple[str, Sequence[Any]]:
+        where, params = self._analytics_filters(
+            request,
+            include_topic=True,
+            completed_only=completed_only,
+        )
         return (
             f"""
             SELECT a.detectedTopics, a.sentimentLabel
@@ -325,8 +356,17 @@ class ChartBuilderRepository:
             params,
         )
 
-    def _satisfaction_trend_query(self, request: ChartDataRequest) -> Tuple[str, Sequence[Any]]:
-        where, params = self._analytics_filters(request, include_topic=True)
+    def _satisfaction_trend_query(
+        self,
+        request: ChartDataRequest,
+        *,
+        completed_only: bool = True,
+    ) -> Tuple[str, Sequence[Any]]:
+        where, params = self._analytics_filters(
+            request,
+            include_topic=True,
+            completed_only=completed_only,
+        )
         return (
             f"""
             SELECT
@@ -365,8 +405,17 @@ class ChartBuilderRepository:
             params,
         )
 
-    def _keyword_frequency_query(self, request: ChartDataRequest) -> Tuple[str, Sequence[Any]]:
-        where, params = self._analytics_filters(request, include_topic=True)
+    def _keyword_frequency_query(
+        self,
+        request: ChartDataRequest,
+        *,
+        completed_only: bool = True,
+    ) -> Tuple[str, Sequence[Any]]:
+        where, params = self._analytics_filters(
+            request,
+            include_topic=True,
+            completed_only=completed_only,
+        )
         return (
             f"""
             SELECT a.detectedKeywords, a.detectedTopics, a.sentimentLabel
@@ -376,8 +425,17 @@ class ChartBuilderRepository:
             params,
         )
 
-    def _topic_distribution_query(self, request: ChartDataRequest) -> Tuple[str, Sequence[Any]]:
-        where, params = self._analytics_filters(request, include_topic=True)
+    def _topic_distribution_query(
+        self,
+        request: ChartDataRequest,
+        *,
+        completed_only: bool = True,
+    ) -> Tuple[str, Sequence[Any]]:
+        where, params = self._analytics_filters(
+            request,
+            include_topic=True,
+            completed_only=completed_only,
+        )
         return (
             f"""
             SELECT a.detectedTopics
@@ -392,8 +450,11 @@ class ChartBuilderRepository:
         request: ChartDataRequest,
         *,
         include_topic: bool,
+        completed_only: bool = True,
     ) -> Tuple[str, Sequence[Any]]:
         conditions: List[str] = [valid_analytics_condition("a")]
+        if completed_only:
+            conditions.append("a.analysisStatus = 'completed'")
         params: List[Any] = []
         filters = request.filters
         if filters.from_date:
@@ -461,7 +522,9 @@ class ChartBuilderRepository:
     ) -> List[Dict[str, Any]]:
         stats: Dict[str, Dict[str, int]] = {}
         for row in rows:
-            sentiment = str(row.get("sentimentLabel") or "neutral")
+            sentiment = str(row.get("sentimentLabel") or "").strip().lower()
+            if sentiment not in {"positive", "neutral", "negative"}:
+                continue
             for topic in self._json_array(row.get("detectedTopics")):
                 topic = canonical_topic_label(topic, default=topic)
                 item = stats.setdefault(topic, {"positive": 0, "neutral": 0, "negative": 0, "total": 0})
@@ -490,7 +553,8 @@ class ChartBuilderRepository:
             if request.group_by == "keyword":
                 values = keywords
             elif request.group_by == "sentiment":
-                values = [str(row.get("sentimentLabel") or "neutral")] if keywords else []
+                sentiment = str(row.get("sentimentLabel") or "").strip().lower()
+                values = [sentiment] if keywords and sentiment in {"positive", "neutral", "negative"} else []
             else:
                 values = [canonical_topic_label(topic, default=topic) for topic in self._json_array(row.get("detectedTopics"))] if keywords else []
             for value in values:

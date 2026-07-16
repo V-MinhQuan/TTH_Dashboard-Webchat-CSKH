@@ -173,9 +173,8 @@ export function Sidebar({ activeScreen, onNavigate, collapsed, onToggleCollapse 
       {/* Footer */}
       <div style={{ borderTop: "1px solid rgba(0,56,101,0.1)", padding: "14px 12px" }}>
         {!collapsed && (
-          <div className="sidebar-expanded-content" style={{ color: "rgba(0,56,101,0.35)", fontSize: "10px", marginBottom: "10px", lineHeight: 1.6 }}>
-            <div>© 2026 FLIC Education</div>
-            <div>v2.4.1 — Vận hành AI</div>
+          <div className="sidebar-expanded-content" style={{ color: "rgba(0,56,101,0.35)", fontSize: "12px", marginBottom: "10px", lineHeight: 1.6}}>
+            <div>© FLIC Education v2.4.1</div>
           </div>
         )}
         <button

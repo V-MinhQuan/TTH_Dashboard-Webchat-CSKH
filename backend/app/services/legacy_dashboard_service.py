@@ -31,7 +31,7 @@ AI_QUESTION_FALLBACK_CACHE_TTL_SECONDS = 60
 AI_QUESTION_LAST_GOOD_CACHE_TTL_SECONDS = 86400
 AI_QUESTION_DB_CACHE_TTL_SECONDS = 3600
 DEFAULT_KPI_DATE_WINDOW_DAYS = 30
-DASHBOARD_QUERY_WORKERS = 6
+DASHBOARD_QUERY_WORKERS = 1
 AI_QUESTION_LAST_GOOD_CACHE_FILE = (
     Path(__file__).resolve().parents[3] / ".cache" / "dashboard_top_questions_last_good.json"
 )
@@ -1761,9 +1761,11 @@ class DashboardService:
         set_cached_value(cache_key, result)
         return result
 
-    def _normalize_kpi_date_range(self, start_date=None, end_date=None):
+    def _normalize_kpi_date_range(self, start_date=None, end_date=None, date_range=None):
         if start_date or end_date:
             return start_date, end_date
+        if str(date_range or '').strip().lower() == 'all_time':
+            return None, None
 
         today = datetime.now().date()
         start = today - timedelta(days=DEFAULT_KPI_DATE_WINDOW_DAYS)
@@ -1902,7 +1904,6 @@ class DashboardService:
                 "customerDisplayName": customer,
                 "customer": customer,
                 "channel": format_channel(row.get('source')),
-                "lastMessage": row.get('last_message') or '',
                 "topic": 'Khác',
                 "wait": format_wait_time(wait_mins),
                 "status": status_text,
@@ -2291,8 +2292,10 @@ class DashboardService:
             try:
                 return fn()
             except Exception as exc:
-                logger.exception(
-                    "Dashboard KPI branch failed",
+                logger.error(
+                    "Dashboard KPI branch failed branch=%s error_type=%s",
+                    name,
+                    type(exc).__name__,
                     extra={
                         "branch": name,
                         "start_date": start_date,
@@ -2301,7 +2304,11 @@ class DashboardService:
                         "topic": topic,
                     },
                 )
-                partial_errors.append({"branch": name, "message": str(exc)})
+                partial_errors.append({
+                    "branch": name,
+                    "code": "query_failed",
+                    "type": type(exc).__name__,
+                })
                 return query_defaults.get(name)
 
         topic_filter_active = bool(topic and topic != 'Tất cả')
@@ -2535,53 +2542,66 @@ class DashboardService:
 
         priority_conversations_mapped = self._map_priority_conversations(raw_priority_conversations)
 
-        start_d = None
-        end_d = None
-        if start_date:
-            try:
-                start_d = datetime.strptime(start_date, '%Y-%m-%d')
-            except Exception:
-                pass
-        if end_date:
-            try:
-                end_d = datetime.strptime(end_date, '%Y-%m-%d')
-            except Exception:
-                pass
-        if not start_d:
-            start_d = datetime.now()
-        if not end_d:
-            end_d = datetime.now()
-
         daily_map = {}
-        current_date = start_d
-        days_count = 0
-        while current_date <= end_d and days_count < 366:
-            date_str = current_date.strftime('%Y-%m-%d')
-            daily_map[date_str] = {
-                "date": f"{current_date.day}/{current_date.month}",
+        if start_date or end_date:
+            try:
+                start_d = datetime.strptime(start_date, '%Y-%m-%d') if start_date else datetime.now()
+                end_d = datetime.strptime(end_date, '%Y-%m-%d') if end_date else datetime.now()
+            except (TypeError, ValueError):
+                start_d = None
+                end_d = None
+
+            current_date = start_d
+            days_count = 0
+            while current_date and end_d and current_date <= end_d and days_count < 366:
+                date_str = current_date.strftime('%Y-%m-%d')
+                daily_map[date_str] = {
+                    "date": f"{current_date.day}/{current_date.month}",
+                    "total": 0,
+                    "processed": 0,
+                    "unprocessed": 0,
+                    "ai_ok": 0,
+                    "ai_fail": 0
+                }
+                current_date += timedelta(days=1)
+                days_count += 1
+
+        def get_daily_bucket(date_str):
+            if date_str in daily_map:
+                return daily_map[date_str]
+            if start_date or end_date:
+                return None
+            try:
+                row_date = datetime.strptime(str(date_str), '%Y-%m-%d')
+            except (TypeError, ValueError):
+                return None
+            bucket = {
+                "date": f"{row_date.day}/{row_date.month}",
                 "total": 0,
                 "processed": 0,
                 "unprocessed": 0,
                 "ai_ok": 0,
                 "ai_fail": 0
             }
-            current_date += timedelta(days=1)
-            days_count += 1
+            daily_map[date_str] = bucket
+            return bucket
 
         for row in daily_conversations:
             date_str = row.get('date_str')
-            if date_str not in daily_map:
+            bucket = get_daily_bucket(date_str)
+            if bucket is None:
                 continue
-            daily_map[date_str]['total'] = row.get('total') or 0
-            daily_map[date_str]['processed'] = row.get('processed') or 0
-            daily_map[date_str]['unprocessed'] = row.get('unprocessed') or 0
+            bucket['total'] = row.get('total') or 0
+            bucket['processed'] = row.get('processed') or 0
+            bucket['unprocessed'] = row.get('unprocessed') or 0
 
         for row in ai_daily_stats:
             date_str = row.get('date_str')
-            if date_str not in daily_map:
+            bucket = get_daily_bucket(date_str)
+            if bucket is None:
                 continue
-            daily_map[date_str]['ai_ok'] = row.get('ai_ok') or 0
-            daily_map[date_str]['ai_fail'] = row.get('ai_fail') or 0
+            bucket['ai_ok'] = row.get('ai_ok') or 0
+            bucket['ai_fail'] = row.get('ai_fail') or 0
 
         daily_trends = trim_trailing_zero_rows(
             [daily_map[k] for k in sorted(daily_map.keys())],
@@ -2619,11 +2639,16 @@ class DashboardService:
             filters = {}
         filters = dict(filters)
         force_refresh = bool(filters.pop('forceRefresh', False))
+        date_range = filters.pop('dateRange', None)
 
         original_start_date = start_date
         original_end_date = end_date
-        start_date, end_date = self._normalize_kpi_date_range(start_date, end_date)
-        if not original_start_date and not original_end_date:
+        start_date, end_date = self._normalize_kpi_date_range(
+            start_date,
+            end_date,
+            date_range,
+        )
+        if not original_start_date and not original_end_date and date_range != 'all_time':
             logger.info(
                 "Dashboard KPI request used default date window",
                 extra={"start_date": start_date, "end_date": end_date},
@@ -2641,7 +2666,18 @@ class DashboardService:
         ai_status = filters.get('aiStatus')
 
         result = self._get_fast_kpis(start_date, end_date, filters, force_refresh)
-        set_cached_value(cache_key, result)
+        required_summary_failed = any(
+            item.get('branch') == 'summary'
+            for item in result.get('partialErrors', [])
+            if isinstance(item, dict)
+        )
+        if required_summary_failed:
+            logger.warning(
+                "Dashboard KPI summary failed; retrying once with safe query concurrency"
+            )
+            result = self._get_fast_kpis(start_date, end_date, filters, force_refresh)
+        if not result.get('partialErrors'):
+            set_cached_value(cache_key, result)
         return result
     def get_channel_analytics(self, start_date=None, end_date=None, filters=None):
         if filters is None:
@@ -2730,7 +2766,6 @@ class DashboardService:
             ('Facebook', 'Facebook'),
             ('Zalo OA', 'ZaloOA'),
             ('Chat Widget', 'ChatWidget'),
-            ('Khác', 'other'),
         ]
         visible_channel_defs = [item for item in all_channel_defs if not selected_source or item[1] == selected_source]
         channels_map = {
@@ -2784,25 +2819,22 @@ class DashboardService:
 
         source_summary = source_totals.get('sourceSummary', {})
         unresolved_summary = source_totals.get('unresolvedSummary', {})
-        pending_summary = source_totals.get('pendingSummary', {})
         for c_name in channels_map:
             source_key_for_map = {
                 'Zalo OA': 'ZaloOA',
                 'Zalo Business': 'ZaloBusiness',
                 'Facebook': 'Facebook',
-                'Chat Widget': 'ChatWidget',
-                'Khác': 'other',
+                'Chat Widget': 'ChatWidget'
             }.get(c_name)
             
             if source_key_for_map and not selected_source:
                 # Use accurate de-duplicated totals from conversation summary.
                 channels_map[c_name]['total'] = source_summary.get(source_key_for_map) or 0
-                channels_map[c_name]['unresolved'] = pending_summary.get(source_key_for_map) or 0
+                channels_map[c_name]['unresolved'] = unresolved_summary.get(source_key_for_map) or 0
                 
                 # Assign status map accurately based on the unresolved amount
-                status_map[c_name]['Chờ xử lý'] = pending_summary.get(source_key_for_map) or 0
-                status_map[c_name]['Đang tư vấn'] = max(0, (unresolved_summary.get(source_key_for_map) or 0) - status_map[c_name]['Chờ xử lý'])
-                status_map[c_name]['Hoàn thành'] = max(0, channels_map[c_name]['total'] - status_map[c_name]['Chờ xử lý'] - status_map[c_name]['Đang tư vấn'])
+                status_map[c_name]['Chờ xử lý'] = channels_map[c_name]['unresolved']
+                status_map[c_name]['Hoàn thành'] = channels_map[c_name]['total'] - channels_map[c_name]['unresolved']
 
         for row in ai_summary:
             c_name = format_channel(row.get('source'))

@@ -55,6 +55,7 @@ def get_dashboard_kpi(
             })
 
     filters = {
+        "dateRange": dateRange,
         "channel": channel,
         "topic": topic,
         "conversationStatus": conversationStatus,
@@ -67,6 +68,16 @@ def get_dashboard_kpi(
     }
     
     data = legacy_ds.get_kpis(startDate, endDate, filters)
+    required_summary_failed = any(
+        item.get("branch") == "summary"
+        for item in data.get("partialErrors", [])
+        if isinstance(item, dict)
+    )
+    if required_summary_failed:
+        return JSONResponse(status_code=503, content={
+            "success": False,
+            "message": "Không thể tải số liệu tổng quan từ cơ sở dữ liệu. Vui lòng thử lại.",
+        })
     return {"success": True, "message": "Dashboard KPI fetched successfully", "data": data}
 
 

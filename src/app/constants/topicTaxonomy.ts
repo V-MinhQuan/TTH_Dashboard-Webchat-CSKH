@@ -1,11 +1,9 @@
-import { TOPIC_COLORS } from "../colors";
-
 export const TOPIC_TAXONOMY = [
   {
     id: "sat_hach_cntt",
     label: "Sát hạch CNTT",
     shortLabel: "Sát hạch CNTT",
-    color: TOPIC_COLORS["Sát hạch CNTT"],
+    color: "#002E8D",
     sheetTopic: "Sát hạch CNTT",
     scopeTerms: [
       "Sát hạch CNTT",
@@ -41,7 +39,7 @@ export const TOPIC_TAXONOMY = [
     id: "toeic",
     label: "TOEIC",
     shortLabel: "TOEIC",
-    color: TOPIC_COLORS.TOEIC,
+    color: "#00A3E0",
     sheetTopic: "TOEIC",
     scopeTerms: [
       "TOEIC",
@@ -67,7 +65,7 @@ export const TOPIC_TAXONOMY = [
     id: "mos",
     label: "MOS",
     shortLabel: "MOS",
-    color: TOPIC_COLORS.MOS,
+    color: "#00D2FF",
     sheetTopic: "MOS",
     scopeTerms: [
       "MOS",
@@ -94,7 +92,7 @@ export const TOPIC_TAXONOMY = [
     id: "hoc_tieng_anh",
     label: "Học Tiếng Anh",
     shortLabel: "Học Tiếng Anh",
-    color: TOPIC_COLORS["Học Tiếng Anh"],
+    color: "#308D16",
     sheetTopic: "Học Tiếng Anh",
     scopeTerms: [
       "Học Tiếng Anh",
@@ -128,7 +126,7 @@ export const TOPIC_TAXONOMY = [
     id: "hoc_tin_hoc",
     label: "Học Tin học",
     shortLabel: "Học Tin học",
-    color: TOPIC_COLORS["Học Tin học"],
+    color: "#FFA100",
     sheetTopic: "Học Tin học",
     scopeTerms: [
       "Học Tin học",
@@ -235,10 +233,5 @@ function matchesScopeTerms(text: string, topicId: Exclude<TopicGroupId, "khac">)
 
 export function topicLabelForGroupId(groupId: string | null | undefined) {
   return topicGroupById(groupId)?.label || "Khác";
-}
-
-export function topicColorForLabel(value: string | null | undefined) {
-  const groupId = mapTopicToGroupId(String(value || ""));
-  return topicGroupById(groupId)?.color || "#64748B";
 }
 

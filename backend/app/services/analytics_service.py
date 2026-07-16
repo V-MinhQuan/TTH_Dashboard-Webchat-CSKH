@@ -59,6 +59,15 @@ class AnalyticsService:
             "positive": summary["positive"],
             "neutral": summary["neutral"],
             "negative": summary["negative"],
+            "analysisStatusCounts": payload.get("analysisStatusCounts") or {
+                "pending": 0,
+                "processing": 0,
+                "completed": summary["total"],
+                "failed": 0,
+                "quarantined": 0,
+                "total": summary["total"],
+                "unanalyzed": 0,
+            },
             "issueFlag": int(row.get("issueFlag") or 0),
             "needStaffReview": int(row.get("needStaffReview") or 0),
             "avgSatisfaction": _round(row.get("avgSatisfaction")),
@@ -66,7 +75,7 @@ class AnalyticsService:
                 {
                     "sentimentSource": item.get("sentimentSource"),
                     "analyzerVersion": item.get("analyzerVersion"),
-                    "sentimentLabel": item.get("sentimentLabel") or "neutral",
+                    "sentimentLabel": item.get("sentimentLabel"),
                     "total": int(item.get("total") or 0),
                 }
                 for item in payload.get("analyzerVersionDistribution", [])

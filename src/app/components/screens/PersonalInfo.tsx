@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowLeft, User, Mail, Clock, CheckCircle, X, Phone } from "lucide-react";
+import { ArrowLeft, User, Mail, Building2, Shield, Clock, CheckCircle, X, Phone } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { toast } from "sonner";
 
@@ -147,8 +147,23 @@ export function PersonalInfo({ onNavigate }: PersonalInfoProps) {
         ))}
       </div>
 
-      {/* Staff-specific section */}
-      {!isManager && (
+      {/* Role-specific section */}
+      {isManager ? (
+        <div style={{ backgroundColor: "#fff", borderRadius: "16px", border: "1px solid rgba(0,56,101,0.08)", padding: "20px", marginBottom: "20px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
+            <Shield size={16} style={{ color: NAVY }} />
+            <h3 style={{ fontSize: "14px", fontWeight: 700, color: NAVY, margin: 0 }}>Quyền truy cập hệ thống</h3>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+            {["Tổng quan", "Phân tích kênh", "Theo dõi cảnh báo hội thoại", "AI Insights", "Keywords & Sentiment", "Thư viện phản hồi", "Cài đặt hệ thống", "Quản lý người dùng"].map(perm => (
+              <div key={perm} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: NAVY }}>
+                <CheckCircle size={14} style={{ color: "#228A61", flexShrink: 0 }} />
+                {perm}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
         <div style={{ backgroundColor: "#fff", borderRadius: "16px", border: "1px solid rgba(0,56,101,0.08)", padding: "20px", marginBottom: "20px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
             <CheckCircle size={16} style={{ color: "#228A61" }} />
@@ -168,6 +183,8 @@ export function PersonalInfo({ onNavigate }: PersonalInfoProps) {
           </div>
         </div>
       )}
+
+
 
       <OtpModal
         isOpen={showOtpModal}

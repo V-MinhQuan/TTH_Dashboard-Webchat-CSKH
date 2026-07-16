@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "https://testng.org/testng-1.0.dtd">
+<suite name="FLIC Destructive Suite" verbose="1" parallel="none">
+  <!-- BaseTest must still require -DallowDestructiveTests=true. The default below is fail-closed. -->
+  <parameter name="allowDestructiveTests" value="false"/>
+  <listeners>
+    <listener class-name="com.flic.automation.listeners.TestListener"/>
+  </listeners>
+  <test name="Destructive and DB-changing tests">
+    <groups>
+      <run>
+        <include name="destructive"/>
+      </run>
+    </groups>
+    <packages>
+      <package name="com.flic.automation.tests.ui"/>
+      <package name="com.flic.automation.tests.api"/>
+    </packages>
+  </test>
+</suite>

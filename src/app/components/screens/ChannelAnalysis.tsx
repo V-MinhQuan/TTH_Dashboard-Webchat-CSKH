@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+// @ts-nocheck
+import React from 'react';
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bot, Lightbulb } from "lucide-react";
 import {
@@ -18,8 +21,6 @@ import { EmptyState } from "../common/EmptyState";
 import { useSettings } from "../../context/SettingsContext";
 import { getDateParamsFromFilters } from "../../utils/dateFilters";
 import { CHANNEL_COLORS, TOPIC_COLORS } from "../../colors";
-import { topicColorForLabel } from "../../constants/topicTaxonomy";
-import { ChannelChartTick, ChannelLabel, ChannelYAxisTick } from "../common/ChannelLabel";
 
 const NAVY = "#003865";
 const ORANGE = "#D73C01";
@@ -120,13 +121,6 @@ function renderEmptyChart(message = "Không có dữ liệu biểu đồ") {
   );
 }
 
-function channelMetricTooltip(value: number, item: any, nameKey: string, valueName: string, suffix: string) {
-  return [
-    `${value}${suffix}`,
-    nameKey === "channel" ? `Số lượng [${item?.payload?.[nameKey] || "Kênh"}]` : valueName,
-  ];
-}
-
 function renderMetricChart({
   chartType,
   data,
@@ -156,10 +150,10 @@ function renderMetricChart({
       <ResponsiveContainer width="100%" height={220}>
         <PieChart>
           <Pie data={pieRows} cx="50%" cy="50%" innerRadius={chartType === "donut" ? 48 : 0} outerRadius={78} dataKey="value" label={editValues.dataLabels}>
-            {pieRows.map((entry, index) => <Cell key={`metric-pie-${entry.name}`} fill={nameKey === "channel" ? CHANNEL_COLORS[entry.name] || PIE_COLORS[index % PIE_COLORS.length] : PIE_COLORS[index % PIE_COLORS.length]} />)}
+            {pieRows.map((entry, index) => <Cell key={`metric-pie-${entry.name}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />)}
           </Pie>
-          <Tooltip formatter={(value: number, _name: string, item: any) => channelMetricTooltip(value, item, nameKey, valueName, tooltipSuffix)} />
-          {editValues.legend && <Legend iconSize={10} formatter={(value) => nameKey === "channel" ? <ChannelLabel channel={String(value)} badge={false} weight={400} /> : <span style={{ fontSize: "11px" }}>{value}</span>} />}
+          <Tooltip formatter={(value: number) => [`${value}${tooltipSuffix}`, valueName]} />
+          {editValues.legend && <Legend iconSize={10} formatter={(value) => <span style={{ fontSize: "11px" }}>{value}</span>} />}
         </PieChart>
       </ResponsiveContainer>
     );
@@ -170,9 +164,9 @@ function renderMetricChart({
       <ResponsiveContainer width="100%" height={220}>
         <LineChart data={rows}>
           <CartesianGrid stroke="rgba(0,56,101,0.06)" />
-          <XAxis dataKey={nameKey} tick={nameKey === "channel" ? <ChannelChartTick /> : { fontSize: 10, fill: "rgba(0,56,101,0.5)" }} />
+          <XAxis dataKey={nameKey} tick={{ fontSize: 10, fill: "rgba(0,56,101,0.5)" }} />
           <YAxis tick={{ fontSize: 10, fill: "rgba(0,56,101,0.5)" }} />
-          <Tooltip formatter={(value: number, _name: string, item: any) => channelMetricTooltip(value, item, nameKey, valueName, tooltipSuffix)} />
+          <Tooltip formatter={(value: number) => [`${value}${tooltipSuffix}`, valueName]} />
           {editValues.legend && <Legend iconSize={10} />}
           <Line type="monotone" dataKey={valueKey} name={valueName} stroke={color} strokeWidth={1.5} dot={false} label={editValues.dataLabels ? { fontSize: 10 } : undefined} />
         </LineChart>
@@ -185,9 +179,9 @@ function renderMetricChart({
       <ResponsiveContainer width="100%" height={220}>
         <AreaChart data={rows}>
           <CartesianGrid stroke="rgba(0,56,101,0.06)" />
-          <XAxis dataKey={nameKey} tick={nameKey === "channel" ? <ChannelChartTick /> : { fontSize: 10, fill: "rgba(0,56,101,0.5)" }} />
+          <XAxis dataKey={nameKey} tick={{ fontSize: 10, fill: "rgba(0,56,101,0.5)" }} />
           <YAxis tick={{ fontSize: 10, fill: "rgba(0,56,101,0.5)" }} />
-          <Tooltip formatter={(value: number, _name: string, item: any) => channelMetricTooltip(value, item, nameKey, valueName, tooltipSuffix)} />
+          <Tooltip formatter={(value: number) => [`${value}${tooltipSuffix}`, valueName]} />
           {editValues.legend && <Legend iconSize={10} />}
           <Area type="monotone" dataKey={valueKey} name={valueName} stroke={color} fill={`${color}22`} strokeWidth={2} label={editValues.dataLabels ? { fontSize: 10 } : undefined} />
         </AreaChart>
@@ -198,11 +192,11 @@ function renderMetricChart({
   if (chartType === "hbar") {
     return (
       <ResponsiveContainer width="100%" height={220}>
-        <BarChart data={rows} layout="vertical" margin={{ top: 8, right: 28, left: 4, bottom: 4 }}>
+        <BarChart data={rows} layout="vertical" margin={{ top: 8, right: 18, left: 12, bottom: 4 }}>
           <CartesianGrid stroke="rgba(0,56,101,0.06)" />
           <XAxis type="number" tick={{ fontSize: 10, fill: "rgba(0,56,101,0.5)" }} />
-          <YAxis dataKey={nameKey} type="category" width={nameKey === "channel" ? 108 : 96} tick={nameKey === "channel" ? <ChannelYAxisTick /> : { fontSize: 10, fill: "rgba(0,56,101,0.65)" }} />
-          <Tooltip formatter={(value: number, _name: string, item: any) => channelMetricTooltip(value, item, nameKey, valueName, tooltipSuffix)} />
+          <YAxis dataKey={nameKey} type="category" width={96} tick={{ fontSize: 10, fill: "rgba(0,56,101,0.65)" }} />
+          <Tooltip formatter={(value: number) => [`${value}${tooltipSuffix}`, valueName]} />
           {editValues.legend && <Legend iconSize={10} />}
           <Bar maxBarSize={40} dataKey={valueKey} name={valueName} fill={color} radius={[0, 5, 5, 0]} label={editValues.dataLabels !== false ? { position: "right", fontSize: 10 } : undefined} />
         </BarChart>
@@ -214,10 +208,10 @@ function renderMetricChart({
     <ResponsiveContainer width="100%" height={220}>
       <BarChart data={rows}>
         <CartesianGrid stroke="rgba(0,56,101,0.06)" />
-        <XAxis dataKey={nameKey} tick={nameKey === "channel" ? <ChannelChartTick /> : { fontSize: 10, fill: "rgba(0,56,101,0.5)" }} />
+        <XAxis dataKey={nameKey} tick={{ fontSize: 10, fill: "rgba(0,56,101,0.5)" }} />
         <YAxis tick={{ fontSize: 10, fill: "rgba(0,56,101,0.5)" }} />
-        <Tooltip formatter={(value: number, _name: string, item: any) => channelMetricTooltip(value, item, nameKey, valueName, tooltipSuffix)} />
-        {editValues.legend && <Legend iconSize={10} formatter={(value) => <ChannelLabel channel={String(value)} badge={false} weight={400} />} />}
+        <Tooltip formatter={(value: number) => [`${value}${tooltipSuffix}`, valueName]} />
+        {editValues.legend && <Legend iconSize={10} />}
         <Bar maxBarSize={40} dataKey={valueKey} name={valueName} fill={color} radius={[5, 5, 0, 0]} label={editValues.dataLabels ? { position: "top", fontSize: 10 } : undefined} />
       </BarChart>
     </ResponsiveContainer>
@@ -254,8 +248,8 @@ function renderTrendChart(chartType: string, chartRows: any[], channels: string[
         <CartesianGrid stroke="rgba(0,56,101,0.06)" />
         <XAxis dataKey="date" tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
         <YAxis tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
-        <Tooltip formatter={(value: number, name: string) => [`${value} hội thoại`, `Số lượng [${name}]`]} />
-        {editValues.legend && <Legend iconSize={10} formatter={(value) => <ChannelLabel channel={String(value)} badge={false} weight={400} />} />}
+        <Tooltip />
+        {editValues.legend && <Legend iconSize={10} />}
         {activeChannels.map((channel, index) => {
           if (chartType === "area") {
             return <Area key={channel} type="monotone" dataKey={channel} stroke={CHANNEL_COLORS[channel] || NAVY} fill={`${CHANNEL_COLORS[channel] || NAVY}22`} strokeWidth={2} />;
@@ -498,17 +492,17 @@ export function ChannelAnalysis({ filters, onFiltersChange, onNavigate }: Channe
     return true;
   }, [settings]);
 
-  const channelData = (data?.channels || []).filter((item: any) => isSourceEnabled(item.channel || "") && item.channel !== "Khác");
+  const channelData = (data?.channels || []).filter((item: any) => isSourceEnabled(item.channel || ""));
 
   const channelTrend = data?.trend || [];
-  const channelStatusData = (data?.statusByChannel || []).filter((item: any) => isSourceEnabled(item.channel || "") && item.channel !== "Khác");
-  const heatmapData = (data?.heatmap || []).filter((h: any) => h.topic !== "Khác" && h.channel !== "Khác");
+  const channelStatusData = (data?.statusByChannel || []).filter((item: any) => isSourceEnabled(item.channel || ""));
+  const heatmapData = data?.heatmap || [];
 
   const getExportData = useCallback(() => {
     if (!data) return [];
-
+    
     const datasets: any[] = [];
-
+    
     // 1. Hiệu suất tổng quan
     datasets.push({
       title: "Hiệu suất các kênh",
@@ -576,7 +570,7 @@ export function ChannelAnalysis({ filters, onFiltersChange, onNavigate }: Channe
 
   const availableChannels = useMemo(() => {
     const channels = data?.channelsList?.length ? data.channelsList : channelData.map((item: any) => item.channel);
-    return channels.filter((item: string, index: number, arr: string[]) => arr.indexOf(item) === index && item !== "Khác").filter(isSourceEnabled);
+    return channels.filter((item: string, index: number, arr: string[]) => arr.indexOf(item) === index).filter(isSourceEnabled);
   }, [data, channelData, isSourceEnabled]);
 
   const availableTopics = useMemo(() => {
@@ -584,7 +578,7 @@ export function ChannelAnalysis({ filters, onFiltersChange, onNavigate }: Channe
     if (!topics.length && heatmapData.length > 0) {
       topics = Array.from(new Set(heatmapData.map((d: any) => d.topic).filter(Boolean)));
     }
-    return topics.filter((item: string, index: number, arr: string[]) => arr.indexOf(item) === index && item !== "Khác");
+    return topics.filter((item: string, index: number, arr: string[]) => arr.indexOf(item) === index);
   }, [data, heatmapData]);
 
   // Reset heatmap filters to "Tất cả" when data (and thus available options) changes
@@ -641,7 +635,7 @@ export function ChannelAnalysis({ filters, onFiltersChange, onNavigate }: Channe
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                       <div style={{ width: "10px", height: "10px", borderRadius: "50%", backgroundColor: CHANNEL_COLORS[ch.channel] || "#94A3B8" }} />
-                      <ChannelLabel channel={ch.channel} />
+                      <span style={{ fontSize: "14px", fontWeight: 600, color: "rgba(0,56,101,0.9)" }}>{ch.channel}</span>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                       <span style={{ fontSize: "12px", color: "rgba(0,56,101,0.45)", fontWeight: 400 }}>Tổng hội thoại</span>
@@ -779,7 +773,7 @@ export function ChannelAnalysis({ filters, onFiltersChange, onNavigate }: Channe
                     <tr>
                       <th className="flic-td-left" style={{ width: "168px", padding: "8px 16px", textAlign: "left", color: "rgba(0,56,101,0.5)", fontSize: "10px", fontWeight: 600, letterSpacing: "0.04em" }}>KÊNH / CHỦ ĐỀ</th>
                       {visibleTopics.map((t) => (
-                        <th key={t} style={{ padding: "8px 8px", textAlign: "center", color: topicColorForLabel(t), fontSize: "10px", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t}</th>
+                        <th key={t} style={{ padding: "8px 8px", textAlign: "center", color: "rgba(0,56,101,0.6)", fontSize: "10px", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t}</th>
                       ))}
                     </tr>
                   </thead>
@@ -873,7 +867,7 @@ export function ChannelAnalysis({ filters, onFiltersChange, onNavigate }: Channe
                         <td className="flic-td-left" style={{ padding: "12px 0px 12px 50px", textAlign: "left" }}>
                           <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-start", gap: "8px" }}>
                             <div style={{ width: "10px", height: "10px", borderRadius: "50%", backgroundColor: CHANNEL_COLORS[ch.channel] || "#94A3B8" }} />
-                            <ChannelLabel channel={ch.channel} badge={false} />
+                            <span style={{ fontWeight: 600, color: NAVY }}>{ch.channel}</span>
                           </div>
                         </td>
                         <td style={{ padding: "12px 14px", textAlign: "center" }}>

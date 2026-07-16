@@ -36,7 +36,6 @@ export interface FailedConversationRecord {
   issueConfidence?: number | null;
   needStaffReview?: boolean | number | null;
   messageAt?: string | null;
-  matchedNegativeKeywords?: string | null;
 }
 
 interface ApiResponse<T> {
@@ -50,7 +49,7 @@ interface FailedConversationPage {
   pagination: { page: number; pageSize: number; total: number };
 }
 
-const AI_ANALYTICS_TIMEOUT_MS = 60000;
+const AI_ANALYTICS_TIMEOUT_MS = 30000;
 
 function filenameFromDisposition(value: string | null) {
   if (!value) return null;

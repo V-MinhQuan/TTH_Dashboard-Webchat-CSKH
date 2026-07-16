@@ -78,9 +78,14 @@ class UserService:
         to_email = user["email"]
         sent = mail_service.send_otp_email(to_email, otp_code)
         
+        if not sent:
+            # Clear OTP if email failed so they can request again
+            _otp_store.pop(username.lower(), None)
+            raise Exception("Gửi email thất bại: Tài khoản hoặc mật khẩu (App Password) trong file .env bị từ chối bởi máy chủ SMTP. Vui lòng kiểm tra lại SMTP_USERNAME và SMTP_PASSWORD.")
+            
         return {
             "success": True,
-            "message": f"Mã xác thực đã được gửi tới email {to_email}." if sent else f"Mã OTP của bạn là: {otp_code} (Không gửi được email)",
+            "message": f"Mã xác thực đã được gửi tới email {to_email}.",
             "email": to_email,
             "sent_via_smtp": sent
         }

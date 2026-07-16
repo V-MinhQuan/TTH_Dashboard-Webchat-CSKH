@@ -51,20 +51,18 @@ def build_connection_string(settings: Optional[Settings] = None) -> str:
     settings = settings or get_settings()
     encrypt = "yes" if settings.db_encrypt else "no"
     trust_cert = "yes" if settings.db_trust_server_certificate else "no"
-    server_part = f"SERVER={settings.db_server},{settings.db_port}" if settings.db_server != "(local)" else f"SERVER={settings.db_server}"
-    parts = [
-        f"DRIVER={{{settings.db_driver}}}",
-        server_part,
-        f"DATABASE={settings.db_name}",
-        f"UID={settings.db_user}",
-        f"PWD={settings.db_password}",
-    ]
-    if settings.db_driver != "SQL Server":
-        parts.extend([
+    return ";".join(
+        [
+            f"DRIVER={{{settings.db_driver}}}",
+            f"SERVER={settings.db_server},{settings.db_port}",
+            f"DATABASE={settings.db_name}",
+            f"UID={settings.db_user}",
+            f"PWD={settings.db_password}",
             f"Encrypt={encrypt}",
             f"TrustServerCertificate={trust_cert}",
-        ])
-    return ";".join(parts)
+            "Connection Timeout=5",
+        ]
+    )
 
 
 def _connect_with_pymssql(settings: Settings) -> _PymssqlConnection:
@@ -74,7 +72,7 @@ def _connect_with_pymssql(settings: Settings) -> _PymssqlConnection:
         password=settings.db_password,
         database=settings.db_name,
         port=settings.db_port,
-        tds_version="7.3",
+        tds_version="7.0",
         timeout=max(settings.db_timeout_seconds, MIN_QUERY_TIMEOUT_SECONDS),
         login_timeout=max(settings.db_timeout_seconds, 5),
     )
@@ -103,7 +101,10 @@ def get_connection(settings: Optional[Settings] = None) -> Iterator[Any]:
         try:
             conn = _connect_with_pyodbc(settings)
         except pyodbc.Error as exc:
-            logger.warning("pyodbc connection failed, falling back to pymssql: %s", exc)
+            logger.warning(
+                "pyodbc connection failed; falling back to pymssql error_type=%s",
+                type(exc).__name__,
+            )
             _prefer_pymssql = True
             conn = _connect_with_pymssql(settings)
     try:
