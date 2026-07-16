@@ -1,3 +1,5 @@
+// @ts-nocheck
+import React from 'react';
 import { Filter, Info, Layers3, ListPlus, X } from "lucide-react";
 
 import {

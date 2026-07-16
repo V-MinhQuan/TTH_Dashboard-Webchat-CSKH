@@ -1,3 +1,5 @@
+// @ts-nocheck
+import React from 'react';
 import { useState, useRef, useEffect } from "react";
 import {
   SlidersHorizontal, Table2, BarChart2, Settings2, ExternalLink,

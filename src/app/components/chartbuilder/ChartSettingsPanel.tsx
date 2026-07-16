@@ -1,3 +1,4 @@
+import React from 'react';
 import { CircleHelp, Plus, Trash2, X } from "lucide-react";
 
 import {

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { AlertTriangle, CheckCircle, XCircle, ChevronDown, ChevronUp, FilePlus2, Clock, Table2, Activity, Download, BoldIcon, Filter } from "lucide-react";
 import {

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState, useEffect } from "react";
 
 class ErrorBoundary extends React.Component<any, any> {

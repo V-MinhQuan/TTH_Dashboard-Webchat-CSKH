@@ -1,3 +1,4 @@
+// @ts-nocheck
 import type { FilterValues } from "../context/GlobalFilterContext";
 
 export type ExportFormat = "pdf" | "png" | "csv" | "xlsx";

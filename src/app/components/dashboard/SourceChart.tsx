@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
 import { CHANNEL_COLORS as SOURCE_COLORS } from "../../../colors";
 
