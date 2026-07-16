@@ -351,6 +351,26 @@ def ai_suggested_faqs(
 
 
 
+@router.post("/sentiment/resolve-reviews")
+def resolve_sentiment_reviews(
+    request: ResolveAIIssuesRequest,
+    service: AnalyticsService = Depends(get_analytics_service),
+    claims: SessionClaims = Depends(require_roles("manager", "staff", "admin")),
+):
+    count = service.resolve_sentiment_reviews(request.analyticsIds)
+    activity_repo.log_activity(
+        user_id=claims.username,
+        action_type="Đánh dấu xử lý",
+        entity="Phân tích cảm xúc",
+        details=f"Đã xử lý {count} phản hồi cảm xúc tiêu cực",
+    )
+    return {
+        "success": True,
+        "message": f"Đã đánh dấu xử lý {count} phản hồi cảm xúc tiêu cực.",
+        "data": {"updated": count},
+    }
+
+
 @router.post("/ai/resolve-issues")
 def resolve_ai_issues(
     request: ResolveAIIssuesRequest,

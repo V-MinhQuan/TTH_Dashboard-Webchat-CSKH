@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { AlertTriangle, CheckCircle, XCircle, ChevronDown, ChevronUp, FilePlus2, Clock, Table2, Activity, Download, BoldIcon, Filter } from "lucide-react";
 import {
@@ -390,7 +388,13 @@ function mapFailedConversation(record: any) {
     customerName: customer.primary,
     customerReference: customer.secondary,
     messageAt: record.messageAt || null,
+    matchedNegativeKeywords: record.matchedNegativeKeywords,
   };
+}
+
+function hasCustomerQuestion(record: any) {
+  const value = String(record?.textContent ?? record?.question ?? "").trim();
+  return value.length > 0 && value !== "Chưa có dữ liệu";
 }
 
 function buildFailedConversationCsvRows(records: Array<ReturnType<typeof mapFailedConversation>>) {
@@ -522,7 +526,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
         })));
         if (Array.isArray(fbt)) setFailureByTopic(fbt);
         if (fc?.records) {
-          setFailedConversations(fc.records.map(mapFailedConversation));
+          setFailedConversations(fc.records.filter(hasCustomerQuestion).map(mapFailedConversation));
           setFailedConversationTotal(Number(fc.pagination?.total ?? fc.records.length) || 0);
         }
         setFailedPage(1);
@@ -827,7 +831,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
       const date = new Date().toISOString().slice(0, 10);
       const scope = "-toan-bo-du-lieu-da-loc";
       const result = await getAllFailedConversations(queryParams, { pageSize: 100 });
-      const exportRows = result.records.map(mapFailedConversation);
+      const exportRows = result.records.filter(hasCustomerQuestion).map(mapFailedConversation);
       if (!exportRows.length) {
         toast.warning("Không có dữ liệu lỗi AI để xuất.");
         return;
@@ -895,23 +899,15 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
     });
 
     // 3. Danh sách câu hỏi AI chưa xử lý (Fetch all pages)
-    let failedRows: string[][];
-    const failedHeaders = [
-      "Khách hàng",
-      "Nguồn",
-      "Chủ đề",
-      "Nội dung khách hỏi (Câu cuối cùng)",
-      "Lý do thất bại",
-      "Câu trả lời của AI (Nếu có)",
-      "Ngày xảy ra"
-    ];
+    let failedRows: string[][] = [];
+    const failedHeaders = buildFailedConversationCsvRows([])[0];
     let loadingToastId: string | number | undefined;
 
     try {
       loadingToastId = toast.loading("Đang tải toàn bộ dữ liệu lỗi AI để xuất Excel...");
       const queryParams = analyticsFiltersToSearchParams(filters);
       const result = await getAllFailedConversations(queryParams, { pageSize: 100 });
-      const exportRows = result.records.map(mapFailedConversation);
+      const exportRows = result.records.filter(hasCustomerQuestion).map(mapFailedConversation);
       failedRows = buildFailedConversationCsvRows(exportRows).slice(1) as string[][];
       toast.dismiss(loadingToastId);
     } catch (e) {
@@ -930,20 +926,6 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
 
 
 
-    // 5. FAQ gợi ý bổ sung
-    if (suggestedFAQs.length > 0) {
-      datasets.push({
-        title: "Gợi ý bổ sung FAQ",
-        headers: ["Câu hỏi", "Số lần gặp", "Câu trả lời gợi ý", "Chủ đề", "Mức độ ưu tiên"],
-        rows: suggestedFAQs.map(f => [
-          f.question || "",
-          String(f.freq || 0),
-          f.suggestedAnswer || "",
-          f.topic || "",
-          f.priority || ""
-        ])
-      });
-    }
 
     return datasets;
   };
@@ -1449,12 +1431,17 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
                           const matchedKeywords = new Set<string>();
 
                           relevantConvs.forEach(c => {
-                            const text = ((c.question || "") + " " + (c.aiAnswer || "")).toLowerCase();
-                            baseKeywords.forEach(k => {
-                              if (text.includes(k.toLowerCase())) {
-                                matchedKeywords.add(k);
-                              }
-                            });
+                            const dbKeywords = (c.matchedNegativeKeywords || "").split(',').map((k: string) => k.trim()).filter(Boolean);
+                            if (dbKeywords.length > 0) {
+                              dbKeywords.forEach((k: string) => matchedKeywords.add(k));
+                            } else {
+                              const text = ((c.question || "") + " " + (c.aiAnswer || "")).toLowerCase();
+                              baseKeywords.forEach(k => {
+                                if (text.includes(k.toLowerCase())) {
+                                  matchedKeywords.add(k);
+                                }
+                              });
+                            }
                           });
 
                           const hasMatched = matchedKeywords.size > 0;

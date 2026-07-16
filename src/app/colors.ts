@@ -85,7 +85,7 @@ export const STATUS_COLORS: Record<string, { bg: string; color: string; border: 
 
 // ── Channel & Topic Mapping ───────────────────────────────────────
 export const CHANNEL_COLORS: Record<string, string> = {
-  "Facebook": "#ED5206",
+  "Facebook": "#008C95",
   "ZaloOA": "#42A5F5",
   "Zalo OA": "#42A5F5",
   "ZaloBusiness": "#003865",
@@ -94,9 +94,24 @@ export const CHANNEL_COLORS: Record<string, string> = {
   "Chat Widget": "#D73C01",
 };
 
+export function channelColorForLabel(value: string | null | undefined) {
+  const normalized = String(value || "").trim().toLowerCase().replace(/[\s_-]+/g, "");
+  const aliases: Record<string, string> = {
+    zalooa: "ZaloOA",
+    zalo: "ZaloOA",
+    zalobusiness: "ZaloBusiness",
+    zalobiz: "ZaloBusiness",
+    facebook: "Facebook",
+    chatwidget: "ChatWidget",
+    website: "ChatWidget",
+    web: "ChatWidget",
+  };
+  return CHANNEL_COLORS[aliases[normalized]] || "#64748B";
+}
+
 export const TOPIC_COLORS: Record<string, string> = {
-  "TOEIC": "#00A3E0",
-  "MOS": "#00D2FF",
+  "TOEIC": "#0B7285",
+  "MOS": "#E86A92",
   "Sát hạch CNTT": "#002E8D",
   "Học Tin học": "#FFA100",
   "Học Tiếng Anh": "#308D16",

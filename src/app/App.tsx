@@ -7,6 +7,7 @@ import { GlobalFilterProvider, useGlobalFilters } from "./context/GlobalFilterCo
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { SettingsProvider } from "./context/SettingsContext";
 import { LoginScreen } from "./components/screens/Login";
+import { API_BASE_URL } from "./services/dashboardApi";
 
 // AI Chat Widget tạm ẩn chờ phát triển sau
 const Overview = lazy(() => import("./components/screens/Overview").then((m) => ({ default: m.Overview })));
@@ -145,8 +146,7 @@ function MainApp() {
 
     const checkHealth = async () => {
       try {
-        const baseUrl = import.meta.env.VITE_API_BASE_URL || "";
-        const response = await fetch(`${baseUrl}/api/health`);
+        const response = await fetch(`${API_BASE_URL}/api/health`);
         const data = await response.json();
         
         // If ML service is connected but model is NOT loaded
@@ -277,7 +277,7 @@ function MainApp() {
       </div>
 
       <div className="app-content" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
-        <div className="print-hidden" style={{ position: "relative", zIndex: 99999 }}>
+        <div className="print-hidden">
           <Header
             activeScreen={activeScreen}
             onNavigate={handleNavigate}

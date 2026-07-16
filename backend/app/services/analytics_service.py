@@ -227,6 +227,9 @@ class AnalyticsService:
             },
         }
 
+    def resolve_sentiment_reviews(self, analytics_ids: List[int]) -> int:
+        return self.repository.resolve_sentiment_reviews(analytics_ids)
+
     def get_positive_conversations(self, filters: Dict[str, Any]) -> Dict[str, Any]:
         payload = self.repository.get_positive_conversations(filters)
         return {

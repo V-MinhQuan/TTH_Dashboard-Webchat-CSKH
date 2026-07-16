@@ -119,10 +119,7 @@ function isAllValue(value: unknown) {
   return matchesAny(value, ["Tat ca", "Tất cả", "Táº¥t cáº£", "all", ""]);
 }
 
-export function getDateParamsFromFilters(filters: DateFilterInput): {
-  startDate?: string;
-  endDate?: string;
-} {
+export function getDateParamsFromFilters(filters: DateFilterInput): { startDate?: string; endDate?: string } {
   const today = new Date();
 
   if (matchesAny(filters.dateRange, ["Hom nay", "Hôm nay", "HÃ´m nay"])) {

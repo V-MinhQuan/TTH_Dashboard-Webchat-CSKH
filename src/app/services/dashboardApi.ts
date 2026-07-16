@@ -264,6 +264,8 @@ export function buildApiUrl(path: string, params?: URLSearchParams | Record<stri
   return url;
 }
 
+const memoryCache = new Map<string, { savedAt: number; value: any }>();
+
 export async function fetchApiJson<T>(
   urlInput: string | URL,
   options: Omit<RequestInit, "cache"> & { timeoutMs?: number; cache?: boolean } = {},
@@ -271,13 +273,28 @@ export async function fetchApiJson<T>(
   const url = urlInput.toString();
   const { timeoutMs, cache: cacheOption, signal: externalSignal, ...fetchOptions } = options;
   const method = (fetchOptions.method || "GET").toUpperCase();
-  const useCache = cacheOption !== false && method === "GET";
+  // useCache: true for GET requests (enables in-flight deduplication and write-through cache)
+  const useCache = method === "GET";
+  // readFromCache: true only when cache option is not explicitly disabled
+  const readFromCache = useCache && cacheOption !== false;
   const cacheKey = `${method}:${url}`;
 
-  if (useCache) {
-    const cached = readCache<T>(cacheKey);
-    if (cached) return cached;
+  if (readFromCache) {
+    // 1. Check memory cache first
+    const memCached = memoryCache.get(cacheKey);
+    if (memCached && Date.now() - memCached.savedAt < API_CACHE_TTL_MS) {
+      return memCached.value as T;
+    }
 
+    // 2. Fallback to session storage if memory cache miss
+    const cached = readCache<T>(cacheKey);
+    if (cached) {
+      memoryCache.set(cacheKey, { savedAt: Date.now(), value: cached });
+      return cached;
+    }
+  }
+
+  if (useCache) {
     const pending = inFlightGetRequests.get(cacheKey);
     if (pending) return pending as Promise<T>;
   }
@@ -315,11 +332,16 @@ export async function fetchApiJson<T>(
         }
         throw error;
       }
-      if (useCache) writeCache(cacheKey, payload);
+      if (useCache) {
+        memoryCache.set(cacheKey, { savedAt: Date.now(), value: payload });
+        writeCache(cacheKey, payload);
+      }
       return payload;
     })
     .catch((err: any) => {
       if (useCache && !(err instanceof ApiRequestError)) {
+        const memCached = memoryCache.get(cacheKey);
+        if (memCached) return memCached.value as T;
         const stale = readCache<T>(cacheKey, true);
         if (stale) return stale;
       }
@@ -462,15 +484,6 @@ export async function getDashboardKpi(params?: {
 
   if (!resJson.success) {
     throw new Error(resJson.message || "Không thể tải dữ liệu Dashboard. Vui lòng kiểm tra lại cấu hình hoặc kết nối.");
-  }
-
-  const requiredSummaryFailed = Array.isArray(resJson.data?.partialErrors)
-    && resJson.data.partialErrors.some((item: any) => item?.branch === "summary");
-  if (requiredSummaryFailed) {
-    throw new ApiRequestError(
-      "Không thể tải số liệu tổng quan từ cơ sở dữ liệu. Vui lòng thử lại.",
-      503,
-    );
   }
 
   return normalizeDashboardKpiData(resJson.data);
@@ -706,6 +719,16 @@ export async function resolveAIIssues(analyticsIds: number[]): Promise<{ updated
     },
   );
   if (!resJson.success) throw new Error(resJson.message || "Không thể cập nhật lỗi AI.");
+  clearApiCache();
+  return resJson.data;
+}
+
+export async function resolveSentimentReviews(analyticsIds: number[]): Promise<{ updated: number }> {
+  const resJson = await fetchApiJson<{ success: boolean; data: { updated: number }; message?: string }>(
+    buildApiUrl("/api/analytics/sentiment/resolve-reviews"),
+    { method: "POST", cache: false, body: JSON.stringify({ analyticsIds }) },
+  );
+  if (!resJson.success) throw new Error(resJson.message || "Không thể cập nhật phản hồi cảm xúc.");
   clearApiCache();
   return resJson.data;
 }

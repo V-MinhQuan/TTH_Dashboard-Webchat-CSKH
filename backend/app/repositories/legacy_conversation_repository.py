@@ -1140,7 +1140,7 @@ class ConversationRepository(BaseRepository):
                 limit_value = int(limit or 10)
             except (TypeError, ValueError):
                 limit_value = 10
-            limit_value = max(1, min(limit_value, 50))
+            limit_value = max(1, min(limit_value, 1000))
 
             conditions = [
                 valid_conversation_condition("c"),
@@ -1214,6 +1214,7 @@ class ConversationRepository(BaseRepository):
                   customerInfo.customer_name,
                   CAST(NULL AS NVARCHAR(50)) AS phone_number,
                   c.Source AS source,
+                  latestCustomer.TextContent AS last_message,
                   {self._conversation_status_case('c', 's')} AS status,
                   DATEDIFF(MINUTE, c.LastCustomerMessageAt, GETDATE()) AS wait_mins
                 FROM WebChat_Conversations c

@@ -14,6 +14,7 @@ from app.routers.legacy import router as legacy_router
 from app.services.huggingface_sentiment_client import HuggingFaceSentimentClient
 from app.services.sentiment_service import SentimentService
 from app.worker.ai_analytics_worker import SentimentAnalysisWorker
+from app.worker.dashboard_worker import DashboardPrecomputeWorker
 from app.worker.manager import BackgroundWorkerManager
 
 
@@ -26,8 +27,9 @@ async def lifespan(app: FastAPI):
     hf_client = HuggingFaceSentimentClient(settings_obj)
     repository = SentimentRepository()
     sentiment_service = SentimentService(hf_client)
-    worker = SentimentAnalysisWorker(repository, hf_client, settings_obj)
-    manager = BackgroundWorkerManager(worker)
+    sentiment_worker = SentimentAnalysisWorker(repository, hf_client, settings_obj)
+    dashboard_worker = DashboardPrecomputeWorker(interval_seconds=600)
+    manager = BackgroundWorkerManager(sentiment_worker, dashboard_worker)
 
     app.state.hf_sentiment_client = hf_client
     app.state.sentiment_repository = repository

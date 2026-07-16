@@ -24,7 +24,7 @@ from app.repositories.legacy_conversation_repository import ConversationReposito
 from app.services.conversation_cleaner import conversation_cleaner_service
 from app.utils.customer_identity import customer_display_name
 
-DASHBOARD_CACHE_TTL_SECONDS = 90
+DASHBOARD_CACHE_TTL_SECONDS = 300
 AI_QUESTION_CACHE_TTL_SECONDS = 3600
 AI_QUESTION_STALE_CACHE_TTL_SECONDS = 300
 AI_QUESTION_FALLBACK_CACHE_TTL_SECONDS = 60
@@ -968,15 +968,19 @@ def semantic_similarity_score(text_a: str, text_b: str, tokens_a: set, tokens_b:
     if not text_a or not text_b:
         return 0.0
 
+    # Điểm tương đồng từ vựng (token overlap)
+    tok_score = token_overlap_score(tokens_a, tokens_b)
+    
+    # TỐI ƯU CỰC MẠNH: Nếu từ vựng không khớp nhau nổi 40%, bỏ qua luôn thuật toán SequenceMatcher rùa bò
+    if tok_score < 0.4:
+        return tok_score * 0.6
+
     # Chuẩn hóa văn bản trước khi so sánh chuỗi
     norm_a = strip_vietnamese_marks(clean_question_text(text_a)).lower()
     norm_b = strip_vietnamese_marks(clean_question_text(text_b)).lower()
 
     # Điểm tương đồng cấu trúc chuỗi (SequenceMatcher)
     seq_score = difflib.SequenceMatcher(None, norm_a, norm_b).ratio()
-
-    # Điểm tương đồng từ vựng (token overlap)
-    tok_score = token_overlap_score(tokens_a, tokens_b)
 
     # Trọng số: 60% token overlap (ý nghĩa cụm từ) + 40% cấu trúc chuỗi
     combined = tok_score * 0.6 + seq_score * 0.4
@@ -1748,6 +1752,89 @@ def build_database_top_question_rows(raw_rows):
         return local_rows, "fallback", AI_FALLBACK_MESSAGE
     return [], "ok", ""
 
+# Ánh xạ tên kênh từ filter sang key trong daily rollup JSON
+_CHANNEL_TO_ROLLUP_KEY = {
+    None: "rows_all",
+    "Chat Widget": "rows_chatwidget",
+    "ChatWidget": "rows_chatwidget",
+    "Facebook": "rows_facebook",
+    "Zalo OA": "rows_zalooa",
+    "ZaloOA": "rows_zalooa",
+    "Zalo Business": "rows_zalobiz",
+    "ZaloBusiness": "rows_zalobiz",
+}
+
+def _get_rollup_top_questions(start_date, end_date, channel=None):
+    """Gom câu hỏi từ Daily Rollup cache thay vì truy vấn SQL nặng.
+    
+    Trả về tuple (rows, status, message) nếu đủ dữ liệu rollup,
+    hoặc None nếu không có dữ liệu rollup (để fallback về SQL).
+    """
+    if not start_date or not end_date:
+        return None
+
+    try:
+        rollup_data = ai_question_group_cache_repository.get_daily_rollup_range(start_date, end_date)
+    except Exception as exc:
+        logger.warning("Could not read daily rollup: %s", exc)
+        return None
+
+    if not rollup_data:
+        return None
+
+    # Kiểm tra xem có ít nhất 50% số ngày trong khoảng có dữ liệu rollup không
+    try:
+        start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
+        end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
+        total_days = (end_dt - start_dt).days + 1
+    except (ValueError, TypeError):
+        return None
+
+    if len(rollup_data) < max(1, total_days * 0.5):
+        # Dưới 50% ngày có rollup -> không đủ tin cậy, fallback về SQL
+        return None
+
+    # Gom tất cả câu hỏi theo kênh
+    rollup_key = _CHANNEL_TO_ROLLUP_KEY.get(channel, "rows_all")
+    combined_counts = Counter()
+    combined_related = {}
+
+    for _date, day_data in rollup_data.items():
+        day_rows = day_data.get(rollup_key) or day_data.get("rows_all") or []
+        for row in day_rows:
+            q = row.get("question", "")
+            if not q:
+                continue
+            combined_counts[q] += row.get("count", 0)
+            # Gom related questions
+            for rq in row.get("relatedQuestions") or []:
+                rq_text = rq.get("question", "")
+                if rq_text:
+                    combined_related.setdefault(q, Counter())
+                    combined_related[q][rq_text] += rq.get("count", 0)
+
+    if not combined_counts:
+        return None
+
+    # Tạo danh sách rows đã được tổng hợp
+    merged_rows = []
+    for question, count in combined_counts.most_common(TOP_QUESTIONS_RESPONSE_LIMIT):
+        related = [
+            {"question": rq, "count": rc}
+            for rq, rc in (combined_related.get(question) or Counter()).most_common(10)
+        ]
+        merged_rows.append({
+            "question": question,
+            "count": count,
+            "aiGenerated": False,
+            "source": "daily_rollup",
+            "relatedQuestions": related,
+            "sourceQuestionCount": len(related),
+        })
+
+    return merged_rows, "fallback", "Dữ liệu từ bộ nhớ đệm tổng hợp hàng đêm."
+
+
 class DashboardService:
     def __init__(self):
         self.repository = ConversationRepository()
@@ -1816,6 +1903,16 @@ class DashboardService:
                 set_cached_value(top_questions_cache_key, db_cached_top_questions["value"])
                 set_cached_value(last_good_cache_key, db_cached_top_questions["value"])
                 return db_cached_top_questions["value"]
+
+            # Bước 3 trong chuỗi ưu tiên: Daily Rollup (siêu nhanh, không cần gọi SQL nặng)
+            rollup_result = _get_rollup_top_questions(start_date, end_date, channel)
+            if rollup_result is not None:
+                logger.info(
+                    "Dashboard top questions served from daily rollup cache start=%s end=%s channel=%s rows=%d",
+                    start_date, end_date, channel or "all", len(rollup_result[0]),
+                )
+                set_cached_value(top_questions_cache_key, rollup_result)
+                return rollup_result
 
         raw_top_questions = self._cached_repo_call(
             f'top_questions_base:{channel or "all"}',
@@ -1904,6 +2001,7 @@ class DashboardService:
                 "customerDisplayName": customer,
                 "customer": customer,
                 "channel": format_channel(row.get('source')),
+                "lastMessage": row.get('last_message') or '',
                 "topic": 'Khác',
                 "wait": format_wait_time(wait_mins),
                 "status": status_text,

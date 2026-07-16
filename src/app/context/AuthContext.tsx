@@ -132,12 +132,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setRole(null);
     setUserState(null);
     clearStoredAuth();
-    if (typeof window !== 'undefined') {
-      window.history.replaceState({}, '', '/');
-      try {
-        localStorage.removeItem("dashboard_activeScreen");
-      } catch (e) {}
-    }
   }, []);
 
   useEffect(() => {
