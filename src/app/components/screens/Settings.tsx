@@ -170,6 +170,14 @@ export function Settings({ defaultSection = "profile" }: { defaultSection?: stri
       toast.error("Vui lòng nhập họ tên");
       return;
     }
+    if (!profileData.email.trim() || !profileData.email.includes("@")) {
+      toast.error("Vui lòng nhập email hợp lệ (phải chứa ký tự @)");
+      return;
+    }
+    if (!profileData.phone.trim() || !/^\d{10}$/.test(profileData.phone.trim())) {
+      toast.error("Vui lòng nhập số điện thoại hợp lệ (phải là 10 số)");
+      return;
+    }
     if (!user) {
       toast.error("Không tìm thấy thông tin người dùng hiện tại.");
       return;

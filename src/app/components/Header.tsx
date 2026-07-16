@@ -217,7 +217,7 @@ export function Header({ activeScreen, onNavigate, onResetFilters }: HeaderProps
         gap: "16px",
         position: "sticky",
         top: 0,
-        zIndex: 50,
+        zIndex: 1000,
         boxShadow: "0 1px 8px rgba(0,56,101,0.06)",
       }}
     >

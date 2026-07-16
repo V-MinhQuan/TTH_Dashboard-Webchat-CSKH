@@ -277,7 +277,7 @@ function MainApp() {
       </div>
 
       <div className="app-content" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
-        <div className="print-hidden">
+        <div className="print-hidden" style={{ position: "relative", zIndex: 99999 }}>
           <Header
             activeScreen={activeScreen}
             onNavigate={handleNavigate}
