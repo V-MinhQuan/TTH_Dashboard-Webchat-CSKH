@@ -4,7 +4,7 @@ import { DashboardKpiData, ChannelAnalyticsData, APIResponse, PriorityConversati
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:5000";
 
 const configuredTimeout = Number(import.meta.env.VITE_API_TIMEOUT_MS);
-const API_TIMEOUT_MS = Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? configuredTimeout : 15000;
+const API_TIMEOUT_MS = Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? configuredTimeout : 60000;
 const configuredCacheTtl = Number(import.meta.env.VITE_API_CACHE_TTL_MS);
 const API_CACHE_TTL_MS = Number.isFinite(configuredCacheTtl) && configuredCacheTtl > 0 ? configuredCacheTtl : 120000;
 const API_CACHE_PREFIX = "flic_api_cache:v4:";

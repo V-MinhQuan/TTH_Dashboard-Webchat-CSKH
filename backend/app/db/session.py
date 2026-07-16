@@ -11,7 +11,7 @@ from app.core.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
 _prefer_pymssql = False
-MIN_QUERY_TIMEOUT_SECONDS = 30
+MIN_QUERY_TIMEOUT_SECONDS = 120
 
 
 class _PymssqlCursor:

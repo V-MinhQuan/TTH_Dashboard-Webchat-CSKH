@@ -63,9 +63,9 @@ class MailService:
         try:
             _safe_print(f"[SMTP] Sending OTP {otp_code} to {to_email} via {settings.smtp_server}:{settings.smtp_port}...")
             if settings.smtp_port == 465:
-                server = smtplib.SMTP_SSL(settings.smtp_server, settings.smtp_port)
+                server = smtplib.SMTP_SSL(settings.smtp_server, settings.smtp_port, timeout=10)
             else:
-                server = smtplib.SMTP(settings.smtp_server, settings.smtp_port)
+                server = smtplib.SMTP(settings.smtp_server, settings.smtp_port, timeout=10)
                 server.starttls()
 
             server.login(settings.smtp_username, settings.smtp_password)
