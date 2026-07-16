@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-07-16T10:41:10.616385",
+  "database_name": "Dashboard_ChatBot",
+  "Total rows": 31824,
+  "Status counts": {
+    "null": 30824,
+    "quarantined": 1000
+  }
+}

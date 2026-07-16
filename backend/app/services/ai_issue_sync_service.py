@@ -113,7 +113,6 @@ def sync_ai_issue_flags(*, apply: bool = False, since: Optional[str] = None) -> 
         rows = _fetch_ai_messages(cursor, since)
 
         updates = []
-        inserts = []
         issue_counts: Counter[str] = Counter()
         topic_counts: Counter[str] = Counter()
 
@@ -149,30 +148,15 @@ def sync_ai_issue_flags(*, apply: bool = False, since: Optional[str] = None) -> 
                         analyzed_at,
                         row["messageId"],
                     ))
-            else:
-                inserts.append((
-                    row["messageId"],
-                    row.get("conversationId"),
-                    row.get("ReceiverId"),
-                    row.get("Source"),
-                    "neutral",
-                    0.0,
-                    need_staff_review,
-                    row.get("SentAt"),
-                    analyzed_at,
-                    issue_flag,
-                    issue_type,
-                    issue_reason,
-                    issue_confidence,
-                    detected_topics,
-                    detected_keywords,
-                ))
+            # Missing analytics rows are intentionally left to the SQL-backed
+            # Hugging Face worker. Creating a synthetic neutral row here would
+            # corrupt sentiment KPIs and bypass persisted retry state.
 
         result = AiIssueSyncResult(
             dry_run=not apply,
             total_ai_messages=len(rows),
             would_update_rows=len(updates),
-            would_insert_rows=len(inserts),
+            would_insert_rows=0,
             flagged_rows=sum(issue_counts.values()),
             issue_counts=dict(issue_counts),
             topic_counts=dict(topic_counts),
@@ -198,18 +182,7 @@ def sync_ai_issue_flags(*, apply: bool = False, since: Optional[str] = None) -> 
                 updates[i:i + 100],
             )
 
-        for i in range(0, len(inserts), 100):
-            cursor.executemany(
-                """
-                INSERT INTO dbo.WebChat_MessageAnalytics
-                (messageId, conversationId, customerId, source, sentimentLabel, sentimentScore,
-                 needStaffReview, messageAt, analyzedAt, issueFlag, issueType, issueReason, issueConfidence, detectedTopics, detectedKeywords)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                inserts[i:i + 100],
-            )
-
         conn.commit()
         result.updated_rows = len(updates)
-        result.inserted_rows = len(inserts)
+        result.inserted_rows = 0
         return result

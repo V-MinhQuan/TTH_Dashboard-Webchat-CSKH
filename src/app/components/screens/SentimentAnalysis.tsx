@@ -401,6 +401,14 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
   const neuPctStr = summaryData?.summary?.total ? Math.round((summaryData.summary.neutral / summaryData.summary.total) * 100) + "%" : "0%";
   const negPctStr = summaryData?.summary?.total ? Math.round((summaryData.summary.negative / summaryData.summary.total) * 100) + "%" : "0%";
   const analyzedConversationCount = Number(summaryData?.totalConversations ?? summaryData?.summary?.totalConversations ?? 0);
+  const analysisStatusCounts = {
+    total: Number(summaryData?.analysisStatusCounts?.total ?? summaryData?.summary?.total ?? 0),
+    completed: Number(summaryData?.analysisStatusCounts?.completed ?? summaryData?.summary?.total ?? 0),
+    pending: Number(summaryData?.analysisStatusCounts?.pending ?? 0),
+    processing: Number(summaryData?.analysisStatusCounts?.processing ?? 0),
+    failed: Number(summaryData?.analysisStatusCounts?.failed ?? 0),
+    quarantined: Number(summaryData?.analysisStatusCounts?.quarantined ?? 0),
+  };
   const satisfactionValue = summaryData?.avgSatisfaction ? (summaryData.avgSatisfaction > 5 ? summaryData.avgSatisfaction / 20 : summaryData.avgSatisfaction) : 0;
   const satisfactionStr = satisfactionValue > 0 ? satisfactionValue.toFixed(1) + "/5" : "0/5";
   const satisfactionPctLabel = satisfactionValue > 0 ? `${Math.round(satisfactionValue * 20)} điểm ` : "0 điểm %";
@@ -491,7 +499,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
     });
 
     // 3. Hội thoại tích cực (Fetch ALL with Pagination)
-    let posRows: string[][] = [];
+    let posRows: string[][];
     const posHeaders = ["Khách hàng", "Nội dung đại diện", "Chủ đề", "Kênh", "Cảm xúc", "Thời gian"];
     const PAGE_SIZE = 100; // Backend max_page_size is 100
     let loadingToastId: string | number | undefined;
@@ -648,6 +656,43 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
                   <div style={{ fontSize: "10px", color: "rgba(0,56,101,0.45)", fontWeight: 500, marginTop: "2px", minHeight: "12px" }}>
                     {change || ""}
                   </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div
+            aria-label="Trạng thái phân tích cảm xúc"
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
+              gap: "10px",
+              marginBottom: "24px",
+            }}
+          >
+            {[
+              { label: "Tổng bản ghi", value: analysisStatusCounts.total, color: NAVY },
+              { label: "Đã phân tích", value: analysisStatusCounts.completed, color: "#228A61" },
+              { label: "Chờ phân tích", value: analysisStatusCounts.pending, color: "#E5A850" },
+              { label: "Đang phân tích", value: analysisStatusCounts.processing, color: "#1A73E8" },
+              { label: "Phân tích lỗi", value: analysisStatusCounts.failed, color: "#EA4335" },
+              { label: "Legacy chưa xác minh", value: analysisStatusCounts.quarantined, color: "#7A5AF8" },
+            ].map((item) => (
+              <div
+                key={item.label}
+                style={{
+                  backgroundColor: "#fff",
+                  border: "1px solid rgba(0,56,101,0.08)",
+                  borderRadius: "12px",
+                  padding: "10px 12px",
+                  minWidth: 0,
+                }}
+              >
+                <div style={{ color: "rgba(0,56,101,0.58)", fontSize: "11px", marginBottom: "4px" }}>
+                  {item.label}
+                </div>
+                <div style={{ color: item.color, fontSize: "18px", fontWeight: 700 }}>
+                  {item.value.toLocaleString("vi-VN")}
                 </div>
               </div>
             ))}
@@ -810,7 +855,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
                   if (safeData.length === 0) {
                     return (
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "220px", color: "rgba(0,56,101,0.4)", fontSize: "13px", fontStyle: "italic" }}>
-                        Chưa có dữ liệu phân tích chủ đề. Dữ liệu sẽ hiển thị khi ML service phân tích xong tin nhắn.
+                        Chưa có dữ liệu phân tích chủ đề. Dữ liệu sẽ hiển thị khi Hugging Face hoàn tất phân tích tin nhắn khách hàng.
                       </div>
                     );
                   }

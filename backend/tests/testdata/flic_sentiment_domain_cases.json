@@ -1,0 +1,272 @@
+[
+  {
+    "id": "FLIC-POS-001",
+    "priority": true,
+    "text": "Tôi rất hài lòng vì hệ thống hỗ trợ nhanh chóng.",
+    "expected_label": "POS",
+    "ambiguous": false,
+    "channel": "webchat",
+    "topic": "ho_tro"
+  },
+  {
+    "id": "FLIC-POS-002",
+    "priority": true,
+    "text": "Cảm ơn bạn, vấn đề của tôi đã được giải quyết.",
+    "expected_label": "POS",
+    "ambiguous": false,
+    "channel": "webchat",
+    "topic": "ho_tro"
+  },
+  {
+    "id": "FLIC-POS-003",
+    "priority": false,
+    "text": "Chatbot trả lời đúng thông tin tôi cần, rất hữu ích.",
+    "expected_label": "POS",
+    "ambiguous": false,
+    "channel": "chatbot",
+    "topic": "chatbot"
+  },
+  {
+    "id": "FLIC-POS-004",
+    "priority": false,
+    "text": "Tôi tra cứu điểm thành công và rất hài lòng với hệ thống.",
+    "expected_label": "POS",
+    "ambiguous": false,
+    "channel": "web",
+    "topic": "tra_cuu_diem"
+  },
+  {
+    "id": "FLIC-POS-005",
+    "priority": false,
+    "text": "Tôi đã đăng nhập được, cảm ơn bộ phận hỗ trợ.",
+    "expected_label": "POS",
+    "ambiguous": false,
+    "channel": "webchat",
+    "topic": "dang_nhap"
+  },
+  {
+    "id": "FLIC-POS-006",
+    "priority": false,
+    "text": "Nhân viên hướng dẫn đăng ký VSTEP rất tận tình và dễ hiểu.",
+    "expected_label": "POS",
+    "ambiguous": false,
+    "channel": "webchat",
+    "topic": "vstep"
+  },
+  {
+    "id": "FLIC-POS-007",
+    "priority": false,
+    "text": "Thông tin lịch thi TOEIC được cập nhật kịp thời, tôi rất hài lòng.",
+    "expected_label": "POS",
+    "ambiguous": false,
+    "channel": "web",
+    "topic": "toeic"
+  },
+  {
+    "id": "FLIC-POS-008",
+    "priority": false,
+    "text": "Lỗi hiển thị đã được khắc phục nhanh chóng, cảm ơn trung tâm.",
+    "expected_label": "POS",
+    "ambiguous": false,
+    "channel": "webchat",
+    "topic": "loi_he_thong"
+  },
+  {
+    "id": "FLIC-POS-009",
+    "priority": false,
+    "text": "Tôi đăng ký sát hạch CNTT thành công, thao tác rất thuận tiện.",
+    "expected_label": "POS",
+    "ambiguous": false,
+    "channel": "web",
+    "topic": "sat_hach_cntt"
+  },
+  {
+    "id": "FLIC-POS-010",
+    "priority": false,
+    "text": "Tôi đánh giá cao cách FLIC tư vấn rõ ràng và phản hồi nhanh.",
+    "expected_label": "POS",
+    "ambiguous": false,
+    "channel": "webchat",
+    "topic": "ho_tro"
+  },
+  {
+    "id": "FLIC-NEG-001",
+    "priority": true,
+    "text": "Hệ thống bị lỗi và tôi không thể đăng nhập được.",
+    "expected_label": "NEG",
+    "ambiguous": false,
+    "channel": "web",
+    "topic": "dang_nhap"
+  },
+  {
+    "id": "FLIC-NEG-002",
+    "priority": true,
+    "text": "Tôi đã chờ rất lâu nhưng vẫn chưa nhận được kết quả.",
+    "expected_label": "NEG",
+    "ambiguous": false,
+    "channel": "webchat",
+    "topic": "tra_cuu_ket_qua"
+  },
+  {
+    "id": "FLIC-NEG-003",
+    "priority": false,
+    "text": "Chatbot trả lời sai thông tin khiến tôi rất thất vọng.",
+    "expected_label": "NEG",
+    "ambiguous": false,
+    "channel": "chatbot",
+    "topic": "chatbot"
+  },
+  {
+    "id": "FLIC-NEG-004",
+    "priority": false,
+    "text": "Trang tra cứu điểm liên tục báo lỗi nên tôi không xem được kết quả.",
+    "expected_label": "NEG",
+    "ambiguous": false,
+    "channel": "web",
+    "topic": "tra_cuu_diem"
+  },
+  {
+    "id": "FLIC-NEG-005",
+    "priority": false,
+    "text": "Lịch thi TOEIC hiển thị sai ngày, tôi không hài lòng.",
+    "expected_label": "NEG",
+    "ambiguous": false,
+    "channel": "web",
+    "topic": "toeic"
+  },
+  {
+    "id": "FLIC-NEG-006",
+    "priority": false,
+    "text": "Tôi không thể hoàn tất đăng ký thi VSTEP dù đã thử nhiều lần.",
+    "expected_label": "NEG",
+    "ambiguous": false,
+    "channel": "web",
+    "topic": "vstep"
+  },
+  {
+    "id": "FLIC-NEG-007",
+    "priority": false,
+    "text": "Hệ thống đã trừ phí nhưng không ghi nhận đăng ký sát hạch CNTT.",
+    "expected_label": "NEG",
+    "ambiguous": false,
+    "channel": "web",
+    "topic": "sat_hach_cntt"
+  },
+  {
+    "id": "FLIC-NEG-008",
+    "priority": false,
+    "text": "Dữ liệu đăng ký của tôi biến mất, hệ thống hoạt động quá tệ.",
+    "expected_label": "NEG",
+    "ambiguous": false,
+    "channel": "webchat",
+    "topic": "loi_he_thong"
+  },
+  {
+    "id": "FLIC-NEG-009",
+    "priority": false,
+    "text": "Phản hồi quá chậm và tôi rất bực vì phải chờ nhiều ngày.",
+    "expected_label": "NEG",
+    "ambiguous": false,
+    "channel": "webchat",
+    "topic": "ho_tro"
+  },
+  {
+    "id": "FLIC-NEG-010",
+    "priority": false,
+    "text": "Tài khoản liên tục bị khóa dù tôi nhập đúng mật khẩu.",
+    "expected_label": "NEG",
+    "ambiguous": false,
+    "channel": "web",
+    "topic": "dang_nhap"
+  },
+  {
+    "id": "FLIC-NEU-001",
+    "priority": true,
+    "text": "Tôi muốn biết lịch thi TOEIC tháng này.",
+    "expected_label": "NEU",
+    "ambiguous": false,
+    "channel": "webchat",
+    "topic": "toeic"
+  },
+  {
+    "id": "FLIC-NEU-002",
+    "priority": false,
+    "text": "Cho tôi hỏi thời gian đăng ký kỳ thi VSTEP sắp tới.",
+    "expected_label": "NEU",
+    "ambiguous": false,
+    "channel": "webchat",
+    "topic": "vstep"
+  },
+  {
+    "id": "FLIC-NEU-003",
+    "priority": false,
+    "text": "Tôi cần hướng dẫn cách tra cứu điểm trên hệ thống.",
+    "expected_label": "NEU",
+    "ambiguous": false,
+    "channel": "webchat",
+    "topic": "tra_cuu_diem"
+  },
+  {
+    "id": "FLIC-NEU-004",
+    "priority": false,
+    "text": "Các bước đăng ký sát hạch CNTT gồm những gì?",
+    "expected_label": "NEU",
+    "ambiguous": false,
+    "channel": "webchat",
+    "topic": "sat_hach_cntt"
+  },
+  {
+    "id": "FLIC-NEU-005",
+    "priority": false,
+    "text": "Tôi muốn biết cách đặt lại mật khẩu tài khoản FLIC.",
+    "expected_label": "NEU",
+    "ambiguous": false,
+    "channel": "webchat",
+    "topic": "dang_nhap"
+  },
+  {
+    "id": "FLIC-NEU-006",
+    "priority": false,
+    "text": "Kết quả kỳ thi được nhận tại đâu?",
+    "expected_label": "NEU",
+    "ambiguous": false,
+    "channel": "webchat",
+    "topic": "tra_cuu_ket_qua"
+  },
+  {
+    "id": "FLIC-NEU-007",
+    "priority": false,
+    "text": "Lệ phí thi TOEIC hiện tại là bao nhiêu?",
+    "expected_label": "NEU",
+    "ambiguous": false,
+    "channel": "webchat",
+    "topic": "toeic"
+  },
+  {
+    "id": "FLIC-NEU-008",
+    "priority": false,
+    "text": "Hồ sơ đăng ký thi VSTEP cần những giấy tờ nào?",
+    "expected_label": "NEU",
+    "ambiguous": false,
+    "channel": "webchat",
+    "topic": "vstep"
+  },
+  {
+    "id": "FLIC-NEU-009",
+    "priority": false,
+    "text": "Chatbot hỗ trợ trả lời trong khung giờ nào?",
+    "expected_label": "NEU",
+    "ambiguous": false,
+    "channel": "chatbot",
+    "topic": "chatbot"
+  },
+  {
+    "id": "FLIC-NEU-010",
+    "priority": false,
+    "text": "Tôi muốn cập nhật số điện thoại trong hồ sơ tài khoản.",
+    "expected_label": "NEU",
+    "ambiguous": false,
+    "channel": "webchat",
+    "topic": "tai_khoan"
+  }
+]

@@ -471,7 +471,7 @@ def test_list_endpoint_reports_missing_schema_without_stack_trace():
 def test_main_app_mounts_ai_error_keyword_routes():
     from app.main import app as main_app
 
-    assert any(route.path == "/api/ai-error-keywords" for route in main_app.routes)
+    assert "/api/ai-error-keywords" in main_app.openapi()["paths"]
 
 
 def test_migration_and_rollback_are_idempotent_and_scoped():

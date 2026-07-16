@@ -199,6 +199,72 @@ def test_repository_parameterizes_channel_filter():
     assert params == ("Facebook",)
 
 
+def test_sentiment_chart_query_only_uses_completed_analytics():
+    repository = ChartBuilderRepository()
+    request = ChartDataRequest.model_validate(
+        {
+            "sourceId": "sentiment_by_date",
+            "chartType": "line",
+            "groupBy": "date",
+            "yAxes": [{"column": "positive_count"}],
+        }
+    )
+
+    query, params = repository._sentiment_by_date_query(request)
+
+    assert "a.analysisStatus = 'completed'" in query
+    assert params == ()
+
+
+def test_sentiment_chart_query_keeps_legacy_schema_compatible_before_migration():
+    repository = ChartBuilderRepository()
+    request = ChartDataRequest.model_validate(
+        {
+            "sourceId": "sentiment_by_date",
+            "chartType": "line",
+            "groupBy": "date",
+            "yAxes": [{"column": "positive_count"}],
+        }
+    )
+
+    query, params = repository._sentiment_by_date_query(
+        request,
+        completed_only=False,
+    )
+
+    assert "analysisStatus" not in query
+    assert params == ()
+
+
+def test_topic_aggregation_does_not_coerce_missing_sentiment_to_neutral():
+    repository = ChartBuilderRepository()
+    request = ChartDataRequest.model_validate(
+        {
+            "sourceId": "sentiment_by_topic",
+            "chartType": "bar",
+            "groupBy": "topic",
+            "yAxes": [{"column": "neutral_pct"}],
+        }
+    )
+
+    rows = repository._aggregate_sentiment_topics(
+        [
+            {"detectedTopics": '["TOEIC"]', "sentimentLabel": None},
+            {"detectedTopics": '["TOEIC"]', "sentimentLabel": "positive"},
+        ],
+        request,
+    )
+
+    assert rows == [
+        {
+            "topic": "TOEIC",
+            "positive_pct": 100.0,
+            "neutral_pct": 0.0,
+            "negative_pct": 0.0,
+        }
+    ]
+
+
 def test_config_crud_endpoints(client):
     payload = {
         "name": "Bieu do cam xuc",

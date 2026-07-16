@@ -123,7 +123,14 @@ TOPIC_GROUPS = [
     },
 ]
 
-ORDERED_TOPIC_GROUP_IDS = [group["id"] for group in TOPIC_GROUPS]
+ORDERED_TOPIC_GROUP_IDS = [
+    "sat_hach_cntt",
+    "toeic",
+    "mos",
+    "hoc_tieng_anh",
+    "hoc_tin_hoc",
+    "khac",
+]
 TOPIC_GROUP_BY_ID = {group["id"]: group for group in TOPIC_GROUPS}
 TOPIC_NAME_BY_ID = {group["id"]: group["name"] for group in TOPIC_GROUPS}
 

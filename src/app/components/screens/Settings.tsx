@@ -290,15 +290,15 @@ export function Settings({ defaultSection = "profile" }: { defaultSection?: stri
             <div style={{ display: "flex", flexDirection: "column", gap: "12px", maxWidth: "400px" }}>
               <div>
                 <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "rgba(0,56,101,0.5)", marginBottom: "4px" }}>Mật khẩu hiện tại</label>
-                <input type="password" placeholder="••••••••" value={currentPw} onChange={e => setCurrentPw(e.target.value)} style={{ ...fieldStyle, width: "100%", boxSizing: "border-box" }} />
+                <input type="password" placeholder="Hãy nhập mật khẩu hiện tại" value={currentPw} onChange={e => setCurrentPw(e.target.value)} style={{ ...fieldStyle, width: "100%", boxSizing: "border-box" }} />
               </div>
               <div>
                 <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "rgba(0,56,101,0.5)", marginBottom: "4px" }}>Mật khẩu mới</label>
-                <input type="password" placeholder="••••••••" value={newPw} onChange={e => setNewPw(e.target.value)} style={{ ...fieldStyle, width: "100%", boxSizing: "border-box" }} />
+                <input type="password" placeholder="Hãy nhập mật khẩu mới" value={newPw} onChange={e => setNewPw(e.target.value)} style={{ ...fieldStyle, width: "100%", boxSizing: "border-box" }} />
               </div>
               <div>
                 <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "rgba(0,56,101,0.5)", marginBottom: "4px" }}>Xác nhận mật khẩu mới</label>
-                <input type="password" placeholder="••••••••" value={confirmPw} onChange={e => setConfirmPw(e.target.value)} style={{ ...fieldStyle, width: "100%", boxSizing: "border-box" }} />
+                <input type="password" placeholder="Hãy xác nhận mật khẩu mới" value={confirmPw} onChange={e => setConfirmPw(e.target.value)} style={{ ...fieldStyle, width: "100%", boxSizing: "border-box" }} />
               </div>
               <button
                 onClick={handleRequestOtp}

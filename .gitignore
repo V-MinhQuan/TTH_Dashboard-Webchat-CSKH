@@ -10,9 +10,9 @@ dist/
 # === Environment Variables ===
 .env
 .env.*
+*.env.local
 !.env.example
 !backend/.env.example
-!ml-service/.env.example
 
 # === Logs ===
 npm-debug.log*
@@ -69,11 +69,6 @@ temp/
 # === Runtime State / Temporary files ===
 .ensemble-reprocess-state.json
 scratch_*.js
-
-
-# === ML Model files (large binary) ===
-ml-service/models/
-ml-service/data/
 
 # === Playwright Test Artifacts ===
 playwright-report/

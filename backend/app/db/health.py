@@ -16,6 +16,9 @@ def check_database_health() -> Dict[str, str]:
             cursor.fetchone()
         return {"status": "connected"}
     except Exception as exc:  # pragma: no cover - exact pyodbc errors vary by environment
-        logger.warning("database health check failed: %s", exc)
-        return {"status": "disconnected", "error": str(exc)}
+        logger.warning(
+            "database health check failed error_type=%s",
+            type(exc).__name__,
+        )
+        return {"status": "disconnected", "error": "database_unavailable"}
 

@@ -464,6 +464,15 @@ export async function getDashboardKpi(params?: {
     throw new Error(resJson.message || "Không thể tải dữ liệu Dashboard. Vui lòng kiểm tra lại cấu hình hoặc kết nối.");
   }
 
+  const requiredSummaryFailed = Array.isArray(resJson.data?.partialErrors)
+    && resJson.data.partialErrors.some((item: any) => item?.branch === "summary");
+  if (requiredSummaryFailed) {
+    throw new ApiRequestError(
+      "Không thể tải số liệu tổng quan từ cơ sở dữ liệu. Vui lòng thử lại.",
+      503,
+    );
+  }
+
   return normalizeDashboardKpiData(resJson.data);
 }
 

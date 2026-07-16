@@ -101,7 +101,10 @@ def get_connection(settings: Optional[Settings] = None) -> Iterator[Any]:
         try:
             conn = _connect_with_pyodbc(settings)
         except pyodbc.Error as exc:
-            logger.warning("pyodbc connection failed, falling back to pymssql: %s", exc)
+            logger.warning(
+                "pyodbc connection failed; falling back to pymssql error_type=%s",
+                type(exc).__name__,
+            )
             _prefer_pymssql = True
             conn = _connect_with_pymssql(settings)
     try:

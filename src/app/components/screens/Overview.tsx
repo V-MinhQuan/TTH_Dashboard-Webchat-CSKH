@@ -789,7 +789,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
 
     // 5. Cảnh báo khẩn cấp
     // Tải toàn bộ cảnh báo nếu có API, hoặc lấy từ state (urgentAlertRows)
-    let fullAlerts = urgentAlertRows;
+    const fullAlerts = urgentAlertRows;
     datasets.push({
       title: "Cảnh báo khẩn cấp",
       headers: ["Khách hàng", "Vấn đề", "Nguồn", "Thời gian"],
@@ -814,7 +814,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
     let loadingToastId: string | number | undefined;
     try {
       loadingToastId = toast.loading("Đang tải toàn bộ hội thoại ưu tiên...");
-      let dateParams = getDateParamsFromFilters(filters);
+      const dateParams = getDateParamsFromFilters(filters);
       const rows = await getDashboardPriorityConversations({
         ...dateParams,
         channel: filters.channel,

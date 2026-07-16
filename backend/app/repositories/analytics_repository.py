@@ -235,9 +235,29 @@ def _build_topic_filter_condition(filters: Dict[str, Any]) -> Tuple[str, List[An
         )
         params.extend([pattern, pattern])
 
+    message_conditions: List[str] = []
+    for term in _topic_message_terms(filters.get("topic")):
+        message_conditions.append(
+            "LOWER(ISNULL(topic_msg.TextContent, N'')) LIKE ? ESCAPE '~'"
+        )
+        params.append(_topic_like_pattern(term))
+
+    message_scope = ""
+    if message_conditions:
+        message_scope = f"""
+          OR EXISTS (
+            SELECT 1
+            FROM dbo.WebChat_MessageLogs topic_msg
+            WHERE topic_msg.id_webchat_messageLogs = a.messageId
+              AND topic_msg.FromHost = 0
+              AND ({" OR ".join(message_conditions)})
+          )
+        """
+
     condition = f"""
         (
           {" OR ".join(analytics_conditions)}
+          {message_scope}
         )
     """
     return condition, params
@@ -250,7 +270,7 @@ class AnalyticsRepository:
     def get_sentiment_summary(self, filters: Dict[str, Any]) -> Dict[str, Any]:
         with self._connection_factory() as conn:
             columns = inspect_message_analytics_columns(conn)
-            where, params = self._build_read_where(filters, columns)
+            where, params = self._build_read_where(filters, columns, completed_only=True)
             issue_expr = "SUM(CASE WHEN a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn') THEN 1 ELSE 0 END)" if columns.get("issueFlag") else "0"
             version_expr = "a.analyzerVersion" if columns.get("analyzerVersion") else "CAST(NULL AS NVARCHAR(50))"
             source_expr = "a.sentimentSource" if columns.get("sentimentSource") else "CAST(NULL AS NVARCHAR(50))"
@@ -293,8 +313,15 @@ class AnalyticsRepository:
                     """,
                     params,
                 )
+            analysis_status_counts = self._get_analysis_status_counts(
+                conn,
+                filters,
+                columns,
+                completed_total=int(row.get("total") or 0),
+            )
         return {
             "row": row,
+            "analysisStatusCounts": analysis_status_counts,
             "analyzerVersionDistribution": version_rows,
             "analyzerVersionDistributionSkipped": not include_version_distribution,
             "optionalColumns": columns,
@@ -303,7 +330,7 @@ class AnalyticsRepository:
     def get_sentiment_trend(self, filters: Dict[str, Any]) -> Dict[str, Any]:
         with self._connection_factory() as conn:
             columns = inspect_message_analytics_columns(conn)
-            where, params = self._build_read_where(filters, columns)
+            where, params = self._build_read_where(filters, columns, completed_only=True)
             issue_expr = "SUM(CASE WHEN a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn') THEN 1 ELSE 0 END)" if columns.get("issueFlag") else "0"
             rows = execute_all(
                 conn,
@@ -327,7 +354,7 @@ class AnalyticsRepository:
     def get_satisfaction_summary(self, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
         with self._connection_factory() as conn:
             columns = inspect_message_analytics_columns(conn)
-            where, params = self._build_read_where(filters, columns)
+            where, params = self._build_read_where(filters, columns, completed_only=True)
             return execute_all(
                 conn,
                 f"""
@@ -347,7 +374,7 @@ class AnalyticsRepository:
     def get_satisfaction_trend(self, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
         with self._connection_factory() as conn:
             columns = inspect_message_analytics_columns(conn)
-            where, params = self._build_read_where(filters, columns)
+            where, params = self._build_read_where(filters, columns, completed_only=True)
             return execute_all(
                 conn,
                 f"""
@@ -367,7 +394,7 @@ class AnalyticsRepository:
     def get_topic_raw_data(self, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
         with self._connection_factory() as conn:
             columns = inspect_message_analytics_columns(conn)
-            where, params = self._build_read_where(filters, columns)
+            where, params = self._build_read_where(filters, columns, completed_only=True)
             return execute_all(
                 conn,
                 f"""
@@ -390,7 +417,7 @@ class AnalyticsRepository:
     def get_keyword_raw_data(self, filters: Dict[str, Any]) -> Dict[str, Any]:
         with self._connection_factory() as conn:
             columns = inspect_message_analytics_columns(conn)
-            where, params = self._build_read_where(filters, columns)
+            where, params = self._build_read_where(filters, columns, completed_only=True)
             mode = filters.get("mode") or "negative"
             extra_condition = self._keyword_mode_condition(mode, columns)
             if extra_condition == "1 = 0":
@@ -466,7 +493,7 @@ class AnalyticsRepository:
             base_filters.pop("search", None)
             base_filters.pop("conversationStatus", None)
             base_filters.pop("aiStatus", None)
-            where, params = self._build_read_where(base_filters, columns)
+            where, params = self._build_read_where(base_filters, columns, completed_only=True)
             conditions = ["ranked.rn = 1"]
             status_filter = _conversation_status_filter_value(filters.get("conversationStatus"))
             if status_filter:
@@ -653,9 +680,15 @@ class AnalyticsRepository:
     def get_ai_quality_metrics(self, filters: Dict[str, Any]) -> Dict[str, Any]:
         with self._connection_factory() as conn:
             columns = inspect_message_analytics_columns(conn)
-            where, params = self._build_read_where(filters, columns)
+            where, params = self._build_read_where(filters, columns, completed_only=True)
             if not columns.get("issueFlag"):
                 return {"row": {}, "optionalColumns": columns}
+
+            quality_where = (
+                f"{where} AND a.issueFlag IS NOT NULL"
+                if where
+                else "WHERE a.issueFlag IS NOT NULL"
+            )
 
             row = execute_one(
                 conn,
@@ -676,7 +709,7 @@ class AnalyticsRepository:
                   WHERE s.CustomerId = c.CustomerId AND s.Source = c.Source
                   ORDER BY CASE WHEN s.MarkedAt IS NULL THEN 0 ELSE 1 END DESC, s.MarkedAt DESC, s.Id DESC
                 ) latestStatus
-                {where}
+                {quality_where}
                 """,
                 params,
             )
@@ -685,7 +718,7 @@ class AnalyticsRepository:
     def get_staff_activity_metrics(self, filters: Dict[str, Any]) -> Dict[str, Any]:
         with self._connection_factory() as conn:
             columns = inspect_message_analytics_columns(conn)
-            where, params = self._build_read_where(filters, columns)
+            where, params = self._build_read_where(filters, columns, completed_only=True)
 
             row = execute_one(
                 conn,
@@ -703,7 +736,7 @@ class AnalyticsRepository:
     def get_ai_failure_trend(self, filters: Dict[str, Any]) -> Dict[str, Any]:
         with self._connection_factory() as conn:
             columns = inspect_message_analytics_columns(conn)
-            where, params = self._build_read_where(filters, columns)
+            where, params = self._build_read_where(filters, columns, completed_only=True)
             if not columns.get("issueFlag"):
                 return {"rows": [], "optionalColumns": columns}
 
@@ -743,7 +776,7 @@ class AnalyticsRepository:
     def get_ai_failure_by_topic(self, filters: Dict[str, Any]) -> Dict[str, Any]:
         with self._connection_factory() as conn:
             columns = inspect_message_analytics_columns(conn)
-            where, params = self._build_read_where(filters, columns)
+            where, params = self._build_read_where(filters, columns, completed_only=True)
             if not columns.get("issueFlag"):
                 return {"rows": [], "optionalColumns": columns}
 
@@ -784,7 +817,7 @@ class AnalyticsRepository:
             columns = inspect_message_analytics_columns(conn)
             base_filters = dict(filters)
             base_filters["issueFlag"] = True # Force filter for AI failed ones
-            where, params = self._build_read_where(base_filters, columns)
+            where, params = self._build_read_where(base_filters, columns, completed_only=True)
 
             # Chỉ lấy lỗi AI chưa được xử lý (issueResolved=0 hoặc NULL)
             condition_str = "a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn')"
@@ -971,7 +1004,7 @@ class AnalyticsRepository:
         )
         with self._connection_factory() as conn:
             columns = inspect_message_analytics_columns(conn)
-            where, params = self._build_read_where(filters, columns)
+            where, params = self._build_read_where(filters, columns, completed_only=True)
 
             condition_str = "a.needStaffReview = 1 AND a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn')"
             if where:
@@ -1056,7 +1089,7 @@ class AnalyticsRepository:
     def get_suggested_faqs(self, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
         with self._connection_factory() as conn:
             columns = inspect_message_analytics_columns(conn)
-            where, params = self._build_read_where(filters, columns)
+            where, params = self._build_read_where(filters, columns, completed_only=True)
             if not columns.get("issueFlag"):
                 return []
 
@@ -1278,9 +1311,17 @@ class AnalyticsRepository:
             )
         return rows
 
-    def _build_read_where(self, filters: Dict[str, Any], columns: Dict[str, bool]) -> Tuple[str, List[Any]]:
+    def _build_read_where(
+        self,
+        filters: Dict[str, Any],
+        columns: Dict[str, bool],
+        *,
+        completed_only: bool = False,
+    ) -> Tuple[str, List[Any]]:
         conditions: List[str] = [valid_analytics_condition("a")]
         params: List[Any] = []
+        if completed_only and columns.get("analysisStatus"):
+            conditions.append("a.analysisStatus = 'completed'")
         date_filter = build_date_filter(
             column="a.messageAt",
             date_range=filters.get("dateRange"),
@@ -1322,10 +1363,61 @@ class AnalyticsRepository:
             if not columns.get("issueFlag"):
                 conditions.append("1 = 0")
             elif normalized_ai_status in {"success", "ai tra loi thanh cong"}:
-                conditions.append("(ISNULL(a.issueFlag, 0) = 0 OR a.issueResolved = 1 OR a.issueType NOT IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn'))")
+                conditions.append("(a.issueFlag IS NOT NULL AND (a.issueFlag = 0 OR a.issueResolved = 1 OR a.issueType NOT IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn')))")
             elif normalized_ai_status in {"failed", "failure", "ai tra loi that bai"}:
                 conditions.append("a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn')")
         return ("WHERE " + " AND ".join(conditions)) if conditions else "", params
+
+    def _get_analysis_status_counts(
+        self,
+        conn,
+        filters: Dict[str, Any],
+        columns: Dict[str, bool],
+        *,
+        completed_total: int,
+    ) -> Dict[str, int]:
+        if not columns.get("analysisStatus"):
+            return {
+                "pending": 0,
+                "processing": 0,
+                "completed": completed_total,
+                "failed": 0,
+                "quarantined": 0,
+                "total": completed_total,
+                "unanalyzed": 0,
+            }
+
+        status_filters = dict(filters)
+        for key in ("sentiment", "sentimentLabel", "aiStatus", "issueType"):
+            status_filters.pop(key, None)
+        where, params = self._build_read_where(status_filters, columns)
+        row = execute_one(
+            conn,
+            f"""
+            SELECT
+              SUM(CASE WHEN a.analysisStatus = 'pending' THEN 1 ELSE 0 END) AS pending,
+              SUM(CASE WHEN a.analysisStatus = 'processing' THEN 1 ELSE 0 END) AS processing,
+              SUM(CASE WHEN a.analysisStatus = 'completed' THEN 1 ELSE 0 END) AS completed,
+              SUM(CASE WHEN a.analysisStatus = 'failed' THEN 1 ELSE 0 END) AS failed,
+              SUM(CASE WHEN a.analysisStatus = 'quarantined' THEN 1 ELSE 0 END) AS quarantined,
+              COUNT_BIG(*) AS total
+            FROM dbo.WebChat_MessageAnalytics a
+            {where}
+            """,
+            params,
+        )
+        counts = {
+            status: int(row.get(status) or 0)
+            for status in ("pending", "processing", "completed", "failed", "quarantined")
+        }
+        counts["total"] = int(row.get("total") or 0)
+        counts["unanalyzed"] = (
+            counts["pending"]
+            + counts["processing"]
+            + counts["failed"]
+            + counts["quarantined"]
+        )
+        return counts
 
     def _build_need_review_where(
         self,
@@ -1339,7 +1431,7 @@ class AnalyticsRepository:
             review_parts.append("a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn')")
         base_filters = dict(filters)
         search = base_filters.pop("search", None)
-        where, params = self._build_read_where(base_filters, columns)
+        where, params = self._build_read_where(base_filters, columns, completed_only=True)
         conditions = [f"({ ' OR '.join(review_parts) })"]
         if where:
             conditions.append(where.removeprefix("WHERE "))
@@ -1359,7 +1451,7 @@ class AnalyticsRepository:
         search = base_filters.pop("search", None)
         base_filters.pop("sentiment", None)
         base_filters.pop("sentimentLabel", None)
-        where, params = self._build_read_where(base_filters, columns)
+        where, params = self._build_read_where(base_filters, columns, completed_only=True)
         conditions = ["a.sentimentLabel = 'negative'", "a.needStaffReview = 1"]
         if where:
             conditions.append(where.removeprefix("WHERE "))
@@ -1389,7 +1481,7 @@ class AnalyticsRepository:
     
             with self._connection_factory() as conn:
                 columns = inspect_message_analytics_columns(conn)
-                where, params = self._build_read_where(filters, columns)
+                where, params = self._build_read_where(filters, columns, completed_only=True)
     
                 group_by_expr = ""
                 select_name_expr = ""
@@ -1545,15 +1637,18 @@ class AnalyticsRepository:
                 sentiment_column="a.sentimentLabel",
                 topic_column="a.detectedTopics",
             )
-            required = []
-            if x_axis == "topic":
-                required.append("a.detectedTopics IS NOT NULL AND a.detectedTopics <> '[]'")
-            if x_axis == "sentiment":
-                required.append("a.sentimentLabel IS NOT NULL")
-            if required:
-                suffix = " AND ".join(required)
-                where = f"{where} AND {suffix}" if where else f"WHERE {suffix}"
             with self._connection_factory() as conn:
+                columns = inspect_message_analytics_columns(conn)
+                required = []
+                if columns.get("analysisStatus"):
+                    required.append("a.analysisStatus = 'completed'")
+                if x_axis == "topic":
+                    required.append("a.detectedTopics IS NOT NULL AND a.detectedTopics <> '[]'")
+                if x_axis == "sentiment":
+                    required.append("a.sentimentLabel IS NOT NULL")
+                if required:
+                    suffix = " AND ".join(required)
+                    where = f"{where} AND {suffix}" if where else f"WHERE {suffix}"
                 return execute_all(
                     conn,
                     f"""

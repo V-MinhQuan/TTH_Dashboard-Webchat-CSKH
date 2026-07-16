@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "https://testng.org/testng-1.0.dtd">
+<suite name="FLIC Smoke Suite" verbose="1" parallel="none">
+  <parameter name="allowDestructiveTests" value="false"/>
+  <listeners>
+    <listener class-name="com.flic.automation.listeners.TestListener"/>
+  </listeners>
+  <test name="Smoke - safe only">
+    <groups>
+      <run>
+        <include name="smoke"/>
+        <exclude name="destructive"/>
+        <exclude name="environment-dependent"/>
+      </run>
+    </groups>
+    <packages>
+      <package name="com.flic.automation.tests.ui"/>
+      <package name="com.flic.automation.tests.api"/>
+    </packages>
+  </test>
+</suite>

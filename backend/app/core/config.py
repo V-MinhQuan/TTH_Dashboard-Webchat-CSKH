@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import List
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -45,12 +45,74 @@ class Settings(BaseSettings):
         validation_alias="CHART_QUERY_TIMEOUT_SECONDS",
     )
 
-    ml_service_url: str = Field(default="http://localhost:8001", validation_alias="ML_SERVICE_URL")
-    ml_timeout_seconds: float = Field(default=15.0, validation_alias="ML_TIMEOUT_SECONDS")
-    celery_broker_url: str = Field(default="redis://localhost:6379/0", validation_alias="CELERY_BROKER_URL")
-    celery_result_backend: str = Field(default="redis://localhost:6379/1", validation_alias="CELERY_RESULT_BACKEND")
-    celery_background_queue: str = Field(default="background", validation_alias="CELERY_BACKGROUND_QUEUE")
-    celery_enqueue_on_startup: bool = Field(default=False, validation_alias="CELERY_ENQUEUE_ON_STARTUP")
+    hf_token: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias="HF_TOKEN",
+    )
+    huggingface_api_key: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias="HUGGINGFACE_API_KEY",
+    )
+    hf_model: str = Field(
+        default="wonrax/phobert-base-vietnamese-sentiment",
+        validation_alias="HF_MODEL",
+    )
+    hf_provider: str = Field(default="hf-inference", validation_alias="HF_PROVIDER")
+    hf_timeout_seconds: float = Field(
+        default=15.0,
+        ge=1.0,
+        le=120.0,
+        validation_alias="HF_TIMEOUT_SECONDS",
+    )
+    hf_max_retries: int = Field(default=2, ge=0, le=10, validation_alias="HF_MAX_RETRIES")
+    hf_max_concurrency: int = Field(default=3, ge=1, le=20, validation_alias="HF_MAX_CONCURRENCY")
+    hf_eval_max_requests: int = Field(
+        default=300,
+        ge=1,
+        validation_alias="HF_EVAL_MAX_REQUESTS",
+    )
+    hf_batch_size: int = Field(default=10, ge=1, le=100, validation_alias="HF_BATCH_SIZE")
+    hf_background_enabled: bool = Field(
+        default=False,
+        validation_alias="HF_BACKGROUND_ENABLED",
+    )
+    hf_analysis_cutover_message_id: int | None = Field(
+        default=None,
+        ge=0,
+        validation_alias="HF_ANALYSIS_CUTOVER_MESSAGE_ID",
+    )
+    hf_pilot_max_records: int = Field(
+        default=3,
+        ge=1,
+        le=3,
+        validation_alias="HF_PILOT_MAX_RECORDS",
+    )
+    hf_pilot_environment: str = Field(
+        default="",
+        validation_alias="HF_PILOT_ENVIRONMENT",
+    )
+    hf_pilot_backup_verified: bool = Field(
+        default=False,
+        validation_alias="HF_PILOT_BACKUP_VERIFIED",
+    )
+    hf_background_interval_seconds: float = Field(
+        default=10.0,
+        ge=0.1,
+        le=3600.0,
+        validation_alias="HF_BACKGROUND_INTERVAL_SECONDS",
+    )
+    hf_processing_stale_minutes: int = Field(
+        default=10,
+        ge=1,
+        le=1440,
+        validation_alias="HF_PROCESSING_STALE_MINUTES",
+    )
+    hf_predict_rate_limit_per_minute: int = Field(
+        default=30,
+        ge=1,
+        le=1000,
+        validation_alias="HF_PREDICT_RATE_LIMIT_PER_MINUTE",
+    )
     gemini_api_keys: str = Field(
         default="",
         validation_alias="GEMINI_API_KEYS",
@@ -91,6 +153,13 @@ class Settings(BaseSettings):
         if self.cors_origins.strip() == "*":
             return ["*"]
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def effective_hf_token(self) -> SecretStr:
+        """Prefer a non-empty HF_TOKEN, then use the compatibility API key."""
+        if self.hf_token.get_secret_value().strip():
+            return self.hf_token
+        return self.huggingface_api_key
 
     @property
     def manager_username_list(self) -> List[str]:

@@ -14,6 +14,11 @@ OPTIONAL_ANALYTICS_COLUMNS = (
     "issueConfidence",
     "issueResolved",
     "standardizedQuestion",
+    "analysisStatus",
+    "analysisRetryCount",
+    "analysisError",
+    "analysisStartedAt",
+    "analysisUpdatedAt",
 )
 
 

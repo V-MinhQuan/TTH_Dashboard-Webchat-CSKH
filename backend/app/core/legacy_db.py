@@ -1,51 +1,32 @@
-import os
-from pathlib import Path
+from __future__ import annotations
+
+import logging
+
 import pymssql
-from dotenv import load_dotenv
 
-# Load .env from root or backend directory
-root_env = Path(__file__).resolve().parents[2] / ".env"
-local_env = Path(__file__).resolve().parents[1] / ".env"
+from app.core.config import get_settings
 
-if local_env.exists():
-    load_dotenv(dotenv_path=local_env)
-elif root_env.exists():
-    load_dotenv(dotenv_path=root_env)
-else:
-    load_dotenv()
 
-DB_USER = os.getenv("DB_USER")
-DB_PASSWORD = os.getenv("DB_PASSWORD")
-DB_SERVER = os.getenv("DB_SERVER", "14.225.192.252")
-DB_PORT = int(os.getenv("DB_PORT", "1433"))
-DB_DATABASE = os.getenv("DB_DATABASE") or os.getenv("DB_NAME")
+logger = logging.getLogger(__name__)
 
-print("[DB] Configuring connection:")
-print({
-    "server": DB_SERVER,
-    "port": DB_PORT,
-    "database": DB_DATABASE,
-    "user": DB_USER
-})
 
 def get_db_connection():
-    """
-    Tạo kết nối mới tới Microsoft SQL Server sử dụng pymssql.
-    Trả về đối tượng connection. Người gọi có trách nhiệm đóng connection này.
-    """
+    """Create a legacy-compatible pymssql connection from central settings."""
+    settings = get_settings()
     try:
-        conn = pymssql.connect(
-            server=DB_SERVER,
-            user=DB_USER,
-            password=DB_PASSWORD,
-            database=DB_DATABASE,
-            port=DB_PORT,
-            tds_version='7.0',
-            timeout=120,
-            login_timeout=30
+        return pymssql.connect(
+            server=settings.db_server,
+            user=settings.db_user,
+            password=settings.db_password,
+            database=settings.db_name,
+            port=settings.db_port,
+            tds_version="7.0",
+            timeout=settings.db_timeout_seconds,
+            login_timeout=settings.db_timeout_seconds,
         )
-        return conn
-    except Exception as e:
-        print("=== DB CONNECTION FAILED ===")
-        print(f"Error: {str(e)}")
-        raise RuntimeError(f"Database connection failed: {str(e)}")
+    except Exception as exc:
+        logger.error(
+            "Legacy database connection failed error_type=%s",
+            type(exc).__name__,
+        )
+        raise RuntimeError("Database connection failed") from None

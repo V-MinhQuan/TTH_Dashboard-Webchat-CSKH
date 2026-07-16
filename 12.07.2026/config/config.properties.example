@@ -1,0 +1,18 @@
+# Safe defaults only. Never commit real usernames, passwords, tokens, or DB details.
+# Resolution order implemented by ConfigManager:
+# Maven system property > environment variable > config.properties > safe default.
+base.url=http://127.0.0.1:5173
+api.url=http://127.0.0.1:5000
+ml.url=http://127.0.0.1:8001
+browser=chrome
+headless=true
+manager.username=
+manager.password=
+staff.username=
+staff.password=
+download.dir=target/downloads
+allow.destructive.tests=false
+explicit.wait.seconds=15
+page.load.timeout.seconds=30
+api.timeout.seconds=15
+retry.infrastructure.max=1

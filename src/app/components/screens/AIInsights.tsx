@@ -893,7 +893,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
     });
 
     // 3. Danh sách câu hỏi AI chưa xử lý (Fetch all pages)
-    let failedRows: string[][] = [];
+    let failedRows: string[][];
     const failedHeaders = [
       "Khách hàng",
       "Nguồn",
