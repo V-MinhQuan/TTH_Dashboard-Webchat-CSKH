@@ -198,21 +198,58 @@ class ConversationRepository(BaseRepository):
         topic=None,
         ai_status=None,
     ):
+        """Đếm AI thành công/thất bại tổng hợp theo kênh.
+
+        Không áp dụng valid_analytics_condition (lọc customerId/source placeholder)
+        để đếm chính xác tất cả AI thất bại, kể cả khi customerId chưa xác định.
+        """
         conn = get_db_connection()
         try:
             conditions = []
             params = []
-            status_join = self._append_analytics_scope_filters(
+            # Chỉ lọc theo ngày và kênh, KHÔNG dùng valid_analytics_condition
+            self._append_date_and_channel_filters(
                 conditions,
                 params,
+                "a.messageAt",
+                "a.source",
                 start_date,
                 end_date,
                 channel,
-                conversation_status,
-                topic,
-                ai_status,
-                "a",
             )
+
+            # Filter topic nếu có
+            topic_sql = self._detected_topics_condition("a", topic, params)
+            if topic_sql:
+                conditions.append(topic_sql)
+
+            # Filter ai_status nếu có
+            ai_sql = self._analytics_ai_status_condition(ai_status, "a")
+            if ai_sql:
+                conditions.append(ai_sql)
+
+            # Filter conversation_status nếu có
+            status_join = ""
+            status_filter = self._status_filter_value(conversation_status)
+            if status_filter:
+                status_join = f"""
+                    LEFT JOIN WebChat_Conversations c_status
+                      ON c_status.Id = a.conversationId
+                    OUTER APPLY (
+                      SELECT TOP 1
+                        status_meta.NoResponseNeeded,
+                        status_meta.MarkedAt
+                      FROM WebChat_ConversationStatus status_meta
+                      WHERE CAST(status_meta.CustomerId AS NVARCHAR(255)) = CAST(c_status.CustomerId AS NVARCHAR(255))
+                        AND {self._normalized_source_expr('status_meta.Source')} = {self._normalized_source_expr('c_status.Source')}
+                      ORDER BY CASE WHEN status_meta.MarkedAt IS NULL THEN 0 ELSE 1 END DESC, status_meta.MarkedAt DESC
+                    ) latest_status
+                """
+                conditions.append("c_status.Id IS NOT NULL")
+                conditions.append(f"{self._conversation_status_case('c_status', 'latest_status')} = %s")
+                params.append(status_filter)
+
+            where_sql = "WHERE " + " AND ".join(conditions) if conditions else ""
             source_case = self._source_key_case_expr("a.source")
             query = f"""
                 SELECT
@@ -221,7 +258,7 @@ class ConversationRepository(BaseRepository):
                   SUM(CASE WHEN NOT (a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn')) THEN 1 ELSE 0 END) AS ai_ok
                 FROM WebChat_MessageAnalytics a
                 {status_join}
-                WHERE {" AND ".join(conditions)}
+                {where_sql}
                 GROUP BY {source_case}
             """
             with conn.cursor(as_dict=True) as cursor:
