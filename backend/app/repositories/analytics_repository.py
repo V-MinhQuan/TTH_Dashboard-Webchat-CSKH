@@ -680,15 +680,10 @@ class AnalyticsRepository:
     def get_ai_quality_metrics(self, filters: Dict[str, Any]) -> Dict[str, Any]:
         with self._connection_factory() as conn:
             columns = inspect_message_analytics_columns(conn)
-            where, params = self._build_read_where(filters, columns, completed_only=True)
+            # Dùng completed_only=False để khớp với logic đếm ở trang Tổng quan
+            where, params = self._build_read_where(filters, columns, completed_only=False)
             if not columns.get("issueFlag"):
                 return {"row": {}, "optionalColumns": columns}
-
-            quality_where = (
-                f"{where} AND a.issueFlag IS NOT NULL"
-                if where
-                else "WHERE a.issueFlag IS NOT NULL"
-            )
 
             row = execute_one(
                 conn,
@@ -696,20 +691,12 @@ class AnalyticsRepository:
                 SELECT
                   COUNT(*) AS total,
                   SUM(CASE WHEN a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0
-                           AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn') 
-                           AND (latestStatus.NoResponseNeeded IS NULL OR latestStatus.NoResponseNeeded = 0)
+                           AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn')
                            THEN 1 ELSE 0 END) AS failure_count,
                   SUM(CASE WHEN a.issueType = N'AI có nguy cơ tự tạo thông tin' THEN 1 ELSE 0 END) AS hallucination_count,
                   AVG(a.issueConfidence) AS avg_confidence
                 FROM dbo.WebChat_MessageAnalytics a
-                LEFT JOIN dbo.WebChat_Conversations c ON c.Id = a.conversationId
-                OUTER APPLY (
-                  SELECT TOP 1 s.NoResponseNeeded
-                  FROM dbo.WebChat_ConversationStatus s WITH (NOLOCK)
-                  WHERE s.CustomerId = c.CustomerId AND s.Source = c.Source
-                  ORDER BY CASE WHEN s.MarkedAt IS NULL THEN 0 ELSE 1 END DESC, s.MarkedAt DESC, s.Id DESC
-                ) latestStatus
-                {quality_where}
+                {where}
                 """,
                 params,
             )
@@ -736,7 +723,7 @@ class AnalyticsRepository:
     def get_ai_failure_trend(self, filters: Dict[str, Any]) -> Dict[str, Any]:
         with self._connection_factory() as conn:
             columns = inspect_message_analytics_columns(conn)
-            where, params = self._build_read_where(filters, columns, completed_only=True)
+            where, params = self._build_read_where(filters, columns, completed_only=False)
             if not columns.get("issueFlag"):
                 return {"rows": [], "optionalColumns": columns}
 
@@ -746,25 +733,15 @@ class AnalyticsRepository:
                 SELECT
                   CONVERT(date, a.messageAt) AS date,
                   SUM(CASE WHEN a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0
-                           AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn') 
-                           AND (latestStatus.NoResponseNeeded IS NULL OR latestStatus.NoResponseNeeded = 0)
+                           AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn')
                            THEN 1 ELSE 0 END) AS failure,
                   SUM(CASE WHEN a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0
-                           AND a.issueType = N'Không tìm thấy dữ liệu' 
-                           AND (latestStatus.NoResponseNeeded IS NULL OR latestStatus.NoResponseNeeded = 0)
+                           AND a.issueType = N'Không tìm thấy dữ liệu'
                            THEN 1 ELSE 0 END) AS thieuDL,
                   SUM(CASE WHEN a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0
-                           AND a.issueType = N'AI không chắc chắn' 
-                           AND (latestStatus.NoResponseNeeded IS NULL OR latestStatus.NoResponseNeeded = 0)
+                           AND a.issueType = N'AI không chắc chắn'
                            THEN 1 ELSE 0 END) AS khongChac
                 FROM dbo.WebChat_MessageAnalytics a
-                LEFT JOIN dbo.WebChat_Conversations c ON c.Id = a.conversationId
-                OUTER APPLY (
-                  SELECT TOP 1 s.NoResponseNeeded
-                  FROM dbo.WebChat_ConversationStatus s WITH (NOLOCK)
-                  WHERE s.CustomerId = c.CustomerId AND s.Source = c.Source
-                  ORDER BY CASE WHEN s.MarkedAt IS NULL THEN 0 ELSE 1 END DESC, s.MarkedAt DESC, s.Id DESC
-                ) latestStatus
                 {where}
                 GROUP BY CONVERT(date, a.messageAt)
                 ORDER BY date ASC
@@ -776,7 +753,7 @@ class AnalyticsRepository:
     def get_ai_failure_by_topic(self, filters: Dict[str, Any]) -> Dict[str, Any]:
         with self._connection_factory() as conn:
             columns = inspect_message_analytics_columns(conn)
-            where, params = self._build_read_where(filters, columns, completed_only=True)
+            where, params = self._build_read_where(filters, columns, completed_only=False)
             if not columns.get("issueFlag"):
                 return {"rows": [], "optionalColumns": columns}
 
@@ -792,16 +769,8 @@ class AnalyticsRepository:
                   SUM(CASE WHEN a.issueType = N'Không tìm thấy dữ liệu' THEN 1 ELSE 0 END) AS thieuDL,
                   SUM(CASE WHEN a.issueType = N'AI không chắc chắn' THEN 1 ELSE 0 END) AS khongChac
                 FROM dbo.WebChat_MessageAnalytics a
-                LEFT JOIN dbo.WebChat_Conversations c ON c.Id = a.conversationId
-                OUTER APPLY (
-                  SELECT TOP 1 s.NoResponseNeeded
-                  FROM dbo.WebChat_ConversationStatus s WITH (NOLOCK)
-                  WHERE s.CustomerId = c.CustomerId AND s.Source = c.Source
-                  ORDER BY CASE WHEN s.MarkedAt IS NULL THEN 0 ELSE 1 END DESC, s.MarkedAt DESC, s.Id DESC
-                ) latestStatus
                 {where + " AND" if where else "WHERE"} a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0
                   AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn')
-                  AND (latestStatus.NoResponseNeeded IS NULL OR latestStatus.NoResponseNeeded = 0)
                 {group_by_clause}
                 """,
                 query_params,
@@ -817,7 +786,7 @@ class AnalyticsRepository:
             columns = inspect_message_analytics_columns(conn)
             base_filters = dict(filters)
             base_filters["issueFlag"] = True # Force filter for AI failed ones
-            where, params = self._build_read_where(base_filters, columns, completed_only=True)
+            where, params = self._build_read_where(base_filters, columns, completed_only=False)
 
             # Chỉ lấy lỗi AI chưa được xử lý (issueResolved=0 hoặc NULL)
             condition_str = "a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn')"
@@ -884,7 +853,7 @@ class AnalyticsRepository:
                           AND customerMessage.SentAt <= COALESCE(m.SentAt, a.messageAt)
                         ORDER BY customerMessage.SentAt DESC, customerMessage.id_webchat_messagelogs DESC
                       ) cmsg
-                      {where} AND (latestStatus.NoResponseNeeded IS NULL OR latestStatus.NoResponseNeeded = 0)
+                      {where}
                     )
                 """
                 total_row = execute_one(
@@ -929,7 +898,7 @@ class AnalyticsRepository:
                   WHERE s.CustomerId = c.CustomerId AND s.Source = c.Source
                   ORDER BY CASE WHEN s.MarkedAt IS NULL THEN 0 ELSE 1 END DESC, s.MarkedAt DESC, s.Id DESC
                 ) latestStatus
-                {where} AND (latestStatus.NoResponseNeeded IS NULL OR latestStatus.NoResponseNeeded = 0)
+                {where}
                 """,
                 params,
             )
@@ -981,7 +950,7 @@ class AnalyticsRepository:
                     AND cmsg.SentAt <= m.SentAt
                   ORDER BY cmsg.SentAt DESC
                 ) cmsg
-                {where} AND (latestStatus.NoResponseNeeded IS NULL OR latestStatus.NoResponseNeeded = 0)
+                {where}
                 ORDER BY a.messageAt DESC
                 OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
                 """,
@@ -1004,7 +973,7 @@ class AnalyticsRepository:
         )
         with self._connection_factory() as conn:
             columns = inspect_message_analytics_columns(conn)
-            where, params = self._build_read_where(filters, columns, completed_only=True)
+            where, params = self._build_read_where(filters, columns, completed_only=False)
 
             condition_str = "a.needStaffReview = 1 AND a.issueFlag = 1 AND ISNULL(a.issueResolved, 0) = 0 AND a.issueType IN (N'Không tìm thấy dữ liệu', N'AI không chắc chắn')"
             if where:
@@ -1187,26 +1156,7 @@ class AnalyticsRepository:
                         WHERE a.StandardizedQuestion IS NOT NULL
                            OR (
                              a.RawQuestion IS NOT NULL
-                             AND (
-                               CHARINDEX(NCHAR(63), a.RawQuestion) > 0
-                               OR CHARINDEX(N'phải không', LOWER(a.RawQuestion)) > 0
-                               OR CHARINDEX(N'đúng không', LOWER(a.RawQuestion)) > 0
-                               OR CHARINDEX(N'làm sao', LOWER(a.RawQuestion)) > 0
-                               OR CHARINDEX(N'như thế nào', LOWER(a.RawQuestion)) > 0
-                               OR CHARINDEX(N'tại sao', LOWER(a.RawQuestion)) > 0
-                               OR CHARINDEX(N'thế nào', LOWER(a.RawQuestion)) > 0
-                               OR CHARINDEX(N'sao ', LOWER(a.RawQuestion)) > 0
-                               OR CHARINDEX(N'vậy ạ', LOWER(a.RawQuestion)) > 0
-                               OR CHARINDEX(N'khi nào', LOWER(a.RawQuestion)) > 0
-                               OR CHARINDEX(N'bao giờ', LOWER(a.RawQuestion)) > 0
-                               OR CHARINDEX(N'bao nhiêu', LOWER(a.RawQuestion)) > 0
-                               OR CHARINDEX(N'ở đâu', LOWER(a.RawQuestion)) > 0
-                               OR CHARINDEX(N'được không', LOWER(a.RawQuestion)) > 0
-                               OR CHARINDEX(N'hay không', LOWER(a.RawQuestion)) > 0
-                               OR CHARINDEX(N'là gì', LOWER(a.RawQuestion)) > 0
-                               OR CHARINDEX(N'cần những gì', LOWER(a.RawQuestion)) > 0
-                               OR (CHARINDEX(N'có ', LOWER(a.RawQuestion)) > 0 AND CHARINDEX(N' không', LOWER(a.RawQuestion)) > 0)
-                             )
+                             AND LEN(a.RawQuestion) > 4
                            )
                     ),
                     FilteredMessages AS (
@@ -1266,26 +1216,7 @@ class AnalyticsRepository:
                     WHERE a.StandardizedQuestion IS NOT NULL
                        OR (
                          a.RawQuestion IS NOT NULL
-                         AND (
-                           CHARINDEX(NCHAR(63), a.RawQuestion) > 0
-                           OR CHARINDEX(N'phải không', LOWER(a.RawQuestion)) > 0
-                           OR CHARINDEX(N'đúng không', LOWER(a.RawQuestion)) > 0
-                           OR CHARINDEX(N'làm sao', LOWER(a.RawQuestion)) > 0
-                           OR CHARINDEX(N'như thế nào', LOWER(a.RawQuestion)) > 0
-                           OR CHARINDEX(N'tại sao', LOWER(a.RawQuestion)) > 0
-                           OR CHARINDEX(N'thế nào', LOWER(a.RawQuestion)) > 0
-                           OR CHARINDEX(N'sao ', LOWER(a.RawQuestion)) > 0
-                           OR CHARINDEX(N'vậy ạ', LOWER(a.RawQuestion)) > 0
-                           OR CHARINDEX(N'khi nào', LOWER(a.RawQuestion)) > 0
-                           OR CHARINDEX(N'bao giờ', LOWER(a.RawQuestion)) > 0
-                           OR CHARINDEX(N'bao nhiêu', LOWER(a.RawQuestion)) > 0
-                           OR CHARINDEX(N'ở đâu', LOWER(a.RawQuestion)) > 0
-                           OR CHARINDEX(N'được không', LOWER(a.RawQuestion)) > 0
-                           OR CHARINDEX(N'hay không', LOWER(a.RawQuestion)) > 0
-                           OR CHARINDEX(N'là gì', LOWER(a.RawQuestion)) > 0
-                           OR CHARINDEX(N'cần những gì', LOWER(a.RawQuestion)) > 0
-                           OR (CHARINDEX(N'có ', LOWER(a.RawQuestion)) > 0 AND CHARINDEX(N' không', LOWER(a.RawQuestion)) > 0)
-                         )
+                         AND LEN(a.RawQuestion) > 4
                        )
                 ),
                 TopTopics AS (
@@ -1712,6 +1643,26 @@ class AnalyticsRepository:
             """
             cursor = conn.cursor()
             cursor.execute(sql, analytics_ids)
+            count = cursor.rowcount
+            conn.commit()
+            return count
+
+    def resolve_sentiment_reviews(self, analytics_ids: List[int]) -> int:
+        if not analytics_ids:
+            return 0
+        with self._connection_factory() as conn:
+            placeholders = ",".join(["?"] * len(analytics_ids))
+            cursor = conn.cursor()
+            cursor.execute(
+                f"""
+                UPDATE dbo.WebChat_MessageAnalytics
+                SET needStaffReview = 0
+                WHERE id IN ({placeholders})
+                  AND sentimentLabel = 'negative'
+                  AND needStaffReview = 1
+                """,
+                analytics_ids,
+            )
             count = cursor.rowcount
             conn.commit()
             return count

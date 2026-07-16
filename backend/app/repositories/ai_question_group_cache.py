@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
-from app.db.session import execute_one, get_connection
+from app.db.session import execute_all, execute_one, get_connection
 
 logger = logging.getLogger(__name__)
 
@@ -193,7 +193,124 @@ class AiQuestionGroupCacheRepository:
                 return
             logger.warning("Could not write AI question group DB cache: %s", exc)
 
+    def upsert_daily_rollup(
+        self,
+        date_str: str,
+        rows_by_channel: dict[str, list],
+    ) -> None:
+        """Lưu dữ liệu tóm tắt câu hỏi của một ngày (Nightly Rollup).
+        
+        Args:
+            date_str: Ngày theo định dạng 'YYYY-MM-DD'
+            rows_by_channel: Dict chứa câu hỏi theo từng kênh, ví dụ:
+                {
+                    "rows_all": [...],
+                    "rows_chatwidget": [...],
+                    "rows_facebook": [...],
+                    "rows_zalooa": [...],
+                    "rows_zalobiz": [...]
+                }
+        """
+        if not rows_by_channel or not rows_by_channel.get("rows_all"):
+            return
+
+        cache_key = f"daily_rollup:{date_str}"
+        now = _utcnow()
+        expires_at = now + timedelta(days=365)
+        result_json = json.dumps(rows_by_channel, ensure_ascii=False, default=str)
+
+        try:
+            with self._connection_factory() as conn:
+                existing = execute_one(
+                    conn,
+                    f"SELECT Id AS id FROM {AI_QUESTION_GROUP_CACHE_TABLE} WHERE CacheKey = ?",
+                    (cache_key,),
+                )
+                cursor = conn.cursor()
+                if existing:
+                    cursor.execute(
+                        """
+                        UPDATE dbo.WebChat_AiQuestionGroupCache
+                        SET Status = 'ok',
+                            SourceFromDate = ?,
+                            SourceToDate = ?,
+                            SourceFiltersJson = '{}',
+                            GeneratedAt = ?,
+                            ExpiresAt = ?,
+                            Provider = 'system',
+                            Model = 'nightly-grouper',
+                            PromptVersion = 'daily-rollup-v1',
+                            ResultJson = ?,
+                            ValidationJson = '{}',
+                            ErrorMessage = NULL,
+                            UpdatedAt = SYSUTCDATETIME(),
+                            IsActive = 1
+                        WHERE CacheKey = ?
+                        """,
+                        (date_str, date_str, now, expires_at, result_json, cache_key),
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        INSERT INTO dbo.WebChat_AiQuestionGroupCache
+                            (CacheKey, Status, SourceFromDate, SourceToDate,
+                             SourceFiltersJson, SourceRowCount, GeneratedAt, ExpiresAt,
+                             Provider, Model, PromptVersion, ResultJson,
+                             ValidationJson, ErrorMessage)
+                        VALUES (?, 'ok', ?, ?, '{}', 0, ?, ?, 'system', 'nightly-grouper', 'daily-rollup-v1', ?, '{}', NULL)
+                        """,
+                        (cache_key, date_str, date_str, now, expires_at, result_json),
+                    )
+                conn.commit()
+                logger.info("Daily rollup saved for date=%s rows=%d", date_str, len(rows_by_channel.get("rows_all", [])))
+        except Exception as exc:
+            if _is_missing_cache_table(exc):
+                logger.info("AI question group DB cache table is not available yet.")
+                return
+            logger.warning("Could not write daily rollup for %s: %s", date_str, exc)
+
+    def get_daily_rollup_range(self, start_date: str, end_date: str) -> dict[str, dict]:
+        """Lấy tất cả Daily Rollup trong khoảng ngày.
+        
+        Trả về dict với key là date_str ('YYYY-MM-DD'), value là dict rows_by_channel.
+        Chỉ trả về những ngày đã có dữ liệu (bỏ qua ngày thiếu).
+        """
+        try:
+            with self._connection_factory() as conn:
+                rows = execute_all(
+                    conn,
+                    """
+                    SELECT CacheKey, ResultJson
+                    FROM dbo.WebChat_AiQuestionGroupCache
+                    WHERE CacheKey LIKE 'daily_rollup:%'
+                      AND SourceFromDate >= ?
+                      AND SourceToDate <= ?
+                      AND IsActive = 1
+                    ORDER BY SourceFromDate ASC
+                    """,
+                    (start_date, end_date),
+                )
+        except Exception as exc:
+            if _is_missing_cache_table(exc):
+                return {}
+            logger.warning("Could not read daily rollup range: %s", exc)
+            return {}
+
+        result = {}
+        for row in rows:
+            key = row.get("CacheKey", "")
+            date_part = key.replace("daily_rollup:", "")
+            try:
+                data = json.loads(str(row.get("ResultJson") or "{}"))
+                if data and data.get("rows_all"):
+                    result[date_part] = data
+            except (TypeError, ValueError, json.JSONDecodeError):
+                continue
+
+        return result
+
     def invalidate_all(self) -> int:
+
         """Đánh dấu toàn bộ cache là không còn hợp lệ (IsActive=0).
         Dùng khi thuật toán gom nhóm thay đổi, buộc hệ thống tính lại từ đầu.
         Trả về số hàng bị vô hiệu hóa.

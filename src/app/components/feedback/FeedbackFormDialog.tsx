@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { X } from "lucide-react";
 import { toast } from "sonner";

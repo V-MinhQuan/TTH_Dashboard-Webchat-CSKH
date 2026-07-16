@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Brain, RefreshCw, X } from "lucide-react";
@@ -69,16 +67,16 @@ const groupToneClasses: Record<string, { activeBorder: string; activeShadow: str
     strip: "bg-[#002E8D]",
   },
   toeic: {
-    activeBorder: "border-[#00A3E0]",
-    activeShadow: "shadow-[0_4px_16px_rgba(0,163,224,0.16)]",
-    text: "text-[#00A3E0]",
-    strip: "bg-[#00A3E0]",
+    activeBorder: "border-[#0B7285]",
+    activeShadow: "shadow-[0_4px_16px_rgba(11,114,133,0.16)]",
+    text: "text-[#0B7285]",
+    strip: "bg-[#0B7285]",
   },
   mos: {
-    activeBorder: "border-[#00D2FF]",
-    activeShadow: "shadow-[0_4px_16px_rgba(0,210,255,0.16)]",
-    text: "text-[#00D2FF]",
-    strip: "bg-[#00D2FF]",
+    activeBorder: "border-[#E86A92]",
+    activeShadow: "shadow-[0_4px_16px_rgba(232,106,146,0.16)]",
+    text: "text-[#E86A92]",
+    strip: "bg-[#E86A92]",
   },
   hoc_tieng_anh: {
     activeBorder: "border-[#308D16]",
@@ -476,7 +474,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
 
   const hasAiFailedMetric = finalGroups.some((g) => g.aiFailed !== null);
 
-  const barData = kpiGroups.map((g) => ({ name: g.name.split(" / ")[0], "Số tin nhắn": g.totalQuestions, "Số câu AI phản hồi thất bại": g.aiFailed }));
+  const barData = kpiGroups.map((g) => ({ name: g.name.split(" / ")[0], "Số câu hỏi thuộc chủ đề": g.totalQuestions, "Số câu AI phản hồi thất bại": g.aiFailed }));
   const donutData = kpiGroups.map((g) => ({ id: g.id, name: g.name.split(" / ")[0], value: g.totalQuestions }));
   const trendGroupsWithData = kpiGroups.filter((group) => (
     activeGroup === group.id ||
@@ -527,7 +525,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
     if (kpiGroups && kpiGroups.length > 0) {
       datasets.push({
         title: "KPI theo chủ đề",
-        headers: ["Chủ đề", "Tổng tin nhắn", "AI phản hồi thất bại"],
+        headers: ["Chủ đề", "Số câu hỏi thuộc chủ đề", "AI phản hồi thất bại"],
         rows: kpiGroups.map(g => [
           g.name,
           String(g.totalQuestions || 0),
@@ -559,7 +557,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
             <span aria-hidden="true" className={cn("absolute inset-y-0 left-0 w-1", toneForGroup(g.id).strip)} />
             <div className="mb-2.5 text-[13px] font-bold text-[#003865]">{g.name}</div>
             <div className={cn("mb-1.5 text-[22px] font-bold", toneForGroup(g.id).text)}>{g.totalQuestions.toLocaleString("vi-VN")}</div>
-            <div className={labelTextClass}>tổng tin nhắn</div>
+            <div className={labelTextClass}>câu hỏi thuộc chủ đề</div>
           </div>
         ))}
       </div>
@@ -568,7 +566,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
       <div className="mb-5 grid grid-cols-[2fr_1fr] gap-5">
         {/* Bar chart */}
         <div className={cardShellClass}>
-          <div className="mb-4 text-sm font-bold text-[#003865]">Số tin nhắn AI phản hồi thất bại theo chủ đề</div>
+          <div className="mb-4 text-sm font-bold text-[#003865]">Câu hỏi theo chủ đề và phản hồi AI thất bại</div>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={barData} margin={{ top: 0, right: 10, bottom: 0, left: -10 }}>
               <CartesianGrid stroke="rgba(0,56,101,0.06)" />
@@ -576,7 +574,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
               <YAxis tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
               <Tooltip />
               <Legend iconSize={10} />
-              <Bar maxBarSize={40} dataKey="Số tin nhắn" fill={NAVY} radius={[4, 4, 0, 0]} />
+              <Bar maxBarSize={40} dataKey="Số câu hỏi thuộc chủ đề" fill={NAVY} radius={[4, 4, 0, 0]} />
               {hasAiFailedMetric && <Bar maxBarSize={40} dataKey="Số câu AI phản hồi thất bại" fill={ORANGE} radius={[4, 4, 0, 0]} />}
             </BarChart>
           </ResponsiveContainer>
@@ -638,7 +636,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
               <Tooltip />
               <Legend iconSize={10} />
               {visibleTrendGroups.map((topic, index) => {
-                const LINE_COLORS = ["#00A3E0", "#00D2FF", "#002E8D", "#308D16", "#FFA100", "#64748B"];
+                const LINE_COLORS = Object.values(TOPIC_COLORS).concat("#64748B");
                 const color = TOPIC_COLORS[topic.name] || LINE_COLORS[index % LINE_COLORS.length];
                 return (
                   <Line
@@ -666,7 +664,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
               <div className={cn("h-6 w-2 rounded", toneForGroup(group.id).strip)} />
               <span className="text-sm font-bold text-[#003865]">{group.name}</span>
               <div className="ml-auto flex gap-2.5 text-[11px]">
-                <span className="text-[rgba(0,56,101,0.45)]">Từ khóa hàng đầu</span>
+                <span className="text-[rgba(0,56,101,0.45)]">Từ khóa được nhắc trực tiếp nhiều nhất</span>
               </div>
             </div>
             <div className="px-[18px] py-3.5">
