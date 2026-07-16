@@ -74,7 +74,7 @@ def _connect_with_pymssql(settings: Settings) -> _PymssqlConnection:
         port=settings.db_port,
         tds_version="7.0",
         timeout=max(settings.db_timeout_seconds, MIN_QUERY_TIMEOUT_SECONDS),
-        login_timeout=max(settings.db_timeout_seconds, 5),
+        login_timeout=120,
     )
     return _PymssqlConnection(conn)
 

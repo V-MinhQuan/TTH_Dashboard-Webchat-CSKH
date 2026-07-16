@@ -21,8 +21,8 @@ def get_db_connection():
             database=settings.db_name,
             port=settings.db_port,
             tds_version="7.0",
-            timeout=settings.db_timeout_seconds,
-            login_timeout=settings.db_timeout_seconds,
+            timeout=120,
+            login_timeout=120,
         )
     except Exception as exc:
         logger.error(
