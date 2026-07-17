@@ -182,11 +182,12 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
   const [showBulkConfirm, setShowBulkConfirm] = useState(false);
   const bulkGuard = React.useRef(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const sentimentQueryString = buildSentimentQueryParams(filters).toString();
 
   useEffect(() => {
     setPositivePage(1);
     setNegativePage(1);
-  }, [filters]);
+  }, [sentimentQueryString]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -194,7 +195,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
     async function loadData() {
       setLoading(true);
       try {
-        const queryParams = buildSentimentQueryParams(filters);
+        const queryParams = new URLSearchParams(sentimentQueryString);
         const failedSections: string[] = [];
         const safeRequest = async <T,>(label: string, request: Promise<T>): Promise<T | null> => {
           try {
@@ -304,7 +305,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
               conv.customerId,
             );
             return {
-              id: `#${conv.messageId || conv.id_webchat_messagelogs || "N/A"}`,
+              id: Number(conv.id),
               conversationId: Number(conv.conversationId),
               customer: customer.primary,
               customerReference: customer.secondary,
@@ -354,7 +355,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
     }
     loadData();
     return () => controller.abort();
-  }, [filters, refreshKey]);
+  }, [sentimentQueryString, refreshKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -364,7 +365,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
       setPositiveLoading(true);
       setPositiveError(null);
       try {
-        const queryParams = buildSentimentQueryParams(filters);
+        const queryParams = new URLSearchParams(sentimentQueryString);
         queryParams.set("page", String(positivePage));
         queryParams.set("pageSize", "5");
         const response = await fetchApiJson<any>(
@@ -397,7 +398,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
       cancelled = true;
       controller.abort();
     };
-  }, [filters, positivePage, refreshKey]);
+  }, [sentimentQueryString, positivePage, refreshKey]);
 
   const posPctStr = summaryData?.summary?.total ? Math.round((summaryData.summary.positive / summaryData.summary.total) * 100) + "%" : "0%";
   const neuPctStr = summaryData?.summary?.total ? Math.round((summaryData.summary.neutral / summaryData.summary.total) * 100) + "%" : "0%";
@@ -417,7 +418,11 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
     }
 
     try {
-      await resolveSentimentReviews([Number(conv.id)]);
+      const result = await resolveSentimentReviews([Number(conv.id)]);
+      if (result.updated < 1) {
+        toast.warning("Phản hồi này đã được xử lý trước đó hoặc không còn ở trạng thái cần xử lý.");
+        return;
+      }
       setNegativeConversations(prev => prev.filter(c => c.id !== conv.id));
       toast.success("Đã đánh dấu xử lý phản hồi cảm xúc.");
     } catch (error) {
@@ -456,6 +461,10 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
     setBulkSubmitting(true);
     try {
       const result = await resolveSentimentReviews(closable.map((c) => Number(c.id)));
+      if (result.updated < 1) {
+        toast.warning("Các phản hồi đã được xử lý trước đó hoặc không còn ở trạng thái cần xử lý.");
+        return;
+      }
       setNegativeConversations((prev) => prev.filter((c) => !selectedIds.has(Number(c.id))));
       setSelectedConvIds(new Set());
       setShowBulkConfirm(false);
@@ -675,13 +684,17 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
                       { name: "Trung lập", value: safeData.reduce((a: number, c: any) => a + (c.neutral || 0), 0), fill: SENTIMENT_NEUTRAL },
                       { name: "Tiêu cực", value: safeData.reduce((a: number, c: any) => a + (c.negative || 0), 0), fill: SENTIMENT_NEGATIVE },
                     ];
+                    const pieTotal = pieData.reduce((total, item) => total + item.value, 0);
                     return (
                       <ResponsiveContainer width="100%" height={220}>
                         <PieChart>
                           <Pie data={pieData} cx="50%" cy="50%" innerRadius={chartType === "pie" ? 0 : 50} outerRadius={80} dataKey="value">
                             {pieData.map((d, i) => <Cell key={i} fill={d.fill} />)}
                           </Pie>
-                          <Tooltip formatter={(v: any) => `${v}%`} />
+                          <Tooltip formatter={(value: any) => {
+                            const percentage = pieTotal > 0 ? (Number(value) / pieTotal) * 100 : 0;
+                            return `${percentage.toLocaleString("vi-VN", { maximumFractionDigits: 1 })}%`;
+                          }} />
                           {showLegend && <Legend iconSize={10} />}
                         </PieChart>
                       </ResponsiveContainer>

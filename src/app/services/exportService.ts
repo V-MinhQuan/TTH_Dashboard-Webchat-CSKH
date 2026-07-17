@@ -98,6 +98,114 @@ export function collectAllTableData(target: HTMLElement): TableData[] {
   }).filter(data => data.headers.length > 0 || data.rows.length > 0);
 }
 
+function resolveExportDatasets(target: HTMLElement, rawData?: any): TableData[] {
+  if (Array.isArray(rawData)) return rawData;
+
+  const datasets: TableData[] = [];
+  if (rawData && (rawData.headers?.length > 0 || rawData.rows?.length > 0)) {
+    datasets.push({ title: "Tổng quan", headers: rawData.headers, rows: rawData.rows });
+  }
+  datasets.push(...collectAllTableData(target));
+  return datasets;
+}
+
+async function exportStructuredPdf(
+  datasets: TableData[],
+  filters: FilterValues,
+  filename: string,
+) {
+  const [pdfMakeModule, pdfFontsModule] = await Promise.all([
+    import("pdfmake/build/pdfmake"),
+    import("pdfmake/build/vfs_fonts"),
+  ]);
+  const pdfMake = (pdfMakeModule as any).default || pdfMakeModule;
+  const vfs = (pdfFontsModule as any).default || pdfFontsModule;
+  pdfMake.vfs = vfs;
+
+  const content: any[] = [
+    { text: "BÁO CÁO DỮ LIỆU", style: "reportTitle" },
+    { text: `Ngày xuất: ${new Intl.DateTimeFormat("vi-VN", { dateStyle: "long", timeStyle: "short" }).format(new Date())}`, style: "meta" },
+    { text: "Bộ lọc đã áp dụng", style: "sectionTitle", margin: [0, 10, 0, 4] },
+  ];
+
+  const appliedFilters = filterSummary(filters);
+  content.push(appliedFilters.length
+    ? {
+        table: {
+          widths: [110, "*"],
+          body: appliedFilters.map(([label, value]) => [
+            { text: label, bold: true, fillColor: "#EAF2F8" },
+            String(value),
+          ]),
+        },
+        layout: "lightHorizontalLines",
+      }
+    : { text: "Không có bộ lọc bổ sung.", italics: true, color: "#64748B" });
+
+  datasets.forEach((dataset, index) => {
+    const headers = dataset.headers.map((header) => ({
+      text: String(header ?? ""),
+      bold: true,
+      color: "#FFFFFF",
+      fillColor: "#003865",
+    }));
+    const columnCount = Math.max(headers.length, ...dataset.rows.map((row) => row.length), 1);
+    const normalizedHeaders = Array.from({ length: columnCount }, (_, columnIndex) => (
+      headers[columnIndex] || { text: "", bold: true, color: "#FFFFFF", fillColor: "#003865" }
+    ));
+    const body = [
+      normalizedHeaders,
+      ...dataset.rows.map((row, rowIndex) => Array.from({ length: columnCount }, (_, columnIndex) => ({
+        text: String(row[columnIndex] ?? ""),
+        fillColor: rowIndex % 2 ? "#F8FAFC" : "#FFFFFF",
+      }))),
+    ];
+
+    content.push(
+      { text: dataset.title || `Bảng dữ liệu ${index + 1}`, style: "sectionTitle", pageBreak: index > 0 ? "before" : undefined },
+      {
+        table: { headerRows: 1, widths: Array(columnCount).fill("*"), body },
+        layout: {
+          hLineColor: () => "#CBD5E1",
+          vLineColor: () => "#CBD5E1",
+          paddingLeft: () => 4,
+          paddingRight: () => 4,
+          paddingTop: () => 3,
+          paddingBottom: () => 3,
+        },
+      },
+    );
+  });
+
+  const documentDefinition: any = {
+    pageSize: "A4",
+    pageOrientation: "landscape",
+    pageMargins: [28, 32, 28, 32],
+    content,
+    defaultStyle: { font: "Roboto", fontSize: 7.5, color: "#0F172A" },
+    styles: {
+      reportTitle: { fontSize: 17, bold: true, color: "#003865" },
+      sectionTitle: { fontSize: 11, bold: true, color: "#003865", margin: [0, 14, 0, 6] },
+      meta: { fontSize: 8, color: "#64748B", margin: [0, 3, 0, 0] },
+    },
+    footer: (currentPage: number, pageCount: number) => ({
+      text: `Trang ${currentPage}/${pageCount}`,
+      alignment: "right",
+      margin: [0, 8, 28, 0],
+      fontSize: 7,
+      color: "#64748B",
+    }),
+  };
+
+  await new Promise<void>((resolve, reject) => {
+    try {
+      pdfMake.createPdf(documentDefinition).download(filename, resolve);
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
 function safeSpreadsheetCell(value: any) {
   const strValue = String(value ?? "");
   const safe = /^[=+@-]/.test(strValue.trimStart()) ? `'${strValue}` : strValue;
@@ -182,17 +290,7 @@ async function renderSnapshot(target: HTMLElement, filters: FilterValues) {
 
 export async function exportDashboardData({ format, target, filenameBase, filters, rawData }: ExportRequest) {
   if (format === "csv" || format === "xlsx") {
-    let allDatasets: TableData[] = [];
-    if (Array.isArray(rawData)) {
-      allDatasets = rawData;
-    } else {
-      if (rawData && (rawData.headers?.length > 0 || rawData.rows?.length > 0)) {
-        allDatasets.push({ title: "Tổng quan", headers: rawData.headers, rows: rawData.rows });
-      }
-      
-      const tables = collectAllTableData(target);
-      allDatasets.push(...tables);
-    }
+    const allDatasets = resolveExportDatasets(target, rawData);
 
     if (allDatasets.length === 0) return { rowCount: 0, hasTable: false };
 
@@ -331,6 +429,13 @@ export async function exportDashboardData({ format, target, filenameBase, filter
     return { rowCount: allDatasets.reduce((acc, d) => acc + d.rows.length, 0), hasTable: true };
   }
 
+  if (format === "pdf") {
+    const datasets = resolveExportDatasets(target, rawData);
+    if (!datasets.length) return { rowCount: 0, hasTable: false };
+    await exportStructuredPdf(datasets, filters, `${filenameBase}.pdf`);
+    return { rowCount: datasets.reduce((total, dataset) => total + dataset.rows.length, 0), hasTable: true };
+  }
+
   const canvas = await renderSnapshot(target, filters);
   if (format === "png") {
     const url = canvas.toDataURL("image/png");
@@ -341,47 +446,5 @@ export async function exportDashboardData({ format, target, filenameBase, filter
     return { rowCount: 1, hasTable: false };
   }
 
-  let jsPDF: any;
-  try {
-    const mod = await import("jspdf");
-    jsPDF = mod.jsPDF || mod.default?.jsPDF || mod.default || mod;
-  } catch (e) {
-    // Ignored, will use CDN
-  }
-
-  if (typeof jsPDF !== "function") {
-    if (typeof (window as any).jspdf?.jsPDF === "function") {
-      jsPDF = (window as any).jspdf.jsPDF;
-    } else {
-      await new Promise((resolve, reject) => {
-        const script = document.createElement("script");
-        script.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
-        script.onload = resolve;
-        script.onerror = reject;
-        document.head.appendChild(script);
-      });
-      jsPDF = (window as any).jspdf?.jsPDF;
-      if (typeof jsPDF !== "function") {
-        throw new Error("Không thể tải thư viện jsPDF kể cả bằng CDN.");
-      }
-    }
-  }
-
-  const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4", compress: true });
-  const pageWidth = pdf.internal.pageSize.getWidth();
-  const pageHeight = pdf.internal.pageSize.getHeight();
-  const imageHeight = (canvas.height * pageWidth) / canvas.width;
-  let remaining = imageHeight;
-  let offset = 0;
-  const image = canvas.toDataURL("image/png");
-  pdf.addImage(image, "PNG", 0, offset, pageWidth, imageHeight, undefined, "FAST");
-  remaining -= pageHeight;
-  while (remaining > 0) {
-    offset = -(imageHeight - remaining);
-    pdf.addPage();
-    pdf.addImage(image, "PNG", 0, offset, pageWidth, imageHeight, undefined, "FAST");
-    remaining -= pageHeight;
-  }
-  pdf.save(`${filenameBase}.pdf`);
-  return { rowCount: 0, hasTable: true };
+  return { rowCount: 1, hasTable: false };
 }

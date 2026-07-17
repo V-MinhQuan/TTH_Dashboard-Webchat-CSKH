@@ -24,6 +24,22 @@ _CUSTOMER_INFO_APPLY = """
       WHERE ui.SenderId = c.CustomerId AND ui.Source = c.Source
     ) customerInfo
 """
+_CUSTOMER_PHONE_EXPR = """
+    CASE
+      WHEN PATINDEX('%[^0-9]%', LTRIM(RTRIM(COALESCE(c.CustomerId, a.customerId, N'')))) = 0
+       AND (
+         (LEN(LTRIM(RTRIM(COALESCE(c.CustomerId, a.customerId, N'')))) = 10 AND LTRIM(RTRIM(COALESCE(c.CustomerId, a.customerId, N''))) LIKE '0%')
+         OR
+         (LEN(LTRIM(RTRIM(COALESCE(c.CustomerId, a.customerId, N'')))) = 11 AND LTRIM(RTRIM(COALESCE(c.CustomerId, a.customerId, N''))) LIKE '84%')
+       )
+      THEN LTRIM(RTRIM(COALESCE(c.CustomerId, a.customerId)))
+      WHEN LEN(LTRIM(RTRIM(COALESCE(c.CustomerId, a.customerId, N'')))) = 12
+       AND LTRIM(RTRIM(COALESCE(c.CustomerId, a.customerId, N''))) LIKE '+84%'
+       AND PATINDEX('%[^0-9]%', SUBSTRING(LTRIM(RTRIM(COALESCE(c.CustomerId, a.customerId, N''))), 2, 11)) = 0
+      THEN LTRIM(RTRIM(COALESCE(c.CustomerId, a.customerId)))
+      ELSE CAST(NULL AS NVARCHAR(50))
+    END
+"""
 
 
 def _clamped_int(value: Any, default: int, minimum: int, maximum: int) -> int:
@@ -812,7 +828,7 @@ class AnalyticsRepository:
                         a.conversationId,
                         c.CustomerId AS customerId,
                         customerInfo.customerName,
-                        CAST(NULL AS NVARCHAR(50)) AS phoneNumber,
+                        {_CUSTOMER_PHONE_EXPR} AS phoneNumber,
                         a.source,
                         a.sentimentLabel,
                         a.sentimentScore,
@@ -913,7 +929,7 @@ class AnalyticsRepository:
                   a.conversationId,
                   c.CustomerId AS customerId,
                   customerInfo.customerName,
-                  CAST(NULL AS NVARCHAR(50)) AS phoneNumber,
+                  {_CUSTOMER_PHONE_EXPR} AS phoneNumber,
                   a.source,
                   a.sentimentLabel,
                   a.sentimentScore,

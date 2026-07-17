@@ -224,6 +224,43 @@ def get_dashboard_top_questions(
     }
 
 
+@router.get("/top-questions/details")
+def get_dashboard_top_question_details(
+    question: str = Query(min_length=1),
+    startDate: str = Query(),
+    endDate: str = Query(),
+    channel: Optional[str] = Query(default=None),
+    topic: Optional[str] = Query(default=None),
+    search: Optional[str] = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    pageSize: int = Query(default=10, ge=1, le=100),
+):
+    try:
+        start = datetime.strptime(startDate, "%Y-%m-%d")
+        end = datetime.strptime(endDate, "%Y-%m-%d")
+    except ValueError:
+        return JSONResponse(status_code=400, content={
+            "success": False,
+            "message": "Ngày lọc không hợp lệ. Vui lòng dùng định dạng YYYY-MM-DD.",
+        })
+    if start > end:
+        return JSONResponse(status_code=400, content={
+            "success": False,
+            "message": "Ngày bắt đầu không thể lớn hơn ngày kết thúc.",
+        })
+
+    data = legacy_ds.get_top_question_details(
+        question,
+        startDate,
+        endDate,
+        {"channel": channel, "topic": topic},
+        page=page,
+        page_size=pageSize,
+        search=search,
+    )
+    return {"success": True, "message": "Top question details fetched successfully", "data": data}
+
+
 @router.get("/priority-conversations")
 def get_dashboard_priority_conversations(
     startDate: Optional[str] = Query(default=None),

@@ -6,9 +6,9 @@ def _to_pymssql_query(query: str) -> str:
     return query.replace("?", "%s")
 
 
-def execute_query(query: str, params: tuple = ()) -> list:
+def execute_query(query: str, params: tuple = (), timeout_seconds: int | None = None) -> list:
     """Execute a SQL query and return rows as dictionaries."""
-    conn = get_db_connection()
+    conn = get_db_connection(timeout_seconds=timeout_seconds)
     try:
         with conn.cursor(as_dict=True) as cursor:
             cursor.execute(_to_pymssql_query(query), params)

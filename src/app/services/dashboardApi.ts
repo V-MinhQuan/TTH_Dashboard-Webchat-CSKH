@@ -77,7 +77,6 @@ const DEFAULT_CHANNEL_SUMMARY = {
   ZaloBusiness: 0,
   Facebook: 0,
   ChatWidget: 0,
-  other: 0,
 };
 
 const DEFAULT_TRENDS = {
@@ -97,13 +96,13 @@ function toNumber(value: unknown): number {
   return 0;
 }
 
-function normalizeSourceKey(key: string): keyof typeof DEFAULT_CHANNEL_SUMMARY {
+function normalizeSourceKey(key: string): keyof typeof DEFAULT_CHANNEL_SUMMARY | null {
   const normalized = key.toLowerCase().replace(/[\s_-]+/g, "");
   if (normalized === "zalooa" || normalized === "zalo") return "ZaloOA";
   if (normalized === "zalobusiness" || normalized === "zalobiz") return "ZaloBusiness";
   if (normalized === "facebook" || normalized === "fb" || normalized === "messenger") return "Facebook";
   if (normalized === "chatwidget" || normalized === "website" || normalized === "web") return "ChatWidget";
-  return "other";
+  return null;
 }
 
 export function formatChannelParam(channel: string): string {
@@ -120,6 +119,7 @@ function normalizeChannelSummary(value: unknown) {
 
   Object.entries(value as Record<string, unknown>).forEach(([key, rawValue]) => {
     const sourceKey = normalizeSourceKey(key);
+    if (!sourceKey) return;
     summary[sourceKey] += toNumber(rawValue);
   });
 
@@ -625,6 +625,44 @@ export async function getDashboardTopQuestions(params?: {
   };
 }
 
+export interface TopQuestionDetailsPayload {
+  totalCount: number;
+  detailCount: number;
+  records: Array<{ question: string; count: number }>;
+  pagination: { page: number; pageSize: number; total: number; totalPages: number };
+}
+
+export async function getDashboardTopQuestionDetails(params: {
+  question: string;
+  startDate: string;
+  endDate: string;
+  channel?: string;
+  topic?: string;
+  search?: string;
+  page?: number;
+  pageSize?: number;
+  signal?: AbortSignal;
+}): Promise<TopQuestionDetailsPayload> {
+  const url = buildApiUrl("/api/dashboard/top-questions/details");
+  url.searchParams.set("question", params.question);
+  url.searchParams.set("startDate", params.startDate);
+  url.searchParams.set("endDate", params.endDate);
+  url.searchParams.set("page", String(params.page || 1));
+  url.searchParams.set("pageSize", String(params.pageSize || 10));
+  if (params.channel && params.channel !== "Tất cả") url.searchParams.set("channel", formatChannelParam(params.channel));
+  if (params.topic && params.topic !== "Tất cả") url.searchParams.set("topic", params.topic);
+  if (params.search?.trim()) url.searchParams.set("search", params.search.trim());
+
+  const response = await fetchApiJson<APIResponse<TopQuestionDetailsPayload>>(url, {
+    cache: false,
+    signal: params.signal,
+  });
+  if (!response.success || !response.data) {
+    throw new Error(response.message || "Không thể tải chi tiết câu hỏi nổi bật.");
+  }
+  return response.data;
+}
+
 export async function getDashboardPriorityConversations(params?: {
   startDate?: string;
   endDate?: string;
@@ -700,7 +738,10 @@ export async function getChannelAnalytics(params?: {
     url.searchParams.append("aiStatus", params.aiStatus);
   }
 
-  const resJson = await fetchApiJson<APIResponse<ChannelAnalyticsData>>(url);
+  const resJson = await fetchApiJson<APIResponse<ChannelAnalyticsData>>(url, {
+    cache: false,
+    timeoutMs: 120000,
+  });
 
   if (!resJson.success) {
     throw new Error(resJson.message || "Không thể tải dữ liệu phân tích kênh.");

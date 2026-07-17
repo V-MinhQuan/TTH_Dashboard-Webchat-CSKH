@@ -10,9 +10,19 @@ interface ActivityLog {
   created_at: string;
 }
 
-export const fetchActivityLogs = async (limit: number = 50, offset: number = 0): Promise<{ data: ActivityLog[], total: number }> => {
+export const fetchActivityLogs = async (
+  limit: number = 50,
+  offset: number = 0,
+  startDate?: string,
+  endDate?: string,
+): Promise<{ data: ActivityLog[], total: number }> => {
   try {
-    const url = buildApiUrl("/api/activity", { limit, offset });
+    const url = buildApiUrl("/api/activity", {
+      limit,
+      offset,
+      ...(startDate ? { start_date: startDate } : {}),
+      ...(endDate ? { end_date: endDate } : {}),
+    });
     // The backend router might not wrap in {success: true, data: ...}, but let's assume it returns directly
     // Wait, let's look at what we wrote in backend router:
     // return { "data": activities, "total": len(activities) }

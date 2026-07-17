@@ -192,6 +192,11 @@ def test_claim_returns_customer_message_id_and_customer_text_before_committing()
         rf"{customer_alias}\.TEXTCONTENT\s+AS\s+CUSTOMERTEXT",
         detail_sql,
     )
+    assert "A.PRIMARYTOPICID" in detail_sql
+    assert "A.DETECTEDTOPICS" in detail_sql
+    assert "A.DETECTEDKEYWORDS" in detail_sql
+    assert f"{customer_alias}.PRIMARYTOPICID" not in detail_sql
+    assert f"{customer_alias}.DETECTEDTOPICS" not in detail_sql
 
 
 def test_discover_passes_cutover_as_sql_parameter():

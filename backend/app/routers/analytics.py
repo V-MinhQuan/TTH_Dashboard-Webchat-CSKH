@@ -32,7 +32,6 @@ AI_FAILED_EXPORT_COLUMNS = [
     ("Message ID", "messageId", True),
     ("Conversation ID", "conversationId", True),
     ("Customer ID", "customerId", True),
-    ("Số điện thoại", "phoneNumber", True),
     ("Tên khách hàng", "customerDisplayName", False),
     ("Câu hỏi khách hàng", "textContent", False),
     ("Câu trả lời AI", "aiAnswer", False),

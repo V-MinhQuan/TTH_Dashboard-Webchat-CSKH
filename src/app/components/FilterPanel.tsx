@@ -139,17 +139,6 @@ export function FilterPanel({
   const { settings } = useSettings();
   const localFilters = globalFilters?.draftFilters ?? fallbackDraft;
 
-  const [isAnimating, setIsAnimating] = useState(false);
-  useEffect(() => {
-    if (isLoading) {
-      setIsAnimating(false);
-    } else {
-      setIsAnimating(true);
-      const timer = setTimeout(() => setIsAnimating(false), 1500);
-      return () => clearTimeout(timer);
-    }
-  }, [isLoading]);
-
   const setLocalFilters = (updater: FilterValues | ((current: FilterValues) => FilterValues)) => {
     const next = typeof updater === "function" ? updater(localFilters) : updater;
     if (globalFilters) globalFilters.setDraftFilters(next);
@@ -265,7 +254,7 @@ export function FilterPanel({
   const handleExport = async (format: ExportFormat) => {
     setExportMenuOpen(false);
 
-    if (isLoading || isAnimating) {
+    if (isLoading) {
       toast.error("Vui lòng chờ biểu đồ và dữ liệu tải xong hoàn toàn trước khi xuất file.");
       return;
     }

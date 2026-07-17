@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
-from typing import Any
+from typing import Any, Optional
+from datetime import datetime
 import logging
 from app.repositories.activity import activity_repo
 from app.schemas.activity import ActivityLogCreate, ActivityLogResponse
@@ -16,6 +17,8 @@ router = APIRouter(
 def get_user_activity(
     limit: int = 50,
     offset: int = 0,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
     session: SessionClaims = Depends(require_roles("manager", "staff"))
 ) -> Any:
     """
@@ -29,10 +32,12 @@ def get_user_activity(
             # Staff only sees their own activities
             target_user_id = session.username
         
-        activities = activity_repo.get_activities(target_user_id, limit, offset)
+        activities, total = activity_repo.get_activities(
+            target_user_id, limit, offset, start_date, end_date
+        )
         return {
             "data": activities,
-            "total": len(activities) # Real total needs COUNT query, but this is ok for now.
+            "total": total
         }
     except Exception as e:
         logger.error(f"Error fetching activity logs: {e}")

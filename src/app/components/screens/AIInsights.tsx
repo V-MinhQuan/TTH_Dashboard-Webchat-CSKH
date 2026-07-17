@@ -39,10 +39,8 @@ const TOPIC_DETAIL_CONVERSATIONS_PAGE_SIZE = 3;
 const TABLE_FILTER_ALL = "Tất cả";
 const AI_ANALYTICS_TIMEOUT_MS = 120000;
 import { AI_TOPIC_FAILURE_TYPES, TOPIC_FAILURE_NUMERIC_KEYS } from "../../constants/aiErrorKeywords";
-type OptionalAIInsightsDataKey = "staffReportedErrors" | "suggestedFAQs" | "recentChatbotRows";
+type OptionalAIInsightsDataKey = "recentChatbotRows";
 const emptyOptionalAIInsightsErrors: Record<OptionalAIInsightsDataKey, boolean> = {
-  staffReportedErrors: false,
-  suggestedFAQs: false,
   recentChatbotRows: false,
 };
 type CriticalAIInsightsDataKey = "qualityMetrics" | "failureTrend" | "failureByTopic" | "failedConversations";
@@ -359,6 +357,15 @@ function visibleTopicFailureTotal(row: TopicFailureRecord) {
   return AI_TOPIC_FAILURE_TYPES.reduce((total, item) => total + topicFailureVisibleCount(row, item.key), 0);
 }
 
+function normalizeMatchedNegativeKeywords(value: unknown): string[] {
+  const values = Array.isArray(value) ? value : typeof value === "string" ? value.split(",") : [];
+
+  return values
+    .flatMap((keyword) => typeof keyword === "string" ? keyword.split(",") : [])
+    .map((keyword) => keyword.trim())
+    .filter(Boolean);
+}
+
 function mapFailedConversation(record: any) {
   const customer = getCustomerPresentation(
     record.customerDisplayName || record.customerName || record.customer_name,
@@ -388,7 +395,7 @@ function mapFailedConversation(record: any) {
     customerName: customer.primary,
     customerReference: customer.secondary,
     messageAt: record.messageAt || null,
-    matchedNegativeKeywords: record.matchedNegativeKeywords,
+    matchedNegativeKeywords: normalizeMatchedNegativeKeywords(record.matchedNegativeKeywords),
   };
 }
 
@@ -404,7 +411,6 @@ function buildFailedConversationCsvRows(records: Array<ReturnType<typeof mapFail
       "Message ID",
       "Conversation ID",
       "Customer ID",
-      "Số điện thoại",
       "Tên khách hàng",
       "Câu hỏi khách hàng",
       "Câu trả lời AI",
@@ -420,7 +426,6 @@ function buildFailedConversationCsvRows(records: Array<ReturnType<typeof mapFail
       spreadsheetIdentifier(row.messageId),
       spreadsheetIdentifier(row.conversationId),
       spreadsheetIdentifier(row.customerId),
-      spreadsheetIdentifier(row.phoneNumber),
       row.customerName,
       row.question,
       row.aiAnswer,
@@ -462,8 +467,6 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
   const [failureByTopic, setFailureByTopic] = useState<TopicFailureRecord[]>([]);
   const [failedConversations, setFailedConversations] = useState<any[]>([]);
   const [failedConversationTotal, setFailedConversationTotal] = useState(0);
-  const [staffReportedErrors, setStaffReportedErrors] = useState<any[]>([]);
-  const [suggestedFAQs, setSuggestedFAQs] = useState<any[]>([]);
   const [recentChatbotRows, setRecentChatbotRows] = useState<any[]>([]);
   const [sheetStats, setSheetStats] = useState<Partial<SheetChatbotStats>>({});
   const [optionalDataErrors, setOptionalDataErrors] = useState<Record<OptionalAIInsightsDataKey, boolean>>(() => ({ ...emptyOptionalAIInsightsErrors }));
@@ -507,13 +510,11 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
           }
         };
 
-        const [qm, ft, fbt, fc, sre, sf, scRows] = await Promise.all([
-          safeRequired("qualityMetrics", fetchApiJson<any>(buildApiUrl(`/api/analytics/ai/quality-metrics?${qs}`), { cache: false, timeoutMs: AI_ANALYTICS_TIMEOUT_MS })),
-          safeRequired("failureTrend", fetchApiJson<any>(buildApiUrl(`/api/analytics/ai/failure-trend?${qs}`), { cache: false, timeoutMs: AI_ANALYTICS_TIMEOUT_MS })),
+        const [qm, ft, fbt, fc, scRows] = await Promise.all([
+          safeRequired("qualityMetrics", fetchApiJson<any>(buildApiUrl(`/api/analytics/ai/quality-metrics?${qs}`), { timeoutMs: AI_ANALYTICS_TIMEOUT_MS })),
+          safeRequired("failureTrend", fetchApiJson<any>(buildApiUrl(`/api/analytics/ai/failure-trend?${qs}`), { timeoutMs: AI_ANALYTICS_TIMEOUT_MS })),
           safeRequired("failureByTopic", getTopicFailures(queryParams)),
           safeRequired("failedConversations", getFailedConversations(queryParams)),
-          safeOptional("staffReportedErrors", fetchApiJson<any>(buildApiUrl(`/api/analytics/ai/staff-reported-errors?${qs}`), { cache: false, timeoutMs: AI_ANALYTICS_TIMEOUT_MS })),
-          safeOptional("suggestedFAQs", fetchApiJson<any>(buildApiUrl(`/api/analytics/ai/suggested-faqs?${qs}`), { cache: false, timeoutMs: AI_ANALYTICS_TIMEOUT_MS })),
           safeOptional("recentChatbotRows", getSheetChatbotRows({ pageSize: 5, ...feedbackFilters })),
         ]);
 
@@ -532,20 +533,6 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
         setFailedPage(1);
         setSelectedFailureIds(new Set());
         setShowConfirmAllModal(false);
-        if (sre?.success) setStaffReportedErrors(sre.data.records.map((r: any) => ({
-          id: r.id, time: displayDateTime(r.messageAt), staff: "Chưa xác định", channel: r.source || "Chưa xác định",
-          topic: displayTopic(r.detectedTopics), question: r.textContent || "Chưa có dữ liệu", aiAnswer: r.aiAnswer || "Không tìm thấy câu trả lời AI tương ứng",
-          reason: r.issueType || "Chưa xác định", impact: "Chưa xác định", status: r.needStaffReview ? "Chờ quản lý xác nhận" : "Chưa xác định"
-        })));
-        else {
-          if (sre) markOptionalFailure("staffReportedErrors");
-          setStaffReportedErrors([]);
-        }
-        if (sf?.success) setSuggestedFAQs(sf.data);
-        else {
-          if (sf) markOptionalFailure("suggestedFAQs");
-          setSuggestedFAQs([]);
-        }
         if (scRows?.success) {
           setRecentChatbotRows(scRows.data || []);
           setSheetStats(scRows.stats || {});
@@ -865,13 +852,6 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
     ai_failure: qualityMetrics?.failure_count || 0,
     ai_accuracy: qualityMetrics?.success_rate || 0,
   };
-  const optionalNoticeItems = useMemo(() => {
-    const items: string[] = [];
-    if (optionalDataErrors.staffReportedErrors) items.push("lỗi nhân viên báo cáo");
-    if (optionalDataErrors.suggestedFAQs) items.push("FAQ gợi ý");
-    return items;
-  }, [optionalDataErrors.staffReportedErrors, optionalDataErrors.suggestedFAQs]);
-
   const getExportData = async () => {
     const datasets: any[] = [];
 
@@ -937,13 +917,6 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
       <div data-export-target="true">
         {loading ? <AIInsightsSkeleton /> : (
           <>
-            {optionalNoticeItems.length > 0 && (
-              <div style={{ marginBottom: "16px", borderRadius: "12px", border: `1px solid ${AMBER_100}`, background: AMBER_50, color: AMBER_TEXT, padding: "10px 14px", display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", fontWeight: 600 }}>
-                <AlertTriangle size={15} aria-hidden="true" />
-                <span>Dữ liệu phụ tạm thời chưa tải được: {optionalNoticeItems.join(", ")}. Dữ liệu chính vẫn đang hiển thị.</span>
-              </div>
-            )}
-
             {/* KPI Row - AI insights */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "14px", marginBottom: "24px" }}>
               {[
@@ -1431,7 +1404,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
                           const matchedKeywords = new Set<string>();
 
                           relevantConvs.forEach(c => {
-                            const dbKeywords = (c.matchedNegativeKeywords || "").split(',').map((k: string) => k.trim()).filter(Boolean);
+                            const dbKeywords = c.matchedNegativeKeywords;
                             if (dbKeywords.length > 0) {
                               dbKeywords.forEach((k: string) => matchedKeywords.add(k));
                             } else {

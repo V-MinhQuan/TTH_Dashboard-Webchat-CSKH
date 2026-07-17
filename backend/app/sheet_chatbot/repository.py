@@ -79,11 +79,13 @@ class SheetChatbotRepository:
             return True
         if os.getenv("SHEET_CHATBOT_JSON_FILE"):
             return False
-        return all([
-            os.getenv("DB_USER"),
-            os.getenv("DB_PASSWORD"),
-            os.getenv("DB_DATABASE") or os.getenv("DB_NAME"),
-        ])
+        # Central settings load values from .env without mutating os.environ.
+        # Reading DB_* with os.getenv here incorrectly selected the empty JSON
+        # fallback even though the application had a valid SQL configuration.
+        from app.core.config import get_settings
+
+        settings = get_settings()
+        return all([settings.db_user, settings.db_password, settings.db_name])
 
     def _ensure_sql_table(self):
         if self._sql_available is True:

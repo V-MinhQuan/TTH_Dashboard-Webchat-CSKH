@@ -1,4 +1,5 @@
 import difflib
+import hashlib
 import json
 import logging
 import re
@@ -2045,6 +2046,101 @@ class DashboardService:
             "topQuestions": rows[:limit],
             "topQuestionsStatus": status,
             "topQuestionsMessage": message,
+        }
+
+    def get_top_question_details(
+        self,
+        question,
+        start_date=None,
+        end_date=None,
+        filters=None,
+        page=1,
+        page_size=10,
+        search=None,
+    ):
+        filters = filters or {}
+        channel = filters.get("channel")
+        topic = filters.get("topic")
+        page = max(int(page or 1), 1)
+        page_size = min(max(int(page_size or 10), 1), 100)
+        normalized_question = clean_question_text(question)
+        if not normalized_question or not start_date or not end_date:
+            return {
+                "totalCount": 0, "detailCount": 0, "records": [],
+                "pagination": {"page": page, "pageSize": page_size, "total": 0, "totalPages": 0},
+            }
+
+        scope = json.dumps(
+            {"startDate": start_date, "endDate": end_date, "channel": channel or "all", "topic": topic or "all", "question": normalized_question},
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        cache_key = f"top_question_detail:v1:{hashlib.sha256(scope.encode('utf-8')).hexdigest()}"
+        cached = ai_question_group_cache_repository.get(cache_key)
+        detail_rows = None
+        total_count = 0
+        if cached:
+            detail_rows = list(cached["value"][0] or [])
+            total_count = sum(int(row.get("count") or 0) for row in detail_rows)
+
+        if detail_rows is None:
+            rollup_data = ai_question_group_cache_repository.get_daily_rollup_range(start_date, end_date)
+            rollup_key = _CHANNEL_TO_ROLLUP_KEY.get(channel, "rows_all")
+            related_counts = Counter()
+            for day_data in rollup_data.values():
+                day_rows = day_data.get(rollup_key) or (day_data.get("rows_all") if rollup_key == "rows_all" else []) or []
+                for row in day_rows:
+                    if clean_question_text(row.get("question")) != normalized_question:
+                        continue
+                    for related in row.get("relatedQuestions") or []:
+                        related_text = clean_question_text(related.get("question"))
+                        if related_text:
+                            related_counts[related_text] += int(related.get("count") or 0)
+
+            detail_rows = [
+                {"question": related_question, "count": count}
+                for related_question, count in related_counts.most_common()
+            ]
+            total_count = sum(related_counts.values())
+
+            if topic and topic != "Tất cả" and detail_rows:
+                inferred_topic = classify_topic(
+                    " ".join([normalized_question, *(row["question"] for row in detail_rows[:5])]),
+                    normalized_question,
+                )
+                if not topic_filter_matches(inferred_topic, topic):
+                    detail_rows = []
+                    total_count = 0
+
+            if detail_rows:
+                ai_question_group_cache_repository.upsert(
+                    cache_key,
+                    (detail_rows, "ok", ""),
+                    source_from_date=start_date,
+                    source_to_date=end_date,
+                    source_filters={"channel": channel, "topic": topic, "question": normalized_question},
+                    source_row_count=len(detail_rows),
+                    provider="system",
+                    model="daily-rollup-detail",
+                    prompt_version="top-question-detail-v1",
+                    ttl_seconds=AI_QUESTION_DB_CACHE_TTL_SECONDS,
+                )
+
+        search_text = clean_question_text(search).casefold() if search else ""
+        filtered_rows = [
+            row for row in detail_rows
+            if not search_text or search_text in clean_question_text(row.get("question")).casefold()
+        ]
+        filtered_total = len(filtered_rows)
+        total_pages = (filtered_total + page_size - 1) // page_size if filtered_total else 0
+        if total_pages and page > total_pages:
+            page = total_pages
+        offset = (page - 1) * page_size
+        return {
+            "totalCount": total_count,
+            "detailCount": len(detail_rows),
+            "records": filtered_rows[offset:offset + page_size],
+            "pagination": {"page": page, "pageSize": page_size, "total": filtered_total, "totalPages": total_pages},
         }
 
     def _map_urgent_alert_rows(self, raw_urgent_alerts, raw_overtime_alerts, filters=None):

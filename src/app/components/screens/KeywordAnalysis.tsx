@@ -17,6 +17,7 @@ import {
   buildApiParams,
   buildTrendApiParams,
   failureSourceFromSuggestion,
+  getTrendGranularity,
   mapApiGroups,
   mapTrendRows,
   matchesKeywordFilter,
@@ -127,6 +128,34 @@ type GroupFaqQueryData = {
 
 function toneForGroup(groupId: string) {
   return groupToneClasses[groupId] || defaultGroupTone;
+}
+
+function formatTrendDateLabel(value: unknown, granularity: string, fallbackYear: number) {
+  const label = String(value ?? "");
+  const fullDate = label.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (fullDate) {
+    return `${fullDate[1].padStart(2, "0")}/${fullDate[2].padStart(2, "0")}/${fullDate[3]}`;
+  }
+
+  const shortDate = label.match(/^(\d{1,2})\/(\d{1,2})$/);
+  if (shortDate) {
+    return `${shortDate[1].padStart(2, "0")}/${shortDate[2].padStart(2, "0")}/${fallbackYear}`;
+  }
+
+  const bucket = label.match(/^T(\d{1,2})\/(\d{2,4})$/);
+  if (!bucket) return label;
+
+  const bucketNumber = Number(bucket[1]);
+  const year = Number(bucket[2].length === 2 ? `20${bucket[2]}` : bucket[2]);
+  if (granularity === "week") {
+    const fourthOfJanuary = new Date(Date.UTC(year, 0, 4));
+    const firstMonday = new Date(fourthOfJanuary);
+    firstMonday.setUTCDate(fourthOfJanuary.getUTCDate() - ((fourthOfJanuary.getUTCDay() + 6) % 7));
+    firstMonday.setUTCDate(firstMonday.getUTCDate() + (bucketNumber - 1) * 7);
+    return `${String(firstMonday.getUTCDate()).padStart(2, "0")}/${String(firstMonday.getUTCMonth() + 1).padStart(2, "0")}/${firstMonday.getUTCFullYear()}`;
+  }
+
+  return `01/${String(bucketNumber).padStart(2, "0")}/${year}`;
 }
 
 function summaryCardClass(group: KeywordGroup, activeGroup: string | null) {
@@ -337,6 +366,10 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
 
   const groups = groupsQuery.data || [];
   const trendRows = trendQuery.data || [];
+  const trendGranularity = getTrendGranularity(appliedFilters);
+  const trendFallbackYear = appliedFilters.customDateFrom
+    ? new Date(appliedFilters.customDateFrom).getFullYear()
+    : new Date().getFullYear();
   const selectedGroup = selectedGroupId ? groups.find((group) => group.id === selectedGroupId) || null : null;
   const selectedGroupFaqsLoaded = Boolean(selectedGroupId && Object.prototype.hasOwnProperty.call(loadedMissingFaqsByGroup, selectedGroupId));
 
@@ -631,9 +664,13 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
           <ResponsiveContainer width="100%" height={200}>
             <LineChart data={finalTrendRows} margin={{ top: 0, right: 10, bottom: 0, left: -10 }}>
               <CartesianGrid stroke="rgba(0,56,101,0.06)" />
-              <XAxis dataKey="date" tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
+              <XAxis
+                dataKey="date"
+                tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }}
+                tickFormatter={(value) => formatTrendDateLabel(value, trendGranularity, trendFallbackYear)}
+              />
               <YAxis tick={{ fontSize: 11, fill: "rgba(0,56,101,0.5)" }} />
-              <Tooltip />
+              <Tooltip labelFormatter={(value) => formatTrendDateLabel(value, trendGranularity, trendFallbackYear)} />
               <Legend iconSize={10} />
               {visibleTrendGroups.map((topic, index) => {
                 const LINE_COLORS = Object.values(TOPIC_COLORS).concat("#64748B");

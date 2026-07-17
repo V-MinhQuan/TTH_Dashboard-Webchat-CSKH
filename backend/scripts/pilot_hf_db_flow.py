@@ -146,10 +146,12 @@ def _load_candidates(message_ids: list[int], cutover_message_id: int) -> list[di
                 customer_message.FromHost,
                 conversation.Id AS conversationId,
                 customer_message.Source AS channel,
-                customer_message.primaryTopicId,
-                customer_message.detectedTopics,
+                analytics.primaryTopicId,
+                analytics.detectedTopics,
                 customer_message.SentAt AS createdAt
             FROM dbo.WebChat_MessageLogs customer_message
+            LEFT JOIN dbo.WebChat_MessageAnalytics analytics
+              ON analytics.messageId = customer_message.id_webchat_messageLogs
             LEFT JOIN dbo.WebChat_Conversations conversation
               ON conversation.Source = customer_message.Source
              AND conversation.CustomerId = customer_message.SenderId
@@ -275,8 +277,8 @@ def _claim_selected_jobs(message_ids: list[int]) -> list[dict[str, Any]]:
                     customer_message.TextContent AS CustomerText,
                     customer_message.FromHost,
                     customer_message.Source AS channel,
-                    customer_message.primaryTopicId,
-                    customer_message.detectedTopics,
+                    a.primaryTopicId,
+                    a.detectedTopics,
                     customer_message.SentAt AS createdAt
                 FROM dbo.WebChat_MessageAnalytics a
                 INNER JOIN dbo.WebChat_MessageLogs customer_message

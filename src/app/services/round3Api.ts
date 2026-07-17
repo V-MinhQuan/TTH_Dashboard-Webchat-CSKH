@@ -36,7 +36,7 @@ export interface FailedConversationRecord {
   issueConfidence?: number | null;
   needStaffReview?: boolean | number | null;
   messageAt?: string | null;
-  matchedNegativeKeywords?: string | null;
+  matchedNegativeKeywords?: string | string[] | null;
 }
 
 interface ApiResponse<T> {

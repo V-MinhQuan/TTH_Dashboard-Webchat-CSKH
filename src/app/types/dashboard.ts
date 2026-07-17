@@ -11,8 +11,6 @@ export interface KPISourceSummary {
   ZaloBusiness: number;
   Facebook: number;
   ChatWidget: number;
-  other: number;
-  [key: string]: number; // Cho phép linh động nếu backend đổi case
 }
 
 export interface KPIMessageSummary {
@@ -20,8 +18,6 @@ export interface KPIMessageSummary {
   ZaloBusiness: number;
   Facebook: number;
   ChatWidget: number;
-  other: number;
-  [key: string]: number;
 }
 
 export interface KPIDateRange {

@@ -3,7 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
 import flicLogo from '../../../assets/flic-logo-long_login.png';
 import { Eye, EyeOff, Lock, User } from 'lucide-react';
-import { API_BASE_URL } from '../../services/dashboardApi';
+import { buildApiUrl, fetchApiJson } from '../../services/dashboardApi';
 
 const NAVY = "#003865";
 const CTA = "#ED5206";
@@ -19,6 +19,7 @@ export function LoginScreen() {
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
+    if (loading) return;
     if (!username.trim() || !password.trim()) {
       setError("Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu.");
       return;
@@ -26,20 +27,17 @@ export function LoginScreen() {
     setError("");
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+      const resJson = await fetchApiJson<any>(buildApiUrl("/api/auth/login"), {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        cache: false,
+        timeoutMs: 15000,
         body: JSON.stringify({
           username: username.trim(),
           password: password,
         }),
       });
 
-      const resJson = await response.json();
-
-      if (!response.ok || !resJson.success) {
+      if (!resJson.success) {
         setError(resJson.message || "Tên đăng nhập hoặc mật khẩu không đúng.");
         return;
       }
@@ -64,7 +62,7 @@ export function LoginScreen() {
       localStorage.removeItem("saved_password");
       login(userData, rememberLogin);
     } catch (err: any) {
-      setError("Không thể kết nối tới máy chủ. Vui lòng thử lại sau.");
+      setError(err instanceof Error ? err.message : "Không thể kết nối tới máy chủ. Vui lòng thử lại sau.");
     } finally {
       setLoading(false);
     }

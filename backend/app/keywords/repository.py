@@ -549,40 +549,48 @@ class KeywordRepository:
             ai_status=ai_status,
         )
 
-        select_parts = []
-        select_params = []
-        
-        # 1. Select cho keywords
-        for i, w in enumerate(unique_words):
-            select_parts.append(f"SUM(CASE WHEN m.TextContent LIKE ? THEN 1 ELSE 0 END) AS kw_{i}")
-            select_params.append(f"%{w}%")
-            
-        # 2. Select cho groups
+        pattern_rows = [
+            (group_id, word)
+            for group_id, words in group_words_map.items()
+            if group_id != "khac"
+            for word in words
+            if word
+        ]
+        if not pattern_rows:
+            return {"keyword_counts": {}, "group_totals": {}}
+
         has_khac = "khac" in group_words_map
-        for group_id, words in group_words_map.items():
-            if not words or group_id == "khac":
-                continue
-            group_or = " OR ".join(["m.TextContent LIKE ?" for _ in words])
-            select_parts.append(f"SUM(CASE WHEN ({group_or}) THEN 1 ELSE 0 END) AS [{group_id}]")
-            select_params.extend([f"%{word}%" for word in words])
-            
-        select_parts.append("COUNT(*) AS [matched_total]")
-        
-        word_filter_sql = " OR ".join(["m.TextContent LIKE ?" for _ in unique_words])
-        word_filter_params = [f"%{word}%" for word in unique_words]
+        pattern_values_sql = ", ".join(["(?, ?)"] * len(pattern_rows))
+        pattern_params = [value for row in pattern_rows for value in row]
         where_extra = (" AND " + " AND ".join(f"({clause})" for clause in filter_clauses)) if filter_clauses else ""
-        
+
+        # Match every scoped message against the configured patterns once. The
+        # old query repeated all LIKE predicates in both SELECT and WHERE (and
+        # again for group totals), which timed out with the current 99 keywords.
         query = f"""
-            SELECT {', '.join(select_parts)}
-            FROM WebChat_MessageLogs m
-            {join_sql}
-            WHERE m.TextContent IS NOT NULL AND m.TextContent != ''
-              AND m.FromHost = 0
-              AND ({word_filter_sql})
-              {where_extra}
+            WITH keyword_patterns (group_id, word) AS (
+                SELECT group_id, word
+                FROM (VALUES {pattern_values_sql}) patterns(group_id, word)
+            ),
+            matched AS (
+                SELECT
+                    m.id_webchat_messageLogs AS message_id,
+                    p.group_id,
+                    p.word
+                FROM WebChat_MessageLogs m
+                {join_sql}
+                INNER JOIN keyword_patterns p
+                    ON m.TextContent LIKE N'%' + p.word + N'%'
+                WHERE m.TextContent IS NOT NULL AND m.TextContent != ''
+                  AND m.FromHost = 0
+                  {where_extra}
+            )
+            SELECT group_id, word, COUNT(DISTINCT message_id) AS match_count
+            FROM matched
+            GROUP BY GROUPING SETS ((group_id, word), (group_id), ())
         """
-        
-        params = tuple(select_params + word_filter_params + filter_params)
+
+        params = tuple(pattern_params + filter_params)
         
         total_messages = 0
         if has_khac:
@@ -602,14 +610,23 @@ class KeywordRepository:
                 print("Lỗi count total groups in combo:", e)
                 
         try:
-            rows = execute_query(query, params)
-            row = rows[0] if rows else {}
-            
-            keyword_counts = {w: (row.get(f"kw_{i}") or 0) for i, w in enumerate(unique_words)}
-            
-            group_totals = {group_id: row.get(group_id) or 0 for group_id in group_words_map if group_id != "khac"}
+            rows = execute_query(query, params, timeout_seconds=15)
+            keyword_counts = {word: 0 for word in unique_words}
+            group_totals = {group_id: 0 for group_id in group_words_map if group_id != "khac"}
+            matched_total = 0
+            for row in rows:
+                group_id = row.get("group_id")
+                word = row.get("word")
+                count = row.get("match_count") or 0
+                if group_id is None and word is None:
+                    matched_total = count
+                elif word is None:
+                    if group_id in group_totals:
+                        group_totals[group_id] = count
+                elif word in keyword_counts:
+                    keyword_counts[word] = count
+
             if has_khac:
-                matched_total = row.get("matched_total") or 0
                 group_totals["khac"] = max(0, total_messages - matched_total)
                 
             return {
@@ -727,7 +744,11 @@ class KeywordRepository:
         """
 
         try:
-            rows = execute_query(query, tuple(select_params + filter_params + match_params))
+            rows = execute_query(
+                query,
+                tuple(select_params + filter_params + match_params),
+                timeout_seconds=15,
+            )
             row = rows[0] if rows else {}
             result = {group_id: row.get(group_id) or 0 for group_id in group_words_map if group_id != "khac"}
             if has_khac:
@@ -849,72 +870,62 @@ class KeywordRepository:
                 filter_clauses.append("m.SentAt >= DATEADD(MONTH, ?, GETDATE())")
                 filter_params.append(-months)
 
-            select_parts = []
-            select_params = []
-            all_words = []
-            for group_id, words in group_words_map.items():
-                if not words:
-                    continue
-                all_words.extend(words)
-                group_or = " OR ".join(["m.TextContent LIKE ?" for _ in words])
-                select_parts.append(f"SUM(CASE WHEN ({group_or}) THEN 1 ELSE 0 END) AS [{group_id}]")
-                select_params.extend([f"%{word}%" for word in words])
-
-            if not select_parts:
+            pattern_rows = [
+                (group_id, word)
+                for group_id, words in group_words_map.items()
+                for word in words
+                if word
+            ]
+            if not pattern_rows:
                 return []
-
-            unique_words = list(dict.fromkeys(all_words))
-            word_filter_sql = " OR ".join(["m.TextContent LIKE ?" for _ in unique_words])
-            word_filter_params = [f"%{word}%" for word in unique_words]
+            pattern_values_sql = ", ".join(["(?, ?)"] * len(pattern_rows))
+            pattern_params = [value for row in pattern_rows for value in row]
             where_extra = (" AND " + " AND ".join(f"({clause})" for clause in filter_clauses)) if filter_clauses else ""
 
             if granularity == "day":
-                query = f"""
-                    SELECT
-                      CONVERT(VARCHAR(10), m.SentAt, 120) AS bucket_key,
-                      {', '.join(select_parts)}
-                    FROM WebChat_MessageLogs m
-                    {join_sql}
-                    WHERE m.TextContent IS NOT NULL AND m.TextContent != ''
-                      AND m.FromHost = 0
-                      AND ({word_filter_sql})
-                      {where_extra}
-                    GROUP BY CONVERT(VARCHAR(10), m.SentAt, 120)
-                    ORDER BY bucket_key
-                """
+                bucket_expr = "CONVERT(VARCHAR(10), m.SentAt, 120)"
             elif granularity == "week":
-                query = f"""
-                    SELECT
-                      CONCAT(YEAR(m.SentAt), '-W', RIGHT('0' + CAST(DATEPART(ISO_WEEK, m.SentAt) AS VARCHAR(2)), 2)) AS bucket_key,
-                      MIN(CONVERT(VARCHAR(10), m.SentAt, 120)) AS bucket_start,
-                      {', '.join(select_parts)}
-                    FROM WebChat_MessageLogs m
-                    {join_sql}
-                    WHERE m.TextContent IS NOT NULL AND m.TextContent != ''
-                      AND m.FromHost = 0
-                      AND ({word_filter_sql})
-                      {where_extra}
-                    GROUP BY YEAR(m.SentAt), DATEPART(ISO_WEEK, m.SentAt)
-                    ORDER BY MIN(m.SentAt)
-                """
+                bucket_expr = "CONCAT(YEAR(m.SentAt), '-W', RIGHT('0' + CAST(DATEPART(ISO_WEEK, m.SentAt) AS VARCHAR(2)), 2))"
             else:
-                query = f"""
+                bucket_expr = "CONCAT(YEAR(m.SentAt), '-', RIGHT('0' + CAST(MONTH(m.SentAt) AS VARCHAR(2)), 2))"
+
+            query = f"""
+                WITH keyword_patterns (group_id, word) AS (
+                    SELECT group_id, word
+                    FROM (VALUES {pattern_values_sql}) patterns(group_id, word)
+                ),
+                matched AS (
                     SELECT
-                      CONCAT(YEAR(m.SentAt), '-', RIGHT('0' + CAST(MONTH(m.SentAt) AS VARCHAR(2)), 2)) AS bucket_key,
-                      YEAR(m.SentAt) AS yr,
-                      MONTH(m.SentAt) AS mo,
-                      {', '.join(select_parts)}
+                        m.id_webchat_messageLogs AS message_id,
+                        {bucket_expr} AS bucket_key,
+                        p.group_id
                     FROM WebChat_MessageLogs m
                     {join_sql}
+                    INNER JOIN keyword_patterns p
+                        ON m.TextContent LIKE N'%' + p.word + N'%'
                     WHERE m.TextContent IS NOT NULL AND m.TextContent != ''
                       AND m.FromHost = 0
-                      AND ({word_filter_sql})
                       {where_extra}
-                    GROUP BY YEAR(m.SentAt), MONTH(m.SentAt)
-                    ORDER BY yr, mo
-                """
+                )
+                SELECT bucket_key, group_id, COUNT(DISTINCT message_id) AS match_count
+                FROM matched
+                GROUP BY bucket_key, group_id
+                ORDER BY bucket_key
+            """
 
-            return execute_query(query, tuple(select_params + word_filter_params + filter_params))
+            raw_rows = execute_query(
+                query,
+                tuple(pattern_params + filter_params),
+                timeout_seconds=15,
+            )
+            rows_by_bucket = {}
+            for raw in raw_rows:
+                bucket_key = raw.get("bucket_key")
+                if not bucket_key:
+                    continue
+                row = rows_by_bucket.setdefault(bucket_key, {"bucket_key": bucket_key})
+                row[raw.get("group_id")] = raw.get("match_count") or 0
+            return list(rows_by_bucket.values())
         except Exception as e:
             print("Lỗi khi get_trend_counts_for_groups:", e)
             return []

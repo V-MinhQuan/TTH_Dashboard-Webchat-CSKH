@@ -250,7 +250,7 @@ function formatAddedAt(value: string) {
 
 export function SheetChatbot() {
   const { role, user } = useAuth();
-  const currentUserName = role === "manager" ? "Admin FLIC" : user?.name || "Thu Trang";
+  const currentUserName = user?.name || user?.username || "";
   const apiRole = role === "manager" ? "manager" : "staff";
   const [rows, setRows] = useState<SheetRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -307,10 +307,9 @@ export function SheetChatbot() {
     }
   }, [rows, isLoading]);
 
-  const visibleRows = useMemo(
-    () => rows.filter((row) => role === "manager" || row.addedBy === currentUserName),
-    [currentUserName, role, rows],
-  );
+  // Backend already filters by session.username for staff role.
+  // No need to re-filter on the client by currentUserName.
+  const visibleRows = rows;
   const topicOptions = useMemo<readonly string[]>(
     () => TOPIC_FILTER_OPTIONS.map((option) => option.label),
     [],

@@ -22,8 +22,19 @@ The external producer writes one message per row to
 | Host identity | `HostDisplayName` | Exact `AI Assistant` identifies current AI replies when `FromHost=1`; other host names are staff/other host-side messages |
 | Timestamp | `SentAt` | Message creation/sent time |
 | Channel | `Source` | WebChat channel/source |
-| Topic | `primaryTopicId`, `detectedTopics` | Optional topic metadata |
 | Conversation | `WebChat_Conversations.Id` | Resolved by the verified unique key `(CustomerId, Source)` |
+
+`WebChat_MessageLogs` is the immutable message envelope. Topic and keyword
+classification is persisted in `dbo.WebChat_MessageAnalytics`, keyed by
+`messageId = WebChat_MessageLogs.id_webchat_messageLogs`. Producers must upsert
+the following analytics fields instead of updating the message row:
+`primaryTopicId`, `detectedTopics`, `detectedKeywords`, `topicConfidence`,
+`topicSource`, `contextMessageId`, `contextDistance`, `classifierVersion`, and
+`keywordAnalyzedAt`. During the compatibility rollout, legacy columns may still
+exist on `WebChat_MessageLogs`, but they are not the canonical read source.
+The supported SQL write contract is
+`dbo.WebChat_UpsertMessageTopicAnalytics`; producers should call it only after
+the message row has been persisted successfully.
 
 There is no persisted `Role`, `SenderType` or `MessageType` column in
 `WebChat_MessageLogs`. A dedicated system-message discriminator is therefore

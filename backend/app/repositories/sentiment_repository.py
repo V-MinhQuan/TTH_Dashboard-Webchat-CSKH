@@ -212,8 +212,9 @@ class SentimentRepository:
                         customer_message.TextContent AS CustomerText,
                         customer_message.FromHost,
                         customer_message.Source AS channel,
-                        customer_message.primaryTopicId,
-                        customer_message.detectedTopics,
+                        a.primaryTopicId,
+                        a.detectedTopics,
+                        a.detectedKeywords,
                         customer_message.SentAt AS createdAt
                     FROM dbo.WebChat_MessageAnalytics a
                     INNER JOIN dbo.WebChat_MessageLogs customer_message
@@ -275,8 +276,8 @@ class SentimentRepository:
                         issueType = CASE WHEN ? IS NULL THEN issueType ELSE ? END,
                         issueReason = CASE WHEN ? IS NULL THEN issueReason ELSE ? END,
                         issueConfidence = CASE WHEN ? IS NULL THEN issueConfidence ELSE ? END,
-                        detectedTopics = COALESCE(?, detectedTopics),
-                        detectedKeywords = COALESCE(?, detectedKeywords),
+                        detectedTopics = COALESCE(detectedTopics, ?),
+                        detectedKeywords = COALESCE(detectedKeywords, ?),
                         needStaffReview = CASE
                             WHEN ISNULL(needStaffReview, 0) = 1
                               OR ISNULL(?, ISNULL(issueFlag, 0)) = 1

@@ -18,6 +18,7 @@ import {
   getDashboardKpi,
   getDashboardKpiComparison,
   getDashboardPriorityConversations,
+  getDashboardTopQuestionDetails,
   getDashboardTopQuestions,
   getDashboardUrgentAlerts,
   closeConversation,
@@ -127,6 +128,12 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
   const [checkingFaqId, setCheckingFaqId] = useState<string | null>(null);
   const [selectedTopQuestion, setSelectedTopQuestion] = useState<TopQuestion | null>(null);
   const [detailSearch, setDetailSearch] = useState("");
+  const [detailPage, setDetailPage] = useState(1);
+  const [detailRows, setDetailRows] = useState<Array<{ question: string; count: number }>>([]);
+  const [detailPagination, setDetailPagination] = useState({ page: 1, pageSize: 10, total: 0, totalPages: 0 });
+  const [detailTotalCount, setDetailTotalCount] = useState(0);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState("");
   const [topQuestionSearch, setTopQuestionSearch] = useState("");
   const [urgentAlertRows, setUrgentAlertRows] = useState<UrgentAlert[]>([]);
   const [alertLoadState, setAlertLoadState] = useState<DetailLoadState>("loading");
@@ -145,6 +152,26 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
   const [trendLoadState, setTrendLoadState] = useState<DetailLoadState>("loading");
 
   const { settings } = useSettings();
+
+  const visibleTotalConversations = useMemo(() => {
+    if (!kpiData) return 0;
+    const sourceSummary = kpiData.sourceSummary;
+    const hasSourceBreakdown = Object.values(sourceSummary).some((value) => value > 0);
+    if (!hasSourceBreakdown) return kpiData.totalConversations || 0;
+
+    return (
+      (settings.dataSourceZaloBiz ? sourceSummary.ZaloBusiness || 0 : 0)
+      + (settings.dataSourceFb ? sourceSummary.Facebook || 0 : 0)
+      + (settings.dataSourceZalo ? sourceSummary.ZaloOA || 0 : 0)
+      + (settings.dataSourceWidget ? sourceSummary.ChatWidget || 0 : 0)
+    );
+  }, [
+    kpiData,
+    settings.dataSourceFb,
+    settings.dataSourceWidget,
+    settings.dataSourceZalo,
+    settings.dataSourceZaloBiz,
+  ]);
 
   const filterRequestKey = useMemo(() => JSON.stringify({
     dateRange: filters.dateRange,
@@ -408,12 +435,20 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
         return;
       }
 
+      // Top questions are a drill-down of the conversations counted by the KPI.
+      // Avoid a separate cached query when the authoritative KPI scope is empty;
+      // this also prevents stale top-question cache entries from appearing alone.
+      if (visibleTotalConversations <= 0) {
+        setTopQuestionsLoadState("ready");
+        return;
+      }
+
       for (let attempt = 0; attempt < DETAIL_RETRY_DELAYS_MS.length; attempt += 1) {
         const delay = DETAIL_RETRY_DELAYS_MS[attempt];
         if (delay > 0) {
           setTopQuestionsLoadState("retrying");
           await sleep(delay);
-          if (cancelled) return;
+          if (cancelled || visibleTotalConversations <= 0) return;
         } else {
           setTopQuestionsLoadState("loading");
         }
@@ -427,7 +462,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
             forceRefresh: detailRefreshVersion > 0,
             signal: activeController.signal,
           });
-          if (cancelled) return;
+          if (cancelled || visibleTotalConversations <= 0) return;
           setTopQuestionRows(data.topQuestions);
           setTopQuestionsStatus(data.topQuestionsStatus);
           setTopQuestionsMessage(data.topQuestionsMessage);
@@ -452,7 +487,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
       cancelled = true;
       activeController?.abort();
     };
-  }, [filters, detailRefreshVersion, detailReadyFilterKey, filterRequestKey]);
+  }, [filters, detailRefreshVersion, detailReadyFilterKey, filterRequestKey, visibleTotalConversations]);
 
   useEffect(() => {
     let cancelled = false;
@@ -543,8 +578,11 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
       if (!current) return current;
       return {
         ...current,
-        urgentAlerts: [],
-        priorityConversations: [],
+        statusSummary: {
+          ...current.statusSummary,
+          pending: Math.max(0, Number(current.statusSummary.pending || 0) - 1),
+          closed: Number(current.statusSummary.closed || 0) + 1,
+        },
       };
     });
     setUrgentAlertRows((current) => current.filter((alert) => {
@@ -562,9 +600,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
   const handleCloseConversation = useCallback(async (target: CloseConversationTarget) => {
     await closeConversation(target);
     removeClosedConversationFromState(target);
-    loadDashboardData(true);
-    setDetailRefreshVersion((version) => version + 1);
-  }, [loadDashboardData, removeClosedConversationFromState]);
+  }, [removeClosedConversationFromState]);
 
   const retryPriorityConversations = useCallback(() => {
     setDetailRefreshVersion((version) => version + 1);
@@ -577,6 +613,10 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
   const openTopQuestionDetails = (question: TopQuestion) => {
     setSelectedTopQuestion(question);
     setDetailSearch("");
+    setDetailPage(1);
+    setDetailRows([]);
+    setDetailTotalCount(question.count);
+    setDetailError("");
   };
 
   const openTopQuestionFaq = async (question: TopQuestion) => {
@@ -595,15 +635,44 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
     }
   };
 
-  const detailQuestions = useMemo(() => {
-    if (!selectedTopQuestion) return [];
-    const rows = selectedTopQuestion.relatedQuestions?.length
-      ? selectedTopQuestion.relatedQuestions
-      : [{ question: selectedTopQuestion.question, count: selectedTopQuestion.count }];
-    const needle = detailSearch.trim().toLocaleLowerCase("vi-VN");
-    if (!needle) return rows;
-    return rows.filter((row) => row.question.toLocaleLowerCase("vi-VN").includes(needle));
-  }, [selectedTopQuestion, detailSearch]);
+  useEffect(() => {
+    if (!selectedTopQuestion) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setDetailLoading(true);
+      setDetailError("");
+      try {
+        const dateParams = getDateParamsFromFilters(filters);
+        const result = await getDashboardTopQuestionDetails({
+          question: selectedTopQuestion.question,
+          startDate: dateParams.startDate!,
+          endDate: dateParams.endDate!,
+          channel: filters.channel,
+          topic: filters.topic,
+          search: detailSearch,
+          page: detailPage,
+          pageSize: 10,
+          signal: controller.signal,
+        });
+        setDetailRows(result.records);
+        setDetailPagination(result.pagination);
+        setDetailTotalCount(result.totalCount);
+        if (result.pagination.page !== detailPage) setDetailPage(result.pagination.page || 1);
+      } catch (error: any) {
+        if (error?.name !== "AbortError") {
+          setDetailRows([]);
+          setDetailError(error?.message || "Không thể tải chi tiết câu hỏi nổi bật.");
+        }
+      } finally {
+        if (!controller.signal.aborted) setDetailLoading(false);
+      }
+    }, detailSearch.trim() ? 250 : 0);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [selectedTopQuestion, detailPage, detailSearch, filters.dateRange, filters.customDateFrom, filters.customDateTo, filters.channel, filters.topic]);
 
   const visibleTopQuestions = useMemo(() => {
     const needle = normalizeQuestionSearchText(topQuestionSearch);
@@ -612,6 +681,8 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
   }, [topQuestions, topQuestionSearch]);
 
   const isScreenRefreshing = parentRefreshing || localRefreshing;
+  const isDetailSectionLoading = [alertLoadState, topQuestionsLoadState, priorityLoadState]
+    .some((state) => state === "loading" || state === "retrying");
 
   const dailyTrends = kpiData?.dailyTrends || [];
 
@@ -644,37 +715,23 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
   // 3. Tính toán các chỉ số phái sinh
   const activeConversations = kpiData?.statusSummary.pending || 0;
 
-  let totalConversations = kpiData?.totalConversations || 0;
+  let totalConversations = visibleTotalConversations;
   let totalMessages = kpiData?.totalMessages || 0;
 
   // Lọc tổng số theo kênh đang bật
   if (kpiData) {
-    const hasSourceBreakdown = Object.values(kpiData.sourceSummary).some((value) => value > 0);
     const hasMessageBreakdown = Object.values(kpiData.messageSummary).some((value) => value > 0);
 
-    if (hasSourceBreakdown) totalConversations = 0;
     if (hasMessageBreakdown) totalMessages = 0;
 
-    if (settings.dataSourceZaloBiz && hasSourceBreakdown) {
-      totalConversations += kpiData.sourceSummary.ZaloBusiness || 0;
-    }
     if (settings.dataSourceZaloBiz && hasMessageBreakdown) {
       totalMessages += kpiData.messageSummary.ZaloBusiness || 0;
-    }
-    if (settings.dataSourceFb && hasSourceBreakdown) {
-      totalConversations += kpiData.sourceSummary.Facebook || 0;
     }
     if (settings.dataSourceFb && hasMessageBreakdown) {
       totalMessages += kpiData.messageSummary.Facebook || 0;
     }
-    if (settings.dataSourceZalo && hasSourceBreakdown) {
-      totalConversations += kpiData.sourceSummary.ZaloOA || 0;
-    }
     if (settings.dataSourceZalo && hasMessageBreakdown) {
       totalMessages += kpiData.messageSummary.ZaloOA || 0;
-    }
-    if (settings.dataSourceWidget && hasSourceBreakdown) {
-      totalConversations += kpiData.sourceSummary.ChatWidget || 0;
     }
     if (settings.dataSourceWidget && hasMessageBreakdown) {
       totalMessages += kpiData.messageSummary.ChatWidget || 0;
@@ -850,7 +907,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
       `}</style>
 
       {/* Bộ lọc Panel */}
-      <FilterPanel filters={filters} onFiltersChange={onFiltersChange} getExportData={getExportData} isLoading={loading || localRefreshing || alertLoadState !== "ready" || topQuestionsLoadState !== "ready" || priorityLoadState !== "ready"} />
+      <FilterPanel filters={filters} onFiltersChange={onFiltersChange} getExportData={getExportData} isLoading={loading || isScreenRefreshing || isDetailSectionLoading} />
 
       <div aria-hidden="true" style={{ position: "absolute", left: "-12000px", top: 0, width: "1120px", pointerEvents: "none" }}>
         <section
@@ -1423,7 +1480,9 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                           verticalAlign="bottom"
                           wrapperStyle={{ width: "100%", left: 0, display: "flex", justifyContent: "center", whiteSpace: "nowrap" }}
                           formatter={(value) => (
-                            <ChannelLabel channel={String(value)} badge={false} weight={400} />
+                            <span style={{ fontSize: "12px" }}>
+                              <ChannelLabel channel={String(value)} badge={false} weight={400} />
+                            </span>
                           )}
                         />
                       )}
@@ -1777,7 +1836,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                 <div>
                   <h3 style={{ margin: 0, color: NAVY, fontSize: "16px", fontWeight: 700 }}>Chi tiết câu hỏi nổi bật</h3>
                   <div style={{ marginTop: "4px", color: "rgba(0,59,185,0.55)", fontSize: "12px" }}>
-                    Tổng số câu hỏi liên quan: <strong>{viNum(selectedTopQuestion.count)}</strong>
+                    Tổng số câu hỏi liên quan: <strong>{viNum(detailTotalCount || selectedTopQuestion.count)}</strong>
                   </div>
                 </div>
                 <button onClick={() => setSelectedTopQuestion(null)} style={{ border: "none", background: "transparent", color: "rgba(0,59,185,0.55)", cursor: "pointer", padding: "4px" }} aria-label="Đóng chi tiết">
@@ -1799,7 +1858,10 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                   <Search size={15} style={{ color: "rgba(0,59,185,0.45)" }} />
                   <input
                     value={detailSearch}
-                    onChange={(e) => setDetailSearch(e.target.value)}
+                    onChange={(e) => {
+                      setDetailSearch(e.target.value);
+                      setDetailPage(1);
+                    }}
                     placeholder="Tìm trong danh sách câu hỏi liên quan..."
                     style={{ border: "none", outline: "none", flex: 1, color: NAVY, fontSize: "13px" }}
                   />
@@ -1810,10 +1872,16 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                     Các câu hỏi liên quan
                   </div>
                   <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
-                    {detailQuestions.length === 0 ? (
-                      <div style={{ padding: "18px 14px", color: "rgba(0,59,185,0.55)", fontSize: "13px" }}>Không tìm thấy câu hỏi phù hợp.</div>
+                    {detailLoading ? (
+                      <div style={{ padding: "18px 14px", color: "rgba(0,59,185,0.55)", fontSize: "13px", display: "flex", alignItems: "center", gap: "8px" }}>
+                        <Loader2 size={15} className="animate-spin" /> Đang tải dữ liệu chi tiết...
+                      </div>
+                    ) : detailError ? (
+                      <div style={{ padding: "18px 14px", color: ORANGE, fontSize: "13px" }}>{detailError}</div>
+                    ) : detailRows.length === 0 ? (
+                      <div style={{ padding: "18px 14px", color: "rgba(0,59,185,0.55)", fontSize: "13px" }}>Không tìm thấy câu hỏi phù hợp với bộ lọc.</div>
                     ) : (
-                      detailQuestions.map((row, index) => (
+                      detailRows.map((row, index) => (
                         <div key={`${row.question}-${index}`} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "14px", padding: "12px 14px", borderTop: index === 0 ? "none" : "1px solid rgba(0,59,185,0.06)", alignItems: "start" }}>
                           <div style={{ color: NAVY, fontSize: "13px", lineHeight: 1.45 }}>{row.question}</div>
                           <span style={{ fontSize: "12px", fontWeight: 700, color: ORANGE, background: "#FFF4EE", borderRadius: "999px", padding: "2px 8px", whiteSpace: "nowrap" }}>
@@ -1822,6 +1890,30 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                         </div>
                       ))
                     )}
+                  </div>
+                  <div style={{ padding: "10px 14px", borderTop: "1px solid rgba(0,59,185,0.08)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexShrink: 0 }}>
+                    <span style={{ fontSize: "11px", color: "rgba(0,59,185,0.55)" }}>
+                      {detailPagination.total > 0
+                        ? `${(detailPagination.page - 1) * 10 + 1}–${Math.min(detailPagination.page * 10, detailPagination.total)} / ${viNum(detailPagination.total)} dòng`
+                        : "0 dòng"}
+                    </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <button
+                        type="button"
+                        disabled={detailLoading || detailPagination.page <= 1}
+                        onClick={() => setDetailPage((page) => Math.max(1, page - 1))}
+                        style={{ border: "1px solid rgba(0,59,185,0.15)", background: "#fff", color: NAVY, borderRadius: "7px", padding: "5px 10px", cursor: detailPagination.page <= 1 ? "not-allowed" : "pointer", opacity: detailPagination.page <= 1 ? 0.45 : 1 }}
+                      >‹</button>
+                      <span style={{ fontSize: "12px", fontWeight: 700, color: NAVY }}>
+                        Trang {detailPagination.page}/{Math.max(detailPagination.totalPages, 1)}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={detailLoading || detailPagination.page >= detailPagination.totalPages}
+                        onClick={() => setDetailPage((page) => page + 1)}
+                        style={{ border: "1px solid rgba(0,59,185,0.15)", background: "#fff", color: NAVY, borderRadius: "7px", padding: "5px 10px", cursor: detailPagination.page >= detailPagination.totalPages ? "not-allowed" : "pointer", opacity: detailPagination.page >= detailPagination.totalPages ? 0.45 : 1 }}
+                      >›</button>
+                    </div>
                   </div>
                 </div>
               </div>

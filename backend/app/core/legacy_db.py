@@ -10,7 +10,7 @@ from app.core.config import get_settings
 logger = logging.getLogger(__name__)
 
 
-def get_db_connection():
+def get_db_connection(timeout_seconds: int | None = None):
     """Create a legacy-compatible pymssql connection from central settings."""
     settings = get_settings()
     try:
@@ -21,7 +21,7 @@ def get_db_connection():
             database=settings.db_name,
             port=settings.db_port,
             tds_version="7.0",
-            timeout=settings.db_timeout_seconds,
+            timeout=timeout_seconds or settings.db_timeout_seconds,
             login_timeout=settings.db_timeout_seconds,
         )
     except Exception as exc:

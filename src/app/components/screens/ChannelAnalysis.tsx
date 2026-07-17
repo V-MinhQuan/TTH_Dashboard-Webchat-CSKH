@@ -74,7 +74,7 @@ const STATUS_COLORS: Record<string, string> = {
   "Đang tư vấn / Chờ phản hồi": "#42A5F5",
   "Đang xử lý": "#42A5F5", // legacy alias
   "Hoàn thành": "#1565C0",
-  "AI thành công": NAVY,
+  "AI phản hồi thành công": NAVY,
   "AI phản hồi thất bại": "#ED5206",
 };
 const PIE_COLORS = ["#003865", "#ED5206", "#1565C0", ORANGE, "#42A5F5", "#F36C2E"];
@@ -121,9 +121,10 @@ function renderEmptyChart(message = "Không có dữ liệu biểu đồ") {
 }
 
 function channelMetricTooltip(value: number, item: any, nameKey: string, valueName: string, suffix: string) {
+  const categoryName = item?.payload?.name || item?.payload?.[nameKey];
   return [
     `${value}${suffix}`,
-    nameKey === "channel" ? `Số lượng [${item?.payload?.[nameKey] || "Kênh"}]` : valueName,
+    nameKey === "channel" ? `Số lượng [${categoryName || "Kênh"}]` : valueName,
   ];
 }
 
@@ -730,7 +731,7 @@ export function ChannelAnalysis({ filters, onFiltersChange, onNavigate }: Channe
               >
                 {({ chartType, chartData, editValues }: any) => renderStackedChart(chartType, chartData.map((row: any) => ({
                   channel: row.channel,
-                  "AI thành công": row.ai_ok,
+                  "AI phản hồi thành công": row.ai_ok,
                   "AI phản hồi thất bại": row.ai_fail,
                 })), ["AI phản hồi thành công", "AI phản hồi thất bại"], editValues)}
               </ChartCard>
