@@ -36,6 +36,9 @@ def test_feedback_endpoints_require_auth_and_use_session_identity():
     client = TestClient(app)
     try:
         assert client.get("/api/admin/sheet-chatbot").status_code == 401
+        list_response = client.get("/api/admin/sheet-chatbot", headers=_auth())
+        assert list_response.status_code == 200
+        assert list_response.headers["cache-control"] == "no-store, no-cache, must-revalidate"
         response = client.post(
             "/api/admin/sheet-chatbot",
             headers=_auth(),
@@ -43,6 +46,7 @@ def test_feedback_endpoints_require_auth_and_use_session_identity():
                 "question": "Câu hỏi thật",
                 "correctAnswer": "Câu trả lời đã xác nhận",
                 "topic": "TOEIC",
+                "channel": "Zalo OA",
                 "source": "Nhân viên đề xuất",
                 "risk": "Thấp",
                 "status": "Chờ xử lý",
@@ -67,7 +71,13 @@ def test_feedback_create_maps_duplicate_to_409():
         response = client.post(
             "/api/admin/sheet-chatbot",
             headers=_auth(role="manager"),
-            json={"question": "Trùng", "correctAnswer": "Đã xác nhận"},
+            json={
+                "question": "Trùng",
+                "correctAnswer": "Đã xác nhận",
+                "topic": "TOEIC",
+                "channel": "Zalo OA",
+                "risk": "Thấp",
+            },
         )
         assert response.status_code == 409
         assert response.json()["success"] is False

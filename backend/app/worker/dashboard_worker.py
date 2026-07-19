@@ -2,6 +2,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from app.services.legacy_dashboard_service import dashboard_service as legacy_ds
 from app.repositories.ai_question_group_cache import AiQuestionGroupCacheRepository
@@ -10,6 +11,10 @@ from app.services.legacy_dashboard_service import (
 )
 
 logger = logging.getLogger(__name__)
+APP_TIMEZONE = ZoneInfo("Asia/Ho_Chi_Minh")
+TOP_QUESTION_DETAIL_PREWARM_LIMIT = 5
+TOP_QUESTION_DETAIL_PAGE_SIZE = 10
+TOP_QUESTION_BACKGROUND_PAGE_DELAY_SECONDS = 1
 
 _rollup_cache_repo = AiQuestionGroupCacheRepository()
 
@@ -37,13 +42,13 @@ class DashboardPrecomputeWorker:
         self._running = False
 
     def get_date_range(self, days: int):
-        today = datetime.now().date()
+        today = datetime.now(APP_TIMEZONE).date()
         start = today - timedelta(days=days)
         return start.strftime("%Y-%m-%d"), today.strftime("%Y-%m-%d")
 
     def _seconds_until_1am(self) -> float:
         """Tính số giây còn lại đến 1:00 AM ngày hôm sau."""
-        now = datetime.now()
+        now = datetime.now(APP_TIMEZONE)
         next_1am = now.replace(hour=1, minute=0, second=0, microsecond=0)
         if now.hour >= 1:
             next_1am += timedelta(days=1)
@@ -91,7 +96,7 @@ class DashboardPrecomputeWorker:
 
     async def _run_nightly_rollup(self):
         """Tổng hợp câu hỏi của ngày hôm qua và lưu vào DB."""
-        yesterday = (datetime.now().date() - timedelta(days=1)).strftime("%Y-%m-%d")
+        yesterday = (datetime.now(APP_TIMEZONE).date() - timedelta(days=1)).strftime("%Y-%m-%d")
         logger.info("NightlyRollup: Bắt đầu tổng hợp câu hỏi cho ngày %s...", yesterday)
 
         loop = asyncio.get_event_loop()
@@ -160,10 +165,25 @@ class DashboardPrecomputeWorker:
 
                 await asyncio.sleep(3)  # Cho DB thở
 
+                top_questions_payload = None
                 try:
-                    await loop.run_in_executor(None, legacy_ds.get_top_questions, start_date, end_date, filters)
+                    top_questions_payload = await loop.run_in_executor(
+                        None,
+                        legacy_ds.get_top_questions,
+                        start_date,
+                        end_date,
+                        filters,
+                    )
                 except Exception as e:
                     logger.warning(f"Lỗi khi tính toán Top Questions: {e}")
+
+                if top_questions_payload:
+                    await self._precompute_top_question_details(
+                        start_date,
+                        end_date,
+                        channel,
+                        top_questions_payload.get("topQuestions") or [],
+                    )
 
                 await asyncio.sleep(3)  # Cho DB thở
 
@@ -175,6 +195,98 @@ class DashboardPrecomputeWorker:
                 await asyncio.sleep(10)  # Nghỉ giữa kịch bản
 
         logger.info("DashboardPrecomputeWorker: Đã tính toán xong tất cả các kịch bản.")
+
+    async def _precompute_top_question_details(
+        self,
+        start_date: str,
+        end_date: str,
+        channel: Optional[str],
+        top_questions: list[dict],
+    ) -> None:
+        """Warm page 1 for every visible group, then remaining pages in background."""
+        questions = [
+            row.get("question")
+            for row in top_questions[:TOP_QUESTION_DETAIL_PREWARM_LIMIT]
+            if row.get("question")
+        ]
+        if not questions:
+            return
+
+        loop = asyncio.get_running_loop()
+        page_one_results = {}
+        filters = {"channel": channel}
+
+        # Page 1 of all visible questions has strict priority. Do not start any
+        # later page until every page 1 request has completed or failed.
+        for question in questions:
+            if not self._running:
+                return
+            try:
+                result = await loop.run_in_executor(
+                    None,
+                    lambda q=question: legacy_ds.get_top_question_details(
+                        q,
+                        start_date,
+                        end_date,
+                        filters,
+                        page=1,
+                        page_size=TOP_QUESTION_DETAIL_PAGE_SIZE,
+                    ),
+                )
+                page_one_results[question] = result
+                logger.info(
+                    "TopQuestionPrewarm: page=1 question=%s rows=%d totalPages=%d",
+                    question,
+                    len(result.get("records") or []),
+                    int((result.get("pagination") or {}).get("totalPages") or 0),
+                )
+            except Exception as exc:
+                logger.warning(
+                    "TopQuestionPrewarm: không thể tải trang 1 question=%s error_type=%s",
+                    question,
+                    type(exc).__name__,
+                )
+
+        max_pages = max(
+            (
+                int((result.get("pagination") or {}).get("totalPages") or 0)
+                for result in page_one_results.values()
+            ),
+            default=0,
+        )
+        for page_number in range(2, max_pages + 1):
+            for question in questions:
+                if not self._running:
+                    return
+                result = page_one_results.get(question) or {}
+                total_pages = int((result.get("pagination") or {}).get("totalPages") or 0)
+                if page_number > total_pages:
+                    continue
+                try:
+                    await loop.run_in_executor(
+                        None,
+                        lambda q=question, p=page_number: legacy_ds.get_top_question_details(
+                            q,
+                            start_date,
+                            end_date,
+                            filters,
+                            page=p,
+                            page_size=TOP_QUESTION_DETAIL_PAGE_SIZE,
+                        ),
+                    )
+                    logger.info(
+                        "TopQuestionPrewarm: background page=%d question=%s",
+                        page_number,
+                        question,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "TopQuestionPrewarm: lỗi trang nền page=%d question=%s error_type=%s",
+                        page_number,
+                        question,
+                        type(exc).__name__,
+                    )
+                await asyncio.sleep(TOP_QUESTION_BACKGROUND_PAGE_DELAY_SECONDS)
 
     def stop(self):
         self._running = False

@@ -8,10 +8,10 @@ class FeedbackCreateRequest(BaseModel):
 
     question: str = Field(min_length=1, max_length=2000)
     correct_answer: str = Field(alias="correctAnswer", min_length=1, max_length=5000)
-    topic: str = Field(default="Chưa xác định", min_length=1, max_length=255)
-    channel: str = Field(default="", max_length=80)
+    topic: str = Field(min_length=1, max_length=255)
+    channel: str = Field(min_length=1, max_length=80)
     source: str = Field(default="Nhân viên đề xuất", min_length=1, max_length=255)
-    risk: str = Field(default="Thấp", min_length=1, max_length=50)
+    risk: str = Field(min_length=1, max_length=50)
     status: str = Field(default="Chờ xử lý", min_length=1, max_length=50)
     notes: str = Field(default="", max_length=5000)
 

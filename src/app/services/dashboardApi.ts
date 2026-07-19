@@ -273,13 +273,14 @@ export async function fetchApiJson<T>(
   const url = urlInput.toString();
   const { timeoutMs, cache: cacheOption, signal: externalSignal, ...fetchOptions } = options;
   const method = (fetchOptions.method || "GET").toUpperCase();
-  // useCache: true for GET requests (enables in-flight deduplication and write-through cache)
-  const useCache = method === "GET";
-  // readFromCache: true only when cache option is not explicitly disabled
-  const readFromCache = useCache && cacheOption !== false;
+  const isGetRequest = method === "GET";
+  // `cache: false` must disable the whole client cache path, not only cache
+  // reads. Otherwise a pending/stale GET can win immediately after a write and
+  // its old response is written back into memory/session storage.
+  const useCache = isGetRequest && cacheOption !== false;
   const cacheKey = `${method}:${url}`;
 
-  if (readFromCache) {
+  if (useCache) {
     // 1. Check memory cache first
     const memCached = memoryCache.get(cacheKey);
     if (memCached && Date.now() - memCached.savedAt < API_CACHE_TTL_MS) {
@@ -313,6 +314,7 @@ export async function fetchApiJson<T>(
   const request = fetch(url, {
     ...fetchOptions,
     method,
+    cache: cacheOption === false ? "no-store" : "default",
     signal: controller.signal,
     headers: {
       "Content-Type": "application/json",

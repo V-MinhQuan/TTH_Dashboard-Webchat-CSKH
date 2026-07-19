@@ -72,6 +72,7 @@ export interface PriorityConversation {
   customer: string;
   channel: string;
   lastMessage: string;
+  messageAt?: string | null;
   topic: string;
   wait: string;
   status: string;

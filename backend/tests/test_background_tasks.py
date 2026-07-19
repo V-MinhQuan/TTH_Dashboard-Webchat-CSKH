@@ -4,6 +4,8 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.services.huggingface_sentiment_client import (  # noqa: E402
@@ -12,7 +14,12 @@ from app.services.huggingface_sentiment_client import (  # noqa: E402
 )
 from app.core.config import Settings  # noqa: E402
 from app.worker.ai_analytics_worker import SentimentAnalysisWorker  # noqa: E402
+from app.worker.ai_issue_sync_worker import AiIssueKeywordSyncWorker  # noqa: E402
+from app.worker import ai_issue_sync_worker as ai_issue_sync_worker_module  # noqa: E402
+from app.worker.dashboard_worker import DashboardPrecomputeWorker  # noqa: E402
+from app.worker import dashboard_worker as dashboard_worker_module  # noqa: E402
 from app.worker.manager import BackgroundWorkerManager  # noqa: E402
+from app.worker.standalone import single_instance_lock  # noqa: E402
 
 
 def run(coro):
@@ -284,24 +291,114 @@ def test_worker_iteration_log_redacts_database_error_details(caplog):
 
 
 def test_manager_starts_worker_once_and_cancels_cleanly():
-    started = asyncio.Event()
+    sentiment_started = asyncio.Event()
+    dashboard_started = asyncio.Event()
 
-    class ManagedWorker:
+    class ManagedSentimentWorker:
         async def run_forever(self):
-            started.set()
+            sentiment_started.set()
             await asyncio.Event().wait()
 
+    class ManagedDashboardWorker:
+        async def run_forever(self):
+            dashboard_started.set()
+            await asyncio.Event().wait()
+
+        def stop(self):
+            pass
+
     async def scenario():
-        manager = BackgroundWorkerManager(ManagedWorker())
-        first = manager.start()
-        second = manager.start()
-        await started.wait()
-        assert first is second
+        manager = BackgroundWorkerManager(ManagedSentimentWorker(), ManagedDashboardWorker())
+        manager.start()
+        first_tasks = (manager._sentiment_task, manager._dashboard_task)
+        manager.start()
+        await asyncio.gather(sentiment_started.wait(), dashboard_started.wait())
+        assert (manager._sentiment_task, manager._dashboard_task) == first_tasks
         assert manager.is_running is True
+        assert manager.worker is manager.sentiment_worker
         await manager.stop()
         assert manager.is_running is False
 
     run(scenario())
+
+
+def test_standalone_worker_rejects_second_instance(tmp_path):
+    lock_path = tmp_path / "background-worker.lock"
+
+    with single_instance_lock(lock_path):
+        with pytest.raises(RuntimeError, match="already running"):
+            with single_instance_lock(lock_path):
+                pass
+
+
+def test_dashboard_prewarm_prioritizes_all_page_ones_before_background_pages(monkeypatch):
+    calls = []
+
+    def fake_get_details(question, *_args, page, page_size, **_kwargs):
+        calls.append((question, page, page_size))
+        total_pages = 3 if question == "Câu A" else 2
+        return {
+            "records": [{"question": question, "count": 1}],
+            "pagination": {"page": page, "pageSize": page_size, "total": 20, "totalPages": total_pages},
+        }
+
+    async def no_sleep(_seconds):
+        return None
+
+    monkeypatch.setattr(dashboard_worker_module.legacy_ds, "get_top_question_details", fake_get_details)
+    monkeypatch.setattr(dashboard_worker_module.asyncio, "sleep", no_sleep)
+    worker = DashboardPrecomputeWorker()
+    worker._running = True
+
+    run(worker._precompute_top_question_details(
+        "2026-07-01",
+        "2026-07-18",
+        None,
+        [{"question": "Câu A"}, {"question": "Câu B"}],
+    ))
+
+    assert calls == [
+        ("Câu A", 1, 10),
+        ("Câu B", 1, 10),
+        ("Câu A", 2, 10),
+        ("Câu B", 2, 10),
+        ("Câu A", 3, 10),
+    ]
+
+
+def test_ai_issue_keyword_sync_applies_48_hour_incremental_window(monkeypatch):
+    calls = []
+    expected = SimpleNamespace(
+        total_ai_messages=12,
+        updated_rows=3,
+        flagged_rows=2,
+    )
+
+    def fake_sync(*, apply, since):
+        calls.append((apply, since))
+        return expected
+
+    monkeypatch.setattr(ai_issue_sync_worker_module, "sync_ai_issue_flags", fake_sync)
+    worker = AiIssueKeywordSyncWorker(settings(
+        ai_analytics_sync_interval_seconds=1800,
+        ai_analytics_sync_lookback_hours=48,
+        ai_analytics_sync_startup_delay_seconds=120,
+    ))
+
+    result = run(worker.run_once())
+
+    assert result is expected
+    assert calls[0][0] is True
+    assert calls[0][1]
+
+
+def test_ai_issue_keyword_sync_defaults_to_30_minutes(monkeypatch):
+    monkeypatch.delenv("AI_ANALYTICS_SYNC_INTERVAL_SECONDS", raising=False)
+    configured = Settings(_env_file=None)
+
+    assert configured.ai_analytics_sync_interval_seconds == 1800
+    assert configured.ai_analytics_sync_lookback_hours == 48
+    assert configured.ai_analytics_sync_startup_delay_seconds == 120
 
 
 def test_lifespan_does_not_start_worker_when_background_is_disabled(monkeypatch):

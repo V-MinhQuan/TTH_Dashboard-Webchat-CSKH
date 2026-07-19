@@ -740,6 +740,88 @@ def test_dashboard_top_question_writes_ok_result_to_db_cache(monkeypatch):
     assert kwargs["model"] == "gemini-2.5-flash"
 
 
+def test_top_question_details_uses_same_aggregate_rows_as_overview(monkeypatch):
+    service = DashboardService()
+    overview_row = {
+        "question": "Lịch thi là khi nào?",
+        "count": 154,
+        "relatedQuestions": [
+            {"question": "Bao giờ có lịch thi TOEIC?", "count": 90},
+            {"question": "Lịch thi VSTEP tháng này?", "count": 64},
+        ],
+    }
+    monkeypatch.setattr(
+        service,
+        "_get_cached_top_question_rows",
+        lambda *_args, **_kwargs: ([overview_row], "fallback", ""),
+    )
+
+    result = service.get_top_question_details(
+        "Lịch thi là khi nào?",
+        "2026-07-01",
+        "2026-07-18",
+    )
+
+    assert result["totalCount"] == 154
+    assert result["detailCount"] == 2
+    assert result["records"] == overview_row["relatedQuestions"]
+
+
+def test_top_question_details_persists_overview_rows_for_worker_prewarm(monkeypatch):
+    service = DashboardService()
+    upserts = []
+
+    class Cache:
+        def get(self, *_args, **_kwargs):
+            return None
+
+        def upsert(self, *args, **kwargs):
+            upserts.append((args, kwargs))
+
+    monkeypatch.setattr(dashboard_module, "ai_question_group_cache_repository", Cache())
+    monkeypatch.setattr(
+        service,
+        "_get_cached_top_question_rows",
+        lambda *_args, **_kwargs: ([{
+            "question": "Lịch thi là khi nào?",
+            "count": 154,
+            "relatedQuestions": [{"question": "Lịch thi TOEIC?", "count": 154}],
+        }], "ok", ""),
+    )
+
+    service.get_top_question_details(
+        "Lịch thi là khi nào?",
+        "2026-07-01",
+        "2026-07-18",
+    )
+
+    assert len(upserts) == 1
+    assert upserts[0][0][1] == ([{"question": "Lịch thi TOEIC?", "count": 154}], "ok", "", 154)
+    assert upserts[0][1]["prompt_version"] == "top-question-detail-v2"
+
+
+def test_top_question_details_keeps_legacy_aggregate_drillable(monkeypatch):
+    service = DashboardService()
+    monkeypatch.setattr(
+        service,
+        "_get_cached_top_question_rows",
+        lambda *_args, **_kwargs: ([{
+            "question": "Khi nào có chứng chỉ?",
+            "count": 98,
+        }], "stale", ""),
+    )
+
+    result = service.get_top_question_details(
+        "Khi nào có chứng chỉ?",
+        "2026-07-01",
+        "2026-07-18",
+    )
+
+    assert result["totalCount"] == 98
+    assert result["detailCount"] == 1
+    assert result["records"] == [{"question": "Khi nào có chứng chỉ?", "count": 98}]
+
+
 def test_dashboard_top_question_uses_last_good_ai_result_when_current_ai_fails(monkeypatch, tmp_path):
     clear_dashboard_cache()
     monkeypatch.setattr(
@@ -1425,6 +1507,7 @@ def test_dashboard_service_priority_conversations_mapping(
             "phone_number": None,
             "status": "pending",
             "source": "facebook",
+            "message_at": datetime(2026, 6, 4, 9, 30),
             "wait_mins": 30,
         },
         {
@@ -1462,6 +1545,7 @@ def test_dashboard_service_priority_conversations_mapping(
     assert c1["conversationId"] == 1
     assert c1["customer"] == "Mai Ly"
     assert c1["customerDisplayName"] == "Mai Ly"
+    assert c1["messageAt"] == datetime(2026, 6, 4, 9, 30)
     assert c1["status"] == "Chờ xử lý"
     
     # C2 (status open) -> Đang tư vấn

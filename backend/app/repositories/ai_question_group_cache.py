@@ -68,12 +68,16 @@ class AiQuestionGroupCacheRepository:
         if not isinstance(rows, list):
             return None
 
+        cached_value = (
+            rows,
+            result_payload.get("status") or row.get("status") or "ok",
+            result_payload.get("message") or "",
+        )
+        if result_payload.get("totalCount") is not None:
+            cached_value = (*cached_value, int(result_payload.get("totalCount") or 0))
+
         return {
-            "value": (
-                rows,
-                result_payload.get("status") or row.get("status") or "ok",
-                result_payload.get("message") or "",
-            ),
+            "value": cached_value,
             "is_expired": is_expired,
             "validation": validation_payload,
             "provider": row.get("provider"),
@@ -86,7 +90,7 @@ class AiQuestionGroupCacheRepository:
     def upsert(
         self,
         cache_key: str,
-        value: tuple[list[dict[str, Any]], str, str],
+        value: tuple,
         *,
         source_from_date: str | None = None,
         source_to_date: str | None = None,
@@ -99,14 +103,20 @@ class AiQuestionGroupCacheRepository:
         error_message: str | None = None,
         ttl_seconds: int = 3600,
     ) -> None:
-        rows, status, message = value
+        rows, status, message = value[:3]
+        total_count = value[3] if len(value) > 3 else None
         if status != "ok" or not rows:
             return
 
         now = _utcnow()
         expires_at = now + timedelta(seconds=max(int(ttl_seconds or 0), 60))
         result_json = json.dumps(
-            {"rows": rows, "status": status, "message": message},
+            {
+                "rows": rows,
+                "status": status,
+                "message": message,
+                **({"totalCount": int(total_count or 0)} if total_count is not None else {}),
+            },
             ensure_ascii=False,
             default=str,
         )

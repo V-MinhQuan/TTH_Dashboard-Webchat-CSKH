@@ -1215,6 +1215,7 @@ class ConversationRepository(BaseRepository):
                   CAST(NULL AS NVARCHAR(50)) AS phone_number,
                   c.Source AS source,
                   latestCustomer.TextContent AS last_message,
+                  c.LastCustomerMessageAt AS message_at,
                   {self._conversation_status_case('c', 's')} AS status,
                   DATEDIFF(MINUTE, c.LastCustomerMessageAt, GETDATE()) AS wait_mins
                 FROM WebChat_Conversations c

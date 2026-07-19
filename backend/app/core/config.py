@@ -129,6 +129,28 @@ class Settings(BaseSettings):
         le=30.0,
         validation_alias="AI_QUESTION_TIMEOUT_SECONDS",
     )
+    ai_analytics_sync_enabled: bool = Field(
+        default=False,
+        validation_alias="AI_ANALYTICS_SYNC_ENABLED",
+    )
+    ai_analytics_sync_interval_seconds: int = Field(
+        default=1800,
+        ge=300,
+        le=86400,
+        validation_alias="AI_ANALYTICS_SYNC_INTERVAL_SECONDS",
+    )
+    ai_analytics_sync_lookback_hours: int = Field(
+        default=48,
+        ge=1,
+        le=720,
+        validation_alias="AI_ANALYTICS_SYNC_LOOKBACK_HOURS",
+    )
+    ai_analytics_sync_startup_delay_seconds: int = Field(
+        default=120,
+        ge=0,
+        le=3600,
+        validation_alias="AI_ANALYTICS_SYNC_STARTUP_DELAY_SECONDS",
+    )
 
     cors_origins: str = Field(
         default="http://localhost:3000,http://localhost:5173,http://127.0.0.1:5173",

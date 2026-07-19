@@ -40,10 +40,27 @@ import { CHANNEL_COLORS } from "../../colors";
 
 const NAVY = "#003865";
 const ORANGE = "#D73C01";
+const TOP_QUESTION_DETAIL_PREWARM_LIMIT = 5;
+const TOP_QUESTION_DETAIL_PAGE_SIZE = 10;
 const CHART_COLORS = [NAVY, "#ED5206", "#1565C0", ORANGE, "#42A5F5", "#F36C2E"];
 
 function viNum(n: number) {
   return n.toLocaleString("vi-VN");
+}
+
+function formatMessageDateTime(value?: string | null) {
+  if (!value) return "Chưa xác định";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Chưa xác định";
+  return new Intl.DateTimeFormat("vi-VN", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
 }
 
 function normalizeSourceForCompare(source?: string) {
@@ -190,6 +207,14 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
     filters.conversationStatus,
     filters.aiStatus,
   ]);
+  const topQuestionPrewarmKey = useMemo(
+    () => JSON.stringify(
+      topQuestionRows
+        .slice(0, TOP_QUESTION_DETAIL_PREWARM_LIMIT)
+        .map((row) => row.question),
+    ),
+    [topQuestionRows],
+  );
 
   const isSourceEnabled = (channelName: string) => {
     if (channelName.includes("Zalo Business") && !settings.dataSourceZaloBiz) return false;
@@ -488,6 +513,77 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
       activeController?.abort();
     };
   }, [filters, detailRefreshVersion, detailReadyFilterKey, filterRequestKey, visibleTotalConversations]);
+
+  useEffect(() => {
+    if (topQuestionsLoadState !== "ready" || topQuestionRows.length === 0) return;
+
+    const controller = new AbortController();
+    let cancelled = false;
+
+    async function prewarmTopQuestionDetails() {
+      let dateParams: ReturnType<typeof getDateParamsFromFilters>;
+      try {
+        dateParams = getDateParamsFromFilters(filters);
+      } catch {
+        return;
+      }
+
+      const questions = topQuestionRows
+        .slice(0, TOP_QUESTION_DETAIL_PREWARM_LIMIT)
+        .map((row) => row.question)
+        .filter(Boolean);
+
+      // Fetch page 1 for every visible aggregate first. Later pages must not
+      // consume a request slot until all page-one requests have settled.
+      const pageOneResults = await Promise.allSettled(
+        questions.map((question) => getDashboardTopQuestionDetails({
+          question,
+          startDate: dateParams.startDate!,
+          endDate: dateParams.endDate!,
+          channel: filters.channel,
+          topic: filters.topic,
+          page: 1,
+          pageSize: TOP_QUESTION_DETAIL_PAGE_SIZE,
+          signal: controller.signal,
+        })),
+      );
+      if (cancelled) return;
+
+      const totalPagesByQuestion = pageOneResults.map((result) => (
+        result.status === "fulfilled" ? result.value.pagination.totalPages : 0
+      ));
+      const maxPages = Math.max(0, ...totalPagesByQuestion);
+
+      // Warm remaining pages round-robin with a small pause so background
+      // traffic cannot overwhelm normal dashboard requests.
+      for (let page = 2; page <= maxPages && !cancelled; page += 1) {
+        for (let index = 0; index < questions.length && !cancelled; index += 1) {
+          if (page > totalPagesByQuestion[index]) continue;
+          try {
+            await getDashboardTopQuestionDetails({
+              question: questions[index],
+              startDate: dateParams.startDate!,
+              endDate: dateParams.endDate!,
+              channel: filters.channel,
+              topic: filters.topic,
+              page,
+              pageSize: TOP_QUESTION_DETAIL_PAGE_SIZE,
+              signal: controller.signal,
+            });
+          } catch (error: any) {
+            if (error?.name === "AbortError") return;
+          }
+          await sleep(250);
+        }
+      }
+    }
+
+    void prewarmTopQuestionDetails();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [filterRequestKey, topQuestionPrewarmKey, topQuestionsLoadState]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1712,7 +1808,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
               <thead>
                 <tr style={{ backgroundColor: "#f8fafc" }}>
-                  {["Khách hàng", "Kênh", "Chủ đề", "Thời gian chờ", "Trạng thái", "Ưu tiên", "Hành động"].map(h => (
+                  {["Khách hàng", "Kênh", "Chủ đề", "Thời gian tin nhắn", "Trạng thái", "Ưu tiên", "Hành động"].map(h => (
                     <th key={h} style={{ padding: "10px 16px", textAlign: "left", fontWeight: 600, color: "rgba(0,59,185,0.5)", fontSize: "11px", letterSpacing: "0.04em", borderBottom: "1px solid rgba(0,59,185,0.06)" }}>{h}</th>
                   ))}
                 </tr>
@@ -1765,8 +1861,8 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
                         <ChannelLabel channel={conv.channel} />
                       </td>
                       <td style={{ padding: "12px 16px" }}><TopicLabel topic={conv.topic} badge={false} /></td>
-                      <td style={{ padding: "12px 16px", color: conv.isOvertime ? ORANGE : "rgba(0,59,185,0.7)", fontWeight: conv.isOvertime ? 700 : 400, whiteSpace: "nowrap" }}>
-                        {conv.isOvertime && <span style={{ marginRight: "4px" }}>⚠</span>}{conv.wait}
+                      <td style={{ padding: "12px 16px", color: "rgba(0,59,185,0.7)", whiteSpace: "nowrap" }}>
+                        {formatMessageDateTime(conv.messageAt)}
                       </td>
                       <td style={{ padding: "12px 16px" }}>
                         <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "20px", backgroundColor: ss.bg, color: ss.color, fontWeight: 500, whiteSpace: "nowrap" }}>{conv.status}</span>

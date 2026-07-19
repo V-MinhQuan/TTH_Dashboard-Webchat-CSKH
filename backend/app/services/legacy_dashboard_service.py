@@ -2003,6 +2003,7 @@ class DashboardService:
                 "customer": customer,
                 "channel": format_channel(row.get('source')),
                 "lastMessage": row.get('last_message') or '',
+                "messageAt": row.get('message_at'),
                 "topic": 'Khác',
                 "wait": format_wait_time(wait_mins),
                 "status": status_text,
@@ -2075,13 +2076,53 @@ class DashboardService:
             ensure_ascii=False,
             sort_keys=True,
         )
-        cache_key = f"top_question_detail:v1:{hashlib.sha256(scope.encode('utf-8')).hexdigest()}"
+        cache_key = f"top_question_detail:v2:{hashlib.sha256(scope.encode('utf-8')).hexdigest()}"
         cached = ai_question_group_cache_repository.get(cache_key)
         detail_rows = None
         total_count = 0
+        loaded_from_cache = cached is not None
         if cached:
             detail_rows = list(cached["value"][0] or [])
-            total_count = sum(int(row.get("count") or 0) for row in detail_rows)
+            total_count = int((cached["value"][3] if len(cached["value"]) > 3 else 0) or 0)
+            if total_count <= 0:
+                total_count = sum(int(row.get("count") or 0) for row in detail_rows)
+
+        if detail_rows is None:
+            # Resolve the detail rows from the exact same range-level result that
+            # feeds the overview table. Representatives may be rewritten while
+            # daily groups are merged, so looking them up only by an exact label
+            # in each daily rollup can produce an empty drill-down for a visible
+            # aggregate row.
+            overview_rows, _status, _message = self._get_cached_top_question_rows(
+                start_date,
+                end_date,
+                channel,
+                force_refresh=False,
+                use_ai_on_miss=False,
+            )
+            requested_key = question_identity_key(normalized_question)
+            selected_row = next(
+                (
+                    row for row in overview_rows
+                    if question_identity_key(row.get("question")) == requested_key
+                ),
+                None,
+            )
+            if selected_row is not None:
+                detail_rows = [
+                    {
+                        "question": clean_question_text(related.get("question")),
+                        "count": int(related.get("count") or 0),
+                    }
+                    for related in selected_row.get("relatedQuestions") or []
+                    if clean_question_text(related.get("question"))
+                ]
+                total_count = int(selected_row.get("count") or 0)
+                # Older/stale cache entries may not contain relatedQuestions.
+                # Keep the visible aggregate drillable instead of showing a
+                # misleading empty detail panel.
+                if not detail_rows:
+                    detail_rows = [{"question": normalized_question, "count": total_count}]
 
         if detail_rows is None:
             rollup_data = ai_question_group_cache_repository.get_daily_rollup_range(start_date, end_date)
@@ -2112,19 +2153,19 @@ class DashboardService:
                     detail_rows = []
                     total_count = 0
 
-            if detail_rows:
-                ai_question_group_cache_repository.upsert(
-                    cache_key,
-                    (detail_rows, "ok", ""),
-                    source_from_date=start_date,
-                    source_to_date=end_date,
-                    source_filters={"channel": channel, "topic": topic, "question": normalized_question},
-                    source_row_count=len(detail_rows),
-                    provider="system",
-                    model="daily-rollup-detail",
-                    prompt_version="top-question-detail-v1",
-                    ttl_seconds=AI_QUESTION_DB_CACHE_TTL_SECONDS,
-                )
+        if detail_rows and not loaded_from_cache:
+            ai_question_group_cache_repository.upsert(
+                cache_key,
+                (detail_rows, "ok", "", total_count),
+                source_from_date=start_date,
+                source_to_date=end_date,
+                source_filters={"channel": channel, "topic": topic, "question": normalized_question},
+                source_row_count=len(detail_rows),
+                provider="system",
+                model="top-question-detail-cache",
+                prompt_version="top-question-detail-v2",
+                ttl_seconds=AI_QUESTION_DB_CACHE_TTL_SECONDS,
+            )
 
         search_text = clean_question_text(search).casefold() if search else ""
         filtered_rows = [

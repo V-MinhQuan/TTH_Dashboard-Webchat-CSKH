@@ -6,6 +6,7 @@ import { FeedbackFormDialog } from "../../src/app/components/feedback/FeedbackFo
 
 const api = vi.hoisted(() => ({
   SHEET_CHATBOT_SOURCE_OPTIONS: ["Không tìm thấy dữ liệu", "AI không chắc chắn", "Khác"],
+  SHEET_CHATBOT_CHANNEL_OPTIONS: ["Zalo OA", "Zalo Business", "Facebook", "Chat Widget"],
   createSheetChatbotRow: vi.fn(),
   getSheetChatbotDuplicates: vi.fn(),
   updateSheetChatbotRow: vi.fn(),
@@ -35,6 +36,7 @@ describe("FeedbackFormDialog", () => {
         prefillData={{
           question: "Khi nào có lịch thi CNTT?",
           topic: "lịch thi CNTT",
+          channel: "Zalo OA",
           keyword: "lịch thi CNTT",
           source: "Không tìm thấy dữ liệu",
           conversationId: 42,
@@ -71,7 +73,7 @@ describe("FeedbackFormDialog", () => {
       <FeedbackFormDialog
         open
         mode="create"
-        prefillData={{ question: "Câu hỏi trùng", answer: "Câu trả lời" }}
+        prefillData={{ question: "Câu hỏi trùng", answer: "Câu trả lời", channel: "Zalo OA" }}
         onClose={vi.fn()}
       />,
     );

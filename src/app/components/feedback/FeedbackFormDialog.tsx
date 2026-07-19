@@ -23,6 +23,7 @@ export interface FeedbackPrefillData {
   answer?: string;
   topic?: string;
   keyword?: string;
+  source?: string;
   channel?: string;
   conversationId?: string | number;
   messageId?: string | number;
@@ -45,6 +46,7 @@ interface FeedbackFormState {
   answer: string;
   topic: string;
   channel: SheetChatbotChannel | (string & {});
+  source: string;
   notes: string;
   risk: SheetChatbotRiskLevel;
   status: SheetChatbotStatus;
@@ -64,6 +66,7 @@ function initialForm(prefill?: FeedbackPrefillData): FeedbackFormState {
     answer: text(prefill?.answer),
     topic: normalizeFormTopic(prefill?.topic),
     channel: normalizeFormChannel(prefill?.channel),
+    source: text(prefill?.source) || DEFAULT_SOURCE,
     notes: text(prefill?.notes),
     risk: prefill?.risk ?? "Trung bình",
     status: prefill?.status ?? "Chờ xử lý",
@@ -156,8 +159,10 @@ export function FeedbackFormDialog({
     const question = form.question.trim();
     const answer = form.answer.trim();
     const topic = normalizeFormTopic(form.topic);
-    if (!question || !answer || !topic) {
-      setFormError("Câu hỏi, câu trả lời đúng và chủ đề là bắt buộc.");
+    const channel = form.channel.trim();
+    const risk = form.risk.trim();
+    if (!question || !answer || !topic || !channel || !risk) {
+      setFormError("Câu hỏi, câu trả lời đúng, chủ đề, kênh và mức rủi ro là bắt buộc. Ghi chú nội bộ có thể để trống.");
       return;
     }
     if (mode === "edit" && !editingId) {
@@ -183,7 +188,8 @@ export function FeedbackFormDialog({
         question,
         correctAnswer: answer,
         topic,
-        channel: form.channel,
+        channel,
+        source: form.source,
         risk: form.risk,
         status: form.status,
         notes: buildNotes(form),
@@ -216,33 +222,33 @@ export function FeedbackFormDialog({
         </div>
 
         <div style={{ display: "grid", gap: "14px" }}>
-          <label style={labelStyle}>Câu hỏi khách hàng
-            <textarea aria-label="Câu hỏi khách hàng" rows={2} value={form.question} onChange={(event) => update("question", event.target.value)} style={{ ...fieldStyle, resize: "vertical" }} />
+          <label style={labelStyle}>Câu hỏi khách hàng <span aria-hidden="true" style={{ color: "#dc2626" }}>*</span>
+            <textarea required aria-required="true" aria-label="Câu hỏi khách hàng" rows={2} value={form.question} onChange={(event) => update("question", event.target.value)} style={{ ...fieldStyle, resize: "vertical" }} />
           </label>
-          <label style={labelStyle}>Câu trả lời đúng
-            <textarea aria-label="Câu trả lời đúng" rows={4} value={form.answer} onChange={(event) => update("answer", event.target.value)} style={{ ...fieldStyle, resize: "vertical" }} />
+          <label style={labelStyle}>Câu trả lời đúng <span aria-hidden="true" style={{ color: "#dc2626" }}>*</span>
+            <textarea required aria-required="true" aria-label="Câu trả lời đúng" rows={4} value={form.answer} onChange={(event) => update("answer", event.target.value)} style={{ ...fieldStyle, resize: "vertical" }} />
           </label>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px" }}>
-            <label style={labelStyle}>Chủ đề
-              <select aria-label="Chủ đề" value={form.topic} onChange={(event) => update("topic", event.target.value)} style={fieldStyle}>
+            <label style={labelStyle}>Chủ đề <span aria-hidden="true" style={{ color: "#dc2626" }}>*</span>
+              <select required aria-required="true" aria-label="Chủ đề" value={form.topic} onChange={(event) => update("topic", event.target.value)} style={fieldStyle}>
                 {TOPIC_TAXONOMY.map((topicOption) => (
                   <option key={topicOption.id} value={topicOption.label}>{topicOption.label}</option>
                 ))}
               </select>
             </label>
-            <label style={labelStyle}>Kênh
-              <select aria-label="Kênh" value={form.channel} onChange={(event) => update("channel", event.target.value)} style={fieldStyle}>
-                <option value="">Chưa xác định</option>
+            <label style={labelStyle}>Kênh <span aria-hidden="true" style={{ color: "#dc2626" }}>*</span>
+              <select required aria-required="true" aria-label="Kênh" value={form.channel} onChange={(event) => update("channel", event.target.value)} style={fieldStyle}>
+                <option value="">-- Chọn kênh --</option>
                 {SHEET_CHATBOT_CHANNEL_OPTIONS.map((value) => <option key={value} value={value}>{value}</option>)}
               </select>
             </label>
-            <label style={labelStyle}>Mức rủi ro
-              <select aria-label="Mức rủi ro" value={form.risk} onChange={(event) => update("risk", event.target.value as SheetChatbotRiskLevel)} style={fieldStyle}>
+            <label style={labelStyle}>Mức rủi ro <span aria-hidden="true" style={{ color: "#dc2626" }}>*</span>
+              <select required aria-required="true" aria-label="Mức rủi ro" value={form.risk} onChange={(event) => update("risk", event.target.value as SheetChatbotRiskLevel)} style={fieldStyle}>
                 {RISK_LEVELS.map((value) => <option key={value}>{value}</option>)}
               </select>
             </label>
           </div>
-          <label style={labelStyle}>Ghi chú nội bộ
+          <label style={labelStyle}>Ghi chú nội bộ <span style={{ color: "#64748b", fontWeight: 400 }}>(không bắt buộc)</span>
             <textarea aria-label="Ghi chú nội bộ" rows={2} value={form.notes} onChange={(event) => update("notes", event.target.value)} style={{ ...fieldStyle, resize: "vertical" }} />
           </label>
           {formError && <div role="alert" style={{ borderRadius: "8px", background: "#fff1f1", color: "#b42318", padding: "9px 11px", fontSize: "12px" }}>{formError}</div>}
@@ -250,7 +256,7 @@ export function FeedbackFormDialog({
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "20px" }}>
           <button type="button" onClick={onClose} disabled={saving} style={{ padding: "9px 16px", borderRadius: "8px", border: "1px solid rgba(0,56,101,0.18)", background: "#fff", color: "#003865", cursor: "pointer" }}>Hủy</button>
-          <button type="button" onClick={() => void handleSave()} disabled={saving || !form.question.trim() || !form.answer.trim() || !form.topic || !form.channel || !form.risk || !form.notes.trim()} style={{ padding: "9px 18px", borderRadius: "8px", border: 0, background: (saving || !form.question.trim() || !form.answer.trim() || !form.topic || !form.channel || !form.risk || !form.notes.trim()) ? "#94a3b8" : "#ed5206", color: "#fff", fontWeight: 700, cursor: (saving || !form.question.trim() || !form.answer.trim() || !form.topic || !form.channel || !form.risk || !form.notes.trim()) ? "not-allowed" : "pointer" }}>
+          <button type="button" onClick={() => void handleSave()} disabled={saving || !form.question.trim() || !form.answer.trim() || !form.topic || !form.channel || !form.risk} style={{ padding: "9px 18px", borderRadius: "8px", border: 0, background: (saving || !form.question.trim() || !form.answer.trim() || !form.topic || !form.channel || !form.risk) ? "#94a3b8" : "#ed5206", color: "#fff", fontWeight: 700, cursor: (saving || !form.question.trim() || !form.answer.trim() || !form.topic || !form.channel || !form.risk) ? "not-allowed" : "pointer" }}>
             {saving ? "Đang lưu..." : mode === "create" ? "Lưu phản hồi" : "Cập nhật phản hồi"}
           </button>
         </div>

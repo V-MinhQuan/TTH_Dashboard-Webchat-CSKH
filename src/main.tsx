@@ -4,6 +4,24 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./app/App";
 import "./styles/index.css";
 
+const CHUNK_RELOAD_STORAGE_KEY = "flic_chunk_reload_at";
+const CHUNK_RELOAD_COOLDOWN_MS = 60_000;
+
+// A browser tab opened before a deployment can still reference hashed chunks
+// from the previous build. Vite emits this event when such a dynamic import is
+// missing. Reload once with a cache-busting URL so the tab receives the current
+// index.html instead of crashing the whole UI.
+window.addEventListener("vite:preloadError", (event) => {
+  event.preventDefault();
+  const lastReloadAt = Number(sessionStorage.getItem(CHUNK_RELOAD_STORAGE_KEY) || 0);
+  if (Date.now() - lastReloadAt < CHUNK_RELOAD_COOLDOWN_MS) return;
+
+  sessionStorage.setItem(CHUNK_RELOAD_STORAGE_KEY, String(Date.now()));
+  const nextUrl = new URL(window.location.href);
+  nextUrl.searchParams.set("_app_reload", String(Date.now()));
+  window.location.replace(nextUrl.toString());
+});
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

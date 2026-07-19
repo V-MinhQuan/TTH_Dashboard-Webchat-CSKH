@@ -501,7 +501,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
 
     // 3. Hội thoại tích cực (Fetch ALL with Pagination)
     let posRows: string[][] = [];
-    const posHeaders = ["Khách hàng", "Nội dung đại diện", "Chủ đề", "Kênh", "Cảm xúc", "Thời gian"];
+    const posHeaders = ["Khách hàng", "Nội dung chi tiết", "Chủ đề", "Kênh", "Cảm xúc", "Thời gian"];
     const PAGE_SIZE = 100; // Backend max_page_size is 100
     let loadingToastId: string | number | undefined;
     
@@ -575,7 +575,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
     // 4. Hội thoại tiêu cực
     datasets.push({
       title: "Hội thoại có cảm xúc tiêu cực",
-      headers: ["Khách hàng", "Nội dung đại diện", "Chủ đề", "Kênh", "Mức độ", "Thời gian chờ", "Trạng thái"],
+      headers: ["Khách hàng", "Nội dung chi tiết", "Chủ đề", "Kênh", "Mức độ", "Thời gian chờ", "Trạng thái"],
       rows: negativeConversations.map(c => [
         c.customer + (c.customerReference ? `\n${c.customerReference}` : ""),
         c.complaint,
@@ -868,7 +868,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
                 <thead><tr style={{ backgroundColor: "#f8fafc" }}>
-                  {["Khách hàng", "Nội dung đại diện", "Chủ đề", "Kênh", "Cảm xúc", "Thời gian"].map((header) => (
+                  {["Khách hàng", "Nội dung chi tiết", "Chủ đề", "Kênh", "Cảm xúc", "Thời gian"].map((header) => (
                     <th key={header} style={{ padding: "10px 14px", textAlign: "left", fontWeight: 600, color: "rgba(0,56,101,0.5)", fontSize: "10px", letterSpacing: "0.04em", borderBottom: "1px solid rgba(0,56,101,0.06)", whiteSpace: "nowrap" }}>{header}</th>
                   ))}
                 </tr></thead>
@@ -970,7 +970,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
                         disabled={currentSelectableIds.length === 0}
                       />
                     </th>
-                    {["Khách hàng", "Nội dung phàn nàn", "Chủ đề", "Kênh", "Thời gian chờ", "Hành động"].map((h) => (
+                    {["Khách hàng", "Nội dung chi tiết", "Chủ đề", "Kênh", "Thời gian chờ", "Hành động"].map((h) => (
                       <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontWeight: 600, color: "rgba(0,56,101,0.5)", fontSize: "10px", letterSpacing: "0.04em", borderBottom: "1px solid rgba(0,56,101,0.06)", whiteSpace: "nowrap" }}>
                         {h}
                       </th>

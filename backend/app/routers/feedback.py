@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
 from app.core.auth import SessionClaims, require_roles
 from app.schemas.feedback import (
@@ -39,6 +39,7 @@ def _raise_domain_error(error: Exception) -> None:
 
 @router.get("")
 async def list_feedback(
+    response: Response,
     session: SessionClaims = Depends(require_roles("manager", "staff")),
     service: SheetChatbotService = Depends(get_feedback_service),
     page: Annotated[int, Query(ge=1)] = 1,
@@ -53,6 +54,10 @@ async def list_feedback(
     channel: Annotated[str | None, Query(max_length=80)] = None,
     topic: Annotated[str | None, Query(max_length=120)] = None,
 ):
+    # This collection changes from several screens in the same SPA session.
+    # Prevent browser/hosting proxies from serving the pre-create list.
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
     filters = {
         "page": page,
         "pageSize": pageSize,

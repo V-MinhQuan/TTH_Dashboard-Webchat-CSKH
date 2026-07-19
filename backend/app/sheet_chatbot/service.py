@@ -189,17 +189,25 @@ class SheetChatbotService:
     async def create_row(self, data):
         question = (data.get("question") or "").strip()
         answer = (data.get("correctAnswer") or data.get("answer") or "").strip()
+        topic = (data.get("topic") or "").strip()
+        channel = (data.get("channel") or data.get("sourceChannel") or "").strip()
+        risk = (data.get("risk") or "").strip()
         if not question:
             raise SheetChatbotValidationError("question là bắt buộc.")
         if not answer:
             raise SheetChatbotValidationError("correctAnswer là bắt buộc.")
+        if not topic:
+            raise SheetChatbotValidationError("topic là bắt buộc.")
+        if not channel:
+            raise SheetChatbotValidationError("channel là bắt buộc.")
+        if not risk:
+            raise SheetChatbotValidationError("risk là bắt buộc.")
 
         rows = self.repository.get_all()
         normalized_question = normalize_text(question)
         if any(normalize_text(row.get("question")) == normalized_question for row in rows):
             raise SheetChatbotConflictError("Câu hỏi này đã tồn tại trong thư viện phản hồi.")
         now = self.repository.now_iso()
-        risk = data.get("risk") or "Thấp"
         if not is_valid_risk(risk):
             raise SheetChatbotValidationError("risk không hợp lệ.")
         risk = normalize_risk(risk)
@@ -210,8 +218,8 @@ class SheetChatbotService:
             "addedBy": (data.get("addedBy") or "Admin FLIC").strip(),
             "question": question,
             "correctAnswer": answer,
-            "topic": (data.get("topic") or "Chưa xác định").strip(),
-            "channel": (data.get("channel") or data.get("sourceChannel") or "").strip(),
+            "topic": topic,
+            "channel": channel,
             "source": (data.get("source") or "Nhân viên đề xuất").strip(),
             "risk": risk,
             "status": status,
@@ -240,6 +248,12 @@ class SheetChatbotService:
             raise SheetChatbotValidationError("question là bắt buộc.")
         if not updated.get("correctAnswer"):
             raise SheetChatbotValidationError("correctAnswer là bắt buộc.")
+        if not updated.get("topic"):
+            raise SheetChatbotValidationError("topic là bắt buộc.")
+        if not updated.get("channel"):
+            raise SheetChatbotValidationError("channel là bắt buộc.")
+        if not updated.get("risk"):
+            raise SheetChatbotValidationError("risk là bắt buộc.")
         normalized_question = normalize_text(updated["question"])
         if any(
             candidate_index != index
