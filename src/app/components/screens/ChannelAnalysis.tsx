@@ -20,10 +20,12 @@ import { getDateParamsFromFilters } from "../../utils/dateFilters";
 import { CHANNEL_COLORS, TOPIC_COLORS } from "../../colors";
 import { topicColorForLabel } from "../../constants/topicTaxonomy";
 import { ChannelChartTick, ChannelLabel, ChannelYAxisTick } from "../common/ChannelLabel";
+import { PriorityConversationsSection } from "../dashboard/PriorityConversationsSection";
 
 const NAVY = "#003865";
 const ORANGE = "#D73C01";
 const AVG_RESPONSE_TIME_COLOR = "#42A5F5";
+const SHOW_LEGACY_CHANNEL_DETAIL = false;
 
 const getInsightData = (ch: any) => {
   const observations: string[] = [];
@@ -848,7 +850,7 @@ export function ChannelAnalysis({ filters, onFiltersChange, onNavigate }: Channe
               </div>
             </div>
 
-            <div style={{ backgroundColor: "#fff", borderRadius: "20px", border: "1px solid rgba(0,56,101,0.08)", boxShadow: "0 2px 12px rgba(0,56,101,0.06)", overflow: "hidden" }}>
+            {SHOW_LEGACY_CHANNEL_DETAIL && <div style={{ backgroundColor: "#fff", borderRadius: "20px", border: "1px solid rgba(0,56,101,0.08)", boxShadow: "0 2px 12px rgba(0,56,101,0.06)", overflow: "hidden" }}>
               <div style={{ padding: "16px 20px", borderBottom: "1px solid rgba(0,56,101,0.06)" }}>
                 <h3 style={{ color: NAVY, fontSize: "14px", fontWeight: 700, margin: 0 }}>Chi tiết dữ liệu theo kênh</h3>
                 <p style={{ fontSize: "11px", color: "rgba(0,56,101,0.45)", margin: "2px 0 0" }}>Các vấn đề cần chú ý và xử lý</p>
@@ -946,7 +948,8 @@ export function ChannelAnalysis({ filters, onFiltersChange, onNavigate }: Channe
                   </tbody>
                 </table>
               </div>
-            </div>
+            </div>}
+            <PriorityConversationsSection filters={filters} />
           </>
         )}
       </div>

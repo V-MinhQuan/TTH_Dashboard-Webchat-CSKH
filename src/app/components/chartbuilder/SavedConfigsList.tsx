@@ -25,11 +25,15 @@ export function SavedConfigsList({
       <div className="chart-builder-saved-list">
         {configs.map((config) => (
           <div key={config.id} className="chart-builder-saved-item">
-            <div className="chart-builder-saved-item-name">{config.name}</div>
+            <div className="chart-builder-saved-item-name">
+              {config.name}{config.scope === "shared" ? " · Được chia sẻ" : ""}
+            </div>
             {config.description && <div className="chart-builder-saved-item-description">{config.description}</div>}
             <div className="chart-builder-saved-actions">
               <button type="button" onClick={() => onApply(config)}><Check size={12} /> Áp dụng</button>
-              <button type="button" className="is-danger" onClick={() => onDelete(config)}><Trash2 size={12} /> Xóa</button>
+              {config.canDelete && (
+                <button type="button" className="is-danger" onClick={() => onDelete(config)}><Trash2 size={12} /> Xóa</button>
+              )}
             </div>
           </div>
         ))}

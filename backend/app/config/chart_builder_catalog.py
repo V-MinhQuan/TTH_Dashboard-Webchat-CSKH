@@ -123,6 +123,35 @@ OUTER APPLY (
     ),
 )
 
+CUSTOMER_MESSAGE_COUNT = RelationDefinition(
+    id="customer_message_count",
+    label="Số tin nhắn khách hàng theo hội thoại",
+    cardinality="many_to_zero_or_one",
+    sql="""
+OUTER APPLY (
+    SELECT
+        COUNT_BIG(CASE WHEN customer_message.FromHost = 0 THEN 1 END) AS CustomerMessageCount,
+        COUNT_BIG(CASE WHEN customer_message.FromHost = 1 THEN 1 END) AS StaffMessageCount
+    FROM dbo.WebChat_MessageLogs customer_message
+    WHERE customer_message.Source = c.Source
+      AND (
+        customer_message.SenderId = c.CustomerId
+        OR customer_message.ReceiverId = c.CustomerId
+      )
+) customer_messages
+""".strip(),
+    required_objects=_mapping(
+        {
+            "dbo.WebChat_MessageLogs": (
+                "Source",
+                "SenderId",
+                "ReceiverId",
+                "FromHost",
+            )
+        }
+    ),
+)
+
 MESSAGE_ANALYTICS = RelationDefinition(
     id="message_analytics",
     label="Phân tích AI của tin nhắn",
@@ -153,6 +182,30 @@ CONVERSATION_FIELDS = _mapping(
             roles=("metric",),
             aggregations=COUNT_AGGREGATIONS,
             default_aggregation="count_distinct",
+            nullable=False,
+        ),
+        "customer_message_count": FieldDefinition(
+            id="customer_message_count",
+            label="Tin nhắn từ khách hàng",
+            expression="customer_messages.CustomerMessageCount",
+            data_type="number",
+            semantic_type="customer_message_count",
+            roles=("metric",),
+            aggregations=("sum",),
+            default_aggregation="sum",
+            relation_id="customer_message_count",
+            nullable=False,
+        ),
+        "staff_message_count": FieldDefinition(
+            id="staff_message_count",
+            label="Tin nhắn từ Nhân viên/AI",
+            expression="customer_messages.StaffMessageCount",
+            data_type="number",
+            semantic_type="staff_message_count",
+            roles=("metric",),
+            aggregations=("sum",),
+            default_aggregation="sum",
+            relation_id="customer_message_count",
             nullable=False,
         ),
         "channel": FieldDefinition(
@@ -238,6 +291,34 @@ MESSAGE_FIELDS = _mapping(
             aggregations=COUNT_AGGREGATIONS,
             default_aggregation="count",
             nullable=False,
+        ),
+        "customer_message_count": FieldDefinition(
+            id="customer_message_count",
+            label="Tin nhắn từ khách hàng",
+            expression=(
+                "CASE WHEN m.FromHost = 0 "
+                "THEN m.id_webchat_messageLogs END"
+            ),
+            data_type="number",
+            semantic_type="customer_message_count",
+            roles=("metric",),
+            aggregations=("count",),
+            default_aggregation="count",
+            nullable=True,
+        ),
+        "staff_message_count": FieldDefinition(
+            id="staff_message_count",
+            label="Tin nhắn từ Nhân viên/AI",
+            expression=(
+                "CASE WHEN m.FromHost = 1 "
+                "THEN m.id_webchat_messageLogs END"
+            ),
+            data_type="number",
+            semantic_type="staff_message_count",
+            roles=("metric",),
+            aggregations=("count",),
+            default_aggregation="count",
+            nullable=True,
         ),
         "sent_at": FieldDefinition(
             id="sent_at",
@@ -544,7 +625,10 @@ DATASETS = _mapping(
             root_sql="dbo.WebChat_Conversations c",
             root_alias="c",
             fields=CONVERSATION_FIELDS,
-            relations=_mapping({"latest_status": LATEST_STATUS}),
+            relations=_mapping({
+                "customer_message_count": CUSTOMER_MESSAGE_COUNT,
+                "latest_status": LATEST_STATUS,
+            }),
             required_objects=_mapping(
                 {
                     "dbo.WebChat_Conversations": (

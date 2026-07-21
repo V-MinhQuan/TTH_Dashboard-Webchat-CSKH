@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Calendar, Download, FileText, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "../../context/AuthContext";
 
 import { FilterValues } from "../FilterPanel";
 import { ChartPreview } from "../chartbuilder/ChartPreview";
@@ -106,6 +107,7 @@ export function ChartBuilder({
   filters: globalFilters,
   onFiltersChange,
 }: ChartBuilderProps) {
+  const { role } = useAuth();
   const viewportWidth = useViewportWidth();
   const [datasets, setDatasets] = useState<CatalogDatasetMeta[]>([]);
   const [state, setState] = useState<ChartBuilderState>(emptyState);
@@ -128,6 +130,7 @@ export function ChartBuilder({
     null,
   );
   const [chartDateFilters, setChartDateFilters] = useState<DateFilterInput>({ dateRange: ALL_TIME_DATE_RANGE });
+  const titleManuallyEdited = useRef(false);
 
   const selectedDataset = useMemo(
     () => datasets.find((dataset) => dataset.id === state.datasetId) || null,
@@ -211,6 +214,20 @@ export function ChartBuilder({
     [state.metrics, state.dimensions, state.series, state.chartSettings.theme, selectedDataset],
   );
 
+  useEffect(() => {
+    if (titleManuallyEdited.current || legacyConfig) return;
+    const title = buildAutomaticChartTitle(state, selectedDataset);
+    setState((current) => (
+      current.title === title ? current : { ...current, title }
+    ));
+  }, [
+    legacyConfig,
+    selectedDataset,
+    state.dimensions,
+    state.metrics,
+    state.series,
+  ]);
+
   const loadConfigs = useCallback(async () => {
     setLoadingConfigs(true);
     try {
@@ -226,11 +243,18 @@ export function ChartBuilder({
 
   useEffect(() => {
     let active = true;
-    Promise.all([getCatalog(), getConfigs()])
-      .then(([catalog, configItems]) => {
+    setCatalogError("");
+    Promise.allSettled([getCatalog(), getConfigs()])
+      .then(([catalogResult, configsResult]) => {
         if (!active) return;
+        if (catalogResult.status === "rejected") {
+          setCatalogError(
+            userFacingError(catalogResult.reason, "Không thể tải bộ dữ liệu."),
+          );
+          return;
+        }
+        const catalog = catalogResult.value;
         setDatasets(catalog.datasets);
-        setConfigs(configItems);
         const firstAvailable = catalog.datasets.find(
           (dataset) => dataset.available,
         );
@@ -240,12 +264,14 @@ export function ChartBuilder({
             firstAvailable,
           ));
         }
-      })
-      .catch((error) => {
-        if (!active) return;
-        setCatalogError(
-          userFacingError(error, "Không thể tải bộ dữ liệu."),
-        );
+        if (configsResult.status === "fulfilled") {
+          setConfigs(configsResult.value);
+        } else {
+          setConfigs([]);
+          toast.error(
+            userFacingError(configsResult.reason, "Không thể tải cấu hình đã lưu."),
+          );
+        }
       })
       .finally(() => {
         if (!active) return;
@@ -349,6 +375,7 @@ export function ChartBuilder({
   const handleDatasetChange = (datasetId: string) => {
     const dataset = datasets.find((item) => item.id === datasetId);
     if (!dataset?.available) return;
+    titleManuallyEdited.current = false;
     setLegacyConfig(null);
     setState((current) => configureForDataset(
       current,
@@ -500,12 +527,13 @@ export function ChartBuilder({
     }));
   };
 
-  const handleSave = async (name: string, description: string) => {
+  const handleSave = async (name: string, description: string, scope: "personal" | "shared") => {
     setSaving(true);
     try {
       await saveConfig({
         name,
         description: description || null,
+        scope: role === "manager" ? scope : "personal",
         config: legacyConfig
           ? { ...legacyConfig, title: state.title }
           : state,
@@ -524,6 +552,7 @@ export function ChartBuilder({
 
   const handleApplyConfig = (saved: SavedChartConfig) => {
     const config = saved.config;
+    titleManuallyEdited.current = true;
     if (isCustomChartConfig(config)) {
       const dataset = datasets.find(
         (item) => item.id === config.datasetId && item.available,
@@ -580,6 +609,7 @@ export function ChartBuilder({
 
   const reset = () => {
     const firstAvailable = datasets.find((dataset) => dataset.available);
+    titleManuallyEdited.current = false;
     setLegacyConfig(null);
     setState(
       firstAvailable
@@ -679,10 +709,10 @@ export function ChartBuilder({
           <ChartToolbar
             title={state.title}
             saveDisabled={!canSave}
-            onTitleChange={(title) => setState((current) => ({
-              ...current,
-              title,
-            }))}
+            onTitleChange={(title) => {
+              titleManuallyEdited.current = true;
+              setState((current) => ({ ...current, title }));
+            }}
             onBack={() => onNavigate("overview")}
             onReset={reset}
             onSave={() => setSaveOpen(true)}
@@ -748,21 +778,16 @@ export function ChartBuilder({
               metrics={state.metrics}
               series={state.series}
               filters={state.filters}
-              tooltipFields={state.tooltipFields}
               draggedField={draggedField}
               onDimensionField={addDimensionField}
               onMetricField={addMetricField}
               onSeriesField={addSeriesField}
               onFilterField={addFilterField}
-              onTooltipField={addTooltipField}
               onInvalidField={handleInvalidFieldDrop}
               onDimensionsChange={(dimensions) => updateState({ dimensions })}
               onMetricsChange={(metrics) => updateState({ metrics })}
               onSeriesChange={(series) => updateState({ series })}
               onFiltersChange={handleFiltersChange}
-              onTooltipFieldsChange={(tooltipFields) => updateState({
-                tooltipFields,
-              })}
             />
 
             <section className="chart-builder-preview-card">
@@ -865,6 +890,7 @@ export function ChartBuilder({
         open={saveOpen}
         defaultName={state.title || CHART_BUILDER_LABELS.title}
         saving={saving}
+        canShare={role === "manager"}
         onOpenChange={setSaveOpen}
         onSave={handleSave}
       />
@@ -909,6 +935,30 @@ function configureForDataset(
     topN: 20,
     limit: dataset.defaultLimit,
   };
+}
+
+function buildAutomaticChartTitle(
+  state: ChartBuilderState,
+  dataset: CatalogDatasetMeta | null,
+) {
+  const labels = new Map(
+    dataset?.fields.map((field) => [field.id, field.label]) || [],
+  );
+  const metricLabels = state.metrics.map((metric) => (
+    metric.label || labels.get(metric.fieldId) || metric.fieldId
+  ));
+  const dimensionLabels = state.dimensions.map((dimension) => (
+    dimension.label || labels.get(dimension.fieldId) || dimension.fieldId
+  ));
+  const seriesLabel = state.series
+    ? state.series.label || labels.get(state.series.fieldId) || state.series.fieldId
+    : "";
+  const subject = metricLabels.join(" và ");
+  const breakdown = [...dimensionLabels, seriesLabel].filter(Boolean).join(" và ");
+  if (subject && breakdown) return `${subject} theo ${breakdown}`;
+  if (subject) return subject;
+  if (breakdown) return `Phân tích theo ${breakdown}`;
+  return CHART_BUILDER_LABELS.title;
 }
 
 function createMetric(

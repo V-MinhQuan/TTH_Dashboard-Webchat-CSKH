@@ -5,18 +5,21 @@ interface Props {
   open: boolean;
   defaultName: string;
   saving: boolean;
+  canShare: boolean;
   onOpenChange: (open: boolean) => void;
-  onSave: (name: string, description: string) => Promise<void>;
+  onSave: (name: string, description: string, scope: "personal" | "shared") => Promise<void>;
 }
 
-export function SaveConfigModal({ open, defaultName, saving, onOpenChange, onSave }: Props) {
+export function SaveConfigModal({ open, defaultName, saving, canShare, onOpenChange, onSave }: Props) {
   const [name, setName] = useState(defaultName);
   const [description, setDescription] = useState("");
+  const [scope, setScope] = useState<"personal" | "shared">("personal");
 
   useEffect(() => {
     if (open) {
       setName(defaultName);
       setDescription("");
+      setScope("personal");
     }
   }, [defaultName, open]);
 
@@ -44,6 +47,16 @@ export function SaveConfigModal({ open, defaultName, saving, onOpenChange, onSav
           <span>Tên cấu hình</span>
           <input value={name} maxLength={200} onChange={(event) => setName(event.target.value)} style={inputStyle} autoFocus />
         </label>
+        {canShare && (
+          <label style={{ ...fieldStyle, flexDirection: "row", alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={scope === "shared"}
+              onChange={(event) => setScope(event.target.checked ? "shared" : "personal")}
+            />
+            Chia sẻ cấu hình cho toàn hệ thống
+          </label>
+        )}
         <label style={fieldStyle}>
           <span>Mô tả</span>
           <textarea value={description} maxLength={500} rows={4} onChange={(event) => setDescription(event.target.value)} style={{ ...inputStyle, resize: "vertical" }} />
@@ -53,7 +66,7 @@ export function SaveConfigModal({ open, defaultName, saving, onOpenChange, onSav
           <button
             type="button"
             disabled={saving || !name.trim()}
-            onClick={() => onSave(name.trim(), description.trim())}
+            onClick={() => onSave(name.trim(), description.trim(), scope)}
             style={{ ...primaryButton, opacity: saving || !name.trim() ? 0.55 : 1 }}
           >
             {saving ? "Đang lưu..." : "Lưu biểu đồ"}

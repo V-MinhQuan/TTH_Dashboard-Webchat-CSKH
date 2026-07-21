@@ -170,14 +170,6 @@ def seed_trend_buckets(start_date: str, end_date: str, granularity: str) -> dict
     return buckets
 
 
-def trim_trailing_zero_trends(rows: list) -> list:
-    trimmed = list(rows or [])
-    metric_names = [meta["name"] for meta in GROUP_META.values()]
-    while trimmed and all((trimmed[-1].get(name) or 0) == 0 for name in metric_names):
-        trimmed.pop()
-    return trimmed
-
-
 def get_previous_period(start_date: str = None, end_date: str = None):
     if start_date and end_date:
         current_start = parse_trend_date(start_date)
@@ -598,7 +590,8 @@ class KeywordService:
                 entry[GROUP_META[gid]["name"]] = row.get(gid, 0)
             trends.append(entry)
 
-        trends = trim_trailing_zero_trends(trends)
+        # Do not trim zero-valued buckets: they define the remainder of the
+        # user-selected date range on the trend chart.
         set_cached_value(cache_key, trends)
         return trends
 

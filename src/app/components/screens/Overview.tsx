@@ -43,6 +43,7 @@ const ORANGE = "#D73C01";
 const TOP_QUESTION_DETAIL_PREWARM_LIMIT = 5;
 const TOP_QUESTION_DETAIL_PAGE_SIZE = 10;
 const CHART_COLORS = [NAVY, "#ED5206", "#1565C0", ORANGE, "#42A5F5", "#F36C2E"];
+const SHOW_RELOCATED_OVERVIEW_DETAILS = false;
 
 function viNum(n: number) {
   return n.toLocaleString("vi-VN");
@@ -440,6 +441,11 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
     let activeController: AbortController | null = null;
 
     async function loadTopQuestions() {
+      if (!SHOW_RELOCATED_OVERVIEW_DETAILS) {
+        setTopQuestionRows([]);
+        setTopQuestionsLoadState("ready");
+        return;
+      }
       setTopQuestionRows([]);
       setTopQuestionsStatus("ok");
       setTopQuestionsMessage("");
@@ -590,6 +596,11 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
     let activeController: AbortController | null = null;
 
     async function loadPriorityConversations() {
+      if (!SHOW_RELOCATED_OVERVIEW_DETAILS) {
+        setPriorityConversationRows([]);
+        setPriorityLoadState("ready");
+        return;
+      }
       setPriorityConversationRows([]);
       setPriorityLoadError("");
 
@@ -811,7 +822,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
   // 3. Tính toán các chỉ số phái sinh
   const activeConversations = kpiData?.statusSummary.pending || 0;
 
-  let totalConversations = visibleTotalConversations;
+  const totalConversations = visibleTotalConversations;
   let totalMessages = kpiData?.totalMessages || 0;
 
   // Lọc tổng số theo kênh đang bật
@@ -945,6 +956,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
       rows: dailyTrends.map((d: any) => [d.date, String(d.total)])
     });
 
+    if (SHOW_RELOCATED_OVERVIEW_DETAILS) {
     // 5. Câu hỏi nổi bật
     // Fetch top questions with larger limit if possible, or use state
     datasets.push({
@@ -958,7 +970,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
     let loadingToastId: string | number | undefined;
     try {
       loadingToastId = toast.loading("Đang tải toàn bộ hội thoại ưu tiên...");
-      let dateParams = getDateParamsFromFilters(filters);
+      const dateParams = getDateParamsFromFilters(filters);
       const rows = await getDashboardPriorityConversations({
         ...dateParams,
         channel: filters.channel,
@@ -986,6 +998,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
       ])
     });
 
+    }
     return datasets;
   };
 
@@ -1688,7 +1701,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
           </ChartCard>
         </div>
         {/* Câu hỏi nổi bật (Top Questions) */}
-        <div style={{ backgroundColor: "#fff", borderRadius: "16px", border: "1px solid rgba(0,59,185,0.07)", boxShadow: "0 2px 10px rgba(0,59,185,0.05)", overflow: "hidden", marginBottom: "24px" }}>
+        {SHOW_RELOCATED_OVERVIEW_DETAILS && (<div style={{ backgroundColor: "#fff", borderRadius: "16px", border: "1px solid rgba(0,59,185,0.07)", boxShadow: "0 2px 10px rgba(0,59,185,0.05)", overflow: "hidden", marginBottom: "24px" }}>
           <div style={{ padding: "16px 22px", borderBottom: "1px solid rgba(0,59,185,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "14px", flexWrap: "wrap" }}>
             <h3 style={{ color: "#003BB9", fontSize: "14px", fontWeight: 700, margin: 0 }}>Câu hỏi nổi bật từ khách hàng</h3>
             <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -1796,10 +1809,10 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
               </tbody>
             </table>
           </div>
-        </div>
+        </div>)}
 
         {/* Hội thoại ưu tiên xử lý (Hiển thị tĩnh để giữ giao diện đẹp) */}
-        <div style={{ backgroundColor: "#fff", borderRadius: "16px", border: "1px solid rgba(0,59,185,0.07)", boxShadow: "0 2px 10px rgba(0,59,185,0.05)", overflow: "hidden" }}>
+        {SHOW_RELOCATED_OVERVIEW_DETAILS && (<div style={{ backgroundColor: "#fff", borderRadius: "16px", border: "1px solid rgba(0,59,185,0.07)", boxShadow: "0 2px 10px rgba(0,59,185,0.05)", overflow: "hidden" }}>
           <div style={{ padding: "16px 22px", borderBottom: "1px solid rgba(0,59,185,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <h3 style={{ color: "#003BB9", fontSize: "14px", fontWeight: 700, margin: 0 }}>Hội thoại ưu tiên xử lý</h3>
             {/* Nút Quản lý hội thoại đã ẩn */}
@@ -1901,7 +1914,7 @@ export function Overview({ filters, onFiltersChange, onNavigate, isRefreshing: p
               </tbody>
             </table>
           </div>
-        </div>
+        </div>)}
 
         {feedbackQuestion && (
           <FeedbackFormDialog

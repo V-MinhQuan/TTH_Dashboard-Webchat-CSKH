@@ -1,4 +1,4 @@
-import { CircleHelp, Plus, Trash2, X } from "lucide-react";
+import { CircleHelp, X } from "lucide-react";
 
 import {
   CatalogDatasetMeta,
@@ -6,8 +6,6 @@ import {
   ChartSettings,
   ChartTheme,
   DateGrain,
-  FilterOperator,
-  FilterSelection,
 } from "../../types/chartBuilder";
 import { ChartTypeSelector } from "./ChartTypeSelector";
 import { SeriesSettings } from "./SeriesSettings";
@@ -15,13 +13,11 @@ import { ToggleSetting } from "./ToggleSetting";
 import {
   CHART_BUILDER_PALETTE_LABELS,
   getChartBuilderPalette,
-  isChartBuilderPaletteColor,
 } from "./chartBuilderPalettes";
 import {
   CHART_BUILDER_LABELS,
   DATE_GRAIN_LABELS,
   DIMENSION_GUIDANCE,
-  FILTER_OPERATOR_LABELS,
 } from "./chartBuilderLabels";
 import { buildDimensionSelectionForField } from "./chartBuilderValidation";
 
@@ -47,9 +43,6 @@ export function ChartSettingsPanel({
   ) || [];
   const seriesFields = dataset?.fields.filter(
     (field) => field.available && field.roles.includes("series"),
-  ) || [];
-  const filterFields = dataset?.fields.filter(
-    (field) => field.available && field.roles.includes("filter"),
   ) || [];
   const primaryDimension = state.dimensions[0];
   const primaryField = dimensionFields.find(
@@ -227,15 +220,7 @@ export function ChartSettingsPanel({
             </label>
           </SettingsSection>
 
-          <SettingsSection title={CHART_BUILDER_LABELS.filters}>
-            <FilterEditor
-              fields={filterFields}
-              filters={state.filters}
-              onChange={(filters) => onChange({ filters })}
-            />
-          </SettingsSection>
-
-          <SettingsSection title="Sắp xếp và giới hạn">
+          <SettingsSection title="Sắp xếp">
             <div className="chart-builder-query-grid">
               <label className="chart-builder-control">
                 <span>Sắp xếp theo</span>
@@ -276,39 +261,6 @@ export function ChartSettingsPanel({
                   <option value="asc">Tăng dần</option>
                 </select>
               </label>
-              <label className="chart-builder-control">
-                <span>Top N</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={500}
-                  value={state.topN || ""}
-                  placeholder="Không giới hạn"
-                  onChange={(event) => onChange({
-                    topN: event.target.value
-                      ? Number(event.target.value)
-                      : null,
-                  })}
-                />
-              </label>
-              <label className="chart-builder-control">
-                <span>Giới hạn dòng</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={dataset?.maxLimit || 5000}
-                  value={state.limit}
-                  onChange={(event) => onChange({
-                    limit: Math.max(
-                      1,
-                      Math.min(
-                        Number(event.target.value) || 1,
-                        dataset?.maxLimit || 5000,
-                      ),
-                    ),
-                  })}
-                />
-              </label>
             </div>
           </SettingsSection>
 
@@ -323,9 +275,7 @@ export function ChartSettingsPanel({
                     chartSettings: { ...state.chartSettings, theme },
                     metrics: state.metrics.map((metric) => ({
                       ...metric,
-                      color: isChartBuilderPaletteColor(metric.color)
-                        ? null
-                        : metric.color,
+                      color: null,
                     })),
                   });
                 }}
@@ -384,133 +334,6 @@ function SettingsSection({
       <h3>{title}</h3>
       {children}
     </section>
-  );
-}
-
-function FilterEditor({
-  fields,
-  filters,
-  onChange,
-}: {
-  fields: CatalogDatasetMeta["fields"];
-  filters: FilterSelection[];
-  onChange: (filters: FilterSelection[]) => void;
-}) {
-  const update = (index: number, changes: Partial<FilterSelection>) => {
-    onChange(filters.map((filter, itemIndex) => (
-      itemIndex === index ? { ...filter, ...changes } : filter
-    )));
-  };
-
-  return (
-    <div className="chart-builder-filter-editor">
-      {filters.map((filter, index) => {
-        const field = fields.find((item) => item.id === filter.fieldId);
-        const noValue = filter.operator === "is_null"
-          || filter.operator === "is_not_null";
-        const between = filter.operator === "between";
-        const isList = filter.operator === "in"
-          || filter.operator === "not_in";
-        return (
-          <div key={`${filter.fieldId}-${index}`} className="chart-builder-filter-row">
-            <div className="chart-builder-series-heading">
-              <span>{field?.label || filter.fieldId}</span>
-              <button
-                type="button"
-                onClick={() => onChange(
-                  filters.filter((_, itemIndex) => itemIndex !== index),
-                )}
-                aria-label="Xóa bộ lọc"
-              >
-                <Trash2 size={14} />
-              </button>
-            </div>
-            <label className="chart-builder-control">
-              <span>Toán tử</span>
-              <select
-                value={filter.operator}
-                onChange={(event) => update(index, {
-                  operator: event.target.value as FilterOperator,
-                  value: null,
-                  valueTo: null,
-                  values: [],
-                })}
-              >
-                {field?.filterOperators.map((operator) => (
-                  <option key={operator} value={operator}>
-                    {FILTER_OPERATOR_LABELS[operator]}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {!noValue && (
-              <label className="chart-builder-control">
-                <span>{isList ? "Danh sách, cách nhau bởi dấu phẩy" : "Giá trị"}</span>
-                <input
-                  type={field?.dataType === "date" ? "date" : "text"}
-                  value={
-                    isList
-                      ? (filter.values || []).join(", ")
-                      : String(filter.value ?? "")
-                  }
-                  onChange={(event) => {
-                    if (isList) {
-                      update(index, {
-                        values: event.target.value
-                          .split(",")
-                          .map((value) => value.trim())
-                          .filter(Boolean),
-                      });
-                    } else {
-                      update(index, { value: event.target.value });
-                    }
-                  }}
-                />
-              </label>
-            )}
-            {between && (
-              <label className="chart-builder-control">
-                <span>Đến giá trị</span>
-                <input
-                  type={field?.dataType === "date" ? "date" : "text"}
-                  value={String(filter.valueTo ?? "")}
-                  onChange={(event) => update(index, {
-                    valueTo: event.target.value,
-                  })}
-                />
-              </label>
-            )}
-          </div>
-        );
-      })}
-      <label className="chart-builder-add-series">
-        <Plus size={14} />
-        <select
-          value=""
-          aria-label="Thêm bộ lọc"
-          onChange={(event) => {
-            const field = fields.find(
-              (item) => item.id === event.target.value,
-            );
-            if (!field) return;
-            onChange([
-              ...filters,
-              {
-                fieldId: field.id,
-                operator: field.filterOperators[0] || "eq",
-                value: null,
-                values: [],
-              },
-            ]);
-          }}
-        >
-          <option value="">Thêm bộ lọc</option>
-          {fields.map((field) => (
-            <option key={field.id} value={field.id}>{field.label}</option>
-          ))}
-        </select>
-      </label>
-    </div>
   );
 }
 

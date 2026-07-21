@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, type CSSProperties } from "react";
 import { useAuth } from "../../context/AuthContext";
-import { Plus, Search, Filter, CheckCircle2, XCircle, Clock, Edit2, RotateCcw, Trash2, Check, Pencil, X, Eye, EyeOff } from "lucide-react";
+import { Plus, Search, CheckCircle2, XCircle, Clock, Edit2, RotateCcw, Trash2, Check, Pencil, X, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { ErrorSourceBadge } from "../common/ErrorSourceBadge";
 import { getAiFailureDefinition } from "../../constants/aiFailureTaxonomy";
@@ -8,6 +8,7 @@ import { TOPIC_FILTER_OPTIONS } from "../../constants/topicTaxonomy";
 import { FeedbackFormDialog } from "../feedback/FeedbackFormDialog";
 import { TopicLabel } from "../common/TopicLabel";
 import { ChannelLabel } from "../common/ChannelLabel";
+import { ColumnFilterSelect } from "../common/ColumnFilterSelect";
 import {
   deleteSheetChatbotRow,
   getSheetChatbotRows,
@@ -28,6 +29,7 @@ type RiskLevel = "Thấp" | "Trung bình" | "Cao";
 type SourceType = string;
 
 const SHEET_STATUSES: SheetStatus[] = ["Chờ xử lý", "Đã duyệt", "Cần chỉnh sửa", "Từ chối"];
+const VISIBLE_SHEET_STATUSES: SheetStatus[] = SHEET_STATUSES.filter((status) => status !== "Đã duyệt");
 const RISK_LEVELS: RiskLevel[] = ["Thấp", "Trung bình", "Cao"];
 
 interface SheetRow {
@@ -72,47 +74,6 @@ const tableHeaderCellStyle: CSSProperties = {
   backgroundColor: "#f8fafc",
 };
 
-const tableFilterLabelStyle: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: "6px",
-  whiteSpace: "nowrap",
-};
-
-const tableFilterControlStyle = (active: boolean): CSSProperties => ({
-  position: "relative",
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  width: "24px",
-  height: "24px",
-  borderRadius: "8px",
-  border: active ? `1px solid ${ORANGE_200}` : "1px solid rgba(0,56,101,0.14)",
-  background: active ? ORANGE_50 : "#fff",
-  color: active ? ORANGE : "rgba(0,56,101,0.58)",
-  cursor: "pointer",
-  flexShrink: 0,
-});
-
-const tableFilterNativeSelectStyle: CSSProperties = {
-  position: "absolute",
-  inset: 0,
-  width: "100%",
-  height: "100%",
-  fontSize: "11px",
-  fontWeight: 600,
-  fontFamily: "inherit",
-  opacity: 0,
-  cursor: "pointer",
-  outline: "none",
-  border: 0,
-};
-
-const tableFilterOptionStyle: CSSProperties = {
-  fontSize: "11px",
-  fontWeight: 600,
-  fontFamily: "inherit",
-};
 
 const actionHeaderCellStyle: CSSProperties = {
   ...tableHeaderCellStyle,
@@ -185,31 +146,7 @@ function FilterableHeader({
   options: readonly string[];
   onChange: (value: string) => void;
 }) {
-  const active = value !== ALL_FILTER_VALUE;
-  return (
-    <div style={tableFilterLabelStyle}>
-      <span>{label}</span>
-      <label
-        data-print-hidden="true"
-        title={active ? `Đang lọc: ${value}` : `Lọc theo ${label}`}
-        style={tableFilterControlStyle(active)}
-      >
-        <Filter size={11} aria-hidden="true" />
-        <select
-          aria-label={`Lọc thư viện phản hồi theo ${label}`}
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          onClick={(event) => event.stopPropagation()}
-          style={tableFilterNativeSelectStyle}
-        >
-          <option value={ALL_FILTER_VALUE} style={tableFilterOptionStyle}>{ALL_FILTER_VALUE}</option>
-          {options.map((option) => (
-            <option key={option} value={option} style={tableFilterOptionStyle}>{option}</option>
-          ))}
-        </select>
-      </label>
-    </div>
-  );
+  return <ColumnFilterSelect label={label} value={value} allValue={ALL_FILTER_VALUE} options={options} onChange={onChange} ariaContext="Thư viện phản hồi" />;
 }
 
 function displayFailureSource(source: string) {
@@ -248,6 +185,22 @@ function formatAddedAt(value: string) {
   return date.toLocaleDateString("vi-VN");
 }
 
+function addedAtFilterLabels(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return [];
+  const day = date.toLocaleDateString("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+  const month = date.toLocaleDateString("vi-VN", {
+    month: "2-digit",
+    year: "numeric",
+  });
+  const year = String(date.getFullYear());
+  return [`Ngày: ${day}`, `Tháng: ${month}`, `Năm: ${year}`];
+}
+
 export function SheetChatbot() {
   const { role, user } = useAuth();
   const currentUserName = user?.name || user?.username || "";
@@ -260,6 +213,7 @@ export function SheetChatbot() {
   const [editingRow, setEditingRow] = useState<SheetRow | null>(null);
 
   const [search, setSearch] = useState("");
+  const [filterAddedAt, setFilterAddedAt] = useState(ALL_FILTER_VALUE);
   const [filterTopic, setFilterTopic] = useState(ALL_FILTER_VALUE);
   const [filterChannel, setFilterChannel] = useState(ALL_FILTER_VALUE);
   const [filterStatus, setFilterStatus] = useState(ALL_FILTER_VALUE);
@@ -309,13 +263,20 @@ export function SheetChatbot() {
 
   // Backend already filters by session.username for staff role.
   // No need to re-filter on the client by currentUserName.
-  const visibleRows = rows;
+  const visibleRows = useMemo(
+    () => rows.filter((row) => row.status !== "Đã duyệt"),
+    [rows],
+  );
   const topicOptions = useMemo<readonly string[]>(
     () => TOPIC_FILTER_OPTIONS.map((option) => option.label),
     [],
   );
   const channelOptions = useMemo(
     () => uniqueSortedText(visibleRows.map((row) => row.channel || "Chưa xác định")),
+    [visibleRows],
+  );
+  const addedAtOptions = useMemo(
+    () => uniqueSortedText(visibleRows.flatMap((row) => addedAtFilterLabels(row.addedAt))),
     [visibleRows],
   );
 
@@ -331,6 +292,12 @@ export function SheetChatbot() {
     }
   }, [channelOptions, filterChannel]);
 
+  useEffect(() => {
+    if (filterAddedAt !== ALL_FILTER_VALUE && !addedAtOptions.includes(filterAddedAt)) {
+      setFilterAddedAt(ALL_FILTER_VALUE);
+    }
+  }, [addedAtOptions, filterAddedAt]);
+
   const filtered = visibleRows.filter(r => {
     const channelLabel = r.channel || "Chưa xác định";
     const matchSearch = r.question.toLowerCase().includes(search.toLowerCase()) ||
@@ -338,10 +305,11 @@ export function SheetChatbot() {
       channelLabel.toLowerCase().includes(search.toLowerCase()) ||
       r.addedBy.toLowerCase().includes(search.toLowerCase());
     const matchTopic = filterTopic === ALL_FILTER_VALUE || r.topic === filterTopic;
+    const matchAddedAt = filterAddedAt === ALL_FILTER_VALUE || addedAtFilterLabels(r.addedAt).includes(filterAddedAt);
     const matchChannel = filterChannel === ALL_FILTER_VALUE || channelLabel === filterChannel;
     const matchStatus = filterStatus === ALL_FILTER_VALUE || r.status === filterStatus;
     const matchRisk = filterRisk === ALL_FILTER_VALUE || r.risk === filterRisk;
-    return matchSearch && matchTopic && matchChannel && matchStatus && matchRisk;
+    return matchSearch && matchAddedAt && matchTopic && matchChannel && matchStatus && matchRisk;
   });
 
   const updateStatus = async (id: string, status: SheetStatus) => {
@@ -390,7 +358,7 @@ export function SheetChatbot() {
   const kpiCounts = {
     total: filtered.length,
     pending: filtered.filter(r => r.status === "Chờ xử lý").length,
-    approved: filtered.filter(r => r.status === "Đã duyệt").length,
+    approved: rows.filter(r => r.status === "Đã duyệt").length,
     rejected: filtered.filter(r => r.status === "Từ chối").length,
   };
 
@@ -464,7 +432,9 @@ export function SheetChatbot() {
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
                 <thead>
                   <tr style={{ backgroundColor: "#f8fafc" }}>
-                    <th style={tableHeaderCellStyle}>Thời gian thêm</th>
+                    <th style={tableHeaderCellStyle}>
+                      <FilterableHeader label="Thời gian thêm" value={filterAddedAt} options={addedAtOptions} onChange={setFilterAddedAt} />
+                    </th>
                     <th style={tableHeaderCellStyle}>Người thêm</th>
                     <th style={tableHeaderCellStyle}>Câu hỏi</th>
                     <th style={tableHeaderCellStyle}>Câu trả lời đúng</th>
@@ -478,7 +448,7 @@ export function SheetChatbot() {
                       <FilterableHeader label="Mức rủi ro" value={filterRisk} options={RISK_LEVELS} onChange={setFilterRisk} />
                     </th>
                     <th style={tableHeaderCellStyle}>
-                      <FilterableHeader label="Trạng thái" value={filterStatus} options={SHEET_STATUSES} onChange={setFilterStatus} />
+                      <FilterableHeader label="Trạng thái" value={filterStatus} options={VISIBLE_SHEET_STATUSES} onChange={setFilterStatus} />
                     </th>
                     <th style={actionHeaderCellStyle}>Hành động</th>
                   </tr>

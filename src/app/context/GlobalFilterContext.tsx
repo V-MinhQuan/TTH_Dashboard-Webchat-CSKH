@@ -40,7 +40,8 @@ interface GlobalFilterContextValue extends FilterState {
   resetFilters: () => void;
 }
 
-const STORAGE_KEY = "flic_dashboard_filters:v1";
+const STORAGE_KEY = "flic_dashboard_filters:v2";
+const LEGACY_STORAGE_KEYS = ["flic_dashboard_filters:v1"] as const;
 const GlobalFilterContext = createContext<GlobalFilterContextValue | null>(null);
 
 function normalizeDateRange(value: string) {
@@ -48,7 +49,13 @@ function normalizeDateRange(value: string) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
-  if (normalized === "thang nay" || normalized === "quy nay") {
+  if (
+    normalized === "thang nay"
+    || normalized === "quy nay"
+    || normalized === "toan bo du lieu"
+    || normalized === "toan bo thoi gian"
+    || normalized === "all_time"
+  ) {
     return defaultFilterValues.dateRange;
   }
   return value;
@@ -76,6 +83,10 @@ function normalizeFilters(value: unknown): FilterValues {
   if (typeof candidate.customDateTo === "string" && candidate.customDateTo.trim()) {
     normalized.customDateTo = candidate.customDateTo;
   }
+  if (normalized.dateRange !== "Tùy chỉnh") {
+    delete normalized.customDateFrom;
+    delete normalized.customDateTo;
+  }
   return normalized;
 }
 
@@ -87,12 +98,21 @@ function readStoredState(): FilterState {
     };
   }
   try {
-    const raw = window.sessionStorage.getItem(STORAGE_KEY);
+    const currentRaw = window.sessionStorage.getItem(STORAGE_KEY);
+    const legacyKey = LEGACY_STORAGE_KEYS.find(
+      (key) => window.sessionStorage.getItem(key) !== null,
+    );
+    const raw = currentRaw ?? (legacyKey ? window.sessionStorage.getItem(legacyKey) : null);
     const parsed = raw ? JSON.parse(raw) : null;
-    return {
+    const state = {
       draftFilters: normalizeFilters(parsed?.draftFilters),
       appliedFilters: normalizeFilters(parsed?.appliedFilters),
     };
+    if (raw) {
+      window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      LEGACY_STORAGE_KEYS.forEach((key) => window.sessionStorage.removeItem(key));
+    }
+    return state;
   } catch {
     return {
       draftFilters: { ...defaultFilterValues },

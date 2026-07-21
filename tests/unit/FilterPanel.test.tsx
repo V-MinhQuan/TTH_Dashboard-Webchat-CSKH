@@ -17,28 +17,12 @@ const { toast } = vi.hoisted(() => ({
   },
 }));
 
-const { html2canvas, pdf } = vi.hoisted(() => ({
-  html2canvas: vi.fn(),
-  pdf: {
-    internal: {
-      pageSize: {
-        getWidth: vi.fn(() => 297),
-        getHeight: vi.fn(() => 210),
-      },
-    },
-    addImage: vi.fn(),
-    addPage: vi.fn(),
-    save: vi.fn(),
-  },
+const { exportDashboardData } = vi.hoisted(() => ({
+  exportDashboardData: vi.fn(),
 }));
 
 vi.mock("sonner", () => ({ toast }));
-vi.mock("html2canvas", () => ({ default: html2canvas }));
-vi.mock("jspdf", () => ({
-  jsPDF: vi.fn(function MockJsPdf() {
-    return pdf;
-  }),
-}));
+vi.mock("../../src/app/services/exportService", () => ({ exportDashboardData }));
 vi.mock("../../src/app/context/SettingsContext", () => ({
   useSettings: () => ({
     settings: {
@@ -76,10 +60,8 @@ async function openExportMenu(user: ReturnType<typeof userEvent.setup>) {
 describe("FilterPanel", () => {
   beforeEach(() => {
     Object.values(toast).forEach((mock) => mock.mockReset());
-    html2canvas.mockReset();
-    Object.values(pdf).forEach((value) => {
-      if (typeof value === "function" && "mockClear" in value) value.mockClear();
-    });
+    exportDashboardData.mockReset();
+    exportDashboardData.mockResolvedValue({ rowCount: 1, hasTable: true });
   });
 
   it("does not expose conversation status or AI status filters", () => {
@@ -108,41 +90,6 @@ describe("FilterPanel", () => {
     expect(onFiltersChange).toHaveBeenLastCalledWith(
       expect.objectContaining({ channel: "Tất cả" }),
     );
-  });
-
-  it("uses a supplied topic catalog and marks unavailable Care Hub entries as pending", () => {
-    renderPanel(defaultFilterValues, vi.fn(), {
-      topicCatalog: [
-        { value: "TOEIC", label: "TOEIC", available: true },
-        {
-          value: "care-hub",
-          label: "Care Hub",
-          available: false,
-          unavailableReason: "Chưa có API danh mục",
-        },
-      ],
-      topicCatalogSource: "Care Hub",
-    });
-
-    expect(screen.getByText("Danh mục Care Hub")).toBeVisible();
-    expect(screen.getByText("Đang chờ dữ liệu")).toBeVisible();
-    expect(screen.getByRole("option", { name: "Care Hub — Đang chờ dữ liệu" })).toBeDisabled();
-    expect(screen.queryByRole("option", { name: "VSTEP" })).not.toBeInTheDocument();
-  });
-
-  it("shows that the default Care Hub catalog is pending instead of pretending fallback topics are dynamic", () => {
-    renderPanel();
-
-    expect(screen.getByText("Danh mục Care Hub")).toBeVisible();
-    expect(screen.getByText("Đang chờ dữ liệu")).toBeVisible();
-  });
-
-  it("marks a fully available topic catalog as connected", () => {
-    renderPanel(defaultFilterValues, vi.fn(), {
-      topicCatalog: [{ value: "TOEIC", label: "TOEIC", available: true }],
-    });
-
-    expect(screen.getByText("Đã kết nối")).toHaveAttribute("data-state", "ready");
   });
 
   it("rejects an inverted custom date range before applying", async () => {
@@ -250,18 +197,12 @@ describe("FilterPanel", () => {
       scrollHeight: { value: 1800 },
     });
     document.body.appendChild(report);
-    html2canvas.mockResolvedValue({
-      width: 1000,
-      height: 1800,
-      toDataURL: vi.fn(() => "data:image/png;base64,test"),
-    });
     renderPanel();
 
     await openExportMenu(user);
     await user.click(screen.getByRole("menuitem", { name: "Xuất PDF (toàn trang)" }));
 
-    await waitFor(() => expect(pdf.save).toHaveBeenCalledTimes(1));
-    expect(pdf.addPage).toHaveBeenCalled();
+    await waitFor(() => expect(exportDashboardData).toHaveBeenCalledTimes(1));
     expect(toast.success).toHaveBeenCalledWith("Đã xuất PDF", { description: "File đã được tải xuống." });
     report.remove();
   });
@@ -271,14 +212,14 @@ describe("FilterPanel", () => {
     const report = document.createElement("div");
     report.dataset.pdfReport = "overview";
     document.body.appendChild(report);
-    html2canvas.mockRejectedValue(new Error("Không thể dựng ảnh báo cáo"));
+    exportDashboardData.mockRejectedValue(new Error("Không thể dựng ảnh báo cáo"));
     renderPanel();
 
     await openExportMenu(user);
     await user.click(screen.getByRole("menuitem", { name: "Xuất PDF (toàn trang)" }));
 
     await waitFor(() =>
-      expect(toast.error).toHaveBeenCalledWith("Không thể xuất dữ liệu. Vui lòng thử lại."),
+      expect(toast.error).toHaveBeenCalledWith("Lỗi xuất dữ liệu: Không thể dựng ảnh báo cáo"),
     );
     report.remove();
   });

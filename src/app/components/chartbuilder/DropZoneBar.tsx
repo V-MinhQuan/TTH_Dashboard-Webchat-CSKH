@@ -1,4 +1,5 @@
-import { Filter, Info, Layers3, ListPlus, X } from "lucide-react";
+import { Filter, Layers3, ListPlus, X } from "lucide-react";
+import type React from "react";
 
 import {
   CatalogDatasetMeta,
@@ -22,13 +23,11 @@ interface Props {
   metrics: MetricSelection[];
   series: DimensionSelection | null | undefined;
   filters: FilterSelection[];
-  tooltipFields: string[];
   draggedField: ChartFieldDragData | null;
   onDimensionField: (field: ChartFieldDragData) => void;
   onMetricField: (field: ChartFieldDragData) => void;
   onSeriesField: (field: ChartFieldDragData) => void;
   onFilterField: (field: ChartFieldDragData) => void;
-  onTooltipField: (field: ChartFieldDragData) => void;
   onInvalidField: (
     slot: ChartBuilderFieldSlot,
     field: ChartFieldDragData,
@@ -37,7 +36,6 @@ interface Props {
   onMetricsChange: (value: MetricSelection[]) => void;
   onSeriesChange: (value: DimensionSelection | null) => void;
   onFiltersChange: (value: FilterSelection[]) => void;
-  onTooltipFieldsChange: (value: string[]) => void;
 }
 
 export function DropZoneBar({
@@ -47,19 +45,16 @@ export function DropZoneBar({
   metrics,
   series,
   filters,
-  tooltipFields,
   draggedField,
   onDimensionField,
   onMetricField,
   onSeriesField,
   onFilterField,
-  onTooltipField,
   onInvalidField,
   onDimensionsChange,
   onMetricsChange,
   onSeriesChange,
   onFiltersChange,
-  onTooltipFieldsChange,
 }: Props) {
   const labels = new Map(
     dataset?.fields.map((field) => [field.id, field.label]) || [],
@@ -110,7 +105,6 @@ export function DropZoneBar({
           <FieldChip
             key={metric.alias || `${metric.aggregation}_${metric.fieldId}`}
             label={metric.label || labels.get(metric.fieldId) || metric.fieldId}
-            detail={metric.aggregation}
             color={metric.color || undefined}
             onRemove={() => onMetricsChange(
               metrics.filter((item) => item !== metric),
@@ -148,8 +142,10 @@ export function DropZoneBar({
         {filters.length ? filters.map((filter, index) => (
           <FieldChip
             key={`${filter.fieldId}-${index}`}
-            label={labels.get(filter.fieldId) || filter.fieldId}
-            detail={filter.operator}
+            label={formatFilterChipLabel(
+              labels.get(filter.fieldId) || filter.fieldId,
+              filter,
+            )}
             onRemove={() => onFiltersChange(
               filters.filter((_, itemIndex) => itemIndex !== index),
             )}
@@ -157,25 +153,6 @@ export function DropZoneBar({
         )) : <DropHint text="Kéo trường để tạo bộ lọc" />}
       </DropZone>
 
-      <DropZone
-        slot="tooltip"
-        label={CHART_BUILDER_LABELS.tooltip}
-        icon={<Info size={14} />}
-        draggedField={draggedField}
-        accept={(field) => canUseFieldInSlot(field, "tooltip", slotContext)}
-        onField={onTooltipField}
-        onInvalidField={onInvalidField}
-      >
-        {tooltipFields.length ? tooltipFields.map((fieldId) => (
-          <FieldChip
-            key={fieldId}
-            label={labels.get(fieldId) || fieldId}
-            onRemove={() => onTooltipFieldsChange(
-              tooltipFields.filter((item) => item !== fieldId),
-            )}
-          />
-        )) : <DropHint text="Chỉ nhận trường đã chọn" />}
-      </DropZone>
     </div>
   );
 }
@@ -267,6 +244,13 @@ function FieldChip({
 
 function DropHint({ text }: { text: string }) {
   return <span className="chart-builder-drop-hint">{text}</span>;
+}
+
+function formatFilterChipLabel(label: string, filter: FilterSelection) {
+  if (filter.value !== null && filter.value !== undefined && String(filter.value).trim()) {
+    return `${label}: ${String(filter.value).trim()}`;
+  }
+  return label;
 }
 
 function readDraggedField(

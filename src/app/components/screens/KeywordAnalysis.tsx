@@ -12,6 +12,7 @@ import { FilterPanel, FilterValues } from "../FilterPanel";
 import { buildApiUrl, fetchApiJson } from "../../services/dashboardApi";
 import { FeedbackFormDialog } from "../feedback/FeedbackFormDialog";
 import { cn } from "../ui/utils";
+import { TopQuestionsSection } from "../dashboard/TopQuestionsSection";
 import {
   aiWrongAnswerNote,
   buildApiParams,
@@ -62,28 +63,28 @@ const TOPIC_LINE_STYLES = Object.fromEntries(
 
 const groupToneClasses: Record<string, { activeBorder: string; activeShadow: string; text: string; strip: string }> = {
   sat_hach_cntt: {
-    activeBorder: "border-[#002E8D]",
-    activeShadow: "shadow-[0_4px_16px_rgba(0,46,141,0.16)]",
-    text: "text-[#002E8D]",
-    strip: "bg-[#002E8D]",
-  },
-  toeic: {
-    activeBorder: "border-[#0B7285]",
-    activeShadow: "shadow-[0_4px_16px_rgba(11,114,133,0.16)]",
-    text: "text-[#0B7285]",
-    strip: "bg-[#0B7285]",
-  },
-  mos: {
     activeBorder: "border-[#E86A92]",
     activeShadow: "shadow-[0_4px_16px_rgba(232,106,146,0.16)]",
     text: "text-[#E86A92]",
     strip: "bg-[#E86A92]",
   },
-  hoc_tieng_anh: {
+  toeic: {
     activeBorder: "border-[#308D16]",
     activeShadow: "shadow-[0_4px_16px_rgba(48,141,22,0.16)]",
     text: "text-[#308D16]",
     strip: "bg-[#308D16]",
+  },
+  mos: {
+    activeBorder: "border-[#00D2FF]",
+    activeShadow: "shadow-[0_4px_16px_rgba(0,210,255,0.16)]",
+    text: "text-[#00D2FF]",
+    strip: "bg-[#00D2FF]",
+  },
+  hoc_tieng_anh: {
+    activeBorder: "border-[#002E8D]",
+    activeShadow: "shadow-[0_4px_16px_rgba(0,46,141,0.16)]",
+    text: "text-[#002E8D]",
+    strip: "bg-[#002E8D]",
   },
   hoc_tin_hoc: {
     activeBorder: "border-[#FFA100]",
@@ -692,6 +693,8 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
         )}
       </div>
 
+      <TopQuestionsSection filters={appliedFilters} />
+
       {/* Keyword detail cards */}
       <div className={cn("grid gap-5", activeGroup ? "grid-cols-[1fr]" : "grid-cols-2")}>
 
@@ -719,7 +722,7 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
                       <span className="w-[18px] shrink-0 text-[11px] font-bold text-[rgba(0,56,101,0.35)]">#{i + 1}</span>
                       <div className="flex-1">
                         <div className="mb-[3px] flex justify-between">
-                          <span className="text-xs font-medium text-[#003865]">{kw.word}</span>
+                          <span className="text-xs font-medium text-[#003865]" title={`Keyword chuẩn: ${kw.canonicalKeyword || kw.word}\nCụm từ thực tế: ${kw.actualPhrase || kw.word}\nPhương thức: ${kw.detectionMethod || "keyword_rule"}\nConfidence: ${kw.confidence == null ? "Chưa có dữ liệu" : `${Math.round(kw.confidence * 100)}%`}`}>{kw.word}</span>
                           <div className="flex items-center gap-1">
                             <span className="ml-[5px] text-[11px] text-[rgba(0,56,101,0.45)]">{kw.count.toLocaleString("vi-VN")}</span>
                           </div>
@@ -727,6 +730,14 @@ export function KeywordAnalysis({ filters, onFiltersChange, onApplyFilters }: Pr
                         <svg className="block h-[5px] w-full overflow-hidden rounded-[3px] bg-[#f1f5f9]" viewBox="0 0 100 5" preserveAspectRatio="none" aria-hidden="true">
                           <rect width={widthPct} height="5" rx="3" fill={group.color} opacity="0.75" />
                         </svg>
+                        {activeGroup === group.id && (
+                          <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px] text-[rgba(0,56,101,0.48)] xl:grid-cols-4">
+                            <span>Chuẩn: {kw.canonicalKeyword || kw.word}</span>
+                            <span>Cụm thực tế: {kw.actualPhrase || kw.word}</span>
+                            <span>Phát hiện: {kw.detectionMethod || "keyword_rule"}</span>
+                            <span>Confidence: {kw.confidence == null ? "—" : `${Math.round(kw.confidence * 100)}%`}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   );

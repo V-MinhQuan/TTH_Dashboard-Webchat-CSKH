@@ -1180,6 +1180,29 @@ def test_all_time_kpi_keeps_historical_daily_trends():
     assert [row["total"] for row in result["dailyTrends"]] == [1, 1]
 
 
+def test_filtered_kpi_keeps_trailing_zero_days():
+    service = DashboardService()
+    service.repository = MagicMock()
+    service.repository.get_conversation_summary.return_value = {
+        "totalConversations": 1, "statusSummary": {}, "sourceSummary": {},
+    }
+    service.repository.get_message_counts_filtered.return_value = []
+    service.repository.get_daily_conversation_summary.return_value = [
+        {"date_str": "2026-06-01", "total": 1, "processed": 1, "unprocessed": 0},
+    ]
+    service.repository.get_ai_daily_stats.return_value = []
+
+    result = service._get_fast_kpis(
+        "2026-06-01", "2026-06-03",
+        {"includePriorityConversations": False, "includeUrgentAlerts": False,
+         "includeTopQuestions": False, "includeTrendComparison": False},
+        False,
+    )
+
+    assert [row["date"] for row in result["dailyTrends"]] == ["1/6", "2/6", "3/6"]
+    assert [row["total"] for row in result["dailyTrends"]] == [1, 0, 0]
+
+
 def test_kpi_partial_errors_are_sanitized():
     service = DashboardService()
     service.repository = MagicMock()
@@ -1591,6 +1614,25 @@ def test_dashboard_service_channel_analytics_uses_filters_and_ai_stats(
     all_channels_result = service.get_channel_analytics("2026-06-01", "2026-06-02")
     assert all_channels_result["channelsList"] == ["Zalo Business", "Facebook", "Zalo OA", "Chat Widget"]
     assert "Khác" not in [row["channel"] for row in all_channels_result["channels"]]
+
+
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_channel_conversation_stats')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_channel_ai_summary')
+@patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_channel_topic_stats')
+def test_channel_trend_keeps_every_filtered_day(mock_topic_stats, mock_ai_summary, mock_channel_stats):
+    clear_dashboard_cache()
+    mock_channel_stats.return_value = [
+        {"source": "facebook", "date_str": "2026-06-01", "status": "closed", "total": 2},
+    ]
+    mock_ai_summary.return_value = []
+    mock_topic_stats.return_value = []
+
+    result = DashboardService().get_channel_analytics(
+        "2026-06-01", "2026-06-03", {"channel": "Facebook"},
+    )
+
+    assert [row["date"] for row in result["trend"]] == ["2026-06-01", "2026-06-02", "2026-06-03"]
+    assert [row["Facebook"] for row in result["trend"]] == [2, 0, 0]
 
 
 @patch('app.repositories.legacy_conversation_repository.ConversationRepository.get_channel_conversation_stats')

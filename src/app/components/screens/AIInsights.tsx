@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { AlertTriangle, CheckCircle, XCircle, ChevronDown, ChevronUp, FilePlus2, Clock, Table2, Activity, Download, BoldIcon, Filter } from "lucide-react";
+import { AlertTriangle, CheckCircle, XCircle, ChevronDown, ChevronUp, FilePlus2, Clock, Table2, Activity, Download, BoldIcon } from "lucide-react";
 import {
   LineChart, Line, BarChart, Bar, AreaChart, Area, XAxis, YAxis,
   CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine, PieChart, Pie, Cell
 } from "recharts";
 import { ChartCard } from "../ChartCard";
 import { FilterPanel, FilterValues } from "../FilterPanel";
+import { ColumnFilterSelect } from "../common/ColumnFilterSelect";
 import { toast } from "sonner";
 import { ApiRequestError, fetchApiJson, buildApiUrl, getAIAnalyticsOverview, resolveAIIssues } from "../../services/dashboardApi";
-import { getSheetChatbotRows, type SheetChatbotStats } from "../../services/sheetChatbotApi";
 import { FeedbackFormDialog } from "../feedback/FeedbackFormDialog";
 import { bulkCloseConversations, getCustomerPresentation } from "../../services/conversationApi";
 import { getAllFailedConversations, getFailedConversations, getTopicFailures, type TopicFailureRecord } from "../../services/round3Api";
@@ -16,7 +16,7 @@ import { exportDashboardData } from "../../services/exportService";
 import { getAiFailureDefinition } from "../../constants/aiFailureTaxonomy";
 import { TOPIC_TAXONOMY, mapTopicToGroupId, topicLabelForGroupId } from "../../constants/topicTaxonomy";
 import { StatusBadge } from "../common/StatusBadge";
-import { analyticsFiltersToSearchParams, mapGlobalFiltersToAnalyticsRequest, getDateParamsFromFilters } from "../../utils/dateFilters";
+import { analyticsFiltersToSearchParams, getDateParamsFromFilters } from "../../utils/dateFilters";
 import { TOPIC_COLORS } from "../../colors";
 
 const NAVY = "#003865";
@@ -39,57 +39,12 @@ const TOPIC_DETAIL_CONVERSATIONS_PAGE_SIZE = 3;
 const TABLE_FILTER_ALL = "Tất cả";
 const AI_ANALYTICS_TIMEOUT_MS = 120000;
 import { AI_TOPIC_FAILURE_TYPES, TOPIC_FAILURE_NUMERIC_KEYS } from "../../constants/aiErrorKeywords";
-type OptionalAIInsightsDataKey = "recentChatbotRows";
-const emptyOptionalAIInsightsErrors: Record<OptionalAIInsightsDataKey, boolean> = {
-  recentChatbotRows: false,
-};
 type CriticalAIInsightsDataKey = "qualityMetrics" | "failureTrend" | "failureByTopic" | "failedConversations";
 const criticalAIInsightsLabels: Record<CriticalAIInsightsDataKey, string> = {
   qualityMetrics: "chỉ số chất lượng AI",
   failureTrend: "xu hướng lỗi AI",
   failureByTopic: "lỗi theo chủ đề",
   failedConversations: "danh sách câu hỏi lỗi AI",
-};
-
-const failedTableHeaderFilterLabelStyle: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  gap: "6px",
-  whiteSpace: "nowrap",
-};
-
-const failedTableFilterControlStyle = (active: boolean): React.CSSProperties => ({
-  position: "relative",
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  width: "24px",
-  height: "24px",
-  borderRadius: "8px",
-  border: active ? `1px solid ${ORANGE_200}` : "1px solid rgba(0,56,101,0.14)",
-  background: active ? ORANGE_50 : "#fff",
-  color: active ? CTA : "rgba(0,56,101,0.58)",
-  cursor: "pointer",
-  flexShrink: 0,
-});
-
-const failedTableFilterNativeSelectStyle: React.CSSProperties = {
-  position: "absolute",
-  inset: 0,
-  width: "100%",
-  height: "100%",
-  fontSize: "11px",
-  fontFamily: "inherit",
-  opacity: 0,
-  cursor: "pointer",
-  outline: "none",
-  border: 0,
-};
-
-const failedTableFilterOptionStyle: React.CSSProperties = {
-  fontSize: "11px",
-  fontFamily: "inherit",
 };
 
 type FailReason = "Không tìm thấy dữ liệu" | "Không hiểu câu hỏi" | "Thiếu thông tin" | "Thông tin không chính xác" | "Lỗi nguồn tri thức" | "Lỗi hệ thống" | "AI trả lời sai" | "Khác" | string;
@@ -117,44 +72,6 @@ function uniqueSortedText(values: unknown[]) {
     if (text) uniqueValues.add(text);
   });
   return Array.from(uniqueValues).sort((left, right) => left.localeCompare(right, "vi-VN"));
-}
-
-function TableFilterHeader({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  options: readonly string[];
-  onChange: (value: string) => void;
-}) {
-  const active = value !== TABLE_FILTER_ALL;
-  return (
-    <div style={failedTableHeaderFilterLabelStyle}>
-      <span>{label}</span>
-      <label
-        data-print-hidden="true"
-        title={active ? `Đang lọc: ${value}` : `Lọc theo ${label}`}
-        style={failedTableFilterControlStyle(active)}
-      >
-        <Filter size={11} aria-hidden="true" />
-        <select
-          aria-label={`Lọc theo ${label}`}
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          onClick={(event) => event.stopPropagation()}
-          style={failedTableFilterNativeSelectStyle}
-        >
-          <option value={TABLE_FILTER_ALL} style={failedTableFilterOptionStyle}>{TABLE_FILTER_ALL}</option>
-          {options.map((option) => (
-            <option key={option} value={option} style={failedTableFilterOptionStyle}>{option}</option>
-          ))}
-        </select>
-      </label>
-    </div>
-  );
 }
 
 interface AIInsightsProps {
@@ -443,7 +360,6 @@ function buildFailedConversationCsvRows(records: Array<ReturnType<typeof mapFail
 
 export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersion = 0 }: AIInsightsProps) {
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
-  const [expandedChatbotRow, setExpandedChatbotRow] = useState<string | null>(null);
   const [expandedTopicConv, setExpandedTopicConv] = useState<string | number | null>(null);
   const [loading, setLoading] = useState(true);
   const [faqModalConv, setFaqModalConv] = useState<any>(null);
@@ -456,9 +372,6 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
   const [failedPage, setFailedPage] = useState(1);
   const [failedTopicFilter, setFailedTopicFilter] = useState(TABLE_FILTER_ALL);
   const [failedReasonFilter, setFailedReasonFilter] = useState(TABLE_FILTER_ALL);
-  const [chatbotTopicFilter, setChatbotTopicFilter] = useState(TABLE_FILTER_ALL);
-  const [chatbotChannelFilter, setChatbotChannelFilter] = useState(TABLE_FILTER_ALL);
-  const [chatbotStatusFilter, setChatbotStatusFilter] = useState(TABLE_FILTER_ALL);
   const [exportingFailed, setExportingFailed] = useState(false);
   const bulkSubmitGuard = useRef(false);
 
@@ -467,30 +380,16 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
   const [failureByTopic, setFailureByTopic] = useState<TopicFailureRecord[]>([]);
   const [failedConversations, setFailedConversations] = useState<any[]>([]);
   const [failedConversationTotal, setFailedConversationTotal] = useState(0);
-  const [recentChatbotRows, setRecentChatbotRows] = useState<any[]>([]);
-  const [sheetStats, setSheetStats] = useState<Partial<SheetChatbotStats>>({});
-  const [optionalDataErrors, setOptionalDataErrors] = useState<Record<OptionalAIInsightsDataKey, boolean>>(() => ({ ...emptyOptionalAIInsightsErrors }));
 
   useEffect(() => {
     let cancelled = false;
     const queryParams = analyticsFiltersToSearchParams(filters);
-    const feedbackFilters = mapGlobalFiltersToAnalyticsRequest(filters);
     const qs = queryParams.toString();
 
     const fetchData = async () => {
       setLoading(true);
-      setOptionalDataErrors({ ...emptyOptionalAIInsightsErrors });
       try {
         const criticalErrors: CriticalAIInsightsDataKey[] = [];
-        const nextOptionalErrors: Record<OptionalAIInsightsDataKey, boolean> = { ...emptyOptionalAIInsightsErrors };
-        const markOptionalFailure = (key: OptionalAIInsightsDataKey) => {
-          nextOptionalErrors[key] = true;
-          if (!cancelled) {
-            setOptionalDataErrors((current) => (
-              current[key] ? current : { ...current, [key]: true }
-            ));
-          }
-        };
         const safeRequired = async <T,>(key: CriticalAIInsightsDataKey, request: Promise<T>): Promise<T | null> => {
           try {
             return await request;
@@ -500,22 +399,11 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
             return null;
           }
         };
-        const safeOptional = async <T,>(key: OptionalAIInsightsDataKey, request: Promise<T>): Promise<T | null> => {
-          try {
-            return await request;
-          } catch (error) {
-            markOptionalFailure(key);
-            console.warn("Optional AI insights request failed:", error);
-            return null;
-          }
-        };
-
-        const [qm, ft, fbt, fc, scRows] = await Promise.all([
+        const [qm, ft, fbt, fc] = await Promise.all([
           safeRequired("qualityMetrics", fetchApiJson<any>(buildApiUrl(`/api/analytics/ai/quality-metrics?${qs}`), { timeoutMs: AI_ANALYTICS_TIMEOUT_MS })),
           safeRequired("failureTrend", fetchApiJson<any>(buildApiUrl(`/api/analytics/ai/failure-trend?${qs}`), { timeoutMs: AI_ANALYTICS_TIMEOUT_MS })),
           safeRequired("failureByTopic", getTopicFailures(queryParams)),
           safeRequired("failedConversations", getFailedConversations(queryParams)),
-          safeOptional("recentChatbotRows", getSheetChatbotRows({ pageSize: 5, ...feedbackFilters })),
         ]);
 
         if (cancelled) return;
@@ -533,15 +421,6 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
         setFailedPage(1);
         setSelectedFailureIds(new Set());
         setShowConfirmAllModal(false);
-        if (scRows?.success) {
-          setRecentChatbotRows(scRows.data || []);
-          setSheetStats(scRows.stats || {});
-        } else {
-          if (scRows) markOptionalFailure("recentChatbotRows");
-          setRecentChatbotRows([]);
-          setSheetStats({});
-        }
-        setOptionalDataErrors(nextOptionalErrors);
         if (criticalErrors.length > 0) {
           const failedLabels = criticalErrors.map((key) => criticalAIInsightsLabels[key]);
           toast.warning(`Chưa tải được ${failedLabels.join(", ")}. Các phần đã tải vẫn được hiển thị.`);
@@ -649,32 +528,6 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
     failedTopicFilter !== TABLE_FILTER_ALL ||
     failedReasonFilter !== TABLE_FILTER_ALL;
 
-  const chatbotTopicOptions = useMemo(
-    () => uniqueSortedText(recentChatbotRows.map((item) => item.topic)),
-    [recentChatbotRows],
-  );
-  const chatbotChannelOptions = useMemo(
-    () => uniqueSortedText(recentChatbotRows.map((item) => item.channel || "Chưa xác định")),
-    [recentChatbotRows],
-  );
-  const chatbotStatusOptions = useMemo(
-    () => uniqueSortedText(recentChatbotRows.map((item) => item.status)),
-    [recentChatbotRows],
-  );
-  const filteredRecentChatbotRows = useMemo(
-    () => recentChatbotRows.filter((item) => {
-      const channelLabel = item.channel || "Chưa xác định";
-      const matchesTopic = chatbotTopicFilter === TABLE_FILTER_ALL || item.topic === chatbotTopicFilter;
-      const matchesChannel = chatbotChannelFilter === TABLE_FILTER_ALL || channelLabel === chatbotChannelFilter;
-      const matchesStatus = chatbotStatusFilter === TABLE_FILTER_ALL || item.status === chatbotStatusFilter;
-      return matchesTopic && matchesChannel && matchesStatus;
-    }),
-    [chatbotChannelFilter, chatbotStatusFilter, chatbotTopicFilter, recentChatbotRows],
-  );
-  const hasChatbotTableFilters =
-    chatbotTopicFilter !== TABLE_FILTER_ALL ||
-    chatbotChannelFilter !== TABLE_FILTER_ALL ||
-    chatbotStatusFilter !== TABLE_FILTER_ALL;
 
   const failedConversationTotalSafe = Math.max(failedConversationTotal, failedConversations.length);
 
@@ -728,28 +581,6 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
     setSelectedFailureIds(new Set());
     setExpandedRow(null);
   }, [failedReasonFilter, failedTopicFilter]);
-
-  useEffect(() => {
-    if (chatbotTopicFilter !== TABLE_FILTER_ALL && !chatbotTopicOptions.includes(chatbotTopicFilter)) {
-      setChatbotTopicFilter(TABLE_FILTER_ALL);
-    }
-  }, [chatbotTopicFilter, chatbotTopicOptions]);
-
-  useEffect(() => {
-    if (chatbotStatusFilter !== TABLE_FILTER_ALL && !chatbotStatusOptions.includes(chatbotStatusFilter)) {
-      setChatbotStatusFilter(TABLE_FILTER_ALL);
-    }
-  }, [chatbotStatusFilter, chatbotStatusOptions]);
-
-  useEffect(() => {
-    if (chatbotChannelFilter !== TABLE_FILTER_ALL && !chatbotChannelOptions.includes(chatbotChannelFilter)) {
-      setChatbotChannelFilter(TABLE_FILTER_ALL);
-    }
-  }, [chatbotChannelFilter, chatbotChannelOptions]);
-
-  useEffect(() => {
-    setExpandedChatbotRow(null);
-  }, [chatbotChannelFilter, chatbotStatusFilter, chatbotTopicFilter]);
 
   useEffect(() => {
     setFailedPage((page) => Math.min(Math.max(page, 1), failedTotalPages));
@@ -879,7 +710,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
     });
 
     // 3. Danh sách câu hỏi AI chưa xử lý (Fetch all pages)
-    let failedRows: string[][] = [];
+    let failedRows: string[][];
     const failedHeaders = buildFailedConversationCsvRows([])[0];
     let loadingToastId: string | number | undefined;
 
@@ -1155,53 +986,11 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
                       <th className="flic-th">Câu hỏi của KH</th>
                       <th className="flic-th">Mã KH</th>
                       <th className="flic-th">
-                        <div style={failedTableHeaderFilterLabelStyle}>
-                          <span>Chủ đề</span>
-                          <label
-                            data-print-hidden="true"
-                            title={failedTopicFilter === TABLE_FILTER_ALL ? "Lọc theo Chủ đề" : `Đang lọc: ${failedTopicFilter}`}
-                            style={failedTableFilterControlStyle(failedTopicFilter !== TABLE_FILTER_ALL)}
-                          >
-                            <Filter size={11} aria-hidden="true" />
-                            <select
-                              aria-label="Lọc câu hỏi AI chưa xử lý theo Chủ đề"
-                              value={failedTopicFilter}
-                              onChange={(event) => setFailedTopicFilter(event.target.value)}
-                              onClick={(event) => event.stopPropagation()}
-                              style={failedTableFilterNativeSelectStyle}
-                            >
-                              <option value={TABLE_FILTER_ALL} style={failedTableFilterOptionStyle}>Tất cả</option>
-                              {failedTopicOptions.map((topic) => (
-                                <option key={topic} value={topic} style={failedTableFilterOptionStyle}>{topic}</option>
-                              ))}
-                            </select>
-                          </label>
-                        </div>
+                        <ColumnFilterSelect label="Chủ đề" value={failedTopicFilter} options={failedTopicOptions} onChange={setFailedTopicFilter} ariaContext="Câu hỏi AI chưa xử lý" />
                       </th>
                       <th className="flic-th">Kênh</th>
                       <th className="flic-th">
-                        <div style={failedTableHeaderFilterLabelStyle}>
-                          <span>Lý do lỗi AI</span>
-                          <label
-                            data-print-hidden="true"
-                            title={failedReasonFilter === TABLE_FILTER_ALL ? "Lọc theo Lý do lỗi AI" : `Đang lọc: ${failedReasonFilter}`}
-                            style={failedTableFilterControlStyle(failedReasonFilter !== TABLE_FILTER_ALL)}
-                          >
-                            <Filter size={11} aria-hidden="true" />
-                            <select
-                              aria-label="Lọc câu hỏi AI chưa xử lý theo Lý do lỗi AI"
-                              value={failedReasonFilter}
-                              onChange={(event) => setFailedReasonFilter(event.target.value)}
-                              onClick={(event) => event.stopPropagation()}
-                              style={failedTableFilterNativeSelectStyle}
-                            >
-                              <option value={TABLE_FILTER_ALL} style={failedTableFilterOptionStyle}>Tất cả</option>
-                              {failedReasonOptions.map((reason) => (
-                                <option key={reason} value={reason} style={failedTableFilterOptionStyle}>{reason}</option>
-                              ))}
-                            </select>
-                          </label>
-                        </div>
+                        <ColumnFilterSelect label="Lý do lỗi AI" value={failedReasonFilter} options={failedReasonOptions} onChange={setFailedReasonFilter} ariaContext="Câu hỏi AI chưa xử lý" />
                       </th>
                       <th className="flic-th">Hành động</th>
                     </tr>
@@ -1510,99 +1299,6 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
               </div>
             )}
 
-            {/* Dữ liệu đã bổ sung vào thư viện */}
-            <div style={{ backgroundColor: "#fff", borderRadius: "20px", border: "1px solid rgba(0,56,101,0.08)", boxShadow: "0 2px 12px rgba(0,56,101,0.06)", overflow: "hidden", marginBottom: "24px" }}>
-              <div style={{ padding: "18px 24px", borderBottom: "1px solid rgba(0,56,101,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                  <h3 style={{ color: NAVY, fontSize: "14px", fontWeight: 700, margin: 0 }}>Dữ liệu đã bổ sung vào thư viện</h3>
-                </div>
-                <button onClick={() => onNavigate("chatbot_sheet")} style={{ padding: "6px 14px", borderRadius: "8px", border: `1px solid ${NAVY}20`, background: "#f8fafc", color: NAVY, cursor: "pointer", fontSize: "12px", fontWeight: 500 }}>
-                  Xem Sheet Chatbot
-                </button>
-              </div>
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
-                  <thead>
-                    <tr>
-                      <th className="flic-th" style={{ textAlign: "left" }}>Câu hỏi khách hàng</th>
-                      <th className="flic-th" style={{ textAlign: "left" }}>Câu trả lời đúng đã bổ sung</th>
-                      <th className="flic-th" style={{ textAlign: "left" }}>Người bổ sung</th>
-                      <th className="flic-th" style={{ textAlign: "left" }}>
-                        <TableFilterHeader label="Chủ đề" value={chatbotTopicFilter} options={chatbotTopicOptions} onChange={setChatbotTopicFilter} />
-                      </th>
-                      <th className="flic-th" style={{ textAlign: "left" }}>
-                        <TableFilterHeader label="Kênh" value={chatbotChannelFilter} options={chatbotChannelOptions} onChange={setChatbotChannelFilter} />
-                      </th>
-                      <th className="flic-th" style={{ textAlign: "left" }}>
-                        <TableFilterHeader label="Trạng thái" value={chatbotStatusFilter} options={chatbotStatusOptions} onChange={setChatbotStatusFilter} />
-                      </th>
-                      <th className="flic-th" style={{ textAlign: "left" }}>Ghi chú nội bộ</th>
-                      <th className="flic-th" style={{ textAlign: "left" }}>Ngày cập nhật</th>
-                      <th className="flic-th" style={{ textAlign: "left" }}>Hành động</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredRecentChatbotRows.length === 0 && (
-                      <tr>
-                        <td colSpan={9} style={{ padding: "40px", textAlign: "center", color: "rgba(0,56,101,0.4)" }}>
-                          {optionalDataErrors.recentChatbotRows
-                            ? "Chưa tải được dữ liệu phụ của bảng này. Dữ liệu chính của trang vẫn đang hiển thị."
-                            : recentChatbotRows.length === 0 ? "Chưa có dữ liệu nào được bổ sung." : "Không có dữ liệu phù hợp với bộ lọc Chủ đề/Kênh/Trạng thái."}
-                        </td>
-                      </tr>
-                    )}
-                    {filteredRecentChatbotRows.map((item, i) => {
-                      const dateObj = new Date(item.addedAt || item.createdAt);
-                      const isToday = new Date().toDateString() === dateObj.toDateString();
-                      const formattedDate = isToday ? "Hôm nay" : dateObj.toLocaleDateString("vi-VN");
-                      const isExpanded = expandedChatbotRow === (item.id || String(i));
-                      return (
-                        <React.Fragment key={item.id || i}>
-                          <tr style={{ borderBottom: "1px solid rgba(0,56,101,0.04)" }}
-                            onMouseEnter={e => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "#fafbfc"}
-                            onMouseLeave={e => (e.currentTarget as HTMLTableRowElement).style.backgroundColor = "transparent"}
-                          >
-                            <td className="flic-td-left" style={{ padding: "12px 14px", color: NAVY, fontWeight: 500, maxWidth: "180px", cursor: "pointer", textDecoration: "underline" }} onClick={() => { localStorage.setItem("edit_chatbot_question", item.question); onNavigate("chatbot_sheet"); }}>{item.question}</td>
-                            <td className="flic-td-left" style={{ padding: "12px 14px", color: "#16a34a", maxWidth: "180px", fontSize: "11px" }}>{item.correctAnswer}</td>
-                            <td style={{ padding: "12px 14px", color: NAVY, fontWeight: 600 }}>{item.addedBy}</td>
-                            <td style={{ padding: "12px 14px" }}><span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "20px", backgroundColor: "#eff6ff", color: "#3b82f6" }}>{item.topic}</span></td>
-                            <td style={{ padding: "12px 14px", color: "rgba(0,56,101,0.62)", whiteSpace: "nowrap" }}>{item.channel || "Chưa xác định"}</td>
-                            <td style={{ padding: "12px 14px" }}><StatusBadge status={item.status} showDot={false} style={{ fontWeight: 600 }} /></td>
-                            <td style={{ padding: "12px 14px", color: ORANGE, fontStyle: "italic", maxWidth: "160px", fontSize: "11px" }}>
-                              <div style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", textOverflow: "ellipsis" }}>
-                                {item.notes || "---"}
-                              </div>
-                              {item.notes && item.notes.length > 50 && (
-                                <div
-                                  onClick={() => setExpandedChatbotRow(isExpanded ? null : (item.id || String(i)))}
-                                  style={{ fontSize: "11px", color: "#3b82f6", cursor: "pointer", display: "flex", alignItems: "center", gap: "3px", marginTop: "4px" }}
-                                >
-                                  Xem chi tiết {isExpanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
-                                </div>
-                              )}
-                            </td>
-                            <td style={{ padding: "12px 14px", color: "rgba(0,56,101,0.55)", whiteSpace: "nowrap" }}>{formattedDate}</td>
-                            <td style={{ padding: "12px 14px" }}>
-                              <button onClick={() => { localStorage.setItem("edit_chatbot_question", item.question); onNavigate("chatbot_sheet"); }} style={{ padding: "4px 10px", borderRadius: "6px", border: `1px solid ${NAVY}30`, background: "#fff", color: NAVY, cursor: "pointer", fontSize: "10px", fontWeight: 600, whiteSpace: "nowrap" }}>Chỉnh sửa</button>
-                            </td>
-                          </tr>
-                          {isExpanded && (
-                            <tr style={{ backgroundColor: "#fff8f6" }}>
-                              <td colSpan={9} style={{ padding: "12px 14px 14px 28px" }}>
-                                <div style={{ display: "flex", gap: "8px", alignItems: "flex-start" }}>
-                                  <span style={{ fontSize: "10px", color: ORANGE, fontWeight: 700, whiteSpace: "nowrap", paddingTop: "2px" }}>GHI CHÚ CHI TIẾT:</span>
-                                  <span style={{ fontSize: "12px", color: "rgba(0,56,101,0.8)", lineHeight: 1.5, fontStyle: "italic" }}>{item.notes}</span>
-                                </div>
-                              </td>
-                            </tr>
-                          )}
-                        </React.Fragment>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
           </>
         )}
 

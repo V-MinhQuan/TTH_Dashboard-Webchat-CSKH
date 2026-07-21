@@ -92,7 +92,11 @@ def get_configs(
     session: SessionClaims = Depends(require_roles("manager", "staff", "admin")),
     service: ChartBuilderService = Depends(get_chart_builder_service),
 ):
-    data = service.get_saved_configs(limit)
+    data = service.get_saved_configs(
+        limit,
+        username=session.username,
+        role=session.role,
+    )
     return {
         "success": True,
         "message": "Lấy cấu hình biểu đồ thành công.",
@@ -106,8 +110,17 @@ def save_config(
     session: SessionClaims = Depends(require_roles("manager", "staff", "admin")),
     service: ChartBuilderService = Depends(get_chart_builder_service),
 ):
+    if config.scope == "shared" and session.role != "manager":
+        raise AppError(
+            "Chỉ quản lý được chia sẻ cấu hình toàn hệ thống.",
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
     try:
-        data = service.save_chart_config(config)
+        data = service.save_chart_config(
+            config,
+            username=session.username,
+            role=session.role,
+        )
     except ValueError as exc:
         raise AppError(
             str(exc),
@@ -126,7 +139,11 @@ def delete_config(
     session: SessionClaims = Depends(require_roles("manager", "staff", "admin")),
     service: ChartBuilderService = Depends(get_chart_builder_service),
 ):
-    if not service.delete_chart_config(config_id):
+    if not service.delete_chart_config(
+        config_id,
+        username=session.username,
+        role=session.role,
+    ):
         raise AppError(
             "Không tìm thấy cấu hình biểu đồ.",
             status_code=status.HTTP_404_NOT_FOUND,

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 
 from app.services.legacy_dashboard_service import dashboard_service as legacy_ds
+from app.core.auth import SessionClaims, require_roles
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -270,6 +271,7 @@ def get_dashboard_priority_conversations(
     conversationStatus: Optional[str] = Query(default=None),
     aiStatus: Optional[str] = Query(default=None),
     limit: int = Query(default=10, ge=1, le=50),
+    session: SessionClaims = Depends(require_roles("manager", "staff")),
 ):
     if startDate:
         try:

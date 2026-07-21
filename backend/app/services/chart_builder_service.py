@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timezone
 from decimal import Decimal
 from threading import Lock
@@ -8,6 +9,8 @@ from time import perf_counter
 from time import monotonic
 from typing import Any, Dict, List, Mapping
 from uuid import UUID
+
+logger = logging.getLogger(__name__)
 
 from app.config.chart_builder_catalog import (
     COUNT_AGGREGATIONS,
@@ -272,9 +275,14 @@ class ChartBuilderService:
                 output_row[output_key] = row.get(metric_alias)
                 if output_key not in dynamic_series:
                     label = selection.label or metric_alias
+                    display_label = (
+                        series_label_value
+                        if len(compiled.metric_aliases) == 1
+                        else f"{label} - {series_label_value}"
+                    )
                     dynamic_series[output_key] = self._series_payload(
                         output_key,
-                        f"{label} - {series_label_value}",
+                        display_label,
                         selection,
                         len(dynamic_series) + metric_index,
                     )
@@ -312,7 +320,12 @@ class ChartBuilderService:
     def save_chart_config(
         self,
         config: SavedChartConfigCreate,
+        *,
+        username: str = "legacy",
+        role: str = "manager",
     ) -> Dict[str, Any]:
+        if config.scope == "shared" and role != "manager":
+            raise ValueError("Chỉ quản lý được chia sẻ cấu hình toàn hệ thống.")
         if isinstance(config.config, CustomChartConfig):
             self._validate_tooltip_fields(config.config)
             self.compiler.compile(config.config)
@@ -325,18 +338,53 @@ class ChartBuilderService:
                 filters=config.config.filters,
             )
             self._validate_predefined_request(chart_request)
-        return self._format_saved_config(
-            self.repository.save_chart_config(config)
+        saved = self._format_saved_config(
+            self.repository.save_chart_config(
+                config,
+                owner_username=username,
+            ),
+            current_username=username,
+            current_role=role,
         )
+        logger.info(
+            "chart_config_saved config_id=%s username=%s role=%s scope=%s",
+            saved["id"], username, role, config.scope,
+        )
+        return saved
 
-    def get_saved_configs(self, limit: int = 50) -> List[Dict[str, Any]]:
+    def get_saved_configs(
+        self,
+        limit: int = 50,
+        *,
+        username: str = "legacy",
+        role: str = "manager",
+    ) -> List[Dict[str, Any]]:
         return [
-            self._format_saved_config(row)
-            for row in self.repository.get_saved_configs(limit)
+            self._format_saved_config(
+                row,
+                current_username=username,
+                current_role=role,
+            )
+            for row in self.repository.get_saved_configs(limit, username=username)
         ]
 
-    def delete_chart_config(self, config_id: UUID) -> bool:
-        return self.repository.delete_chart_config(config_id)
+    def delete_chart_config(
+        self,
+        config_id: UUID,
+        *,
+        username: str = "legacy",
+        role: str = "manager",
+    ) -> bool:
+        deleted = self.repository.delete_chart_config(
+            config_id,
+            username=username,
+            manager_override=role == "manager",
+        )
+        logger.info(
+            "chart_config_delete config_id=%s username=%s role=%s result=%s",
+            config_id, username, role, "deleted" if deleted else "denied_or_missing",
+        )
+        return deleted
 
     def _source_for_request(
         self,
@@ -547,7 +595,12 @@ class ChartBuilderService:
         return str(value)
 
     @staticmethod
-    def _format_saved_config(row: Dict[str, Any]) -> Dict[str, Any]:
+    def _format_saved_config(
+        row: Dict[str, Any],
+        *,
+        current_username: str,
+        current_role: str,
+    ) -> Dict[str, Any]:
         config_value = row.get("configJson")
         config = (
             json.loads(config_value)
@@ -557,6 +610,8 @@ class ChartBuilderService:
         if not isinstance(config, dict):
             raise ValueError("Cấu hình biểu đồ đã lưu không hợp lệ.")
         normalized_config = dict(config)
+        access = normalized_config.pop("__access", None)
+        access = access if isinstance(access, dict) else {}
         if "version" not in normalized_config:
             normalized_config["version"] = 1
         if "mode" not in normalized_config:
@@ -569,6 +624,12 @@ class ChartBuilderService:
             "createdAt": row.get("createdAt"),
             "updatedAt": row.get("updatedAt"),
             "isActive": bool(row.get("isActive")),
+            "ownerUsername": row.get("ownerUsername") or access.get("ownerUsername") or "legacy",
+            "scope": row.get("scope") or access.get("scope") or "shared",
+            "canDelete": (
+                current_role == "manager"
+                or (row.get("ownerUsername") or access.get("ownerUsername")) == current_username
+            ),
         }
         return SavedChartConfig.model_validate(payload).model_dump(
             by_alias=True,

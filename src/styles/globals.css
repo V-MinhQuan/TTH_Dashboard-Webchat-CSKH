@@ -561,3 +561,103 @@
   color: #000;
   opacity: 1;
 }
+.column-filter {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+.column-filter__control {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: rgba(0, 56, 101, 0.48);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: color 150ms ease, background-color 150ms ease;
+}
+
+.column-filter__control:hover,
+.column-filter__control:focus-within {
+  color: #003865;
+  background: rgba(0, 56, 101, 0.06);
+}
+
+.column-filter__control[data-active="true"] {
+  color: #d73c01;
+  background: rgba(215, 60, 1, 0.08);
+}
+
+.column-filter__menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 1000;
+  display: grid;
+  min-width: max(100%, 118px);
+  max-height: 180px;
+  padding: 3px;
+  overflow-y: auto;
+  border: 1px solid rgba(0, 56, 101, 0.14);
+  border-radius: 7px;
+  background: #fff;
+  box-shadow: 0 6px 18px rgba(0, 56, 101, 0.14);
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: 1.2;
+}
+
+/* Đưa cả ô tiêu đề đang mở filter lên trên các ô tiêu đề kế bên. */
+.app-main table thead th:has(.column-filter__menu) {
+  z-index: 1002 !important;
+  overflow: visible !important;
+}
+
+.column-filter:has(.column-filter__menu) {
+  z-index: 1003;
+}
+
+.column-filter__option {
+  width: 100%;
+  min-height: 22px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #003865;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: 1.2;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.column-filter__option:hover,
+.column-filter__option:focus-visible {
+  outline: none;
+  background: rgba(0, 56, 101, 0.06);
+}
+
+.column-filter__option[data-selected="true"] {
+  background: #eaf4ff;
+  color: #003865;
+  font-weight: 700;
+}
+
+/* Đồng bộ tiêu đề cột cho mọi bảng, kể cả bảng dùng inline style cũ. */
+.app-main table thead th {
+  font-weight: 700 !important;
+}

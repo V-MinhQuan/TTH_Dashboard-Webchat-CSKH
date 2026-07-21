@@ -169,7 +169,6 @@ export type TopicGroupId = TopicGroup["id"];
 export const TOPIC_FILTER_OPTIONS = TOPIC_TAXONOMY.filter((topic) => topic.id !== "khac").map((topic) => ({
   value: topic.label,
   label: topic.label,
-  available: true,
 }));
 
 export function normalizeTopicText(value: string) {

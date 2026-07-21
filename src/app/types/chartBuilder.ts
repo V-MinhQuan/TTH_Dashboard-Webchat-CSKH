@@ -238,6 +238,7 @@ export interface SavedChartConfigCreate {
   name: string;
   description?: string | null;
   config: SavedChartConfigPayload;
+  scope?: "personal" | "shared";
 }
 
 export interface SavedChartConfig extends SavedChartConfigCreate {
@@ -245,6 +246,9 @@ export interface SavedChartConfig extends SavedChartConfigCreate {
   createdAt: string;
   updatedAt: string;
   isActive: boolean;
+  ownerUsername: string;
+  scope: "personal" | "shared";
+  canDelete: boolean;
 }
 
 export function isCustomChartConfig(

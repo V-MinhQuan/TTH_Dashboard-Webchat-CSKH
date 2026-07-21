@@ -26,8 +26,6 @@ const ALL = "Tất cả";
 export interface FilterCatalogOption {
   readonly value: string;
   readonly label: string;
-  readonly available?: boolean;
-  readonly unavailableReason?: string;
 }
 
 export interface FilterPanelProps {
@@ -85,25 +83,20 @@ function SelectField({ label, value, options, onChange, helper }: SelectFieldPro
       </div>
       <select id={id} aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} style={selectStyle}>
         {!hasCurrentValue && <option value={value}>{value}</option>}
-        {options.map((option) => {
-          const available = option.available !== false;
-          return (
-            <option key={option.value} value={option.value} disabled={!available} title={option.unavailableReason}>
-              {available ? option.label : `${option.label} — Đang chờ dữ liệu`}
-            </option>
-          );
-        })}
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>{option.label}</option>
+        ))}
       </select>
     </div>
   );
 }
 
 function withAll(options: readonly FilterCatalogOption[]): readonly FilterCatalogOption[] {
-  return [{ value: ALL, label: ALL, available: true }, ...options];
+  return [{ value: ALL, label: ALL }, ...options];
 }
 
 function textOptions(options: readonly string[]): readonly FilterCatalogOption[] {
-  return options.map((label) => ({ value: label, label, available: true }));
+  return options.map((label) => ({ value: label, label }));
 }
 
 function normalizeFilters(filters: FilterValues): FilterValues {

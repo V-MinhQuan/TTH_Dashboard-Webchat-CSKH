@@ -9,7 +9,7 @@ from app.core.config import get_settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import configure_logging
 from app.repositories.sentiment_repository import SentimentRepository
-from app.routers import activity, ai_error_keywords, analytics, auth, chart_builder, conversations, dashboard, feedback, health, sentiment, settings
+from app.routers import activity, analytics, auth, chart_builder, conversations, dashboard, feedback, health, sentiment, settings
 from app.routers.legacy import router as legacy_router
 from app.services.huggingface_sentiment_client import HuggingFaceSentimentClient
 from app.services.sentiment_service import SentimentService
@@ -80,7 +80,6 @@ app.include_router(sentiment.router)
 app.include_router(conversations.router)
 app.include_router(settings.router)
 app.include_router(feedback.router)
-app.include_router(ai_error_keywords.router)
 app.include_router(activity.router)
 app.include_router(legacy_router)
 

@@ -45,8 +45,11 @@ export function Sidebar({ activeScreen, onNavigate, collapsed, onToggleCollapse 
 
   const staffMenuItems = [
     { id: "overview", label: "Tổng quan", icon: LayoutDashboard },
+    { id: "channel", label: "Kênh", icon: Globe },
     { id: "aiinsights", label: "Hiệu suất AI", icon: Bot },
+    { id: "keyword", label: "Từ khóa nổi bật", icon: Hash },
     { id: "sentiment", label: "Phân tích cảm xúc", icon: Heart },
+    { id: "chartbuilder", label: "Biểu đồ", icon: BarChart2 },
     { id: "chatbot_sheet", label: "Thư viện phản hồi", icon: FileText },
     { id: "settings", label: "Cài đặt", icon: Settings },
   ];

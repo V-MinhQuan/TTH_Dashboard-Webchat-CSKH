@@ -4,6 +4,7 @@ import json
 import logging
 import unicodedata
 from collections import Counter
+from datetime import datetime, timedelta
 from typing import Any, Dict, Iterable, List
 
 from app.core.topic_taxonomy import (
@@ -277,7 +278,7 @@ class AnalyticsService:
             effective["dateRange"] = "last30days"
 
         payload = self.repository.get_ai_failure_trend(effective)
-        return [
+        rows = [
             {
                 "date": _date_str(row.get("date")),
                 "failure": int(row.get("failure") or 0),
@@ -286,6 +287,30 @@ class AnalyticsService:
             }
             for row in payload.get("rows", [])
         ]
+
+        start_date = effective.get("startDate") or effective.get("fromDate")
+        end_date = effective.get("endDate") or effective.get("toDate")
+        if not start_date or not end_date:
+            return rows
+
+        try:
+            cursor = datetime.strptime(str(start_date)[:10], "%Y-%m-%d")
+            end = datetime.strptime(str(end_date)[:10], "%Y-%m-%d")
+        except (TypeError, ValueError):
+            return rows
+
+        rows_by_date = {str(row["date"])[:10]: row for row in rows}
+        complete_rows = []
+        while cursor <= end:
+            date_key = cursor.strftime("%Y-%m-%d")
+            complete_rows.append(rows_by_date.get(date_key, {
+                "date": date_key,
+                "failure": 0,
+                "thieuDL": 0,
+                "khongChac": 0,
+            }))
+            cursor += timedelta(days=1)
+        return complete_rows
 
 
     def get_ai_failure_by_topic(self, filters: Dict[str, Any]) -> List[Dict[str, Any]]:

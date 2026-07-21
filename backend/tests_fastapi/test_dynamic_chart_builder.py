@@ -20,12 +20,18 @@ from app.config.chart_builder_catalog import (
     get_dataset_catalog,
 )
 from app.main import app
+from app.core.auth import create_session_manager
 from app.repositories import chart_builder_repository as repository_module
 from app.repositories.chart_builder_repository import ChartBuilderRepository
 from app.routers.chart_builder import get_chart_builder_service
 from app.schemas.chart_builder import CustomChartRequest, SavedChartConfigCreate
 from app.services.chart_builder_service import ChartBuilderService
 from app.services.chart_query_builder import ChartQueryCompiler
+
+
+def auth_headers(username="manager01", role="manager"):
+    token = create_session_manager().issue(username=username, role=role)
+    return {"Authorization": f"Bearer {token}"}
 
 
 def custom_request(**overrides) -> CustomChartRequest:
@@ -520,7 +526,7 @@ def test_version_2_config_is_validated_before_save():
             },
         }
     )
-    repository.save_chart_config.side_effect = lambda item: {
+    repository.save_chart_config.side_effect = lambda item, **_identity: {
         **repository.save_chart_config.return_value,
         "configJson": json.dumps(item.config.model_dump(by_alias=True, mode="json")),
     }
@@ -652,7 +658,8 @@ def test_repository_persists_lists_and_soft_deletes_saved_configs(monkeypatch):
     assert "\\u" not in insert_params[2]
     assert '"datasetId":"message_analytics"' in insert_params[2]
     assert "SELECT TOP 25" in execute_all_mock.call_args.args[1]
-    assert cursor.execute.call_args.args[1] == (str(config_id),)
+    assert "OwnerUsername = ?" in execute_all_mock.call_args.args[1]
+    assert cursor.execute.call_args.args[1] == (str(config_id), "legacy", 0)
     assert connection.commit.call_count == 2
 
 
@@ -749,10 +756,11 @@ def dynamic_client():
 
 
 def test_catalog_and_preview_endpoints(dynamic_client):
-    catalog_response = dynamic_client.get("/api/chart-builder/catalog")
+    catalog_response = dynamic_client.get("/api/chart-builder/catalog", headers=auth_headers())
     preview_response = dynamic_client.post(
         "/api/chart-builder/preview",
         json=custom_request().model_dump(by_alias=True),
+        headers=auth_headers(),
     )
 
     assert catalog_response.status_code == 200
@@ -797,6 +805,7 @@ def test_preview_endpoint_rejects_boolean_null_label_before_repository_call():
                     "sort": [],
                     "limit": 100,
                 },
+                headers=auth_headers(),
             )
     finally:
         app.dependency_overrides.clear()
@@ -816,7 +825,7 @@ def test_catalog_returns_safe_500_when_sql_server_is_disconnected():
     app.dependency_overrides[get_chart_builder_service] = lambda: service
     try:
         with TestClient(app, raise_server_exceptions=False) as client:
-            response = client.get("/api/chart-builder/catalog")
+            response = client.get("/api/chart-builder/catalog", headers=auth_headers())
     finally:
         app.dependency_overrides.clear()
 

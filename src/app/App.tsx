@@ -8,6 +8,7 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import { SettingsProvider } from "./context/SettingsContext";
 import { LoginScreen } from "./components/screens/Login";
 import { API_BASE_URL } from "./services/dashboardApi";
+import { canAccessScreen } from "./constants/access";
 
 // AI Chat Widget tạm ẩn chờ phát triển sau
 const Overview = lazy(() => import("./components/screens/Overview").then((m) => ({ default: m.Overview })));
@@ -194,9 +195,14 @@ function MainApp() {
   }, []);
 
   const handleNavigate = useCallback((nextScreen: string) => {
+    if (!canAccessScreen(role, nextScreen)) return;
     if (nextScreen === activeScreen) return;
     setActiveScreen(nextScreen);
-  }, [activeScreen]);
+  }, [activeScreen, role]);
+
+  useEffect(() => {
+    if (!canAccessScreen(role, activeScreen)) setActiveScreen(DEFAULT_SCREEN);
+  }, [activeScreen, role]);
 
   useEffect(() => {
     const interval = setInterval(triggerRefresh, 1800000);

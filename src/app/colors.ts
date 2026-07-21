@@ -110,9 +110,9 @@ export function channelColorForLabel(value: string | null | undefined) {
 }
 
 export const TOPIC_COLORS: Record<string, string> = {
-  "TOEIC": "#0B7285",
-  "MOS": "#E86A92",
-  "Sát hạch CNTT": "#002E8D",
+  "TOEIC": "#308D16",
+  "MOS": "#00D2FF",
+  "Sát hạch CNTT": "#E86A92",
   "Học Tin học": "#FFA100",
-  "Học Tiếng Anh": "#308D16",
+  "Học Tiếng Anh": "#002E8D",
 };

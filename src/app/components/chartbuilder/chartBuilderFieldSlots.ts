@@ -31,7 +31,6 @@ export const FIELD_SLOT_ORDER: ChartBuilderFieldSlot[] = [
   "metric",
   "series",
   "filter",
-  "tooltip",
 ];
 
 export const FIELD_SLOT_META: Record<

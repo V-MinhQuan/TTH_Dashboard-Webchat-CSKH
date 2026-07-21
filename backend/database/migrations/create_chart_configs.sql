@@ -7,6 +7,9 @@ BEGIN
         Name NVARCHAR(200) NOT NULL,
         Description NVARCHAR(500) NULL,
         ConfigJson NVARCHAR(MAX) NOT NULL,
+        OwnerUsername NVARCHAR(255) NOT NULL,
+        Scope VARCHAR(20) NOT NULL
+            CONSTRAINT DF_WebChat_ChartConfigs_Scope DEFAULT 'personal',
         CreatedAt DATETIME2(3) NOT NULL
             CONSTRAINT DF_WebChat_ChartConfigs_CreatedAt DEFAULT SYSUTCDATETIME(),
         UpdatedAt DATETIME2(3) NOT NULL
@@ -17,4 +20,7 @@ BEGIN
 
     CREATE INDEX IX_WebChat_ChartConfigs_IsActive_UpdatedAt
         ON dbo.WebChat_ChartConfigs (IsActive, UpdatedAt DESC);
+
+    CREATE INDEX IX_WebChat_ChartConfigs_Owner_Scope_Active
+        ON dbo.WebChat_ChartConfigs (OwnerUsername, Scope, IsActive, UpdatedAt DESC);
 END;

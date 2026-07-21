@@ -20,12 +20,6 @@ BEGIN
     EXEC sp_rename N'dbo.AiQuestionGroupCache', N'WebChat_AiQuestionGroupCache';
 END;
 
-IF OBJECT_ID(N'dbo.AiErrorKeywords', N'U') IS NOT NULL
-   AND OBJECT_ID(N'dbo.WebChat_AiErrorKeywords', N'U') IS NULL
-BEGIN
-    EXEC sp_rename N'dbo.AiErrorKeywords', N'WebChat_AiErrorKeywords';
-END;
-
 -- 2) Clean status rows that block a trusted FK/unique child key.
 IF OBJECT_ID(N'dbo.WebChat_ConversationStatus', N'U') IS NOT NULL
    AND OBJECT_ID(N'dbo.WebChat_Conversations', N'U') IS NOT NULL

@@ -4,11 +4,21 @@ import { describe, expect, it, vi } from "vitest";
 
 import { Sidebar } from "../../src/app/components/Sidebar";
 
+let mockRole: "manager" | "staff" = "manager";
 vi.mock("../../src/app/context/AuthContext", () => ({
-  useAuth: () => ({ role: "manager" }),
+  useAuth: () => ({ role: mockRole }),
 }));
 
 describe("Sidebar", () => {
+  it("shows the chart, channel and keyword destinations to staff", () => {
+    mockRole = "staff";
+    render(<Sidebar activeScreen="overview" onNavigate={vi.fn()} collapsed={false} onToggleCollapse={vi.fn()} />);
+
+    expect(screen.getByRole("button", { name: "Biểu đồ" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Kênh" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Từ khóa nổi bật" })).toBeVisible();
+    mockRole = "manager";
+  });
   it("uses the circular logo asset and a circular logo frame when collapsed", () => {
     /**
      * When collapsed, Sidebar renders flicLogoCircle (flic-logo-circle.png).

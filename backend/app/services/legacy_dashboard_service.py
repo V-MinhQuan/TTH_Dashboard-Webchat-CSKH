@@ -440,18 +440,6 @@ def _record_ai_gateway_failure(provider: str, model: str, key_index: int, exc: E
     )
 
 
-def _as_number(value):
-    try:
-        return float(value or 0)
-    except (TypeError, ValueError):
-        return 0
-
-def trim_trailing_zero_rows(rows, metric_keys):
-    trimmed = list(rows or [])
-    while trimmed and all(_as_number(trimmed[-1].get(key)) == 0 for key in metric_keys):
-        trimmed.pop()
-    return trimmed
-
 def format_channel(source: str = '') -> str:
     s = str(source).lower().strip()
     if s in ('facebook', 'fb', 'messenger'):
@@ -2838,10 +2826,10 @@ class DashboardService:
             bucket['ai_ok'] = row.get('ai_ok') or 0
             bucket['ai_fail'] = row.get('ai_fail') or 0
 
-        daily_trends = trim_trailing_zero_rows(
-            [daily_map[k] for k in sorted(daily_map.keys())],
-            ("total", "processed", "unprocessed", "ai_ok", "ai_fail"),
-        )
+        # Keep every seeded day in the requested range.  A zero at the end is
+        # still meaningful: it tells chart consumers that the filter continues
+        # beyond the last day that happened to contain a conversation.
+        daily_trends = [daily_map[k] for k in sorted(daily_map.keys())]
 
         return {
             "totalConversations": total_conversations,
@@ -3089,6 +3077,22 @@ class DashboardService:
                 data['avg_time'] = round(data['_response_total'] / data['_response_count'], 1)
             del data['_response_total']
             del data['_response_count']
+
+        # SQL aggregation only returns dates that contain records. Seed the
+        # complete requested range so the chart's x-axis matches the filter.
+        if start_date and end_date:
+            try:
+                trend_date = datetime.strptime(start_date, '%Y-%m-%d')
+                trend_end = datetime.strptime(end_date, '%Y-%m-%d')
+                while trend_date <= trend_end:
+                    date_key = trend_date.strftime('%Y-%m-%d')
+                    bucket = trend_map[date_key]
+                    bucket['date'] = date_key
+                    for channel_name, _source in visible_channel_defs:
+                        bucket.setdefault(channel_name, 0)
+                    trend_date += timedelta(days=1)
+            except (TypeError, ValueError):
+                pass
 
         trend_list = list(trend_map.values())
         status_list = list(status_map.values())

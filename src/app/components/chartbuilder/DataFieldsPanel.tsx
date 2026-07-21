@@ -4,14 +4,12 @@ import {
   ChevronDown,
   ChevronRight,
   CircleGauge,
-  CircleHelp,
   GripVertical,
   Hash,
   MessageSquareText,
   Radio,
   Search,
   Sigma,
-  Sparkles,
   Tags,
   UserRoundCog,
 } from "lucide-react";
@@ -26,8 +24,6 @@ import {
 import { SavedConfigsList } from "./SavedConfigsList";
 import {
   CHART_BUILDER_LABELS,
-  DIMENSION_GUIDANCE,
-  METRIC_GUIDANCE,
 } from "./chartBuilderLabels";
 import {
   FIELD_SLOT_META,
@@ -77,7 +73,7 @@ interface Props {
 
 type FieldSlotFilter = "all" | ChartBuilderFieldSlot;
 
-type FieldGroupId = "time" | "conversation" | "channel" | "topic" | "ai" | "sentiment" | "agent";
+type FieldGroupId = "time" | "conversation" | "channel" | "topic" | "sentiment" | "agent";
 
 interface FieldGroup {
   id: FieldGroupId;
@@ -199,25 +195,6 @@ export function DataFieldsPanel({
                 placeholder={CHART_BUILDER_LABELS.searchPlaceholder}
               />
             </label>
-
-            <div className="chart-builder-field-legend">
-              <span>
-                <Hash size={11} />
-                {CHART_BUILDER_LABELS.dimension} (Dimension)
-                <HelpButton
-                  label="Giải thích chiều phân tích"
-                  description={DIMENSION_GUIDANCE}
-                />
-              </span>
-              <span>
-                <Sigma size={11} />
-                {CHART_BUILDER_LABELS.metric} (Metric)
-                <HelpButton
-                  label="Giải thích chỉ số đo lường"
-                  description={METRIC_GUIDANCE}
-                />
-              </span>
-            </div>
 
             <div
               className="chart-builder-slot-filter"
@@ -394,25 +371,6 @@ function PanelState({ text, error = false }: { text: string; error?: boolean }) 
   );
 }
 
-function HelpButton({
-  label,
-  description,
-}: {
-  label: string;
-  description: string;
-}) {
-  return (
-    <button
-      type="button"
-      className="chart-builder-help-button"
-      aria-label={label}
-      title={description}
-    >
-      <CircleHelp size={12} />
-    </button>
-  );
-}
-
 function SlotBadges({
   capabilities,
   slotSummary,
@@ -465,9 +423,8 @@ function buildFieldGroups(
     { id: "conversation", label: "Hội thoại và tin nhắn", icon: MessageSquareText },
     { id: "channel", label: "Kênh", icon: Radio },
     { id: "topic", label: "Chủ đề và từ khóa", icon: Tags },
-    { id: "ai", label: "Hiệu suất AI", icon: Sparkles },
     { id: "sentiment", label: "Cảm xúc", icon: CircleGauge },
-    { id: "agent", label: "Hiệu suất nhân viên", icon: UserRoundCog },
+    { id: "agent", label: "Hiệu suất Nhân viên/AI", icon: UserRoundCog },
   ];
   const buckets = new Map(
     definitions.map((group) => [group.id, [] as CatalogFieldMeta[]]),
@@ -518,7 +475,7 @@ function classifyField(
   if (/(sentiment|satisfaction|positive|neutral|negative|cam xuc)/.test(value)) {
     return "sentiment";
   }
-  if (/(ai|analyzer|confidence|review|issue)/.test(value)) return "ai";
+  if (/(ai|analyzer|confidence|review|issue)/.test(value)) return "agent";
   if (dataset.id === "agent_performance") return "agent";
   return "conversation";
 }
@@ -537,5 +494,5 @@ const fieldSlotFilters: Array<{
     id: slot,
     label: FIELD_SLOT_META[slot].label,
     description: FIELD_SLOT_META[slot].description,
-  })),
+  })).filter((filter) => filter.id !== "tooltip"),
 ];

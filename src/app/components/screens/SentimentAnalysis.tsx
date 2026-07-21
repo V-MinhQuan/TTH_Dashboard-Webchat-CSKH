@@ -500,7 +500,7 @@ export function SentimentAnalysis({ filters, onFiltersChange, onNavigate }: Sent
     });
 
     // 3. Hội thoại tích cực (Fetch ALL with Pagination)
-    let posRows: string[][] = [];
+    let posRows: string[][];
     const posHeaders = ["Khách hàng", "Nội dung chi tiết", "Chủ đề", "Kênh", "Cảm xúc", "Thời gian"];
     const PAGE_SIZE = 100; // Backend max_page_size is 100
     let loadingToastId: string | number | undefined;

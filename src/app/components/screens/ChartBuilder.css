@@ -1135,7 +1135,8 @@
   padding: 10px;
   border: 1px solid rgba(0, 56, 101, 0.08);
   border-radius: 9px;
-  background: #f8fafc;
+  background: #eaf4ff;
+  color: #003865;
 }
 
 .chart-builder-recent-fields > div:last-child {
@@ -1145,19 +1146,23 @@
   gap: 5px;
 }
 
+.chart-builder-recent-fields .chart-builder-saved-configs-title {
+  color: #003865;
+}
+
 .chart-builder-recent-fields button {
   padding: 4px 7px;
-  border: 1px solid #dce6ed;
+  border: 1px solid #c8def2;
   border-radius: 999px;
-  background: #fff;
-  color: var(--cb-navy);
+  background: #f5faff;
+  color: #003865;
   cursor: pointer;
   font: inherit;
   font-size: 9px;
 }
 
 .chart-builder-drop-zone-row.is-dynamic {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .chart-builder-settings-fieldset {

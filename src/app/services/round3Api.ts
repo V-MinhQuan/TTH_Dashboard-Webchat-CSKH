@@ -192,21 +192,3 @@ function nonNegativeNumber(value: unknown) {
 function cleanText(value: unknown, fallback: string) {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
-
-export async function createAiErrorKeyword(payload: {
-  keyword: string;
-  error_group: string;
-  topic: string;
-  care_hub: null;
-  description: string;
-  status: "active";
-}) {
-  const response = await fetchApiJson<ApiResponse<unknown>>(
-    buildApiUrl("/api/ai-error-keywords"),
-    { method: "POST", cache: false, body: JSON.stringify(payload) }
-  );
-  if (!response.success) {
-    throw new Error(response.message || "Không thể lưu từ khóa lỗi AI.");
-  }
-  return response.data;
-}

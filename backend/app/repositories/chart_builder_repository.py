@@ -229,7 +229,12 @@ class ChartBuilderRepository:
             return self._aggregate_topic_distribution(rows, request)
         return rows
 
-    def save_chart_config(self, config: SavedChartConfigCreate) -> Dict[str, Any]:
+    def save_chart_config(
+        self,
+        config: SavedChartConfigCreate,
+        *,
+        owner_username: str = "legacy",
+    ) -> Dict[str, Any]:
         config_json = json.dumps(
             config.config.model_dump(by_alias=True, mode="json"),
             ensure_ascii=False,
@@ -239,7 +244,8 @@ class ChartBuilderRepository:
             row = execute_one(
                 conn,
                 """
-                INSERT INTO dbo.WebChat_ChartConfigs (Name, Description, ConfigJson)
+                INSERT INTO dbo.WebChat_ChartConfigs
+                  (Name, Description, ConfigJson, OwnerUsername, Scope)
                 OUTPUT
                   INSERTED.Id AS id,
                   INSERTED.Name AS name,
@@ -248,14 +254,22 @@ class ChartBuilderRepository:
                   INSERTED.CreatedAt AS createdAt,
                   INSERTED.UpdatedAt AS updatedAt,
                   INSERTED.IsActive AS isActive
-                VALUES (?, ?, ?)
+                  ,INSERTED.OwnerUsername AS ownerUsername
+                  ,INSERTED.Scope AS scope
+                VALUES (?, ?, ?, ?, ?)
                 """,
-                (config.name.strip(), config.description, config_json),
+                (
+                    config.name.strip(),
+                    config.description,
+                    config_json,
+                    owner_username,
+                    config.scope,
+                ),
             )
             conn.commit()
             return row
 
-    def get_saved_configs(self, limit: int) -> List[Dict[str, Any]]:
+    def get_saved_configs(self, limit: int, *, username: str = "legacy") -> List[Dict[str, Any]]:
         with self._connection_factory() as conn:
             return execute_all(
                 conn,
@@ -268,13 +282,23 @@ class ChartBuilderRepository:
                   CreatedAt AS createdAt,
                   UpdatedAt AS updatedAt,
                   IsActive AS isActive
+                  ,OwnerUsername AS ownerUsername
+                  ,Scope AS scope
                 FROM dbo.WebChat_ChartConfigs
                 WHERE IsActive = 1
+                  AND (OwnerUsername = ? OR Scope = 'shared')
                 ORDER BY UpdatedAt DESC, CreatedAt DESC
                 """,
+                (username,),
             )
 
-    def delete_chart_config(self, config_id: UUID) -> bool:
+    def delete_chart_config(
+        self,
+        config_id: UUID,
+        *,
+        username: str = "legacy",
+        manager_override: bool = False,
+    ) -> bool:
         with self._connection_factory() as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -282,8 +306,9 @@ class ChartBuilderRepository:
                 UPDATE dbo.WebChat_ChartConfigs
                 SET IsActive = 0, UpdatedAt = SYSUTCDATETIME()
                 WHERE Id = ? AND IsActive = 1
+                  AND (OwnerUsername = ? OR ? = 1)
                 """,
-                (str(config_id),),
+                (str(config_id), username, int(manager_override)),
             )
             changed = cursor.rowcount > 0
             conn.commit()

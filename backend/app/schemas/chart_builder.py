@@ -367,6 +367,7 @@ class SavedChartConfigCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: Optional[str] = Field(default=None, max_length=500)
     config: ChartConfig
+    scope: Literal["personal", "shared"] = "personal"
 
 
 class SavedChartConfig(BaseModel):
@@ -377,5 +378,8 @@ class SavedChartConfig(BaseModel):
     created_at: datetime = Field(alias="createdAt")
     updated_at: datetime = Field(alias="updatedAt")
     is_active: bool = Field(alias="isActive")
+    owner_username: str = Field(alias="ownerUsername")
+    scope: Literal["personal", "shared"]
+    can_delete: bool = Field(alias="canDelete")
 
     model_config = ConfigDict(populate_by_name=True)

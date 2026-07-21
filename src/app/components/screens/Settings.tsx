@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { Bell, Users, Save, ChevronRight, User, MessageSquare, Eye, X } from "lucide-react";
+import { Users, Save, ChevronRight, User, X } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../../context/AuthContext";
-import { useSettings } from "../../context/SettingsContext";
-import type { GlobalSettings } from "../../context/SettingsContext";
 import { UserManagement } from "./UserManagement";
 import {
   confirmPasswordChange,
@@ -105,19 +103,7 @@ const adminSections = [
 
 const staffSections = [
   { id: "profile", label: "Thông tin cá nhân", icon: User },
-  { id: "channels", label: "Kênh phụ trách", icon: MessageSquare },
-  { id: "display", label: "Tùy chọn hiển thị", icon: Eye },
 ];
-
-interface ToggleProps { value: boolean; onChange: (v: boolean) => void; }
-
-function Toggle({ value, onChange }: ToggleProps) {
-  return (
-    <div onClick={() => onChange(!value)} style={{ width: "44px", height: "24px", borderRadius: "12px", backgroundColor: value ? CTA : "#e2e8f0", position: "relative", cursor: "pointer", transition: "background 0.2s", flexShrink: 0 }}>
-      <div style={{ position: "absolute", top: "3px", left: value ? "22px" : "3px", width: "18px", height: "18px", borderRadius: "50%", backgroundColor: "#fff", transition: "left 0.2s", boxShadow: "0 1px 4px rgba(0,0,0,0.2)" }} />
-    </div>
-  );
-}
 
 function validSection(defaultSection: string, sections: typeof adminSections) {
   return sections.some((section) => section.id === defaultSection) ? defaultSection : "profile";
@@ -140,9 +126,6 @@ export function Settings({ defaultSection = "profile" }: { defaultSection?: stri
   const [currentPw, setCurrentPw] = useState("");
   const [newPw, setNewPw] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
-  const [savingSettings, setSavingSettings] = useState(false);
-
-  const { settings, updateSetting: update, saveSettings, loadingSettings } = useSettings();
 
   // Load User Profile from backend DB
   useEffect(() => {
@@ -250,17 +233,7 @@ export function Settings({ defaultSection = "profile" }: { defaultSection?: stri
     }
   };
 
-  const handleSave = () => {
-    if (activeSection === "profile") {
-      handleSaveProfile();
-    } else {
-      setSavingSettings(true);
-      saveSettings()
-        .then(() => toast.success("Đã lưu cài đặt hệ thống thành công"))
-        .catch((err: any) => toast.error(err?.message || "Không thể lưu cài đặt hệ thống."))
-        .finally(() => setSavingSettings(false));
-    }
-  };
+  const handleSave = () => handleSaveProfile();
 
   const renderSection = () => {
     if (activeSection === "profile") {
@@ -325,67 +298,6 @@ export function Settings({ defaultSection = "profile" }: { defaultSection?: stri
       return <div style={{ margin: "-28px" }}><UserManagement /></div>;
     }
 
-    if (activeSection === "channels" && role === "staff") {
-      const channelList = [
-        { key: "dataSourceZalo", label: "Zalo OA" },
-        { key: "dataSourceZaloBiz", label: "Zalo Business" },
-        { key: "dataSourceFb", label: "Facebook" },
-        { key: "dataSourceWidget", label: "Chat Widget" },
-      ];
-      return (
-        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-          <SectionTitle title="Kênh phụ trách" />
-          <p style={{ fontSize: "13px", color: "rgba(0,56,101,0.5)", marginTop: "-12px" }}>Chọn các kênh bạn phụ trách để lọc hội thoại và thông báo phù hợp</p>
-          {channelList.map(({ key, label }) => (
-            <div key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", borderRadius: "12px", border: "1px solid rgba(0,56,101,0.08)", backgroundColor: "#f8fafc" }}>
-              <div style={{ fontWeight: 600, fontSize: "14px", color: NAVY }}>{label}</div>
-              <Toggle value={(settings as any)[key]} onChange={(v) => update(key as keyof GlobalSettings, v)} />
-            </div>
-          ))}
-        </div>
-      );
-    }
-
-    if (activeSection === "display" && role === "staff") {
-      return (
-        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-          <SectionTitle title="Tùy chọn hiển thị hội thoại" />
-          <Card style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-            <div>
-              <div style={{ fontWeight: 600, fontSize: "14px", color: NAVY, marginBottom: "8px" }}>Số hội thoại mỗi trang</div>
-              <select value={settings.pageSize} onChange={(e) => update("pageSize", e.target.value)} style={{ ...fieldStyle }}>
-                <option value="10">10</option>
-                <option value="20">20</option>
-                <option value="50">50</option>
-              </select>
-            </div>
-            <div>
-              <div style={{ fontWeight: 600, fontSize: "14px", color: NAVY, marginBottom: "8px" }}>Sắp xếp theo</div>
-              <select value={settings.sortBy} onChange={(e) => update("sortBy", e.target.value)} style={{ ...fieldStyle }}>
-                <option value="newest">Mới nhất</option>
-                <option value="priority">Ưu tiên cao</option>
-                <option value="unread">Chưa xử lý trước</option>
-              </select>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: "14px", color: NAVY }}>Hiển thị hội thoại AI phản hồi thất bại</div>
-                <div style={{ fontSize: "12px", color: "rgba(0,56,101,0.5)", marginTop: "2px" }}>Ưu tiên hiển thị hội thoại AI trả lời sai</div>
-              </div>
-              <Toggle value={settings.showAiFailed} onChange={(v) => update("showAiFailed", v)} />
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: "14px", color: NAVY }}>Chế độ gọn</div>
-                <div style={{ fontSize: "12px", color: "rgba(0,56,101,0.5)", marginTop: "2px" }}>Hiển thị nhiều hội thoại hơn trong cùng không gian</div>
-              </div>
-              <Toggle value={settings.compactView} onChange={(v) => update("compactView", v)} />
-            </div>
-          </Card>
-        </div>
-      );
-    }
-
     return (
       <div style={{ padding: "32px", textAlign: "center", color: "rgba(0,56,101,0.4)", fontSize: "14px" }}>
         Phần cài đặt này đang được phát triển
@@ -421,10 +333,10 @@ export function Settings({ defaultSection = "profile" }: { defaultSection?: stri
             <div style={{ marginTop: "24px", paddingTop: "20px", borderTop: "1px solid rgba(0,56,101,0.08)" }}>
               <button
                 onClick={handleSave}
-                disabled={savingSettings || loadingSettings}
-                style={{ padding: "10px 28px", borderRadius: "12px", border: "none", background: savingSettings || loadingSettings ? "#cbd5e1" : `linear-gradient(135deg, ${ORANGE}, ${CTA})`, cursor: savingSettings || loadingSettings ? "not-allowed" : "pointer", color: "#fff", fontSize: "14px", fontWeight: 700, display: "flex", alignItems: "center", gap: "8px", boxShadow: savingSettings || loadingSettings ? "none" : "0 4px 12px rgba(215,60,1,0.3)" }}
+                disabled={loadingProfile}
+                style={{ padding: "10px 28px", borderRadius: "12px", border: "none", background: loadingProfile ? "#cbd5e1" : `linear-gradient(135deg, ${ORANGE}, ${CTA})`, cursor: loadingProfile ? "not-allowed" : "pointer", color: "#fff", fontSize: "14px", fontWeight: 700, display: "flex", alignItems: "center", gap: "8px", boxShadow: loadingProfile ? "none" : "0 4px 12px rgba(215,60,1,0.3)" }}
               >
-                <Save size={16} /> {savingSettings ? "Đang lưu..." : "Lưu thay đổi"}
+                <Save size={16} /> Lưu thay đổi
               </button>
             </div>
           )}

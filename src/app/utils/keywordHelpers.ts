@@ -6,8 +6,6 @@ import {
   normalizeTopicText,
   topicLabelForGroupId,
 } from "../constants/topicTaxonomy";
-import { buildApiUrl, fetchApiJson } from "../services/dashboardApi";
-import * as round3Api from "../services/round3Api";
 
 export const NAVY = "#003865";
 export const ORANGE = "#D73C01";
@@ -18,30 +16,14 @@ export const TOPIC_GROUP_COLORS: Record<string, string> = Object.fromEntries(
 );
 export const TOPIC_DONUT_COLORS = Object.values(TOPIC_GROUP_COLORS);
 
-export type AiErrorKeywordPayload = {
-  keyword: string;
-  error_group: string;
-  topic: string;
-  care_hub: null;
-  description: string;
-  status: "active";
-};
-
-type Round3KeywordApi = typeof round3Api & {
-  createAiErrorKeyword?: (payload: AiErrorKeywordPayload) => Promise<unknown>;
-};
-
-export const emptyAiErrorKeywordForm = {
-  keyword: "",
-  errorGroup: getAiFailureDefinition("missing_data")!.apiValue,
-  topic: "",
-  description: "",
-};
-
 export type KeywordItem = {
   word: string;
   count: number;
   trend: number;
+  canonicalKeyword?: string;
+  actualPhrase?: string;
+  detectionMethod?: string;
+  confidence?: number | null;
 };
 
 export type KeywordGroup = {
@@ -145,20 +127,6 @@ export function aiWrongAnswerNote(value: string | undefined) {
   return answer ? `Câu trả lời sai của AI:\n${answer}` : "";
 }
 
-export async function persistAiErrorKeyword(payload: AiErrorKeywordPayload) {
-  const api = round3Api as Round3KeywordApi;
-  if (typeof api.createAiErrorKeyword === "function") {
-    return api.createAiErrorKeyword(payload);
-  }
-
-  const response = await fetchApiJson<{ success: boolean; message?: string; data: unknown }>(
-    buildApiUrl("/api/ai-error-keywords"),
-    { method: "POST", cache: false, body: JSON.stringify(payload) },
-  );
-  if (!response.success) throw new Error(response.message || "Không thể lưu từ khóa lỗi AI.");
-  return response.data;
-}
-
 function formatLocalDate(date: Date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -249,6 +217,10 @@ export function mapApiGroups(apiGroups: any[]): KeywordGroup[] {
         word: k.word,
         count: k.count || 0,
         trend: apiGroup.changeRate || 0,
+        canonicalKeyword: k.canonicalKeyword || k.standardKeyword || k.word,
+        actualPhrase: k.actualPhrase || k.matchedPhrase || k.word,
+        detectionMethod: k.detectionMethod || k.method || "keyword_rule",
+        confidence: k.confidence == null ? null : Number(k.confidence),
       })),
     };
   });
