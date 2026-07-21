@@ -70,6 +70,12 @@ def test_catalog_hides_sensitive_columns_and_exposes_metadata():
     assert "avg" in analytics.fields["sentiment_score"].aggregations
 
 
+def test_message_analytics_chart_only_uses_completed_analysis():
+    compiled = ChartQueryCompiler(get_dataset_catalog()).compile(custom_request())
+
+    assert "a.analysisStatus = 'completed'" in compiled.sql
+
+
 def test_conversation_identifier_is_count_distinct_metric_with_business_label():
     catalog = get_dataset_catalog()
 
@@ -112,9 +118,85 @@ def test_conversation_channel_dataset_scopes_to_known_operating_channels():
 
     compiled = compiler.compile(request)
 
-    assert "c.Source IN" in compiled.sql
+    assert "LOWER(LTRIM(RTRIM(c.Source)))" in compiled.sql
     assert "ZaloBusiness" in compiled.sql
     assert "ChatWidget" in compiled.sql
+    assert "c.LastCustomerMessageAt IS NOT NULL" in compiled.sql
+
+
+def test_conversation_channel_uses_same_date_field_as_channel_dashboard():
+    compiler = ChartQueryCompiler(get_dataset_catalog())
+    request = CustomChartRequest.model_validate(
+        {
+            "version": 2,
+            "mode": "custom",
+            "datasetId": "conversations",
+            "chartType": "bar",
+            "dimensions": [{"fieldId": "channel", "alias": "channel"}],
+            "metrics": [
+                {
+                    "fieldId": "conversation_id",
+                    "aggregation": "count_distinct",
+                    "alias": "total",
+                }
+            ],
+            "filters": [
+                {
+                    "fieldId": "activity_at",
+                    "operator": "between",
+                    "value": "2026-06-01",
+                    "valueTo": "2026-06-30",
+                }
+            ],
+            "sort": [{"fieldId": "total", "direction": "desc"}],
+        }
+    )
+
+    compiled = compiler.compile(request)
+
+    assert "FROM dbo.WebChat_MessageLogs period_message" in compiled.sql
+    assert "period_message.SentAt >= ?" in compiled.sql
+    assert "GROUP BY" in compiled.sql
+    assert "period_message.SenderId" in compiled.sql
+    assert "period_message.ReceiverId" in compiled.sql
+    assert "c.LastMessageAt >= ?" not in compiled.sql
+    assert "COUNT(DISTINCT c.Id)" in compiled.sql
+
+
+@pytest.mark.parametrize("field_id", ["status_marked_at", "last_message_at", "last_customer_message_at"])
+def test_nullable_time_dimensions_can_exclude_unknown_bucket(field_id):
+    compiler = ChartQueryCompiler(get_dataset_catalog())
+    request = CustomChartRequest.model_validate(
+        {
+            "version": 2,
+            "mode": "custom",
+            "datasetId": "conversations",
+            "chartType": "line",
+            "dimensions": [
+                {
+                    "fieldId": field_id,
+                    "alias": "time_bucket",
+                    "dateGrain": "month",
+                    "nullHandling": "exclude",
+                }
+            ],
+            "metrics": [
+                {
+                    "fieldId": "conversation_id",
+                    "aggregation": "count_distinct",
+                    "alias": "total",
+                }
+            ],
+            "filters": [],
+            "sort": [{"fieldId": "time_bucket", "direction": "asc"}],
+        }
+    )
+
+    compiled = compiler.compile(request)
+
+    field_expression = get_dataset_catalog()["conversations"].fields[field_id].expression
+    assert f"{field_expression} IS NOT NULL" in compiled.sql
+    assert "ORDER BY [time_bucket] ASC" in compiled.sql
 
 
 @pytest.mark.parametrize("field_id", ["topic", "keyword"])
@@ -300,6 +382,99 @@ def test_compiler_uses_only_approved_agent_relation():
     assert "OUTER APPLY" in compiled.sql
     assert "WebChat_MessageLogs" in compiled.sql
     assert "agent.HostDisplayName" in compiled.sql
+
+
+def test_conversation_catalog_splits_ai_and_staff_message_metrics():
+    dataset = get_dataset_catalog()["conversations"]
+
+    assert dataset.fields["ai_message_count"].label == "Tin nhắn của AI"
+    assert dataset.fields["staff_message_count"].label == "Tin nhắn của Nhân viên"
+
+    relation_sql = dataset.relations["customer_message_count"].sql
+    assert "customer_message.FromHost = 1" in relation_sql
+    assert "= N'AI Assistant'" in relation_sql
+    assert "<> N'AI Assistant'" in relation_sql
+    assert "LTRIM(RTRIM(customer_message.HostDisplayName))" in relation_sql
+
+
+def test_message_metrics_compile_with_mutually_exclusive_sender_rules():
+    compiler = ChartQueryCompiler(get_dataset_catalog())
+    request = custom_request(
+        datasetId="messages",
+        dimensions=[{"fieldId": "channel", "alias": "channel"}],
+        metrics=[
+            {"fieldId": "ai_message_count", "aggregation": "count", "alias": "ai"},
+            {"fieldId": "staff_message_count", "aggregation": "count", "alias": "staff"},
+        ],
+        sort=[],
+    )
+
+    compiled = compiler.compile(request)
+
+    assert "m.FromHost = 1" in compiled.sql
+    assert "= N'AI Assistant'" in compiled.sql
+    assert "<> N'AI Assistant'" in compiled.sql
+    assert "IS NOT NULL" in compiled.sql
+
+
+def test_staff_message_filter_limits_conversation_metric_to_selected_staff():
+    compiler = ChartQueryCompiler(get_dataset_catalog())
+    request = custom_request(
+        datasetId="conversations",
+        dimensions=[{"fieldId": "channel", "alias": "channel"}],
+        metrics=[
+            {"fieldId": "staff_message_count", "aggregation": "sum", "alias": "staff"},
+        ],
+        filters=[
+            {"fieldId": "staff_message_count", "operator": "eq", "value": "  Nguyễn Văn A  "},
+        ],
+        sort=[],
+    )
+
+    compiled = compiler.compile(request)
+
+    assert "customer_message.HostDisplayName" in compiled.sql
+    assert "staff_filter.HostDisplayName" in compiled.sql
+    assert compiled.params == (
+        "Nguyễn Văn A",
+        "Nguyễn Văn A",
+        "Nguyễn Văn A",
+        "Nguyễn Văn A",
+    )
+
+
+def test_staff_name_list_merges_unambiguous_short_name_into_full_name():
+    names = ChartBuilderRepository._collapse_short_staff_names([
+        "CSKH-Facebook",
+        "Nguyễn Ngọc Thu Trang",
+        "Thu Trang",
+        "Nguyễn Thành Thủy",
+    ])
+
+    assert names == [
+        "CSKH-Facebook",
+        "Nguyễn Ngọc Thu Trang",
+        "Nguyễn Thành Thủy",
+    ]
+
+
+def test_channel_dimension_uses_business_channel_order_by_default():
+    compiler = ChartQueryCompiler(get_dataset_catalog())
+    request = custom_request(
+        datasetId="conversations",
+        dimensions=[{"fieldId": "channel", "alias": "channel"}],
+        metrics=[
+            {"fieldId": "conversation_id", "aggregation": "count_distinct", "alias": "total"},
+        ],
+        sort=[],
+    )
+
+    compiled = compiler.compile(request)
+
+    assert "= N'ZaloBusiness' THEN 1" in compiled.sql
+    assert "= N'Facebook' THEN 2" in compiled.sql
+    assert "= N'ZaloOA' THEN 3" in compiled.sql
+    assert "= N'ChatWidget' THEN 4" in compiled.sql
 
 
 def test_type_aware_filter_validation_rejects_contains_on_number():

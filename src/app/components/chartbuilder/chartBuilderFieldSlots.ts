@@ -44,26 +44,26 @@ export const FIELD_SLOT_META: Record<
 > = {
   dimension: {
     shortLabel: "X",
-    label: "Trục X",
-    menuLabel: "Trục X",
+    label: "Trường phân tích - X",
+    menuLabel: "Trường phân tích - X",
     description: "Dùng làm chiều phân tích hoặc nhóm dữ liệu.",
   },
   metric: {
     shortLabel: "Y",
-    label: "Giá trị Y",
-    menuLabel: "Giá trị Y",
+    label: "Giá trị / Chỉ số - Y",
+    menuLabel: "Giá trị / Chỉ số - Y",
     description: "Dùng làm chỉ số đo lường.",
   },
   series: {
-    shortLabel: "S",
-    label: "Chú giải",
-    menuLabel: "Chú giải",
+    shortLabel: "G",
+    label: "Phân nhóm dữ liệu - G",
+    menuLabel: "Phân nhóm dữ liệu - G",
     description: "Dùng để phân nhóm chuỗi dữ liệu.",
   },
   filter: {
     shortLabel: "F",
-    label: "Bộ lọc",
-    menuLabel: "Bộ lọc",
+    label: "Lọc dữ liệu - F",
+    menuLabel: "Lọc dữ liệu - F",
     description: "Dùng để lọc dữ liệu truy vấn.",
   },
   tooltip: {

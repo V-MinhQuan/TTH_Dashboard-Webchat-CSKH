@@ -201,6 +201,10 @@ export interface ChartSeries {
   axisGroup?: AxisGroup;
   seriesType?: SeriesType | null;
   numberFormat?: string | null;
+  metricLabel?: string | null;
+  groupLabel?: string | null;
+  groupValue?: string | null;
+  groupIndex?: number | null;
 }
 
 export interface QueryExecutionMeta {

@@ -23,6 +23,7 @@ interface Props {
   metrics: MetricSelection[];
   series: DimensionSelection | null | undefined;
   filters: FilterSelection[];
+  staffNames: string[];
   draggedField: ChartFieldDragData | null;
   onDimensionField: (field: ChartFieldDragData) => void;
   onMetricField: (field: ChartFieldDragData) => void;
@@ -45,6 +46,7 @@ export function DropZoneBar({
   metrics,
   series,
   filters,
+  staffNames,
   draggedField,
   onDimensionField,
   onMetricField,
@@ -140,16 +142,38 @@ export function DropZoneBar({
         onInvalidField={onInvalidField}
       >
         {filters.length ? filters.map((filter, index) => (
-          <FieldChip
-            key={`${filter.fieldId}-${index}`}
-            label={formatFilterChipLabel(
-              labels.get(filter.fieldId) || filter.fieldId,
-              filter,
-            )}
-            onRemove={() => onFiltersChange(
-              filters.filter((_, itemIndex) => itemIndex !== index),
-            )}
-          />
+          filter.fieldId === "staff_message_count" ? (
+            <span className="chart-builder-staff-filter" key={`${filter.fieldId}-${index}`}>
+              <select
+                aria-label="Chọn nhân viên"
+                value={filter.value == null ? "" : String(filter.value)}
+                onChange={(event) => onFiltersChange(filters.map((item, itemIndex) => (
+                  itemIndex === index ? { ...item, value: event.target.value || null } : item
+                )))}
+              >
+                <option value="">Tất cả</option>
+                {staffNames.map((name) => <option key={name} value={name}>{name}</option>)}
+              </select>
+              <button
+                type="button"
+                aria-label="Xóa bộ lọc nhân viên"
+                onClick={() => onFiltersChange(filters.filter((_, itemIndex) => itemIndex !== index))}
+              >
+                <X size={12} />
+              </button>
+            </span>
+          ) : (
+            <FieldChip
+              key={`${filter.fieldId}-${index}`}
+              label={formatFilterChipLabel(
+                labels.get(filter.fieldId) || filter.fieldId,
+                filter,
+              )}
+              onRemove={() => onFiltersChange(
+                filters.filter((_, itemIndex) => itemIndex !== index),
+              )}
+            />
+          )
         )) : <DropHint text="Kéo trường để tạo bộ lọc" />}
       </DropZone>
 

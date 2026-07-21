@@ -26,6 +26,14 @@ export async function getSources(): Promise<DataSourceInfo[]> {
   return response.data;
 }
 
+export async function getStaffNames(): Promise<string[]> {
+  const response = await fetchApiJson<APIResponse<string[]>>(
+    buildApiUrl("/api/chart-builder/staff-names"),
+    { cache: false, timeoutMs: 15000 },
+  );
+  return response.data;
+}
+
 export async function fetchPreview(
   request: CustomChartRequest,
   signal?: AbortSignal,

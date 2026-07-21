@@ -126,6 +126,41 @@ class ChartBuilderRepository:
             columns = [column[0] for column in cursor.description or []]
             return [dict(zip(columns, row)) for row in cursor.fetchall()]
 
+    def get_staff_names(self) -> List[str]:
+        rows = self.execute_custom_query(
+            """
+            SELECT DISTINCT
+              NULLIF(LTRIM(RTRIM(HostDisplayName)), N'') AS staffName
+            FROM dbo.WebChat_MessageLogs
+            WHERE FromHost = 1
+              AND NULLIF(LTRIM(RTRIM(HostDisplayName)), N'') IS NOT NULL
+              AND NULLIF(LTRIM(RTRIM(HostDisplayName)), N'') <> N'AI Assistant'
+            ORDER BY staffName
+            """
+        )
+        names = [str(row["staffName"]).strip() for row in rows if row.get("staffName")]
+        return self._collapse_short_staff_names(names)
+
+    @staticmethod
+    def _collapse_short_staff_names(names: Sequence[str]) -> List[str]:
+        """Merge an unambiguous multi-word short name into its full name."""
+        unique = list(dict.fromkeys(name for name in names if name))
+        normalized = {name: name.casefold() for name in unique}
+        aliases: set[str] = set()
+        for short_name in unique:
+            short = normalized[short_name]
+            if len(short.split()) < 2:
+                continue
+            matches = [
+                full_name
+                for full_name in unique
+                if full_name != short_name
+                and normalized[full_name].endswith(f" {short}")
+            ]
+            if len(matches) == 1:
+                aliases.add(short_name)
+        return [name for name in unique if name not in aliases]
+
     def get_catalog_capabilities(self) -> Dict[str, set[str]]:
         object_names: set[str] = set()
         for dataset in get_dataset_catalog().values():

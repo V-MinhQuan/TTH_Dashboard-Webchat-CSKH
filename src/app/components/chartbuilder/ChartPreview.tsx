@@ -130,17 +130,22 @@ export function ChartPreview({
   };
   const tooltip = (
     <Tooltip
-      formatter={(value: unknown, name: string) => [
-        formatValue(value, chartSeries.find((item) => item.key === name)),
-        safeText(chartSeries.find((item) => item.key === name)?.label || name),
-      ]}
-      labelFormatter={(label) => formatDimensionValue(label)}
-      labelStyle={{ color: "#003865", fontWeight: 700 }}
-      contentStyle={{
-        border: "1px solid rgba(0,56,101,.1)",
-        borderRadius: 10,
-        boxShadow: "0 8px 24px rgba(15,23,42,.12)",
-      }}
+      shared={isColumnChart(chartType) ? false : undefined}
+      content={(props) => (
+        <SingleColumnTooltip
+          active={props.active}
+          label={props.label}
+          payload={props.payload as Array<Record<string, any>> | undefined}
+          series={chartSeries}
+          dimensionKey={dimensionKey}
+        />
+      )}
+    />
+  );
+  const compactLegend = (
+    <Legend
+      wrapperStyle={legendStyle}
+      content={() => <CompactLegend series={chartSeries} />}
     />
   );
 
@@ -180,12 +185,7 @@ export function ChartPreview({
             ))}
           </Pie>
           {showTooltip && tooltip}
-          {showLegend && (
-            <Legend
-              wrapperStyle={legendStyle}
-              formatter={(value) => safeText(value)}
-            />
-          )}
+          {showLegend && compactLegend}
         </PieChart>
       </ResponsiveContainer>
     );
@@ -227,12 +227,7 @@ export function ChartPreview({
           />
           <ZAxis range={[55, 150]} />
           {showTooltip && tooltip}
-          {showLegend && (
-            <Legend
-              wrapperStyle={legendStyle}
-              formatter={(value) => safeText(value)}
-            />
-          )}
+          {showLegend && compactLegend}
           <Scatter
             name={`${safeText(xSeries.label)} / ${safeText(ySeries.label)}`}
             data={chartRows}
@@ -261,12 +256,7 @@ export function ChartPreview({
           <PolarAngleAxis dataKey={dimensionKey} tick={tickStyle} />
           <PolarRadiusAxis tick={tickStyle} />
           {showTooltip && tooltip}
-          {showLegend && (
-            <Legend
-              wrapperStyle={legendStyle}
-              formatter={(value) => safeText(value)}
-            />
-          )}
+          {showLegend && compactLegend}
           {chartSeries.map((series) => (
             <Radar
               key={series.key}
@@ -274,7 +264,8 @@ export function ChartPreview({
               name={safeText(series.label)}
               stroke={series.color}
               fill={series.color}
-              fillOpacity={0.16}
+              strokeOpacity={groupOpacity(series)}
+              fillOpacity={0.16 * groupOpacity(series)}
             />
           ))}
         </RadarChart>
@@ -330,12 +321,7 @@ export function ChartPreview({
             width={110}
           />
           {showTooltip && tooltip}
-          {showLegend && (
-            <Legend
-              wrapperStyle={legendStyle}
-              formatter={(value) => safeText(value)}
-            />
-          )}
+          {showLegend && compactLegend}
           {chartSeries.map((series) => (
             <Bar
               key={series.key}
@@ -343,6 +329,8 @@ export function ChartPreview({
               name={safeText(series.label)}
               xAxisId={series.axisGroup || "left"}
               fill={series.color}
+              fillOpacity={groupOpacity(series)}
+              background={{ fill: "rgba(0,56,101,0.018)" }}
               radius={[0, 5, 5, 0]}
             >
               {chartSeries.length === 1
@@ -362,12 +350,7 @@ export function ChartPreview({
         <ComposedChart {...common}>
           {renderGridAndAxes(dimensionKey, showGrid, chartSeries)}
           {showTooltip && tooltip}
-          {showLegend && (
-            <Legend
-              wrapperStyle={legendStyle}
-              formatter={(value) => safeText(value)}
-            />
-          )}
+          {showLegend && compactLegend}
           {chartSeries.map((series, index) => renderComboSeries(
             series,
             index === 0 ? "bar" : "line",
@@ -384,12 +367,7 @@ export function ChartPreview({
         <LineChart {...common}>
           {renderGridAndAxes(dimensionKey, showGrid, chartSeries)}
           {showTooltip && tooltip}
-          {showLegend && (
-            <Legend
-              wrapperStyle={legendStyle}
-              formatter={(value) => safeText(value)}
-            />
-          )}
+          {showLegend && compactLegend}
           {chartSeries.map((series) => (
             <Line
               key={series.key}
@@ -397,6 +375,7 @@ export function ChartPreview({
               name={safeText(series.label)}
               yAxisId={series.axisGroup || "left"}
               stroke={series.color}
+              strokeOpacity={groupOpacity(series)}
               strokeWidth={2.4}
               dot={false}
               activeDot={{ r: 4 }}
@@ -415,12 +394,7 @@ export function ChartPreview({
         <AreaChart {...common}>
           {renderGridAndAxes(dimensionKey, showGrid, chartSeries)}
           {showTooltip && tooltip}
-          {showLegend && (
-            <Legend
-              wrapperStyle={legendStyle}
-              formatter={(value) => safeText(value)}
-            />
-          )}
+          {showLegend && compactLegend}
           {chartSeries.map((series) => (
             <Area
               key={series.key}
@@ -429,7 +403,8 @@ export function ChartPreview({
               yAxisId={series.axisGroup || "left"}
               stroke={series.color}
               fill={series.color}
-              fillOpacity={0.18}
+              strokeOpacity={groupOpacity(series)}
+              fillOpacity={0.18 * groupOpacity(series)}
               strokeWidth={2.2}
             >
               {showDataLabels && <DataLabel dataKey={series.key} />}
@@ -445,12 +420,7 @@ export function ChartPreview({
       <BarChart {...common}>
         {renderGridAndAxes(dimensionKey, showGrid, chartSeries)}
         {showTooltip && tooltip}
-        {showLegend && (
-          <Legend
-          wrapperStyle={legendStyle}
-            formatter={(value) => safeText(value)}
-          />
-        )}
+        {showLegend && compactLegend}
         {chartSeries.map((series) => (
           <Bar
             key={series.key}
@@ -458,6 +428,8 @@ export function ChartPreview({
             name={safeText(series.label)}
             yAxisId={series.axisGroup || "left"}
             fill={series.color}
+            fillOpacity={groupOpacity(series)}
+            background={{ fill: "rgba(0,56,101,0.018)" }}
             radius={chartType === "stacked_bar" ? 0 : [5, 5, 0, 0]}
             stackId={chartType === "stacked_bar" ? "chart-builder-stack" : undefined}
           >
@@ -541,7 +513,8 @@ function renderComboSeries(
         yAxisId={series.axisGroup || "left"}
         stroke={series.color}
         fill={series.color}
-        fillOpacity={0.16}
+        strokeOpacity={groupOpacity(series)}
+        fillOpacity={0.16 * groupOpacity(series)}
       />
     );
   }
@@ -553,6 +526,7 @@ function renderComboSeries(
         name={series.label}
         yAxisId={series.axisGroup || "left"}
         stroke={series.color}
+        strokeOpacity={groupOpacity(series)}
         strokeWidth={2.4}
         dot={false}
       >
@@ -567,6 +541,8 @@ function renderComboSeries(
       name={series.label}
       yAxisId={series.axisGroup || "left"}
       fill={series.color}
+      fillOpacity={groupOpacity(series)}
+      background={{ fill: "rgba(0,56,101,0.018)" }}
       radius={[5, 5, 0, 0]}
     >
       {showDataLabels && <DataLabel dataKey={series.key} />}
@@ -687,6 +663,113 @@ function normalizeChartSeries(
     label: safeText(seriesDisplayByKey[item.key]?.label || item.label || item.key),
     color: seriesDisplayByKey[item.key]?.color || palette[index % palette.length] || item.color,
   }));
+}
+
+function CompactLegend({ series }: { series: ChartSeries[] }) {
+  const metrics = Array.from(new Map(series.map((item) => [
+    item.metricLabel || item.label,
+    {
+      label: item.metricLabel || item.label,
+      color: item.color,
+    },
+  ])).values());
+  const grouped = series.some((item) => item.groupValue);
+  const groups = Array.from(new Map(
+    series
+      .filter((item) => item.groupValue)
+      .map((item) => [item.groupValue, {
+        label: item.groupValue || "",
+        index: item.groupIndex || 0,
+      }]),
+  ).values());
+  const groupLabel = series.find((item) => item.groupLabel)?.groupLabel;
+
+  return (
+    <div className="chart-builder-compact-legend">
+      <div className="chart-builder-legend-section">
+        <strong>Chỉ số:</strong>
+        <div className="chart-builder-legend-items">
+          {metrics.map((metric) => (
+            <span key={metric.label} title={safeText(metric.label)}>
+              <i style={{ backgroundColor: metric.color }} />
+              {truncateLegendLabel(metric.label)}
+            </span>
+          ))}
+        </div>
+      </div>
+      {grouped && (
+        <div className="chart-builder-legend-section is-reference">
+          <strong>{safeText(groupLabel || "Phân nhóm")}:</strong>
+          <div className="chart-builder-legend-items">
+            {groups.map((group) => (
+              <span key={group.label} title={safeText(group.label)}>
+                <i className={`is-group-${Math.min(group.index, 2)}`} />
+                {truncateLegendLabel(group.label)}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SingleColumnTooltip({
+  active,
+  label,
+  payload,
+  series,
+  dimensionKey,
+}: {
+  active?: boolean;
+  label?: unknown;
+  payload?: Array<Record<string, any>>;
+  series: ChartSeries[];
+  dimensionKey: string;
+}) {
+  const item = payload?.[0];
+  if (!active || !item) return null;
+  const key = String(item.dataKey || item.name || "");
+  const meta = series.find((candidate) => candidate.key === key)
+    || series.find((candidate) => candidate.label === item.name);
+  const dimensionValue = item.payload?.[dimensionKey] ?? label;
+  return (
+    <div className="chart-builder-column-tooltip">
+      <strong>{formatDimensionValue(dimensionValue)}</strong>
+      <dl>
+        <div>
+          <dt>Chỉ số</dt>
+          <dd>{safeText(meta?.metricLabel || meta?.label || item.name)}</dd>
+        </div>
+        {meta?.groupValue && (
+          <div>
+            <dt>Phân nhóm</dt>
+            <dd>{safeText(meta.groupValue)}</dd>
+          </div>
+        )}
+        <div>
+          <dt>Giá trị</dt>
+          <dd style={{ color: meta?.color || item.color }}>
+            {formatValue(item.value, meta)}
+          </dd>
+        </div>
+      </dl>
+    </div>
+  );
+}
+
+function isColumnChart(chartType: ChartType) {
+  return ["bar", "stacked_bar", "horizontal_bar", "combo"].includes(chartType);
+}
+
+function truncateLegendLabel(value: unknown) {
+  const text = safeText(value);
+  return text.length > 28 ? `${text.slice(0, 27)}…` : text;
+}
+
+function groupOpacity(series: ChartSeries) {
+  if (series.groupIndex === null || series.groupIndex === undefined) return 1;
+  return [1, 0.58, 0.34][Math.min(series.groupIndex, 2)];
 }
 
 function shouldUsePaletteCells(

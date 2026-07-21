@@ -5,7 +5,11 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any, Mapping, Sequence, Tuple
 
-from app.config.chart_builder_catalog import DatasetDefinition, FieldDefinition
+from app.config.chart_builder_catalog import (
+    DatasetDefinition,
+    FieldDefinition,
+    canonical_channel_sql,
+)
 from app.schemas.chart_builder import (
     CustomChartRequest,
     DimensionSelection,
@@ -98,12 +102,23 @@ class ChartQueryCompiler:
             if field.relation_id:
                 relation_ids.add(field.relation_id)
 
+        scoped_root_sql, scoped_root_params, remaining_filters = (
+            self._conversation_period_root(dataset, request.filters)
+        )
         where_parts = list(dataset.base_conditions)
-        params: list[Any] = []
-        for item in request.filters:
+        if scoped_root_sql:
+            # The period-scoped MessageLogs root already guarantees a customer
+            # message/activity scope. Keeping this outer condition would drop
+            # host-only activity that the Channel KPI intentionally counts.
+            where_parts = [
+                item for item in where_parts
+                if item != "c.LastCustomerMessageAt IS NOT NULL"
+            ]
+        where_params: list[Any] = []
+        for item in remaining_filters:
             filter_sql, filter_params, field = self._compile_filter(dataset, item)
             where_parts.append(filter_sql)
-            params.extend(filter_params)
+            where_params.extend(filter_params)
             if field.relation_id:
                 relation_ids.add(field.relation_id)
 
@@ -114,6 +129,8 @@ class ChartQueryCompiler:
             where_parts.append(f"{series[1].expression} IS NOT NULL")
 
         joins = []
+        relation_params: list[Any] = []
+        staff_name_filter = self._staff_name_filter(remaining_filters)
         for relation_id in sorted(relation_ids):
             relation = dataset.relations.get(relation_id)
             if relation is None:
@@ -121,7 +138,19 @@ class ChartQueryCompiler:
                     f"Không có quan hệ dữ liệu hợp lệ '{relation_id}' "
                     f"cho bộ dữ liệu '{dataset.id}'"
                 )
-            joins.append(relation.sql)
+            relation_sql = relation.sql
+            if relation_id == "customer_message_count":
+                if staff_name_filter is not None:
+                    relation_sql = relation_sql.replace(
+                        "/*STAFF_MESSAGE_FILTER*/",
+                        "AND (NULLIF(LTRIM(RTRIM(customer_message.HostDisplayName)), N'') = ? "
+                        "OR (? LIKE N'% ' + NULLIF(LTRIM(RTRIM(customer_message.HostDisplayName)), N'') "
+                        "AND NULLIF(LTRIM(RTRIM(customer_message.HostDisplayName)), N'') LIKE N'% %'))",
+                    )
+                    relation_params.extend((staff_name_filter, staff_name_filter))
+                else:
+                    relation_sql = relation_sql.replace("/*STAFF_MESSAGE_FILTER*/", "")
+            joins.append(relation_sql)
 
         select_parts = [
             f"{expression} AS [{self._dimension_alias(selection)}]"
@@ -147,7 +176,7 @@ class ChartQueryCompiler:
         sql_parts = [
             f"SELECT TOP {effective_limit}",
             "    " + ",\n    ".join(select_parts),
-            f"FROM {dataset.root_sql}",
+            f"FROM {scoped_root_sql or dataset.root_sql}",
         ]
         sql_parts.extend(joins)
         if where_parts:
@@ -158,7 +187,7 @@ class ChartQueryCompiler:
 
         return CompiledChartQuery(
             sql="\n".join(sql_parts),
-            params=tuple(params),
+            params=tuple([*scoped_root_params, *relation_params, *where_params]),
             dataset_id=dataset.id,
             dimension_aliases=tuple(
                 self._dimension_alias(selection) for _, _, selection in dimensions
@@ -169,6 +198,56 @@ class ChartQueryCompiler:
             series_alias=self._dimension_alias(series[2]) if series else None,
             limit=effective_limit,
         )
+
+    def _conversation_period_root(
+        self,
+        dataset: DatasetDefinition,
+        filters: Sequence[FilterSelection],
+    ) -> tuple[str | None, tuple[Any, ...], list[FilterSelection]]:
+        """Build the same period-scoped conversation population as Channel KPI."""
+        if dataset.id != "conversations":
+            return None, (), list(filters)
+
+        period_filter = next(
+            (
+                item for item in filters
+                if item.field_id == "activity_at"
+                and item.operator.value == "between"
+            ),
+            None,
+        )
+        if period_filter is None:
+            return None, (), list(filters)
+
+        field = dataset.fields["activity_at"]
+        start_value = self._coerce_value(field, period_filter.value)
+        end_value = self._coerce_value(field, period_filter.value_to)
+        if start_value > end_value:
+            raise ValueError("Ngày bắt đầu phải trước hoặc bằng ngày kết thúc")
+
+        customer_expr = (
+            "CAST(CASE WHEN period_message.FromHost = 1 "
+            "THEN period_message.ReceiverId ELSE period_message.SenderId END "
+            "AS NVARCHAR(255))"
+        )
+        source_expr = canonical_channel_sql("period_message")
+        root_sql = f"""(
+            SELECT
+              CONCAT({source_expr}, N':', {customer_expr}) AS Id,
+              {customer_expr} AS CustomerId,
+              {source_expr} AS Source,
+              MAX(period_message.SentAt) AS LastMessageAt,
+              MAX(CASE WHEN period_message.FromHost = 0 THEN period_message.SentAt END) AS LastCustomerMessageAt,
+              MAX(CASE WHEN period_message.FromHost = 1 THEN period_message.SentAt END) AS LastHostMessageAt
+            FROM dbo.WebChat_MessageLogs period_message
+            WHERE period_message.SentAt >= ?
+              AND period_message.SentAt < DATEADD(day, 1, ?)
+              AND {source_expr} IS NOT NULL
+              AND {customer_expr} IS NOT NULL
+            GROUP BY {customer_expr}, {source_expr}
+        ) c"""
+        remaining = [item for item in filters if item is not period_filter]
+        return root_sql, (start_value, end_value), remaining
 
     def _compile_dimension(
         self,
@@ -229,6 +308,27 @@ class ChartQueryCompiler:
                 f"Toán tử lọc '{operator}' không được hỗ trợ "
                 f"cho trường '{field.id}'"
             )
+
+        if field.semantic_type == "staff_message_count":
+            value = self._coerce_staff_name(selection.value)
+            if dataset.id == "conversations":
+                expression = (
+                    "EXISTS (SELECT 1 FROM dbo.WebChat_MessageLogs staff_filter "
+                    "WHERE staff_filter.Source = c.Source "
+                    "AND staff_filter.ReceiverId = c.CustomerId "
+                    "AND staff_filter.FromHost = 1 "
+                    "AND (NULLIF(LTRIM(RTRIM(staff_filter.HostDisplayName)), N'') = ? "
+                    "OR (? LIKE N'% ' + NULLIF(LTRIM(RTRIM(staff_filter.HostDisplayName)), N'') "
+                    "AND NULLIF(LTRIM(RTRIM(staff_filter.HostDisplayName)), N'') LIKE N'% %')))"
+                )
+                return expression, (value, value), field
+            if dataset.id == "messages":
+                expression = "NULLIF(LTRIM(RTRIM(m.HostDisplayName)), N'')"
+                return (
+                    f"({expression} = ? OR (? LIKE N'% ' + {expression} AND {expression} LIKE N'% %'))",
+                    (value, value),
+                    field,
+                )
 
         expression = field.expression
         if operator == "is_null":
@@ -309,6 +409,26 @@ class ChartQueryCompiler:
             (coerced_value,),
             field,
         )
+
+    @staticmethod
+    def _staff_name_filter(filters: Sequence[FilterSelection]) -> str | None:
+        for item in filters:
+            if item.field_id == "staff_message_count" and item.operator.value == "eq":
+                return ChartQueryCompiler._coerce_staff_name(item.value)
+        return None
+
+    @staticmethod
+    def _coerce_staff_name(value: Any) -> str:
+        if value is None:
+            raise ValueError("Bộ lọc nhân viên cần chọn một nhân viên")
+        normalized = str(value).strip()
+        if not normalized:
+            raise ValueError("Bộ lọc nhân viên cần chọn một nhân viên")
+        if len(normalized) > TEXT_FILTER_MAX_LENGTH:
+            raise ValueError("Tên nhân viên vượt quá độ dài cho phép")
+        if normalized.casefold() == "ai assistant":
+            raise ValueError("AI Assistant không thuộc danh sách nhân viên")
+        return normalized
 
     def _field(
         self,
@@ -422,5 +542,16 @@ class ChartQueryCompiler:
                 order_parts.append(f"[{alias}] {item.direction.value.upper()}")
             return order_parts
         if dimensions:
-            return [f"[{self._dimension_alias(dimensions[0][2])}] ASC"]
+            first_expression, first_field, first_selection = dimensions[0]
+            first_alias = self._dimension_alias(first_selection)
+            if first_field.semantic_type == "channel":
+                return [
+                    "CASE "
+                    f"WHEN {first_expression} = N'ZaloBusiness' THEN 1 "
+                    f"WHEN {first_expression} = N'Facebook' THEN 2 "
+                    f"WHEN {first_expression} = N'ZaloOA' THEN 3 "
+                    f"WHEN {first_expression} = N'ChatWidget' THEN 4 "
+                    "ELSE 5 END ASC"
+                ]
+            return [f"[{first_alias}] ASC"]
         return [f"[{self._metric_alias(metrics[0][2])}] DESC"]

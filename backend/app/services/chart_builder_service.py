@@ -243,6 +243,7 @@ class ChartBuilderService:
                         selection.label or metric_alias,
                         selection,
                         index,
+                        metric_label=selection.label or metric_alias,
                     )
                 )
             return rows, series
@@ -252,6 +253,7 @@ class ChartBuilderService:
         ) if request.series else None
         grouped_rows: Dict[tuple[Any, ...], Dict[str, Any]] = {}
         dynamic_series: Dict[str, Dict[str, Any]] = {}
+        group_indexes: Dict[str, int] = {}
         for row in rows:
             dimension_values = tuple(
                 row.get(alias) for alias in compiled.dimension_aliases
@@ -269,6 +271,10 @@ class ChartBuilderService:
                 raw_series_value,
                 series_field.data_type if series_field else None,
             )
+            group_index = group_indexes.setdefault(
+                series_key_value,
+                len(group_indexes),
+            )
             for metric_index, metric_alias in enumerate(compiled.metric_aliases):
                 selection = metric_selections[metric_alias]
                 output_key = self._series_key(metric_alias, series_key_value)
@@ -284,7 +290,11 @@ class ChartBuilderService:
                         output_key,
                         display_label,
                         selection,
-                        len(dynamic_series) + metric_index,
+                        metric_index,
+                        metric_label=label,
+                        group_label=series_field.label if series_field else None,
+                        group_value=series_label_value,
+                        group_index=group_index,
                     )
 
         return list(grouped_rows.values()), list(dynamic_series.values())
@@ -367,6 +377,9 @@ class ChartBuilderService:
             )
             for row in self.repository.get_saved_configs(limit, username=username)
         ]
+
+    def get_staff_names(self) -> List[str]:
+        return self.repository.get_staff_names()
 
     def delete_chart_config(
         self,
@@ -551,6 +564,11 @@ class ChartBuilderService:
         label: str,
         selection,
         color_index: int,
+        *,
+        metric_label: str | None = None,
+        group_label: str | None = None,
+        group_value: str | None = None,
+        group_index: int | None = None,
     ) -> Dict[str, Any]:
         return {
             "key": key,
@@ -564,6 +582,10 @@ class ChartBuilderService:
                 else None
             ),
             "numberFormat": selection.number_format,
+            "metricLabel": metric_label,
+            "groupLabel": group_label,
+            "groupValue": group_value,
+            "groupIndex": group_index,
         }
 
     @staticmethod

@@ -125,7 +125,16 @@ export function canUseNullLabel(
 export function defaultNullHandlingForField(
   field: Pick<CatalogFieldMeta, "dataType"> | null | undefined,
 ): NullHandling {
-  return canUseNullLabel(field) ? "label" : "include";
+  // Null dates create an artificial "Không xác định" time bucket and null
+  // booleans create a third state next to Có/Không. New charts should only
+  // show meaningful categories; users can still explicitly opt in later.
+  return canUseNullLabel(field) ? "label" : "exclude";
+}
+
+export function recommendedChartTypeForDimension(
+  field: Pick<CatalogFieldMeta, "dataType"> | null | undefined,
+) {
+  return field?.dataType === "date" ? "line" as const : "bar" as const;
 }
 
 export function normalizeDimensionSelectionForField(
@@ -166,19 +175,29 @@ export function normalizeChartBuilderState(
 ): ChartBuilderState {
   if (!dataset) return state;
   const fields = new Map(dataset.fields.map((field) => [field.id, field]));
+  const visibleDimensions = state.dimensions.filter(
+    (dimension) => fields.get(dimension.fieldId)?.dataType !== "date",
+  );
+  const visibleSeries = state.series
+    && fields.get(state.series.fieldId)?.dataType !== "date"
+    ? state.series
+    : null;
   return {
     ...state,
-    dimensions: state.dimensions.map((dimension) => (
+    dimensions: visibleDimensions.map((dimension) => (
       normalizeDimensionSelectionForField(
         dimension,
         fields.get(dimension.fieldId),
       )
     )),
-    series: state.series
+    series: visibleSeries
       ? normalizeDimensionSelectionForField(
-        state.series,
-        fields.get(state.series.fieldId),
+        visibleSeries,
+        fields.get(visibleSeries.fieldId),
       )
       : null,
+    filters: state.filters.filter(
+      (filter) => fields.get(filter.fieldId)?.dataType !== "date",
+    ),
   };
 }

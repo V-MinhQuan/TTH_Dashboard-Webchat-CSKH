@@ -46,6 +46,18 @@ def get_catalog(
     }
 
 
+@router.get("/staff-names")
+def get_staff_names(
+    session: SessionClaims = Depends(require_roles("manager", "staff", "admin")),
+    service: ChartBuilderService = Depends(get_chart_builder_service),
+):
+    return {
+        "success": True,
+        "message": "Lấy danh sách nhân viên thành công.",
+        "data": service.get_staff_names(),
+    }
+
+
 @router.post("/preview")
 def preview_chart_data(
     request: CustomChartRequest,

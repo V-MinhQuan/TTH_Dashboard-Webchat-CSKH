@@ -15,6 +15,21 @@ COUNT_AGGREGATIONS = ("count", "count_distinct")
 KNOWN_CHANNELS_SQL = "(N'ZaloBusiness', N'Facebook', N'ZaloOA', N'ChatWidget')"
 
 
+def canonical_channel_sql(alias: str) -> str:
+    source = f"{alias}.Source"
+    return (
+    "CASE "
+    f"WHEN LOWER(LTRIM(RTRIM({source}))) IN ('facebook', 'fb', 'messenger') THEN N'Facebook' "
+    f"WHEN LOWER(LTRIM(RTRIM({source}))) IN ('zalooa', 'zalo') THEN N'ZaloOA' "
+    f"WHEN LOWER(LTRIM(RTRIM({source}))) IN ('zalobusiness', 'zalo business', 'zalobiz') THEN N'ZaloBusiness' "
+    f"WHEN LOWER(LTRIM(RTRIM({source}))) IN ('chatwidget', 'chat widget', 'website', 'web') THEN N'ChatWidget' "
+    "END"
+    )
+
+
+CANONICAL_CHANNEL_SQL = canonical_channel_sql("c")
+
+
 @dataclass(frozen=True)
 class RelationDefinition:
     id: str
@@ -131,7 +146,18 @@ CUSTOMER_MESSAGE_COUNT = RelationDefinition(
 OUTER APPLY (
     SELECT
         COUNT_BIG(CASE WHEN customer_message.FromHost = 0 THEN 1 END) AS CustomerMessageCount,
-        COUNT_BIG(CASE WHEN customer_message.FromHost = 1 THEN 1 END) AS StaffMessageCount
+        COUNT_BIG(CASE
+            WHEN customer_message.FromHost = 1
+             AND NULLIF(LTRIM(RTRIM(customer_message.HostDisplayName)), N'') = N'AI Assistant'
+            THEN 1
+        END) AS AiMessageCount,
+        COUNT_BIG(CASE
+            WHEN customer_message.FromHost = 1
+             AND NULLIF(LTRIM(RTRIM(customer_message.HostDisplayName)), N'') IS NOT NULL
+             AND NULLIF(LTRIM(RTRIM(customer_message.HostDisplayName)), N'') <> N'AI Assistant'
+             /*STAFF_MESSAGE_FILTER*/
+            THEN 1
+        END) AS StaffMessageCount
     FROM dbo.WebChat_MessageLogs customer_message
     WHERE customer_message.Source = c.Source
       AND (
@@ -147,6 +173,7 @@ OUTER APPLY (
                 "SenderId",
                 "ReceiverId",
                 "FromHost",
+                "HostDisplayName",
             )
         }
     ),
@@ -198,10 +225,23 @@ CONVERSATION_FIELDS = _mapping(
         ),
         "staff_message_count": FieldDefinition(
             id="staff_message_count",
-            label="Tin nhắn từ Nhân viên/AI",
+            label="Tin nhắn của Nhân viên",
             expression="customer_messages.StaffMessageCount",
             data_type="number",
             semantic_type="staff_message_count",
+            roles=("metric", "filter"),
+            aggregations=("sum",),
+            filter_operators=("eq",),
+            default_aggregation="sum",
+            relation_id="customer_message_count",
+            nullable=False,
+        ),
+        "ai_message_count": FieldDefinition(
+            id="ai_message_count",
+            label="Tin nhắn của AI",
+            expression="customer_messages.AiMessageCount",
+            data_type="number",
+            semantic_type="ai_message_count",
             roles=("metric",),
             aggregations=("sum",),
             default_aggregation="sum",
@@ -211,7 +251,7 @@ CONVERSATION_FIELDS = _mapping(
         "channel": FieldDefinition(
             id="channel",
             label="Kênh",
-            expression="c.Source",
+            expression=CANONICAL_CHANNEL_SQL,
             data_type="string",
             semantic_type="channel",
             roles=("dimension", "filter", "series"),
@@ -225,6 +265,17 @@ CONVERSATION_FIELDS = _mapping(
             data_type="date",
             semantic_type="datetime",
             roles=("dimension", "filter"),
+            filter_operators=DATE_FILTERS,
+            date_grains=DATE_GRAINS,
+            nullable=False,
+        ),
+        "activity_at": FieldDefinition(
+            id="activity_at",
+            label="Hoạt động hội thoại",
+            expression="c.LastMessageAt",
+            data_type="date",
+            semantic_type="activity_datetime",
+            roles=("filter",),
             filter_operators=DATE_FILTERS,
             date_grains=DATE_GRAINS,
             nullable=False,
@@ -308,13 +359,31 @@ MESSAGE_FIELDS = _mapping(
         ),
         "staff_message_count": FieldDefinition(
             id="staff_message_count",
-            label="Tin nhắn từ Nhân viên/AI",
+            label="Tin nhắn của Nhân viên",
             expression=(
-                "CASE WHEN m.FromHost = 1 "
+                "CASE WHEN m.FromHost = 1 AND "
+                "NULLIF(LTRIM(RTRIM(m.HostDisplayName)), N'') IS NOT NULL AND "
+                "NULLIF(LTRIM(RTRIM(m.HostDisplayName)), N'') <> N'AI Assistant' "
                 "THEN m.id_webchat_messageLogs END"
             ),
             data_type="number",
             semantic_type="staff_message_count",
+            roles=("metric", "filter"),
+            aggregations=("count",),
+            filter_operators=("eq",),
+            default_aggregation="count",
+            nullable=True,
+        ),
+        "ai_message_count": FieldDefinition(
+            id="ai_message_count",
+            label="Tin nhắn của AI",
+            expression=(
+                "CASE WHEN m.FromHost = 1 AND "
+                "NULLIF(LTRIM(RTRIM(m.HostDisplayName)), N'') = N'AI Assistant' "
+                "THEN m.id_webchat_messageLogs END"
+            ),
+            data_type="number",
+            semantic_type="ai_message_count",
             roles=("metric",),
             aggregations=("count",),
             default_aggregation="count",
@@ -641,10 +710,17 @@ DATASETS = _mapping(
                     )
                 }
             ),
-            default_date_field="last_message_at",
+            # Keep the same conversation population and date semantics as the
+            # Channel dashboard. LastMessageAt also moves when staff replies,
+            # which made identical date filters produce different totals.
+            default_date_field="activity_at",
             default_dimension="channel",
             default_metric="conversation_id",
-            base_conditions=(f"c.Source IN {KNOWN_CHANNELS_SQL}",),
+            base_conditions=(
+                f"{CANONICAL_CHANNEL_SQL} IS NOT NULL",
+                "c.LastCustomerMessageAt IS NOT NULL",
+                "NULLIF(LTRIM(RTRIM(c.CustomerId)), N'') IS NOT NULL",
+            ),
         ),
         "messages": DatasetDefinition(
             id="messages",
@@ -696,12 +772,17 @@ DATASETS = _mapping(
                         "analyzerVersion",
                         "detectedTopics",
                         "detectedKeywords",
+                        "analysisStatus",
                     )
                 }
             ),
             default_date_field="message_at",
             default_dimension="message_at",
             default_metric="record_id",
+            # Main AI dashboards only report completed analysis. Including
+            # pending/failed rows here inflated totals and made both views
+            # disagree for the same date range.
+            base_conditions=("a.analysisStatus = 'completed'",),
         ),
         "agent_performance": DatasetDefinition(
             id="agent_performance",

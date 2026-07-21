@@ -320,6 +320,10 @@ class ChartSeries(BaseModel):
     axis_group: AxisGroup = Field(default=AxisGroup.left, alias="axisGroup")
     series_type: Optional[SeriesType] = Field(default=None, alias="seriesType")
     number_format: Optional[str] = Field(default=None, alias="numberFormat")
+    metric_label: Optional[str] = Field(default=None, alias="metricLabel")
+    group_label: Optional[str] = Field(default=None, alias="groupLabel")
+    group_value: Optional[str] = Field(default=None, alias="groupValue")
+    group_index: Optional[int] = Field(default=None, alias="groupIndex")
 
     model_config = ConfigDict(populate_by_name=True)
 

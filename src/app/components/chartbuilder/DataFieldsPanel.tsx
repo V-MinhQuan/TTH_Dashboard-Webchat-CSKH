@@ -73,7 +73,7 @@ interface Props {
 
 type FieldSlotFilter = "all" | ChartBuilderFieldSlot;
 
-type FieldGroupId = "time" | "conversation" | "channel" | "topic" | "sentiment" | "agent";
+type FieldGroupId = "conversation" | "channel" | "topic" | "sentiment" | "agent";
 
 interface FieldGroup {
   id: FieldGroupId;
@@ -117,7 +117,11 @@ export function DataFieldsPanel({
   );
   const recentFields = useMemo(
     () => selectedDataset?.fields.filter(
-      (field) => field.available && selectedFieldIds.includes(field.id),
+      (field) => (
+        field.available
+        && field.dataType !== "date"
+        && selectedFieldIds.includes(field.id)
+      ),
     ).slice(0, 6) || [],
     [selectedDataset, selectedFieldIds],
   );
@@ -419,7 +423,6 @@ function buildFieldGroups(
   if (!dataset) return [];
   const query = search.trim().toLocaleLowerCase("vi");
   const definitions: ReadonlyArray<Omit<FieldGroup, "fields">> = [
-    { id: "time", label: "Thời gian", icon: CalendarDays },
     { id: "conversation", label: "Hội thoại và tin nhắn", icon: MessageSquareText },
     { id: "channel", label: "Kênh", icon: Radio },
     { id: "topic", label: "Chủ đề và từ khóa", icon: Tags },
@@ -431,7 +434,7 @@ function buildFieldGroups(
   );
 
   dataset.fields
-    .filter((field) => field.available)
+    .filter((field) => field.available && field.dataType !== "date")
     .filter((field) => (
       slotFilter === "all"
       || getFieldSlotCapabilities(toSlotCapableField(field), slotContext)
@@ -468,8 +471,7 @@ function classifyField(
 ): FieldGroup["id"] {
   const value = `${field.id} ${field.label} ${field.semanticType}`
     .toLocaleLowerCase("vi");
-  if (/(agent|response|resolution|csat|nhan vien)/.test(value)) return "agent";
-  if (/(date|time|day|week|month|quarter|year|datetime)/.test(value)) return "time";
+  if (/(agent|staff|response|resolution|csat|nhan vien|nhân viên)/.test(value)) return "agent";
   if (/(channel|source|kenh)/.test(value)) return "channel";
   if (/(topic|keyword|chu de|tu khoa|frequency)/.test(value)) return "topic";
   if (/(sentiment|satisfaction|positive|neutral|negative|cam xuc)/.test(value)) {

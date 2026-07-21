@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Calendar, Download, FileText, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
-import { useAuth } from "../../context/AuthContext";
+import {
+  CHART_BUILDER_SESSION_KEY,
+  useAuth,
+} from "../../context/AuthContext";
 
 import { FilterValues } from "../FilterPanel";
 import { ChartPreview } from "../chartbuilder/ChartPreview";
@@ -19,6 +22,7 @@ import {
 } from "../chartbuilder/chartBuilderFieldSlots";
 import {
   buildDimensionSelectionForField,
+  recommendedChartTypeForDimension,
   normalizeChartBuilderState,
   validateChartConfiguration,
 } from "../chartbuilder/chartBuilderValidation";
@@ -35,6 +39,7 @@ import {
   fetchPreview,
   getCatalog,
   getConfigs,
+  getStaffNames,
   saveConfig,
 } from "../../services/chartBuilderService";
 import {
@@ -102,16 +107,50 @@ const emptyState: ChartBuilderState = {
   },
 };
 
+interface ChartBuilderSessionSnapshot {
+  state: ChartBuilderState;
+  chartDateFilters: DateFilterInput;
+  legacyConfig: ChartConfigPayload | null;
+}
+
+function readChartBuilderSession(): ChartBuilderSessionSnapshot | null {
+  try {
+    const raw = window.sessionStorage.getItem(CHART_BUILDER_SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<ChartBuilderSessionSnapshot>;
+    if (
+      !parsed.state
+      || parsed.state.version !== 2
+      || parsed.state.mode !== "custom"
+      || !Array.isArray(parsed.state.dimensions)
+      || !Array.isArray(parsed.state.metrics)
+    ) return null;
+    return {
+      state: { ...emptyState, ...parsed.state },
+      chartDateFilters: parsed.chartDateFilters || { dateRange: ALL_TIME_DATE_RANGE },
+      legacyConfig: parsed.legacyConfig || null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function ChartBuilder({
   onNavigate,
   filters: globalFilters,
   onFiltersChange,
 }: ChartBuilderProps) {
+  const [initialSession] = useState(readChartBuilderSession);
   const { role } = useAuth();
   const viewportWidth = useViewportWidth();
   const [datasets, setDatasets] = useState<CatalogDatasetMeta[]>([]);
-  const [state, setState] = useState<ChartBuilderState>(emptyState);
-  const [legacyConfig, setLegacyConfig] = useState<ChartConfigPayload | null>(null);
+  const [staffNames, setStaffNames] = useState<string[]>([]);
+  const [state, setState] = useState<ChartBuilderState>(
+    () => initialSession?.state || emptyState,
+  );
+  const [legacyConfig, setLegacyConfig] = useState<ChartConfigPayload | null>(
+    () => initialSession?.legacyConfig || null,
+  );
   const [data, setData] = useState<ChartDataResponse | null>(null);
   const [loadingCatalog, setLoadingCatalog] = useState(true);
   const [loadingData, setLoadingData] = useState(false);
@@ -129,7 +168,9 @@ export function ChartBuilder({
   const [draggedField, setDraggedField] = useState<ChartFieldDragData | null>(
     null,
   );
-  const [chartDateFilters, setChartDateFilters] = useState<DateFilterInput>({ dateRange: ALL_TIME_DATE_RANGE });
+  const [chartDateFilters, setChartDateFilters] = useState<DateFilterInput>(
+    () => initialSession?.chartDateFilters || { dateRange: ALL_TIME_DATE_RANGE },
+  );
   const titleManuallyEdited = useRef(false);
 
   const selectedDataset = useMemo(
@@ -213,6 +254,15 @@ export function ChartBuilder({
     () => buildSeriesDisplayMap(state, selectedDataset),
     [state.metrics, state.dimensions, state.series, state.chartSettings.theme, selectedDataset],
   );
+  const activeDateFieldLabel = useMemo(() => {
+    const selectedDateFilter = state.filters.find((filter) => (
+      selectedDataset?.fields.some((field) => (
+        field.id === filter.fieldId && field.dataType === "date"
+      ))
+    ));
+    const fieldId = selectedDateFilter?.fieldId || selectedDataset?.defaultDateField;
+    return selectedDataset?.fields.find((field) => field.id === fieldId)?.label || "";
+  }, [state.filters, selectedDataset]);
 
   useEffect(() => {
     if (titleManuallyEdited.current || legacyConfig) return;
@@ -244,8 +294,8 @@ export function ChartBuilder({
   useEffect(() => {
     let active = true;
     setCatalogError("");
-    Promise.allSettled([getCatalog(), getConfigs()])
-      .then(([catalogResult, configsResult]) => {
+    Promise.allSettled([getCatalog(), getConfigs(), getStaffNames()])
+      .then(([catalogResult, configsResult, staffResult]) => {
         if (!active) return;
         if (catalogResult.status === "rejected") {
           setCatalogError(
@@ -259,10 +309,14 @@ export function ChartBuilder({
           (dataset) => dataset.available,
         );
         if (firstAvailable) {
-          setState((current) => configureForDataset(
-            current,
-            firstAvailable,
-          ));
+          setState((current) => {
+            const restoredDataset = catalog.datasets.find(
+              (dataset) => dataset.id === current.datasetId && dataset.available,
+            );
+            return restoredDataset
+              ? normalizeChartBuilderState(current, restoredDataset)
+              : configureForDataset(current, firstAvailable);
+          });
         }
         if (configsResult.status === "fulfilled") {
           setConfigs(configsResult.value);
@@ -272,6 +326,7 @@ export function ChartBuilder({
             userFacingError(configsResult.reason, "Không thể tải cấu hình đã lưu."),
           );
         }
+        setStaffNames(staffResult.status === "fulfilled" ? staffResult.value : []);
       })
       .finally(() => {
         if (!active) return;
@@ -282,6 +337,17 @@ export function ChartBuilder({
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    try {
+      window.sessionStorage.setItem(
+        CHART_BUILDER_SESSION_KEY,
+        JSON.stringify({ state, chartDateFilters, legacyConfig }),
+      );
+    } catch {
+      // Keep the current in-memory configuration if storage is unavailable.
+    }
+  }, [state, chartDateFilters, legacyConfig]);
 
   useEffect(() => {
     const ready = legacyConfig
@@ -420,15 +486,32 @@ export function ChartBuilder({
   const addDimensionField = (field: ChartFieldDragData) => {
     if (!canUseFieldInSlot(field, "dimension", fieldSlotContext)) return;
     setLegacyConfig(null);
-    setState((current) => reconcileSelectedOutputs({
-      ...current,
-      dimensions: [buildDimensionSelectionForField({
+    setState((current) => {
+      const dimension = buildDimensionSelectionForField({
         id: field.fieldId,
         dataType: field.dataType,
         dateGrains: [],
-      })],
-      chartType: field.dataType === "date" ? "line" : current.chartType,
-    }));
+      });
+      const chartType = recommendedChartTypeForDimension(field);
+      const primaryMetric = current.metrics[0];
+      const metricAlias = primaryMetric?.alias
+        || (primaryMetric
+          ? `${primaryMetric.aggregation}_${primaryMetric.fieldId}`
+          : "");
+      return reconcileSelectedOutputs({
+        ...current,
+        dimensions: [dimension],
+        chartType,
+        // Time is chronological. Categories are ranked by the primary metric.
+        sort: field.semanticType === "channel"
+          ? []
+          : field.dataType === "date"
+          ? [{ fieldId: dimension.alias || dimension.fieldId, direction: "asc" }]
+          : metricAlias
+            ? [{ fieldId: metricAlias, direction: "desc" }]
+            : [],
+      });
+    });
   };
 
   const addMetricField = (field: ChartFieldDragData) => {
@@ -479,13 +562,32 @@ export function ChartBuilder({
       (item) => item.id === field.fieldId,
     );
     if (!fieldMeta) return;
+    const isDateFilter = fieldMeta.dataType === "date";
     const filter: FilterSelection = {
       fieldId: field.fieldId,
-      operator: fieldMeta.filterOperators[0] || "eq",
+      operator: isDateFilter && fieldMeta.filterOperators.includes("between")
+        ? "between"
+        : fieldMeta.filterOperators[0] || "eq",
       value: null,
       values: [],
+      valueTo: null,
     };
-    updateState({ filters: [...state.filters, filter] });
+    updateState({
+      filters: [
+        ...state.filters.filter((item) => {
+          if (item.fieldId === field.fieldId) return false;
+          if (!isDateFilter) return true;
+          const itemField = selectedDataset?.fields.find(
+            (candidate) => candidate.id === item.fieldId,
+          );
+          return itemField?.dataType !== "date";
+        }),
+        filter,
+      ],
+    });
+    if (isDateFilter) {
+      toast.info(`Khoảng thời gian sẽ lọc theo “${fieldMeta.label}”.`);
+    }
   };
 
   const addTooltipField = (field: ChartFieldDragData) => {
@@ -736,7 +838,10 @@ export function ChartBuilder({
             <div className="chart-builder-date-scope">
               <div className="chart-builder-date-scope-title">
                 <Calendar size={14} />
-                <span>Khoảng thời gian</span>
+                <span>
+                  Khoảng thời gian
+                  {activeDateFieldLabel ? ` · ${activeDateFieldLabel}` : ""}
+                </span>
               </div>
               <label className="chart-builder-date-scope-control">
                 <span>Phạm vi dữ liệu</span>
@@ -778,6 +883,7 @@ export function ChartBuilder({
               metrics={state.metrics}
               series={state.series}
               filters={state.filters}
+              staffNames={staffNames}
               draggedField={draggedField}
               onDimensionField={addDimensionField}
               onMetricField={addMetricField}
@@ -908,7 +1014,7 @@ function configureForDataset(
   const metricField = dataset.fields.find(
     (field) => field.id === dataset.defaultMetric && field.available,
   );
-  const chartType = dimensionField?.dataType === "date" ? "line" : "bar";
+  const chartType = recommendedChartTypeForDimension(dimensionField);
   const metric = metricField
     ? createMetric(
       metricField,
@@ -929,9 +1035,13 @@ function configureForDataset(
     series: null,
     tooltipFields: [],
     filters: [],
-    sort: metric?.alias
-      ? [{ fieldId: metric.alias, direction: "desc" }]
-      : [],
+    sort: dimensionField?.semanticType === "channel"
+      ? []
+      : dimensionField?.dataType === "date"
+      ? [{ fieldId: dimensionField.id, direction: "asc" }]
+      : metric?.alias
+        ? [{ fieldId: metric.alias, direction: "desc" }]
+        : [],
     topN: 20,
     limit: dataset.defaultLimit,
   };
@@ -950,11 +1060,10 @@ function buildAutomaticChartTitle(
   const dimensionLabels = state.dimensions.map((dimension) => (
     dimension.label || labels.get(dimension.fieldId) || dimension.fieldId
   ));
-  const seriesLabel = state.series
-    ? state.series.label || labels.get(state.series.fieldId) || state.series.fieldId
-    : "";
-  const subject = metricLabels.join(" và ");
-  const breakdown = [...dimensionLabels, seriesLabel].filter(Boolean).join(" và ");
+  const subject = metricLabels.length > 1
+    ? `${metricLabels[0]} và ${metricLabels.length - 1} chỉ số khác`
+    : metricLabels[0] || "";
+  const breakdown = dimensionLabels.join(" và ");
   if (subject && breakdown) return `${subject} theo ${breakdown}`;
   if (subject) return subject;
   if (breakdown) return `Phân tích theo ${breakdown}`;
@@ -1003,10 +1112,10 @@ function buildCustomRequest(
   dateParams: ChartDateParams,
 ): CustomChartRequest {
   const filters = applyCustomGlobalFilters(
-    state.filters.filter(isCompleteFilter),
+    state.filters,
     dataset,
     dateParams,
-  );
+  ).filter(isCompleteFilter);
 
   return {
     version: 2,
@@ -1059,29 +1168,38 @@ function applyCustomGlobalFilters(
   return applyGlobalDateFilter(filters, dataset, dateParams);
 }
 
-function applyGlobalDateFilter(
+export function applyGlobalDateFilter(
   filters: FilterSelection[],
   dataset: CatalogDatasetMeta | null,
   dateParams: ChartDateParams,
 ) {
-  const fieldId = dataset?.defaultDateField;
+  const dateFields = dataset?.fields.filter((field) => (
+    field.available
+    && field.dataType === "date"
+    && field.roles.includes("filter")
+    && field.filterOperators.includes("between")
+  )) || [];
+  const dateFieldIds = new Set(dateFields.map((field) => field.id));
+  const explicitlySelectedDateField = filters.find(
+    (filter) => dateFieldIds.has(filter.fieldId),
+  )?.fieldId;
+  const fieldId = explicitlySelectedDateField || dataset?.defaultDateField;
+
+  // "Toàn bộ thời gian" removes the generated period condition while
+  // retaining non-date filters.
   if (!fieldId || !dateParams.startDate || !dateParams.endDate) {
-    return filters;
+    return filters.filter((filter) => !dateFieldIds.has(filter.fieldId));
   }
 
-  const dateField = dataset.fields.find(
+  const dateField = dateFields.find(
     (field) => (
       field.id === fieldId
-      && field.available
-      && field.dataType === "date"
-      && field.roles.includes("filter")
-      && field.filterOperators.includes("between")
     ),
   );
   if (!dateField) return filters;
 
   return [
-    ...filters.filter((filter) => filter.fieldId !== fieldId),
+    ...filters.filter((filter) => !dateFieldIds.has(filter.fieldId)),
     {
       fieldId,
       operator: "between" as const,

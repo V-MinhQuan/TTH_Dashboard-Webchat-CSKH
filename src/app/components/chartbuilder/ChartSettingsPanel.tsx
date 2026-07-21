@@ -39,10 +39,18 @@ export function ChartSettingsPanel({
   onClose,
 }: Props) {
   const dimensionFields = dataset?.fields.filter(
-    (field) => field.available && field.roles.includes("dimension"),
+    (field) => (
+      field.available
+      && field.dataType !== "date"
+      && field.roles.includes("dimension")
+    ),
   ) || [];
   const seriesFields = dataset?.fields.filter(
-    (field) => field.available && field.roles.includes("series"),
+    (field) => (
+      field.available
+      && field.dataType !== "date"
+      && field.roles.includes("series")
+    ),
   ) || [];
   const primaryDimension = state.dimensions[0];
   const primaryField = dimensionFields.find(

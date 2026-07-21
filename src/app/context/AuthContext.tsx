@@ -24,6 +24,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const AUTH_STORAGE_KEY = 'flic_dashboard_auth';
+export const CHART_BUILDER_SESSION_KEY = 'flic_chart_builder_session';
 
 interface StoredAuth {
   role: Exclude<Role, null>;
@@ -111,6 +112,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUserState] = useState<UserInfo | null>(storedAuth?.user ?? null);
 
   const login = (userData: UserInfo, remember: boolean) => {
+    // A successful new login starts a fresh chart-building session. Normal
+    // navigation does not clear this key, so selections survive unmounts.
+    try {
+      window.sessionStorage.removeItem(CHART_BUILDER_SESSION_KEY);
+    } catch { }
     const userWithTimestamp = {
       ...userData,
       lastLogin: new Date().toISOString()
