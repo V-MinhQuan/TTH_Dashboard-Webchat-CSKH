@@ -55,6 +55,7 @@ interface Props {
   error: string;
   selectedFieldIds: string[];
   selectedOutputFieldIds: string[];
+  selectedSlotsByField: Readonly<Record<string, ChartBuilderFieldSlot[]>>;
   configs: SavedChartConfig[];
   loadingConfigs: boolean;
   open: boolean;
@@ -91,6 +92,7 @@ export function DataFieldsPanel({
   error,
   selectedFieldIds,
   selectedOutputFieldIds,
+  selectedSlotsByField,
   configs,
   loadingConfigs,
   open,
@@ -273,6 +275,7 @@ export function DataFieldsPanel({
                             slotContext,
                           );
                           const active = activeFieldId === field.id;
+                          const selectedSlots = selectedSlotsByField[field.id] || [];
                           return (
                             <div
                               key={field.id}
@@ -327,6 +330,11 @@ export function DataFieldsPanel({
                                     <button
                                       type="button"
                                       key={slot}
+                                      aria-pressed={selectedSlots.includes(slot)}
+                                      className={[
+                                        selectedSlots.includes(slot) ? "is-selected" : "",
+                                        `is-${slot}`,
+                                      ].join(" ")}
                                       title={FIELD_SLOT_META[slot].description}
                                       onClick={() => {
                                         onFieldSelectForSlot(slot, dragData);

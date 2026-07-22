@@ -5,7 +5,14 @@ import App from "./app/App";
 import "./styles/index.css";
 
 const CHUNK_RELOAD_STORAGE_KEY = "flic_chunk_reload_at";
-const CHUNK_RELOAD_COOLDOWN_MS = 60_000;
+const CHUNK_RELOAD_COOLDOWN_MS = 5_000;
+
+function reloadCurrentApplication() {
+  sessionStorage.setItem(CHUNK_RELOAD_STORAGE_KEY, String(Date.now()));
+  const nextUrl = new URL(window.location.href);
+  nextUrl.searchParams.set("_app_reload", String(Date.now()));
+  window.location.replace(nextUrl.toString());
+}
 
 // A browser tab opened before a deployment can still reference hashed chunks
 // from the previous build. Vite emits this event when such a dynamic import is
@@ -16,10 +23,7 @@ window.addEventListener("vite:preloadError", (event) => {
   const lastReloadAt = Number(sessionStorage.getItem(CHUNK_RELOAD_STORAGE_KEY) || 0);
   if (Date.now() - lastReloadAt < CHUNK_RELOAD_COOLDOWN_MS) return;
 
-  sessionStorage.setItem(CHUNK_RELOAD_STORAGE_KEY, String(Date.now()));
-  const nextUrl = new URL(window.location.href);
-  nextUrl.searchParams.set("_app_reload", String(Date.now()));
-  window.location.replace(nextUrl.toString());
+  reloadCurrentApplication();
 });
 
 const queryClient = new QueryClient({
@@ -35,6 +39,15 @@ const queryClient = new QueryClient({
 class GlobalErrorBoundary extends React.Component<any, any> {
   constructor(props: any) { super(props); this.state = { hasError: false, error: null }; }
   static getDerivedStateFromError(error: any) { return { hasError: true, error }; }
+  componentDidCatch(error: any) {
+    const message = String(error?.message || error || "");
+    const isDynamicImportError = /dynamically imported module|failed to fetch/i.test(message);
+    if (!isDynamicImportError) return;
+
+    const lastReloadAt = Number(sessionStorage.getItem(CHUNK_RELOAD_STORAGE_KEY) || 0);
+    if (Date.now() - lastReloadAt < CHUNK_RELOAD_COOLDOWN_MS) return;
+    window.setTimeout(reloadCurrentApplication, 500);
+  }
   render() {
     if (this.state.hasError) return (
       <div style={{ position: "fixed", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "white", color: "red", padding: "40px", zIndex: 99999, overflow: "auto" }}>
@@ -43,6 +56,13 @@ class GlobalErrorBoundary extends React.Component<any, any> {
         <pre style={{ whiteSpace: "pre-wrap", border: "1px solid red", padding: "10px", backgroundColor: "#ffe6e6" }}>
           {this.state.error?.stack || this.state.error?.message || "Unknown error"}
         </pre>
+        <button
+          type="button"
+          onClick={reloadCurrentApplication}
+          style={{ marginTop: "12px", padding: "9px 16px", cursor: "pointer" }}
+        >
+          Tải lại giao diện
+        </button>
       </div>
     );
     return this.props.children;

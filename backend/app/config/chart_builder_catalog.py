@@ -155,7 +155,6 @@ OUTER APPLY (
             WHEN customer_message.FromHost = 1
              AND NULLIF(LTRIM(RTRIM(customer_message.HostDisplayName)), N'') IS NOT NULL
              AND NULLIF(LTRIM(RTRIM(customer_message.HostDisplayName)), N'') <> N'AI Assistant'
-             /*STAFF_MESSAGE_FILTER*/
             THEN 1
         END) AS StaffMessageCount
     FROM dbo.WebChat_MessageLogs customer_message
@@ -171,6 +170,44 @@ OUTER APPLY (
             "dbo.WebChat_MessageLogs": (
                 "Source",
                 "SenderId",
+                "ReceiverId",
+                "FromHost",
+                "HostDisplayName",
+            )
+        }
+    ),
+)
+
+STAFF_MESSAGE_BREAKDOWN = RelationDefinition(
+    id="staff_message_breakdown",
+    label="Tin nhắn theo từng nhân viên",
+    cardinality="many_to_many",
+    sql="""
+CROSS APPLY (
+    SELECT
+        CASE
+            WHEN NULLIF(LTRIM(RTRIM(staff_message.HostDisplayName)), N'') = N'Thu Trang'
+            THEN N'Nguyễn Ngọc Thu Trang'
+            ELSE NULLIF(LTRIM(RTRIM(staff_message.HostDisplayName)), N'')
+        END AS StaffName,
+        COUNT_BIG(*) AS StaffMessageCount
+    FROM dbo.WebChat_MessageLogs staff_message
+    WHERE staff_message.Source = c.Source
+      AND staff_message.ReceiverId = c.CustomerId
+      AND staff_message.FromHost = 1
+      AND NULLIF(LTRIM(RTRIM(staff_message.HostDisplayName)), N'') IS NOT NULL
+      AND NULLIF(LTRIM(RTRIM(staff_message.HostDisplayName)), N'') <> N'AI Assistant'
+    GROUP BY CASE
+        WHEN NULLIF(LTRIM(RTRIM(staff_message.HostDisplayName)), N'') = N'Thu Trang'
+        THEN N'Nguyễn Ngọc Thu Trang'
+        ELSE NULLIF(LTRIM(RTRIM(staff_message.HostDisplayName)), N'')
+    END
+) staff_breakdown
+""".strip(),
+    required_objects=_mapping(
+        {
+            "dbo.WebChat_MessageLogs": (
+                "Source",
                 "ReceiverId",
                 "FromHost",
                 "HostDisplayName",
@@ -229,9 +266,8 @@ CONVERSATION_FIELDS = _mapping(
             expression="customer_messages.StaffMessageCount",
             data_type="number",
             semantic_type="staff_message_count",
-            roles=("metric", "filter"),
+            roles=("metric",),
             aggregations=("sum",),
-            filter_operators=("eq",),
             default_aggregation="sum",
             relation_id="customer_message_count",
             nullable=False,
@@ -246,6 +282,17 @@ CONVERSATION_FIELDS = _mapping(
             aggregations=("sum",),
             default_aggregation="sum",
             relation_id="customer_message_count",
+            nullable=False,
+        ),
+        "staff_name": FieldDefinition(
+            id="staff_name",
+            label="Nhân viên",
+            expression="staff_breakdown.StaffName",
+            data_type="string",
+            semantic_type="staff_name",
+            roles=("series", "filter"),
+            filter_operators=("eq",),
+            relation_id="staff_message_breakdown",
             nullable=False,
         ),
         "channel": FieldDefinition(
@@ -301,9 +348,8 @@ CONVERSATION_FIELDS = _mapping(
             ),
             data_type="number",
             semantic_type="duration_minutes",
-            roles=("metric", "filter"),
+            roles=("metric",),
             aggregations=NUMBER_AGGREGATIONS,
-            filter_operators=NUMBER_FILTERS,
             default_aggregation="avg",
         ),
         "no_response_needed": FieldDefinition(
@@ -312,8 +358,7 @@ CONVERSATION_FIELDS = _mapping(
             expression="status_meta.NoResponseNeeded",
             data_type="boolean",
             semantic_type="status",
-            roles=("dimension", "filter", "series"),
-            filter_operators=BOOLEAN_FILTERS,
+            roles=("dimension", "series"),
             relation_id="latest_status",
         ),
         "status_marked_at": FieldDefinition(
@@ -368,9 +413,8 @@ MESSAGE_FIELDS = _mapping(
             ),
             data_type="number",
             semantic_type="staff_message_count",
-            roles=("metric", "filter"),
+            roles=("metric",),
             aggregations=("count",),
-            filter_operators=("eq",),
             default_aggregation="count",
             nullable=True,
         ),
@@ -696,6 +740,7 @@ DATASETS = _mapping(
             fields=CONVERSATION_FIELDS,
             relations=_mapping({
                 "customer_message_count": CUSTOMER_MESSAGE_COUNT,
+                "staff_message_breakdown": STAFF_MESSAGE_BREAKDOWN,
                 "latest_status": LATEST_STATUS,
             }),
             required_objects=_mapping(

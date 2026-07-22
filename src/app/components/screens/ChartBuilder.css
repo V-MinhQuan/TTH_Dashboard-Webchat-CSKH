@@ -1146,6 +1146,37 @@
   gap: 5px;
 }
 
+.chart-builder-field-actions button.is-selected {
+  color: #fff;
+  font-weight: 750;
+  box-shadow: 0 1px 3px rgba(0, 56, 101, 0.16);
+}
+
+.chart-builder-field-actions button.is-selected.is-dimension {
+  border-color: #1565c0;
+  background: #1565c0;
+}
+
+.chart-builder-field-actions button.is-selected.is-metric {
+  border-color: #228a61;
+  background: #228a61;
+}
+
+.chart-builder-field-actions button.is-selected.is-series {
+  border-color: #5b55c5;
+  background: #5b55c5;
+}
+
+.chart-builder-field-actions button.is-selected.is-filter {
+  border-color: #ed5206;
+  background: #ed5206;
+}
+
+.chart-builder-field-actions button.is-selected.is-tooltip {
+  border-color: #64748b;
+  background: #64748b;
+}
+
 .chart-builder-staff-filter {
   display: inline-flex;
   align-items: center;
@@ -1166,6 +1197,101 @@
 }
 
 .chart-builder-staff-filter button {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: rgba(0, 56, 101, 0.6);
+  cursor: pointer;
+}
+
+.chart-builder-generic-filter {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+
+.chart-builder-generic-filter-label {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #003865;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.chart-builder-generic-filter select,
+.chart-builder-generic-filter input {
+  height: 28px;
+  border: 1px solid rgba(0, 56, 101, 0.18);
+  border-radius: 8px;
+  background: #fff;
+  color: #003865;
+  font-size: 12px;
+  padding: 0 7px;
+}
+
+.chart-builder-generic-filter input {
+  width: 92px;
+  min-width: 70px;
+}
+
+.chart-builder-generic-filter button {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: rgba(0, 56, 101, 0.6);
+  cursor: pointer;
+}
+
+.chart-builder-range-filter,
+.chart-builder-boolean-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+}
+
+.chart-builder-range-filter input {
+  width: 82px;
+  height: 28px;
+  border: 1px solid rgba(0, 56, 101, 0.18);
+  border-radius: 8px;
+  background: #fff;
+  color: #003865;
+  font-size: 12px;
+  padding: 0 7px;
+}
+
+.chart-builder-boolean-filter > button:not(.chart-builder-filter-remove) {
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 1px solid rgba(0, 56, 101, 0.16);
+  border-radius: 8px;
+  background: #fff;
+  color: #42627b;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.chart-builder-boolean-filter > button.is-active {
+  border-color: #ed5206;
+  background: #fff3ed;
+  color: #d74700;
+  font-weight: 700;
+}
+
+.chart-builder-filter-remove {
   display: inline-grid;
   place-items: center;
   width: 24px;

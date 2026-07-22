@@ -176,10 +176,14 @@ export function normalizeChartBuilderState(
   if (!dataset) return state;
   const fields = new Map(dataset.fields.map((field) => [field.id, field]));
   const visibleDimensions = state.dimensions.filter(
-    (dimension) => fields.get(dimension.fieldId)?.dataType !== "date",
+    (dimension) => {
+      const field = fields.get(dimension.fieldId);
+      return field?.dataType !== "date" && field?.roles.includes("dimension");
+    },
   );
   const visibleSeries = state.series
     && fields.get(state.series.fieldId)?.dataType !== "date"
+    && fields.get(state.series.fieldId)?.roles.includes("series")
     ? state.series
     : null;
   return {
@@ -196,8 +200,12 @@ export function normalizeChartBuilderState(
         fields.get(visibleSeries.fieldId),
       )
       : null,
-    filters: state.filters.filter(
-      (filter) => fields.get(filter.fieldId)?.dataType !== "date",
+    metrics: state.metrics.filter(
+      (metric) => fields.get(metric.fieldId)?.roles.includes("metric"),
     ),
+    filters: state.filters.filter((filter) => {
+      const field = fields.get(filter.fieldId);
+      return field?.dataType !== "date" && field?.roles.includes("filter");
+    }),
   };
 }

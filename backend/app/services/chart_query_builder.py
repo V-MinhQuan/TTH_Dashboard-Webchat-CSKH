@@ -88,6 +88,20 @@ class ChartQueryCompiler:
         dimensions = [self._compile_dimension(dataset, item) for item in request.dimensions]
         series = self._compile_dimension(dataset, request.series, required_role="series") if request.series else None
         metrics = [self._compile_metric(dataset, item) for item in request.metrics]
+        uses_staff_breakdown = (
+            series is not None and series[1].semantic_type == "staff_name"
+        ) or any(item.field_id == "staff_name" for item in request.filters)
+        if uses_staff_breakdown:
+            metrics = [
+                (
+                    "SUM(staff_breakdown.StaffMessageCount)",
+                    field,
+                    selection,
+                )
+                if field.semantic_type == "staff_message_count"
+                else (expression, field, selection)
+                for expression, field, selection in metrics
+            ]
         if request.chart_type.value == "scatter":
             numeric_metric_count = sum(
                 1 for _, field, _ in metrics if field.data_type == "number"
@@ -129,8 +143,6 @@ class ChartQueryCompiler:
             where_parts.append(f"{series[1].expression} IS NOT NULL")
 
         joins = []
-        relation_params: list[Any] = []
-        staff_name_filter = self._staff_name_filter(remaining_filters)
         for relation_id in sorted(relation_ids):
             relation = dataset.relations.get(relation_id)
             if relation is None:
@@ -138,19 +150,7 @@ class ChartQueryCompiler:
                     f"Không có quan hệ dữ liệu hợp lệ '{relation_id}' "
                     f"cho bộ dữ liệu '{dataset.id}'"
                 )
-            relation_sql = relation.sql
-            if relation_id == "customer_message_count":
-                if staff_name_filter is not None:
-                    relation_sql = relation_sql.replace(
-                        "/*STAFF_MESSAGE_FILTER*/",
-                        "AND (NULLIF(LTRIM(RTRIM(customer_message.HostDisplayName)), N'') = ? "
-                        "OR (? LIKE N'% ' + NULLIF(LTRIM(RTRIM(customer_message.HostDisplayName)), N'') "
-                        "AND NULLIF(LTRIM(RTRIM(customer_message.HostDisplayName)), N'') LIKE N'% %'))",
-                    )
-                    relation_params.extend((staff_name_filter, staff_name_filter))
-                else:
-                    relation_sql = relation_sql.replace("/*STAFF_MESSAGE_FILTER*/", "")
-            joins.append(relation_sql)
+            joins.append(relation.sql)
 
         select_parts = [
             f"{expression} AS [{self._dimension_alias(selection)}]"
@@ -187,7 +187,7 @@ class ChartQueryCompiler:
 
         return CompiledChartQuery(
             sql="\n".join(sql_parts),
-            params=tuple([*scoped_root_params, *relation_params, *where_params]),
+            params=tuple([*scoped_root_params, *where_params]),
             dataset_id=dataset.id,
             dimension_aliases=tuple(
                 self._dimension_alias(selection) for _, _, selection in dimensions
@@ -309,27 +309,6 @@ class ChartQueryCompiler:
                 f"cho trường '{field.id}'"
             )
 
-        if field.semantic_type == "staff_message_count":
-            value = self._coerce_staff_name(selection.value)
-            if dataset.id == "conversations":
-                expression = (
-                    "EXISTS (SELECT 1 FROM dbo.WebChat_MessageLogs staff_filter "
-                    "WHERE staff_filter.Source = c.Source "
-                    "AND staff_filter.ReceiverId = c.CustomerId "
-                    "AND staff_filter.FromHost = 1 "
-                    "AND (NULLIF(LTRIM(RTRIM(staff_filter.HostDisplayName)), N'') = ? "
-                    "OR (? LIKE N'% ' + NULLIF(LTRIM(RTRIM(staff_filter.HostDisplayName)), N'') "
-                    "AND NULLIF(LTRIM(RTRIM(staff_filter.HostDisplayName)), N'') LIKE N'% %')))"
-                )
-                return expression, (value, value), field
-            if dataset.id == "messages":
-                expression = "NULLIF(LTRIM(RTRIM(m.HostDisplayName)), N'')"
-                return (
-                    f"({expression} = ? OR (? LIKE N'% ' + {expression} AND {expression} LIKE N'% %'))",
-                    (value, value),
-                    field,
-                )
-
         expression = field.expression
         if operator == "is_null":
             return f"{expression} IS NULL", (), field
@@ -409,26 +388,6 @@ class ChartQueryCompiler:
             (coerced_value,),
             field,
         )
-
-    @staticmethod
-    def _staff_name_filter(filters: Sequence[FilterSelection]) -> str | None:
-        for item in filters:
-            if item.field_id == "staff_message_count" and item.operator.value == "eq":
-                return ChartQueryCompiler._coerce_staff_name(item.value)
-        return None
-
-    @staticmethod
-    def _coerce_staff_name(value: Any) -> str:
-        if value is None:
-            raise ValueError("Bộ lọc nhân viên cần chọn một nhân viên")
-        normalized = str(value).strip()
-        if not normalized:
-            raise ValueError("Bộ lọc nhân viên cần chọn một nhân viên")
-        if len(normalized) > TEXT_FILTER_MAX_LENGTH:
-            raise ValueError("Tên nhân viên vượt quá độ dài cho phép")
-        if normalized.casefold() == "ai assistant":
-            raise ValueError("AI Assistant không thuộc danh sách nhân viên")
-        return normalized
 
     def _field(
         self,

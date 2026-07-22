@@ -32,7 +32,7 @@ import {
   ChartType,
 } from "../../types/chartBuilder";
 import { CHART_BUILDER_LABELS } from "./chartBuilderLabels";
-import { isChartBuilderPaletteColor } from "./chartBuilderPalettes";
+import { isChartBuilderPaletteColor, semanticChartColor } from "./chartBuilderPalettes";
 
 interface Props {
   chartType: ChartType;
@@ -180,7 +180,7 @@ export function ChartPreview({
             {chartRows.map((row, index) => (
               <Cell
                 key={`${formatDimensionValue(row[dimensionKey])}-${index}`}
-                fill={palette[index % palette.length] || metric.color}
+                fill={semanticChartColor(row[dimensionKey]) || palette[index % palette.length] || metric.color}
               />
             ))}
           </Pie>
@@ -335,7 +335,7 @@ export function ChartPreview({
             >
               {chartSeries.length === 1
                 && shouldUsePaletteCells(series, palette)
-                && renderPaletteCells(chartRows, palette, series.color, series.key)}
+                && renderPaletteCells(chartRows, palette, series.color, series.key, dimensionKey)}
               {showDataLabels && <DataLabel dataKey={series.key} />}
             </Bar>
           ))}
@@ -436,7 +436,7 @@ export function ChartPreview({
             {chartType !== "stacked_bar"
               && chartSeries.length === 1
               && shouldUsePaletteCells(series, palette)
-              && renderPaletteCells(chartRows, palette, series.color, series.key)}
+              && renderPaletteCells(chartRows, palette, series.color, series.key, dimensionKey)}
             {showDataLabels && <DataLabel dataKey={series.key} />}
           </Bar>
         ))}
@@ -661,7 +661,10 @@ function normalizeChartSeries(
     ...item,
     ...seriesDisplayByKey[item.key],
     label: safeText(seriesDisplayByKey[item.key]?.label || item.label || item.key),
-    color: seriesDisplayByKey[item.key]?.color || palette[index % palette.length] || item.color,
+    color: seriesDisplayByKey[item.key]?.color
+      || semanticChartColor(item.groupValue || item.label)
+      || palette[index % palette.length]
+      || item.color,
   }));
 }
 
@@ -680,6 +683,7 @@ function CompactLegend({ series }: { series: ChartSeries[] }) {
       .map((item) => [item.groupValue, {
         label: item.groupValue || "",
         index: item.groupIndex || 0,
+        color: item.color,
       }]),
   ).values());
   const groupLabel = series.find((item) => item.groupLabel)?.groupLabel;
@@ -703,7 +707,7 @@ function CompactLegend({ series }: { series: ChartSeries[] }) {
           <div className="chart-builder-legend-items">
             {groups.map((group) => (
               <span key={group.label} title={safeText(group.label)}>
-                <i className={`is-group-${Math.min(group.index, 2)}`} />
+                <i style={{ backgroundColor: group.color }} />
                 {truncateLegendLabel(group.label)}
               </span>
             ))}
@@ -767,9 +771,8 @@ function truncateLegendLabel(value: unknown) {
   return text.length > 28 ? `${text.slice(0, 27)}…` : text;
 }
 
-function groupOpacity(series: ChartSeries) {
-  if (series.groupIndex === null || series.groupIndex === undefined) return 1;
-  return [1, 0.58, 0.34][Math.min(series.groupIndex, 2)];
+function groupOpacity(_series: ChartSeries) {
+  return 1;
 }
 
 function shouldUsePaletteCells(
@@ -784,11 +787,12 @@ function renderPaletteCells(
   palette: string[],
   fallbackColor: string,
   keyPrefix: string,
+  dimensionKey: string,
 ) {
-  return rows.map((_, index) => (
+  return rows.map((row, index) => (
     <Cell
       key={`${keyPrefix}-palette-cell-${index}`}
-      fill={palette[index % palette.length] || fallbackColor}
+      fill={semanticChartColor(row[dimensionKey]) || palette[index % palette.length] || fallbackColor}
     />
   ));
 }

@@ -32,6 +32,7 @@ const RED_100 = "#F8CACA";
 const RED_TEXT = "#B42318";
 const BLUE_50 = "#EBF2FF";
 const BLUE_200 = "#B9DCFF";
+const ACTION_BLUE = "#2563EB";
 const OCEAN_PRIMARY = "#003865";
 const OCEAN_SECONDARY = "#ED5206";
 const FAILED_QUESTIONS_PAGE_SIZE = 10;
@@ -368,6 +369,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
   const [topN, setTopN] = useState(5);
   const [selectedTopicDetail, setSelectedTopicDetail] = useState<string | null>(null);
+  const selectedTopicDetailRef = useRef<HTMLDivElement | null>(null);
   const [selectedTopicConversationPage, setSelectedTopicConversationPage] = useState(1);
   const [failedPage, setFailedPage] = useState(1);
   const [failedTopicFilter, setFailedTopicFilter] = useState(TABLE_FILTER_ALL);
@@ -961,7 +963,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
               {selectedFailureIds.size > 0 && (
                 <div role="toolbar" aria-label="Thao tác hàng loạt lỗi AI" style={{ padding: "10px 24px", background: ORANGE_50, borderBottom: `1px solid ${ORANGE_200}`, display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px" }}>
                   <strong style={{ color: NAVY, fontSize: "12px" }}>{selectedFailureIds.size} hội thoại đã chọn</strong>
-                  <button onClick={() => setShowConfirmAllModal(true)} disabled={bulkSubmitting} style={{ padding: "7px 14px", borderRadius: "8px", border: "none", background: CTA, color: "#fff", fontWeight: 700 }}>
+                  <button onClick={() => setShowConfirmAllModal(true)} disabled={bulkSubmitting} style={{ padding: "7px 14px", borderRadius: "8px", border: `1px solid ${BLUE_200}`, background: BLUE_50, color: ACTION_BLUE, fontWeight: 700 }}>
                     Đánh dấu đã xử lý
                   </button>
                 </div>
@@ -1055,7 +1057,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
                               <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
                                 <button
                                   onClick={() => { void handleMarkAsProcessed(conv.id); }}
-                                  style={{ padding: "4px 10px", borderRadius: "6px", border: `1px solid ${ORANGE}30`, background: "#fff3ef", color: ORANGE, cursor: "pointer", fontSize: "10px", fontWeight: 600, whiteSpace: "nowrap" }}
+                                  style={{ padding: "4px 10px", borderRadius: "6px", border: `1px solid ${BLUE_200}`, background: BLUE_50, color: ACTION_BLUE, cursor: "pointer", fontSize: "10px", fontWeight: 700, whiteSpace: "nowrap" }}
                                 >
                                   Đánh dấu xử lý
                                 </button>
@@ -1152,8 +1154,11 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
                         onClick={() => {
                           setSelectedTopicConversationPage(1);
                           setSelectedTopicDetail(item.topic);
+                          window.setTimeout(() => {
+                            selectedTopicDetailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                          }, 0);
                         }}
-                        style={{ padding: "5px 10px", borderRadius: "8px", border: selectedTopicDetail === item.topic ? `1px solid ${CTA}` : "1px solid rgba(0,56,101,0.12)", background: selectedTopicDetail === item.topic ? ORANGE_50 : "#f8fafc", color: selectedTopicDetail === item.topic ? CTA : NAVY, cursor: "pointer", fontSize: "11px", fontWeight: 700, whiteSpace: "nowrap" }}
+                        style={{ padding: "5px 10px", borderRadius: "8px", border: selectedTopicDetail === item.topic ? `1px solid ${BLUE_200}` : "1px solid rgba(0,56,101,0.12)", background: selectedTopicDetail === item.topic ? BLUE_50 : "#f8fafc", color: selectedTopicDetail === item.topic ? ACTION_BLUE : NAVY, cursor: "pointer", fontSize: "11px", fontWeight: 700, whiteSpace: "nowrap" }}
                       >
                         Xem chi tiết chủ đề {item.topic}
                       </button>
@@ -1164,7 +1169,7 @@ export function AIInsights({ filters, onFiltersChange, onNavigate, refreshVersio
             </div>
 
             {selectedTopicFailure && (
-              <div style={{ backgroundColor: "#fff", borderRadius: "20px", border: "1px solid rgba(0,56,101,0.08)", boxShadow: "0 2px 12px rgba(0,56,101,0.06)", overflow: "hidden", marginBottom: "24px" }}>
+              <div ref={selectedTopicDetailRef} style={{ scrollMarginTop: "20px", backgroundColor: "#fff", borderRadius: "20px", border: "1px solid rgba(0,56,101,0.08)", boxShadow: "0 2px 12px rgba(0,56,101,0.06)", overflow: "hidden", marginBottom: "24px" }}>
                 <div style={{ padding: "18px 24px", borderBottom: "1px solid rgba(0,56,101,0.06)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px" }}>
                   <h3 style={{ color: NAVY, fontSize: "14px", fontWeight: 700, margin: 0 }}>Chi tiết chủ đề: {selectedTopicFailure.topic}</h3>
                   <button

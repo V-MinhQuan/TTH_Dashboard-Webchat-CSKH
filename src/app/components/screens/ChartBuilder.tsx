@@ -11,9 +11,11 @@ import { ChartPreview } from "../chartbuilder/ChartPreview";
 import { ChartSettingsPanel } from "../chartbuilder/ChartSettingsPanel";
 import {
   getChartBuilderPalette,
+  isChartBuilderPaletteColor,
   paletteColor,
 } from "../chartbuilder/chartBuilderPalettes";
 import { CHART_BUILDER_LABELS } from "../chartbuilder/chartBuilderLabels";
+import { chartBuilderErrorMessage } from "../chartbuilder/chartBuilderErrors";
 import {
   canUseFieldInSlot,
   describeFieldSlotRejection,
@@ -177,6 +179,7 @@ export function ChartBuilder({
     () => datasets.find((dataset) => dataset.id === state.datasetId) || null,
     [datasets, state.datasetId],
   );
+
   const activeChartType = legacyConfig?.chartType || state.chartType;
   const groupBy = legacyConfig?.groupBy
     || state.dimensions[0]?.alias
@@ -207,6 +210,18 @@ export function ChartBuilder({
     ...state.metrics.map((item) => item.fieldId),
     ...(state.series ? [state.series.fieldId] : []),
   ], [state.dimensions, state.metrics, state.series]);
+  const selectedSlotsByField = useMemo(() => {
+    const slots: Record<string, ChartBuilderFieldSlot[]> = {};
+    const add = (fieldId: string, slot: ChartBuilderFieldSlot) => {
+      slots[fieldId] = [...(slots[fieldId] || []), slot];
+    };
+    state.dimensions.forEach((item) => add(item.fieldId, "dimension"));
+    state.metrics.forEach((item) => add(item.fieldId, "metric"));
+    if (state.series) add(state.series.fieldId, "series");
+    state.filters.forEach((item) => add(item.fieldId, "filter"));
+    state.tooltipFields.forEach((fieldId) => add(fieldId, "tooltip"));
+    return slots;
+  }, [state.dimensions, state.metrics, state.series, state.filters, state.tooltipFields]);
   const fieldSlotContext = useMemo<FieldSlotContext>(() => ({
     chartType: state.chartType,
     selectedOutputFieldIds,
@@ -744,6 +759,7 @@ export function ChartBuilder({
           error={catalogError}
           selectedFieldIds={selectedFieldIds}
           selectedOutputFieldIds={selectedOutputFieldIds}
+          selectedSlotsByField={selectedSlotsByField}
           configs={configs}
           loadingConfigs={loadingConfigs}
           open={dataPanelOpen}
@@ -1282,7 +1298,9 @@ function buildSeriesDisplayMap(
       key,
       {
         label: metric.label || fieldLabels.get(metric.fieldId) || "Chỉ số",
-        color: metric.color || paletteColor(state.chartSettings.theme, index),
+        color: metric.color && !isChartBuilderPaletteColor(metric.color)
+          ? metric.color
+          : paletteColor(state.chartSettings.theme, index),
         axisGroup: metric.axisGroup,
         seriesType: metric.seriesType,
         numberFormat: metric.numberFormat,
@@ -1416,8 +1434,7 @@ function dbChannelToGlobal(value: string) {
 }
 
 function userFacingError(error: unknown, fallback: string) {
-  if (!(error instanceof Error)) return fallback;
-  return /[À-ỹ]/u.test(error.message) ? error.message : fallback;
+  return chartBuilderErrorMessage(error, fallback);
 }
 
 function useViewportWidth() {

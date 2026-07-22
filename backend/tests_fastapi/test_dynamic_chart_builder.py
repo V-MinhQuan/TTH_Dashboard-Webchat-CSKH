@@ -417,30 +417,13 @@ def test_message_metrics_compile_with_mutually_exclusive_sender_rules():
     assert "IS NOT NULL" in compiled.sql
 
 
-def test_staff_message_filter_limits_conversation_metric_to_selected_staff():
-    compiler = ChartQueryCompiler(get_dataset_catalog())
-    request = custom_request(
-        datasetId="conversations",
-        dimensions=[{"fieldId": "channel", "alias": "channel"}],
-        metrics=[
-            {"fieldId": "staff_message_count", "aggregation": "sum", "alias": "staff"},
-        ],
-        filters=[
-            {"fieldId": "staff_message_count", "operator": "eq", "value": "  Nguyễn Văn A  "},
-        ],
-        sort=[],
-    )
+def test_conversation_fields_have_non_overlapping_analytic_roles():
+    fields = get_dataset_catalog()["conversations"].fields
 
-    compiled = compiler.compile(request)
-
-    assert "customer_message.HostDisplayName" in compiled.sql
-    assert "staff_filter.HostDisplayName" in compiled.sql
-    assert compiled.params == (
-        "Nguyễn Văn A",
-        "Nguyễn Văn A",
-        "Nguyễn Văn A",
-        "Nguyễn Văn A",
-    )
+    assert fields["staff_message_count"].roles == ("metric",)
+    assert fields["response_minutes"].roles == ("metric",)
+    assert fields["no_response_needed"].roles == ("dimension", "series")
+    assert fields["staff_name"].roles == ("series", "filter")
 
 
 def test_staff_name_list_merges_unambiguous_short_name_into_full_name():
@@ -475,6 +458,46 @@ def test_channel_dimension_uses_business_channel_order_by_default():
     assert "= N'Facebook' THEN 2" in compiled.sql
     assert "= N'ZaloOA' THEN 3" in compiled.sql
     assert "= N'ChatWidget' THEN 4" in compiled.sql
+
+
+def test_staff_series_groups_chart_by_each_staff_member():
+    compiler = ChartQueryCompiler(get_dataset_catalog())
+    request = custom_request(
+        datasetId="conversations",
+        dimensions=[{"fieldId": "channel", "alias": "channel"}],
+        metrics=[
+            {"fieldId": "staff_message_count", "aggregation": "sum", "alias": "staff"},
+        ],
+        series={"fieldId": "staff_name", "alias": "staff_name"},
+        filters=[],
+        sort=[],
+    )
+
+    compiled = compiler.compile(request)
+
+    assert "staff_breakdown.StaffName AS [staff_name]" in compiled.sql
+    assert "SUM(staff_breakdown.StaffMessageCount) AS [staff]" in compiled.sql
+
+
+def test_selected_staff_filter_limits_staff_breakdown_to_one_canonical_name():
+    compiler = ChartQueryCompiler(get_dataset_catalog())
+    request = custom_request(
+        datasetId="conversations",
+        dimensions=[{"fieldId": "channel", "alias": "channel"}],
+        metrics=[
+            {"fieldId": "staff_message_count", "aggregation": "sum", "alias": "staff"},
+        ],
+        series={"fieldId": "staff_name", "alias": "staff_name"},
+        filters=[
+            {"fieldId": "staff_name", "operator": "eq", "value": "Nguyễn Ngọc Thu Trang"},
+        ],
+        sort=[],
+    )
+
+    compiled = compiler.compile(request)
+
+    assert "staff_breakdown.StaffName = ?" in compiled.sql
+    assert compiled.params == ("Nguyễn Ngọc Thu Trang",)
 
 
 def test_type_aware_filter_validation_rejects_contains_on_number():

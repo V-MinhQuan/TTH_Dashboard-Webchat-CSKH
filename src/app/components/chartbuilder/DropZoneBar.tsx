@@ -3,6 +3,7 @@ import type React from "react";
 
 import {
   CatalogDatasetMeta,
+  CatalogFieldMeta,
   ChartType,
   DimensionSelection,
   FilterSelection,
@@ -141,8 +142,9 @@ export function DropZoneBar({
         onField={onFilterField}
         onInvalidField={onInvalidField}
       >
-        {filters.length ? filters.map((filter, index) => (
-          filter.fieldId === "staff_message_count" ? (
+        {filters.length ? filters.map((filter, index) => {
+          const field = dataset?.fields.find((item) => item.id === filter.fieldId);
+          return filter.fieldId === "staff_name" ? (
             <span className="chart-builder-staff-filter" key={`${filter.fieldId}-${index}`}>
               <select
                 aria-label="Chọn nhân viên"
@@ -163,18 +165,19 @@ export function DropZoneBar({
               </button>
             </span>
           ) : (
-            <FieldChip
+            <FilterEditor
               key={`${filter.fieldId}-${index}`}
-              label={formatFilterChipLabel(
-                labels.get(filter.fieldId) || filter.fieldId,
-                filter,
-              )}
-              onRemove={() => onFiltersChange(
-                filters.filter((_, itemIndex) => itemIndex !== index),
-              )}
+              field={field}
+              filter={filter}
+              onChange={(nextFilter) => onFiltersChange(filters.map(
+                (item, itemIndex) => itemIndex === index ? nextFilter : item,
+              ))}
+              onRemove={() => onFiltersChange(filters.filter(
+                (_, itemIndex) => itemIndex !== index,
+              ))}
             />
-          )
-        )) : <DropHint text="Kéo trường để tạo bộ lọc" />}
+          );
+        }) : <DropHint text="Kéo trường để tạo bộ lọc" />}
       </DropZone>
 
     </div>
@@ -270,12 +273,131 @@ function DropHint({ text }: { text: string }) {
   return <span className="chart-builder-drop-hint">{text}</span>;
 }
 
-function formatFilterChipLabel(label: string, filter: FilterSelection) {
-  if (filter.value !== null && filter.value !== undefined && String(filter.value).trim()) {
-    return `${label}: ${String(filter.value).trim()}`;
+function FilterEditor({
+  field,
+  filter,
+  onChange,
+  onRemove,
+}: {
+  field: CatalogFieldMeta | undefined;
+  filter: FilterSelection;
+  onChange: (filter: FilterSelection) => void;
+  onRemove: () => void;
+}) {
+  if (!field) {
+    return <FieldChip label={filter.fieldId} onRemove={onRemove} />;
   }
-  return label;
+
+  if (
+    field.semanticType === "status"
+    || field.semanticType === "duration_minutes"
+  ) {
+    return <FieldChip label={field.label} onRemove={onRemove} />;
+  }
+
+  const removeButton = (
+    <button className="chart-builder-filter-remove" type="button" aria-label={`Xóa bộ lọc ${field.label}`} onClick={onRemove}>
+      <X size={12} />
+    </button>
+  );
+
+  if (field.dataType === "boolean") {
+    const currentValue = filter.value === true ? "true" : filter.value === false ? "false" : "";
+    return (
+      <span className="chart-builder-boolean-filter" role="group" aria-label={`Lọc ${field.label}`}>
+        {[
+          { value: "", label: "Tất cả" },
+          { value: "false", label: field.semanticType === "status" ? "Cần phản hồi" : "Không" },
+          { value: "true", label: field.semanticType === "status" ? "Không cần phản hồi" : "Có" },
+        ].map((option) => (
+          <button
+            type="button"
+            key={option.value || "all"}
+            className={currentValue === option.value ? "is-active" : ""}
+            onClick={() => onChange({
+              ...filter,
+              operator: "eq",
+              value: option.value === "" ? null : option.value === "true",
+            })}
+          >
+            {option.label}
+          </button>
+        ))}
+        {removeButton}
+      </span>
+    );
+  }
+
+  if (field.semanticType === "channel") {
+    return (
+      <span className="chart-builder-staff-filter">
+        <select
+          aria-label="Lọc theo kênh"
+          value={filter.value == null ? "" : String(filter.value)}
+          onChange={(event) => onChange({ ...filter, operator: "eq", value: event.target.value || null })}
+        >
+          <option value="">Tất cả</option>
+          <option value="ZaloBusiness">Zalo Business</option>
+          <option value="Facebook">Facebook</option>
+          <option value="ZaloOA">Zalo OA</option>
+          <option value="ChatWidget">Chat Widget</option>
+        </select>
+        {removeButton}
+      </span>
+    );
+  }
+
+  const operators = field.filterOperators.filter((operator) => (
+    ["eq", "neq", "gt", "gte", "lt", "lte", "between"].includes(operator)
+  ));
+  return (
+    <span className="chart-builder-generic-filter">
+      <span className="chart-builder-generic-filter-label">{field.label}</span>
+      {operators.length > 1 && (
+        <select
+          aria-label={`Toán tử lọc ${field.label}`}
+          value={filter.operator}
+          onChange={(event) => onChange({
+            ...filter,
+            operator: event.target.value as FilterSelection["operator"],
+            valueTo: null,
+          })}
+        >
+          {operators.map((operator) => (
+            <option key={operator} value={operator}>{FILTER_OPERATOR_LABELS[operator]}</option>
+          ))}
+        </select>
+      )}
+      <input
+        type={field.dataType === "number" ? "number" : "text"}
+        aria-label={`Giá trị lọc ${field.label}`}
+        value={filter.value == null ? "" : String(filter.value)}
+        placeholder="Nhập giá trị"
+        onChange={(event) => onChange({ ...filter, value: event.target.value || null })}
+      />
+      {filter.operator === "between" && (
+        <input
+          type="number"
+          aria-label={`Giá trị kết thúc ${field.label}`}
+          value={filter.valueTo == null ? "" : String(filter.valueTo)}
+          placeholder="Đến"
+          onChange={(event) => onChange({ ...filter, valueTo: event.target.value || null })}
+        />
+      )}
+      {removeButton}
+    </span>
+  );
 }
+
+const FILTER_OPERATOR_LABELS: Record<string, string> = {
+  eq: "Bằng",
+  neq: "Khác",
+  gt: ">",
+  gte: "≥",
+  lt: "<",
+  lte: "≤",
+  between: "Trong khoảng",
+};
 
 function readDraggedField(
   event: React.DragEvent,

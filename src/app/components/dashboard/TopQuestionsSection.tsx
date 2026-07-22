@@ -49,7 +49,6 @@ export function TopQuestionsSection({ filters }: { filters: FilterValues }) {
       ...getDateParamsFromFilters(filters),
       channel: filters.channel,
       topic: filters.topic,
-      forceRefresh: reloadVersion > 0,
       limit: 50,
       signal: controller.signal,
     }).then((result) => {
@@ -155,7 +154,18 @@ export function TopQuestionsSection({ filters }: { filters: FilterValues }) {
           </td></tr>}
           {!loading && !error && status !== "ai_overloaded" && visibleRows.map((question, index) => <tr key={`${question.question}-${index}`} style={{ borderBottom: "1px solid rgba(0,59,185,0.04)" }} onMouseEnter={(event) => { event.currentTarget.style.backgroundColor = "#f8fafc"; }} onMouseLeave={(event) => { event.currentTarget.style.backgroundColor = "transparent"; }}>
             <td style={{ padding: "12px 16px", color: "rgba(0,59,185,0.3)", fontWeight: 700, fontSize: "12px" }}>#{index + 1}</td>
-            <td className="flic-td-left" style={{ padding: "12px 16px", color: BLUE, maxWidth: "520px", lineHeight: 1.45 }}>{question.question}</td>
+            <td
+              className="flic-td-left"
+              style={{
+                padding: "12px 16px",
+                color: "#F36C2E",
+                fontWeight: 600,
+                maxWidth: "520px",
+                lineHeight: 1.45,
+              }}
+            >
+              {question.question}
+            </td>
             <td style={{ padding: "12px 16px", fontWeight: 700, color: BLUE }}>{viNum(question.count)}</td>
             <td style={{ padding: "12px 16px" }}><div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
               <button type="button" onClick={() => openDetails(question)} style={{ padding: "4px 9px", borderRadius: "7px", border: "1px solid rgba(0,59,185,0.2)", background: "#f8fafc", color: BLUE, cursor: "pointer", fontSize: "11px", display: "flex", alignItems: "center", gap: "3px" }}><Eye size={10} /> Chi tiết</button>
